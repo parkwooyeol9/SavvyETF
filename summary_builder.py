@@ -1,6 +1,5 @@
 import html
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,10 +9,9 @@ from stock_crawler import (
     DEFAULT_BOTTOM_N,
     DEFAULT_TOP_N,
     UNIVERSES,
-    VOL_METRIC_LABELS,
-    _format_price,
-    _format_volume_ratio,
-    get_rankings,
+    _ranking_slice,
+    get_ranking_tickers,
+    get_top_leader_ticker,
     is_cache_ready,
 )
 
@@ -24,7 +22,6 @@ SUMMARY_META_PATH = DATA_DIR / "summary_meta.json"
 
 KST = ZoneInfo("Asia/Seoul")
 SUMMARY_UNIVERSES = ("etf", "sp", "nas")
-DEFAULT_SUMMARY_PERIOD = "1mo"
 SUMMARY_NEWS_PER_TICKER = 2
 TELEGRAM_CHUNK_SIZE = 3800
 
@@ -34,70 +31,28 @@ UNIVERSE_STYLE = {
     "nas": {"emoji": "💻", "label": "NASDAQ 100", "color": "#a78bfa"},
 }
 
+BOARD_TITLES = {
+    "surge": "Price up + volume surge",
+    "dropvol": "Price down + volume surge",
+}
+
 
 def _esc(text: str) -> str:
     return html.escape(str(text), quote=False)
 
 
-def _ranking_board(
-    universe: str,
-    period: str,
-    sort_by: str,
-    top_n: int = DEFAULT_TOP_N,
-    bottom_n: int = DEFAULT_BOTTOM_N,
-) -> dict:
-    df, column, label, scanned, skipped = get_rankings(universe, period, sort_by)
-    formatter = _format_price if sort_by == "price" else _format_volume_ratio
-    top = [(row["Ticker"], formatter(row[column])) for _, row in df.head(top_n).iterrows()]
-    bottom_df = df.sort_values(by=column, ascending=True).head(bottom_n)
-    bottom = [(row["Ticker"], formatter(row[column])) for _, row in bottom_df.iterrows()]
-    return {
-        "label": label,
-        "sort_by": sort_by,
-        "top": top,
-        "bottom": bottom,
-        "scanned": scanned,
-        "skipped": skipped,
-    }
-
-
-def _ordered_unique_tickers(*groups: list[tuple[str, str]]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for group in groups:
-        for ticker, _ in group:
-            if ticker not in seen:
-                seen.add(ticker)
-                ordered.append(ticker)
-    return ordered
-
-
-def _chunk_text(lines: list[str], max_len: int = TELEGRAM_CHUNK_SIZE) -> list[str]:
-    chunks: list[str] = []
-    current: list[str] = []
-    current_len = 0
-    for line in lines:
-        extra = len(line) + (1 if current else 0)
-        if current and current_len + extra > max_len:
-            chunks.append("\n".join(current))
-            current = [line]
-            current_len = len(line)
-        else:
-            current.append(line)
-            current_len += extra
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
+def _summary_boards(universe: str) -> dict[str, dict]:
+    boards: dict[str, dict] = {}
+    for mode in ("surge", "dropvol"):
+        boards[mode] = _ranking_slice(universe, mode, DEFAULT_TOP_N, DEFAULT_BOTTOM_N)
+    return boards
 
 
 def caches_ready() -> bool:
     return all(is_cache_ready(universe) for universe in SUMMARY_UNIVERSES)
 
 
-def build_market_summary(
-    period: str = DEFAULT_SUMMARY_PERIOD,
-    news_limit: int = SUMMARY_NEWS_PER_TICKER,
-) -> dict:
+def build_market_summary(news_limit: int = SUMMARY_NEWS_PER_TICKER) -> dict:
     if not caches_ready():
         raise RuntimeError("Ranking caches are not ready yet.")
 
@@ -106,22 +61,17 @@ def build_market_summary(
     all_tickers: list[str] = []
 
     for universe in SUMMARY_UNIVERSES:
-        price_board = _ranking_board(universe, period, "price")
-        vol_board = _ranking_board(universe, period, "vol")
-        tickers = _ordered_unique_tickers(
-            price_board["top"],
-            price_board["bottom"],
-            vol_board["top"],
-            vol_board["bottom"],
-        )
+        boards = _summary_boards(universe)
+        tickers, _ = get_ranking_tickers(universe=universe, mode="all")
+        leader_ticker = get_top_leader_ticker(universe, "surge")
         all_tickers.extend(t for t in tickers if t not in all_tickers)
         universes.append(
             {
                 "key": universe,
                 "name": UNIVERSES[universe]["label"],
-                "price": price_board,
-                "vol": vol_board,
+                "boards": boards,
                 "tickers": tickers,
+                "leader_ticker": leader_ticker,
             }
         )
 
@@ -129,59 +79,52 @@ def build_market_summary(
     return {
         "generated_at": generated_at.isoformat(),
         "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
-        "period": period,
         "universes": universes,
         "news_by_ticker": news_by_ticker,
         "ticker_count": len(all_tickers),
     }
 
 
+def _render_board_html(board: dict, mode: str) -> str:
+    top_rows = "".join(
+        f"<tr><td>{html.escape(t)}</td><td class='pos'>{html.escape(v)}</td></tr>"
+        for t, v in board["top"]
+    )
+    bottom_rows = "".join(
+        f"<tr><td>{html.escape(t)}</td><td class='neg'>{html.escape(v)}</td></tr>"
+        for t, v in board["bottom"]
+    )
+    return f"""
+    <div class="card">
+      <h3>{html.escape(BOARD_TITLES[mode])}</h3>
+      <div class="split">
+        <table>
+          <caption>Top {DEFAULT_TOP_N}</caption>
+          <thead><tr><th>Ticker</th><th>Daily | Vol</th></tr></thead>
+          <tbody>{top_rows}</tbody>
+        </table>
+        <table>
+          <caption>Bottom {DEFAULT_BOTTOM_N}</caption>
+          <thead><tr><th>Ticker</th><th>Daily | Vol</th></tr></thead>
+          <tbody>{bottom_rows}</tbody>
+        </table>
+      </div>
+    </div>
+    """
+
+
 def render_summary_html(summary: dict, public_url: str = "") -> str:
-    period = summary["period"]
     title = f"SavvyETF Market Brief — {summary['generated_at_display']}"
 
     sections_html: list[str] = []
     for index, universe in enumerate(summary["universes"]):
         ukey = universe["key"]
         style = UNIVERSE_STYLE.get(ukey, {"emoji": "📊", "label": universe["name"], "color": "#4da3ff"})
-        divider = (
-            '<hr class="section-divider" />'
-            if index > 0
-            else ""
+        divider = '<hr class="section-divider" />' if index > 0 else ""
+        cards = "".join(
+            _render_board_html(universe["boards"][mode], mode)
+            for mode in ("surge", "dropvol")
         )
-        cards: list[str] = []
-        for board_key, board_title in (
-            ("price", "Price return"),
-            ("vol", f"Volume ({VOL_METRIC_LABELS.get(period, 'ratio')})"),
-        ):
-            board = universe[board_key]
-            top_rows = "".join(
-                f"<tr><td>{html.escape(t)}</td><td class='pos'>{html.escape(v)}</td></tr>"
-                for t, v in board["top"]
-            )
-            bottom_rows = "".join(
-                f"<tr><td>{html.escape(t)}</td><td class='neg'>{html.escape(v)}</td></tr>"
-                for t, v in board["bottom"]
-            )
-            cards.append(
-                f"""
-                <div class="card">
-                  <h3>{board_title} ({period})</h3>
-                  <div class="split">
-                    <table>
-                      <caption>Top 5</caption>
-                      <thead><tr><th>Ticker</th><th>Value</th></tr></thead>
-                      <tbody>{top_rows}</tbody>
-                    </table>
-                    <table>
-                      <caption>Bottom 5</caption>
-                      <thead><tr><th>Ticker</th><th>Value</th></tr></thead>
-                      <tbody>{bottom_rows}</tbody>
-                    </table>
-                  </div>
-                </div>
-                """
-            )
 
         news_html: list[str] = []
         for ticker in universe["tickers"]:
@@ -205,8 +148,9 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
                 <span class="section-emoji">{style['emoji']}</span>
                 <h2>{_esc(universe['name'])}</h2>
               </div>
-              <div class="grid">{''.join(cards)}</div>
-              <h3 class="news-heading">News</h3>
+              <p class="meta">Price: last trading day return | Volume: latest day / 21d avg</p>
+              <div class="grid">{cards}</div>
+              <h3 class="news-heading">News (top leaders)</h3>
               <div class="news-grid">{''.join(news_html)}</div>
             </section>
             """
@@ -313,7 +257,7 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
 <body>
   <div class="wrap">
     <h1>{html.escape(title)}</h1>
-    <p class="meta">Period: {html.escape(period)} | Tickers with news: {summary['ticker_count']}</p>
+    <p class="meta">Tickers with news: {summary['ticker_count']} (6 per universe)</p>
     {link_html}
     {''.join(sections_html)}
   </div>
@@ -323,26 +267,38 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
 
 def _format_ranking_block_telegram(title: str, top: list, bottom: list) -> list[str]:
     lines = [f"<b>{_esc(title)}</b>", ""]
-    lines.append("<b>▲ Top 5</b>")
+    lines.append(f"<b>▲ Top {DEFAULT_TOP_N}</b>")
     for ticker, value in top:
         lines.append(f"  • <code>{_esc(ticker)}</code>  {_esc(value)}")
-    lines.extend(["", "<b>▼ Bottom 5</b>"])
+    lines.extend(["", f"<b>▼ Bottom {DEFAULT_BOTTOM_N}</b>"])
     for ticker, value in bottom:
         lines.append(f"  • <code>{_esc(ticker)}</code>  {_esc(value)}")
     lines.append("")
     return lines
 
 
-def _format_universe_telegram(universe: dict, summary: dict, period: str) -> list[dict]:
+def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     ukey = universe["key"]
     style = UNIVERSE_STYLE.get(ukey, {"emoji": "📊"})
     header = f"<b>{style['emoji']} {_esc(universe['name'])}</b>\n"
 
-    ranking_lines = [header, ""]
-    ranking_lines.extend(_format_ranking_block_telegram(f"Price return ({period})", universe["price"]["top"], universe["price"]["bottom"]))
-    vol_label = VOL_METRIC_LABELS.get(period, "volume ratio")
-    ranking_lines.extend(_format_ranking_block_telegram(f"Volume ({vol_label})", universe["vol"]["top"], universe["vol"]["bottom"]))
+    ranking_lines = [header, "<i>Last trading day return | latest vol / 21d avg</i>", ""]
+    for mode in ("surge", "dropvol"):
+        board = universe["boards"][mode]
+        ranking_lines.extend(
+            _format_ranking_block_telegram(BOARD_TITLES[mode], board["top"], board["bottom"])
+        )
     messages = [{"text": "\n".join(ranking_lines).rstrip(), "parse_mode": "HTML"}]
+
+    leader = universe.get("leader_ticker")
+    if leader:
+        messages.append(
+            {
+                "text": f"📈 Top leader: <b>{_esc(leader)}</b> (price up + volume surge)",
+                "parse_mode": "HTML",
+                "chart_ticker": leader,
+            }
+        )
 
     news_lines = [header, "<b>📰 News</b>", ""]
     has_news = False
@@ -381,27 +337,25 @@ def _format_universe_telegram(universe: dict, summary: dict, period: str) -> lis
 
 
 def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
-    """Telegram messages: header, then per-universe ranking + news (split if long)."""
-    period = summary["period"]
     messages: list[dict] = []
 
     header_lines = [
         "<b>📊 SavvyETF Market Brief</b>",
         "",
         f"<i>{_esc(summary['generated_at_display'])}</i>",
-        f"Period: <b>{_esc(period)}</b>",
+        "<i>Price: last trading day | Volume: latest / 21d avg</i>",
     ]
     if public_url:
         header_lines.extend(["", f'🌐 <a href="{_esc(public_url)}">Open full summary page</a>'])
     header_lines.extend([
         "",
         "<i>Next messages: ETF → S&P 500 → NASDAQ 100</i>",
-        "<i>(each: rankings, then news)</i>",
+        "<i>(each: rankings, top-leader chart, then news)</i>",
     ])
     messages.append({"text": "\n".join(header_lines), "parse_mode": "HTML"})
 
     for universe in summary["universes"]:
-        messages.extend(_format_universe_telegram(universe, summary, period))
+        messages.extend(_format_universe_telegram(universe, summary))
 
     return messages
 
@@ -412,7 +366,6 @@ def save_summary(summary: dict, html_content: str) -> None:
     meta = {
         "generated_at": summary["generated_at"],
         "generated_at_display": summary["generated_at_display"],
-        "period": summary["period"],
         "ticker_count": summary["ticker_count"],
     }
     SUMMARY_META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -424,8 +377,8 @@ def load_summary_html() -> str | None:
     return None
 
 
-def generate_and_save_summary(period: str = DEFAULT_SUMMARY_PERIOD, public_url: str = "") -> dict:
-    summary = build_market_summary(period=period)
+def generate_and_save_summary(public_url: str = "") -> dict:
+    summary = build_market_summary()
     html_content = render_summary_html(summary, public_url=public_url)
     save_summary(summary, html_content)
     summary["html"] = html_content

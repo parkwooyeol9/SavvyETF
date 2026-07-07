@@ -17,53 +17,29 @@ import yfinance as yf
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 ETF_MASTER_PATH = PROJECT_DIR / "colab" / "ETF_Master.xlsx"
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 
-PERIOD_MAP = {
-    "1mo": "1mo Return",
-    "3mo": "3mo Return",
-    "6mo": "6mo Return",
-    "12mo": "12mo Return",
+DAILY_RETURN_COL = "Daily Return"
+VOL_RATIO_COL = "Vol Ratio"
+SURGE_SCORE_COL = "Surge Score"
+DROP_VOL_SCORE_COL = "Drop Vol Score"
+
+RANK_MODES = {
+    "surge": {
+        "column": SURGE_SCORE_COL,
+        "label": "price up + volume surge (daily return x vol ratio)",
+    },
+    "dropvol": {
+        "column": DROP_VOL_SCORE_COL,
+        "label": "price down + volume surge (|daily return| x vol ratio)",
+    },
 }
 
-VOL_PERIOD_MAP = {
-    "1mo": "1mo Vol Ratio",
-    "3mo": "3mo Vol Ratio",
-    "6mo": "6mo Vol Ratio",
-    "12mo": "12mo Vol Ratio",
-}
-
-SORT_CRITERIA = {
-    "price": PERIOD_MAP,
-    "vol": VOL_PERIOD_MAP,
-}
-
-RETURN_WINDOWS = {
-    "1mo Return": 21,
-    "3mo Return": 63,
-    "6mo Return": 126,
-    "12mo Return": 252,
-}
-
-VOL_BASELINE_WINDOWS = {
-    "1mo Vol Ratio": 21,
-    "3mo Vol Ratio": 63,
-    "6mo Vol Ratio": 126,
-    "12mo Vol Ratio": 252,
-}
-
-RECENT_VOL_DAYS = 5
-
-VOL_METRIC_LABELS = {
-    "1mo": "latest day vol / 1mo avg",
-    "3mo": "5d avg vol / 3mo avg",
-    "6mo": "5d avg vol / 6mo avg",
-    "12mo": "5d avg vol / 12mo avg",
-}
+VOL_LOOKBACK_DAYS = 21
 
 CACHE_TTL_SECONDS = 3600
-DEFAULT_TOP_N = 5
-DEFAULT_BOTTOM_N = 5
+DEFAULT_TOP_N = 3
+DEFAULT_BOTTOM_N = 3
 WIKI_USER_AGENT = "SavvyETF/1.0 (telegram-bot)"
 
 UNIVERSES: dict[str, dict] = {
@@ -179,56 +155,40 @@ def is_etf_cache_ready() -> bool:
     return is_cache_ready("etf")
 
 
-def _returns_from_close(close: pd.Series) -> dict[str, float]:
+def _metrics_from_series(close: pd.Series, volume: pd.Series | None) -> dict[str, float]:
     prices = close.dropna()
     if len(prices) < 2:
         return {}
 
     last = float(prices.iloc[-1])
-    if last <= 0:
+    prev = float(prices.iloc[-2])
+    if last <= 0 or prev <= 0:
         return {}
 
-    results: dict[str, float] = {}
-    for column, window in RETURN_WINDOWS.items():
-        if len(prices) <= window:
-            continue
-        first = float(prices.iloc[-(window + 1)])
-        if first <= 0:
-            continue
-        results[column] = (last - first) / first
-    return results
+    daily_return = (last - prev) / prev
+    metrics: dict[str, float] = {DAILY_RETURN_COL: daily_return}
 
+    if volume is None:
+        return metrics
 
-def _volume_ratios_from_volume(volume: pd.Series) -> dict[str, float]:
     vol = volume.dropna()
-    if vol.empty:
-        return {}
+    if len(vol) < VOL_LOOKBACK_DAYS:
+        return metrics
 
-    results: dict[str, float] = {}
+    month_avg = float(vol.iloc[-VOL_LOOKBACK_DAYS:].mean())
+    last_vol = float(vol.iloc[-1])
+    if month_avg <= 0 or last_vol <= 0:
+        return metrics
 
-    # 1mo: most recent day vs 1-month (21 trading days) average
-    window_1mo = VOL_BASELINE_WINDOWS["1mo Vol Ratio"]
-    if len(vol) >= window_1mo:
-        month_avg = float(vol.iloc[-window_1mo:].mean())
-        last_vol = float(vol.iloc[-1])
-        if month_avg > 0 and last_vol > 0:
-            results["1mo Vol Ratio"] = last_vol / month_avg
+    vol_ratio = last_vol / month_avg
+    metrics[VOL_RATIO_COL] = vol_ratio
 
-    # 3mo / 6mo / 12mo: recent 5-day avg vs period average
-    if len(vol) >= RECENT_VOL_DAYS:
-        recent_avg = float(vol.iloc[-RECENT_VOL_DAYS:].mean())
-        if recent_avg > 0:
-            for column, window in (
-                ("3mo Vol Ratio", VOL_BASELINE_WINDOWS["3mo Vol Ratio"]),
-                ("6mo Vol Ratio", VOL_BASELINE_WINDOWS["6mo Vol Ratio"]),
-                ("12mo Vol Ratio", VOL_BASELINE_WINDOWS["12mo Vol Ratio"]),
-            ):
-                if len(vol) >= window:
-                    period_avg = float(vol.iloc[-window:].mean())
-                    if period_avg > 0:
-                        results[column] = recent_avg / period_avg
+    if daily_return > 0:
+        metrics[SURGE_SCORE_COL] = daily_return * vol_ratio
+    elif daily_return < 0:
+        metrics[DROP_VOL_SCORE_COL] = abs(daily_return) * vol_ratio
 
-    return results
+    return metrics
 
 
 def _extract_ticker_series(data: pd.DataFrame, ticker: str, field: str) -> pd.Series | None:
@@ -272,14 +232,10 @@ def _chunk_all_metrics(tickers: list[str]) -> dict[str, dict[str, float]]:
 
     for ticker in target_tickers:
         close = _extract_ticker_series(data, ticker, "Close")
-        volume = _extract_ticker_series(data, ticker, "Volume")
         if close is None:
             continue
-
-        metrics = _returns_from_close(close)
-        if volume is not None:
-            metrics.update(_volume_ratios_from_volume(volume))
-
+        volume = _extract_ticker_series(data, ticker, "Volume")
+        metrics = _metrics_from_series(close, volume)
         if metrics:
             results[ticker] = metrics
 
@@ -445,42 +401,6 @@ def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:
     thread.start()
 
 
-def _sort_column(period: str, sort_by: str) -> tuple[str, str]:
-    sort_by = sort_by.lower()
-    if sort_by not in SORT_CRITERIA:
-        raise ValueError(f"Unsupported sort: {sort_by}. Use: {list(SORT_CRITERIA)}")
-    if period not in PERIOD_MAP:
-        raise ValueError(f"Unsupported period: {period}. Use: {list(PERIOD_MAP)}")
-
-    column = SORT_CRITERIA[sort_by][period]
-    if sort_by == "price":
-        label = f"{period} return"
-    else:
-        label = VOL_METRIC_LABELS.get(period, f"{period} volume ratio")
-    return column, label
-
-
-def get_rankings(
-    universe: str = "etf",
-    period: str = "1mo",
-    sort_by: str = "price",
-) -> tuple[pd.DataFrame, str, str, int, int]:
-    if not is_cache_ready(universe):
-        raise RuntimeError(f"{UNIVERSES[universe]['label']} cache is not ready yet.")
-
-    column, label = _sort_column(period, sort_by)
-    df = _states[universe]["df"].dropna(subset=[column]).sort_values(by=column, ascending=False)
-    meta = _states[universe]["meta"]
-    return df, column, label, meta["scanned"], meta["skipped"]
-
-
-def get_etf_rankings(
-    period: str = "1mo",
-    sort_by: str = "price",
-) -> tuple[pd.DataFrame, str, str, int, int]:
-    return get_rankings("etf", period, sort_by)
-
-
 def _format_price(value: float) -> str:
     return f"{value * 100:+.2f}%"
 
@@ -489,24 +409,114 @@ def _format_volume_ratio(value: float) -> str:
     return f"{value:.2f}x"
 
 
+def _format_score(value: float) -> str:
+    return f"{value:.4f}"
+
+
+def _row_label(row: pd.Series) -> str:
+    daily = row.get(DAILY_RETURN_COL)
+    vol = row.get(VOL_RATIO_COL)
+    parts = []
+    if pd.notna(daily):
+        parts.append(_format_price(float(daily)))
+    if pd.notna(vol):
+        parts.append(f"vol {_format_volume_ratio(float(vol))}")
+    return " | ".join(parts) if parts else "n/a"
+
+
+def get_mode_rankings(
+    universe: str,
+    mode: str,
+) -> tuple[pd.DataFrame, str, int, int]:
+    if mode not in RANK_MODES:
+        raise ValueError(f"Unsupported mode: {mode}. Use: {list(RANK_MODES)}")
+    if not is_cache_ready(universe):
+        raise RuntimeError(f"{UNIVERSES[universe]['label']} cache is not ready yet.")
+
+    column = RANK_MODES[mode]["column"]
+    label = RANK_MODES[mode]["label"]
+    df = _states[universe]["df"].dropna(subset=[column]).sort_values(by=column, ascending=False)
+    meta = _states[universe]["meta"]
+    return df, label, meta["scanned"], meta["skipped"]
+
+
+def _ranking_slice(
+    universe: str,
+    mode: str,
+    top_n: int = DEFAULT_TOP_N,
+    bottom_n: int = DEFAULT_BOTTOM_N,
+) -> dict:
+    df, label, scanned, skipped = get_mode_rankings(universe, mode)
+    top_rows = [(row["Ticker"], _row_label(row)) for _, row in df.head(top_n).iterrows()]
+    bottom_df = df.sort_values(by=RANK_MODES[mode]["column"], ascending=True).head(bottom_n)
+    bottom_rows = [(row["Ticker"], _row_label(row)) for _, row in bottom_df.iterrows()]
+    return {
+        "mode": mode,
+        "title": "Price up + volume surge" if mode == "surge" else "Price down + volume surge",
+        "label": label,
+        "top": top_rows,
+        "bottom": bottom_rows,
+        "scanned": scanned,
+        "skipped": skipped,
+    }
+
+
+def get_top_leader_ticker(universe: str, mode: str = "all") -> str | None:
+    """Return the #1 ticker for charting (surge leader unless mode is dropvol)."""
+    rank_mode = "dropvol" if mode == "dropvol" else "surge"
+    board = _ranking_slice(universe, rank_mode, 1, 0)
+    if board["top"]:
+        return board["top"][0][0]
+    return None
+
+
 def get_ranking_tickers(
     universe: str = "etf",
-    period: str = "1mo",
-    sort_by: str = "price",
+    mode: str = "all",
     top_n: int = DEFAULT_TOP_N,
     bottom_n: int = DEFAULT_BOTTOM_N,
 ) -> tuple[list[str], str]:
-    df, column, label, _, _ = get_rankings(universe, period, sort_by)
-    top = df.head(top_n)["Ticker"].tolist()
-    bottom = df.sort_values(by=column, ascending=True).head(bottom_n)["Ticker"].tolist()
-    context = f"{UNIVERSES[universe]['label']} — {label}"
-    return top + bottom, context
+    tickers: list[str] = []
+
+    if mode == "all":
+        for rank_mode in ("surge", "dropvol"):
+            board = _ranking_slice(universe, rank_mode, top_n, 0)
+            for ticker, _ in board["top"]:
+                if ticker not in tickers:
+                    tickers.append(ticker)
+        context = f"{UNIVERSES[universe]['label']} — surge + drop/vol leaders"
+        return tickers, context
+
+    board = _ranking_slice(universe, mode, top_n, bottom_n)
+    for group in (board["top"], board["bottom"]):
+        for ticker, _ in group:
+            if ticker not in tickers:
+                tickers.append(ticker)
+    context = f"{UNIVERSES[universe]['label']} — {RANK_MODES[mode]['label']}"
+    return tickers, context
+
+
+def _append_ranking_block(lines: list[str], board: dict, top_n: int, bottom_n: int) -> None:
+    lines.append(board["title"])
+    lines.append(f"({board['label']})")
+    lines.append("")
+
+    if top_n > 0 and board["top"]:
+        lines.append(f"Top {top_n}:")
+        for idx, (ticker, value) in enumerate(board["top"], start=1):
+            lines.append(f"{idx}. {ticker}  {value}")
+        lines.append("")
+
+    if bottom_n > 0 and board["bottom"]:
+        lines.append(f"Bottom {bottom_n}:")
+        for idx, (ticker, value) in enumerate(board["bottom"], start=1):
+            lines.append(f"{idx}. {ticker}  {value}")
+        lines.append("")
 
 
 def format_rankings_message(
     universe: str = "etf",
-    period: str = "1mo",
-    sort_by: str = "price",
+    mode: str = "all",
     top_n: int = DEFAULT_TOP_N,
     bottom_n: int = DEFAULT_BOTTOM_N,
 ) -> str:
@@ -514,38 +524,32 @@ def format_rankings_message(
     if not is_cache_ready(universe):
         return f"{label_name} rankings are still loading. Please try again in a few minutes."
 
-    df, column, label, scanned, skipped = get_rankings(universe, period, sort_by)
-    if df.empty:
-        return (
-            f"No {label_name} data for {label}.\n"
-            f"Scanned {scanned} tickers; none had valid data for this sort."
-        )
-
-    formatter = _format_price if sort_by == "price" else _format_volume_ratio
+    modes = ["surge", "dropvol"] if mode == "all" else [mode]
     loaded_at = time.strftime(
         "%Y-%m-%d %H:%M",
         time.localtime(_states[universe]["meta"]["loaded_at"]),
     )
+    first_board = _ranking_slice(universe, modes[0], top_n, 0 if mode == "all" else bottom_n)
+
     lines = [
-        f"{label_name} rankings — {label}",
-        f"Active: {len(df)} | Scanned: {scanned} | Skipped: {skipped}",
+        f"{label_name} rankings",
+        "Price: last trading day return | Volume: latest day / 21d avg",
+        f"Active: {len(_states[universe]['df'])} | Scanned: {first_board['scanned']} | Skipped: {first_board['skipped']}",
         f"Data as of: {loaded_at}",
+        "",
     ]
-    if sort_by == "vol":
-        lines.append(f"Metric: {VOL_METRIC_LABELS.get(period, 'volume ratio')}")
-    lines.append("")
 
-    if top_n > 0:
-        lines.append(f"Top {top_n}:")
-        for idx, (_, row) in enumerate(df.head(top_n).iterrows(), start=1):
-            lines.append(f"{idx}. {row['Ticker']}  {formatter(row[column])}")
-        lines.append("")
+    for rank_mode in modes:
+        use_bottom = 0 if mode == "all" else bottom_n
+        board = _ranking_slice(universe, rank_mode, top_n, use_bottom)
+        if not board["top"] and not board["bottom"]:
+            lines.append(f"{board['title']}: no data")
+            lines.append("")
+            continue
+        _append_ranking_block(lines, board, top_n, use_bottom)
 
-    if bottom_n > 0:
-        lines.append(f"Bottom {bottom_n}:")
-        bottom = df.sort_values(by=column, ascending=True).head(bottom_n)
-        for idx, (_, row) in enumerate(bottom.iterrows(), start=1):
-            lines.append(f"{idx}. {row['Ticker']}  {formatter(row[column])}")
+    if lines and lines[-1] == "":
+        lines.pop()
 
     message = "\n".join(lines)
     if len(message) > 4000:
@@ -554,33 +558,14 @@ def format_rankings_message(
 
 
 def format_etf_rankings_message(
-    period: str = "1mo",
-    sort_by: str = "price",
+    mode: str = "all",
     top_n: int = DEFAULT_TOP_N,
     bottom_n: int = DEFAULT_BOTTOM_N,
 ) -> str:
-    return format_rankings_message("etf", period, sort_by, top_n, bottom_n)
+    return format_rankings_message("etf", mode, top_n, bottom_n)
 
 
-def _parse_period_and_sort(parts: list[str]) -> tuple[str, str]:
-    period = "1mo"
-    sort_by = "price"
-
-    if len(parts) > 1 and parts[1].lower() in PERIOD_MAP:
-        period = parts[1].lower()
-        parts = [parts[0]] + parts[2:]
-
-    if len(parts) > 1:
-        candidate = parts[1].lower()
-        if candidate in SORT_CRITERIA:
-            sort_by = candidate
-        else:
-            raise ValueError(f"Unknown sort '{parts[1]}'. Use price or vol.")
-
-    return period, sort_by
-
-
-def parse_rank_command(message: str) -> tuple[str, str, str]:
+def parse_rank_command(message: str) -> tuple[str, str]:
     parts = message.strip().split()
     if not parts:
         raise ValueError("Empty command.")
@@ -594,12 +579,19 @@ def parse_rank_command(message: str) -> tuple[str, str, str]:
     if universe is None:
         raise ValueError("Use /etf, /sp, or /nas.")
 
-    period, sort_by = _parse_period_and_sort(parts)
-    return universe, period, sort_by
+    mode = "all"
+    if len(parts) > 1:
+        candidate = parts[1].lower()
+        if candidate in RANK_MODES:
+            mode = candidate
+        elif candidate != "all":
+            raise ValueError(f"Unknown mode '{parts[1]}'. Use surge or dropvol.")
+
+    return universe, mode
 
 
-def parse_etf_command(message: str) -> tuple[str, str]:
-    _, period, sort_by = parse_rank_command(
+def parse_etf_command(message: str) -> str:
+    _, mode = parse_rank_command(
         message if message.lower().startswith("/etf") else f"/etf {message}"
     )
-    return period, sort_by
+    return mode

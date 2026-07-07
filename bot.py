@@ -16,6 +16,7 @@ from news_crawler import format_news_messages
 from stock_crawler import (
     format_rankings_message,
     get_ranking_tickers,
+    get_top_leader_ticker,
     is_cache_ready,
     parse_rank_command,
     warmup_all_caches,
@@ -38,28 +39,25 @@ What each command returns:
 /coin BTC
 → Crypto technical analysis chart
 
-/etf 1mo price
-→ Top 5 & bottom 5 ETFs by 1-month price return
+/etf
+→ Top 3 price-up+volume surge & top 3 price-down+volume surge ETFs
 
-/etf 1mo vol
-→ Top 5 & bottom 5 ETFs by volume (1mo: latest day vs 1mo avg)
+/etf surge
+→ Top 3 & bottom 3 by price-up + volume surge
 
-/sp 1mo price   (or /sp vol)
-→ Same rankings for S&P 500 stocks
-
-/nas 1mo vol
-→ Same rankings for NASDAQ 100 stocks
+/sp   (or /nas)
+→ Same rankings for S&P 500 / NASDAQ 100
 
 /news
-→ Headlines for tickers from your last /etf, /sp, or /nas result
+→ Headlines for the 6 tickers from your last /etf, /sp, or /nas result
 
 /summary
-→ ETF + S&P 500 + NASDAQ brief (price, volume, news)
+→ ETF + S&P 500 + NASDAQ brief (combined rankings + news)
 
 Auto brief: 06:00 & 22:00 KST
 
-Periods: 1mo | 3mo | 6mo | 12mo
-Sort: price (return) | vol (1mo: latest/1mo avg; 3/6/12mo: 5d/period avg)
+Price: last trading day return | Volume: latest day / 21d avg
+Modes: surge | dropvol (default shows both leaders)
 
 Type /help for the full command list.
 """
@@ -74,36 +72,34 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Crypto technical analysis chart.
   Example: /coin BTC
 
-/etf PERIOD SORT
-  Rank ~1,800 US equity ETFs (top 5 & bottom 5).
-  Example: /etf 1mo price | /etf 12mo vol
+/etf [MODE]
+  Rank US equity ETFs (default: top 3 surge + top 3 drop/vol leaders).
+  Includes a TA chart for the #1 surge leader.
+  Example: /etf | /etf surge | /etf dropvol
 
-/sp PERIOD SORT
-  Rank S&P 500 stocks (top 5 & bottom 5).
-  Example: /sp 1mo price | /sp vol
+/sp [MODE]
+  Rank S&P 500 stocks (same logic).
+  Example: /sp | /sp surge
 
-/nas PERIOD SORT
-  Rank NASDAQ 100 stocks (top 5 & bottom 5).
-  Example: /nas 1mo vol | /nas 12mo price
+/nas [MODE]
+  Rank NASDAQ 100 stocks (same logic).
+  Example: /nas | /nas dropvol
 
-  PERIOD: 1mo | 3mo | 6mo | 12mo
-  SORT:
-    price — price return over period
-    vol   — 1mo: latest day / 1mo avg
-            3/6/12mo: 5d avg / period avg
+  MODE (optional):
+    surge   — price up + volume surge (top 3 & bottom 3)
+    dropvol — price down + volume surge (top 3 & bottom 3)
+    (omit)  — top 3 from each pattern (6 tickers total)
 
-  Shorthand (defaults: 1mo price):
-    /etf | /etf vol
-    /sp  | /sp vol
-    /nas | /nas price
+  Price: last trading day return
+  Volume: latest day / 21-day average
 
 /news
-  Headlines for the 10 tickers from your last ranking.
+  Headlines for the 6 tickers from your last ranking.
   Run /etf, /sp, or /nas first, then /news.
 
 /summary
   Full market brief: ETF + S&P 500 + NASDAQ 100
-  (price top/bottom 5, volume top/bottom 5, news).
+  (combined rankings, top-leader chart per universe, news).
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
 
   Auto-sent at 06:00 & 22:00 KST to subscribed chats.
@@ -167,7 +163,7 @@ def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None
 
 def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None:
     if isinstance(message, dict):
-        send_text(token, chat_id, message["text"], parse_mode=message.get("parse_mode"))
+        send_reply(token, chat_id, message)
     else:
         send_text(token, chat_id, message)
 
@@ -444,21 +440,30 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith(("/etf", "/sp", "/nas")):
         try:
-            universe, period, sort_by = parse_rank_command(normalized)
+            universe, mode = parse_rank_command(normalized)
             if not is_cache_ready(universe):
                 label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
                 return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
             tickers, context_label = get_ranking_tickers(
                 universe=universe,
-                period=period,
-                sort_by=sort_by,
+                mode=mode,
             )
             _last_ranking_by_chat[chat_id] = {
                 "tickers": tickers,
                 "label": context_label,
             }
-            text = format_rankings_message(universe=universe, period=period, sort_by=sort_by)
-            return [{"text": text}]
+            text = format_rankings_message(universe=universe, mode=mode)
+            responses = [{"text": text}]
+            leader = get_top_leader_ticker(universe, mode)
+            if leader:
+                label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+                responses.append(
+                    {
+                        "text": f"📈 {label} top leader: {leader.upper()}",
+                        "chart_ticker": leader,
+                    }
+                )
+            return responses
         except ValueError as exc:
             return [{"text": f"Invalid command: {exc}\n\n{HELP_TEXT}"}]
         except Exception as exc:
@@ -468,17 +473,45 @@ def handle_telegram_message(message, chat_id: int):
 
 
 def send_reply(token, chat_id, reply):
-    send_text(token, chat_id, reply["text"], parse_mode=reply.get("parse_mode"))
-
     photo = reply.get("photo")
+    chart_ticker = reply.get("chart_ticker")
+
+    if photo is None and chart_ticker:
+        try:
+            photo = analyze_stock(chart_ticker)
+        except Exception as exc:
+            send_text(
+                token,
+                chat_id,
+                f"{reply.get('text', chart_ticker)}\nChart error: {exc}",
+                parse_mode=reply.get("parse_mode"),
+            )
+            return
+
+    text = reply.get("text", "")
+    parse_mode = reply.get("parse_mode")
+
     if photo is not None:
         photo.seek(0)
-        requests.post(
+        payload: dict = {"chat_id": chat_id}
+        if text:
+            payload["caption"] = text[:1024]
+        if parse_mode and text:
+            payload["parse_mode"] = parse_mode
+        response = requests.post(
             f"https://api.telegram.org/bot{token}/sendPhoto",
-            data={"chat_id": chat_id, "caption": "Analysis Chart"},
+            data=payload,
             files={"photo": ("chart.png", photo, "image/png")},
             timeout=60,
         )
+        if not response.ok:
+            print(f"sendPhoto failed for chat {chat_id}: {response.text}")
+            if text:
+                send_text(token, chat_id, text, parse_mode=parse_mode)
+            response.raise_for_status()
+        return
+
+    send_text(token, chat_id, text, parse_mode=parse_mode)
 
 
 def start_web_server():
