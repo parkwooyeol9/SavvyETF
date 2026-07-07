@@ -1,0 +1,8 @@
+services:
+  - type: worker
+    name: savvyetf-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
