@@ -20,6 +20,7 @@ pip install -r requirements.txt
 
 echo ""
 echo "Next step: open .env and replace the placeholder with your Telegram bot token."
+echo "Optional: set TELEGRAM_CHAT_ID so the bot sends a usage guide on startup."
 echo "  File location: $(pwd)/.env"
 echo ""
 echo "Then start the bot with:"

@@ -1,8 +1,18 @@
 services:
-  - type: worker
+  - type: web
     name: savvyetf-bot
     runtime: docker
     dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: SUMMARY_PUBLIC_URL
+        sync: false
+      - key: PORT
+        value: "8080"
+      - key: SUMMARY_SCHEDULE_ENABLED
+        value: "true"

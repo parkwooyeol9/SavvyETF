@@ -5,3 +5,5 @@ matplotlib>=3.7.0
 requests>=2.31.0
 pycoingecko>=3.2.0
 python-dotenv>=1.0.0
+openpyxl>=3.1.0
+lxml>=5.0.0

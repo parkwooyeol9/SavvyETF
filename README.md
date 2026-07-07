@@ -37,44 +37,69 @@ source .venv/bin/activate
 python bot.py
 ```
 
-## Deploy 24/7 (recommended options)
+## Deploy 24/7 on Render
 
-### Option A: Render (easiest)
+Your code is on GitHub at [parkwooyeol9/SavvyETF](https://github.com/parkwooyeol9/SavvyETF). Render will run it as a **Background Worker** so the bot stays online without your PC.
 
-1. Push this repo to GitHub.
-2. Go to [render.com](https://render.com) → **New** → **Blueprint** (or **Background Worker**).
-3. Connect the repo. Render reads `render.yaml` and creates a **worker** service.
-4. Set environment variable `TELEGRAM_BOT_TOKEN` in the Render dashboard.
-5. Deploy. The worker runs continuously (Render workers require a paid plan; see free options below).
+### Step-by-step
 
-### Option B: Railway
+1. **Stop the local bot** if it is running (`Ctrl+C` in the terminal). Only one instance can use the same Telegram token.
 
-1. Push to GitHub.
-2. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**.
-3. Add variable `TELEGRAM_BOT_TOKEN`.
-4. Set start command: `python bot.py` (or use the Dockerfile).
-5. Deploy.
+2. Go to [dashboard.render.com](https://dashboard.render.com) and sign in (use **GitHub** to connect your account).
 
-### Option C: Fly.io (good free-tier VM)
+3. Click **New +** → **Blueprint**.
+
+4. Connect the repository **`parkwooyeol9/SavvyETF`**.
+
+5. Render will read `render.yaml` and show a **Background Worker** named `savvyetf-bot`.
+
+6. When prompted, set the secret environment variable:
+   - **Key:** `TELEGRAM_BOT_TOKEN`
+   - **Value:** your bot token from [@BotFather](https://t.me/BotFather)
+
+7. Click **Apply**. Render builds the Docker image and starts the worker.
+
+8. Open the service → **Logs**. You should see:
+   ```
+   Health check listening on port 8080
+   Starting Telegram bot...
+   ```
+
+9. Test in Telegram: send `/coin BTC` or `/port AAPL MSFT`.
+
+### Notes
+
+- Render **Background Workers** need a **Starter** plan (about $7/month) to run 24/7. Free web services sleep; workers do not have a free always-on tier.
+- To redeploy after code changes: push to `main` on GitHub → Render auto-deploys if enabled (on by default).
+- Manage the token only in the Render dashboard (**Environment** tab), never in git.
+
+### Manual setup (without Blueprint)
+
+If you prefer not to use the blueprint:
+
+1. **New +** → **Background Worker**
+2. Connect `parkwooyeol9/SavvyETF`
+3. Runtime: **Docker**
+4. Add env var `TELEGRAM_BOT_TOKEN`
+5. Create Worker
+
+## Other hosting options
+
+### Railway
+
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**
+2. Select `parkwooyeol9/SavvyETF`
+3. Add `TELEGRAM_BOT_TOKEN`
+4. Deploy
+
+### Any VPS (Oracle Cloud free tier, DigitalOcean, etc.)
 
 ```bash
-fly launch --no-deploy
-fly secrets set TELEGRAM_BOT_TOKEN=your_token
-fly deploy
-```
-
-Use `fly.toml` with `app` process running `python bot.py` and `min_machines_running = 1`.
-
-### Option D: Any VPS (Oracle Cloud free tier, DigitalOcean, etc.)
-
-```bash
-git clone <your-repo>
+git clone https://github.com/parkwooyeol9/SavvyETF.git
 cd SavvyETF
 docker build -t savvyetf-bot .
 docker run -d --restart unless-stopped -e TELEGRAM_BOT_TOKEN=your_token savvyetf-bot
 ```
-
-`--restart unless-stopped` keeps the bot running after reboots.
 
 ## Security
 
