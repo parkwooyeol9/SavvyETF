@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -154,11 +155,14 @@ def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None
     payload: dict = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
-    requests.post(
+    response = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json=payload,
         timeout=60,
     )
+    if not response.ok:
+        print(f"sendMessage failed for chat {chat_id}: {response.text}")
+        response.raise_for_status()
 
 
 def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None:
@@ -184,11 +188,66 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
 
 _greeted_this_session: set[int] = set()
 _last_ranking_by_chat: dict[int, dict] = {}
+_bot_username: str | None = None
+
+
+def fetch_bot_username(token: str) -> str | None:
+    try:
+        response = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("ok"):
+            return payload["result"].get("username")
+    except requests.RequestException as exc:
+        print(f"Could not fetch bot username: {exc}")
+    return None
+
+
+def normalize_command_text(text: str) -> str:
+    normalized = text.strip()
+    if _bot_username:
+        normalized = re.sub(
+            rf"@{re.escape(_bot_username)}\b",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        ).strip()
+    return normalized
+
+
+def extract_incoming_message(update: dict) -> dict | None:
+    for key in ("message", "edited_message", "channel_post", "edited_channel_post"):
+        message = update.get(key)
+        if message and message.get("text"):
+            return message
+    return None
+
+
+def extract_chat_id_from_update(update: dict) -> int | None:
+    message = extract_incoming_message(update)
+    if message:
+        return message["chat"]["id"]
+
+    member_update = update.get("my_chat_member") or update.get("chat_member")
+    if member_update:
+        return member_update.get("chat", {}).get("id")
+    return None
 
 
 def fetch_pending_updates(token: str) -> tuple[list[dict], int | None]:
     response = requests.get(
         f"https://api.telegram.org/bot{token}/getUpdates",
+        params={
+            "allowed_updates": json.dumps(
+                [
+                    "message",
+                    "edited_message",
+                    "channel_post",
+                    "edited_channel_post",
+                    "my_chat_member",
+                ]
+            )
+        },
         timeout=35,
     )
     response.raise_for_status()
@@ -204,21 +263,54 @@ def fetch_pending_updates(token: str) -> tuple[list[dict], int | None]:
 def chat_ids_from_updates(updates: list[dict]) -> set[int]:
     chat_ids: set[int] = set()
     for update in updates:
-        message = update.get("message") or update.get("edited_message")
-        if message:
-            chat_ids.add(message["chat"]["id"])
+        chat_id = extract_chat_id_from_update(update)
+        if chat_id is not None:
+            chat_ids.add(chat_id)
     return chat_ids
 
 
+def process_my_chat_member(token: str, update: dict) -> None:
+    member_update = update.get("my_chat_member")
+    if not member_update:
+        return
+
+    chat = member_update.get("chat", {})
+    chat_id = chat.get("id")
+    if chat_id is None:
+        return
+
+    new_status = member_update.get("new_chat_member", {}).get("status")
+    if new_status in {"administrator", "member"}:
+        save_known_chat(chat_id)
+        chat_type = chat.get("type", "unknown")
+        print(f"Bot added to {chat_type} {chat_id}")
+        if chat_type == "channel":
+            send_text(
+                token,
+                chat_id,
+                "SavvyETF Bot is ready in this channel.\n"
+                "Commands: /etf /sp /nas /news /summary /help",
+            )
+
+
 def process_telegram_update(token: str, update: dict) -> None:
-    message = update.get("message") or update.get("edited_message")
-    if not message or "text" not in message:
+    if update.get("my_chat_member"):
+        process_my_chat_member(token, update)
+        return
+
+    message = extract_incoming_message(update)
+    if not message:
         return
 
     chat_id = message["chat"]["id"]
+    chat_type = message["chat"].get("type", "private")
+    command_text = normalize_command_text(message["text"])
+
     save_known_chat(chat_id)
-    maybe_send_deferred_startup_guide(token, chat_id)
-    replies = handle_telegram_message(message["text"], chat_id)
+    if chat_type != "channel":
+        maybe_send_deferred_startup_guide(token, chat_id)
+
+    replies = handle_telegram_message(command_text, chat_id)
     if not isinstance(replies, list):
         replies = [replies]
 
@@ -442,6 +534,11 @@ def get_bot_token() -> str:
 
 
 def start_telegram_bot(token: str):
+    global _bot_username
+    _bot_username = fetch_bot_username(token)
+    if _bot_username:
+        print(f"Bot username: @{_bot_username}")
+
     print("Starting Telegram bot...")
     pending_updates, last_update_id = fetch_pending_updates(token)
     broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
@@ -451,7 +548,17 @@ def start_telegram_bot(token: str):
 
     while True:
         try:
-            params = {}
+            params = {
+                "allowed_updates": json.dumps(
+                    [
+                        "message",
+                        "edited_message",
+                        "channel_post",
+                        "edited_channel_post",
+                        "my_chat_member",
+                    ]
+                )
+            }
             if last_update_id is not None:
                 params["offset"] = last_update_id + 1
 
