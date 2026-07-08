@@ -12,6 +12,8 @@ import requests
 from dotenv import load_dotenv
 
 from analysis import analyze_crypto, analyze_stock, simulate_portfolio
+from adr_pipeline import run_adr_analysis
+from eikon_client import load_basic_stock_info
 from news_crawler import format_news_messages
 from stock_crawler import (
     format_rankings_message,
@@ -53,6 +55,12 @@ What each command returns:
 
 /summary
 → ETF + S&P 500 + NASDAQ brief (combined rankings + news)
+
+/adr TSM ASML ARM
+→ ADR listing impact analysis (charts + Excel) for underlying shares
+
+/eikon AAPL.O
+→ Basic stock info from Eikon (requires EIKON_APP_KEY + Eikon/Workspace running)
 
 Auto brief: 06:00 & 22:00 KST
 
@@ -101,6 +109,16 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Full market brief: ETF + S&P 500 + NASDAQ 100
   (combined rankings, top-leader chart per universe, news).
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
+
+/adr ADR1 ADR2 ...
+  Analyze whether US ADR listing impacted underlying home-market shares.
+  Returns charts + an Excel workbook.
+  Example: /adr TSM ASML ARM
+
+/eikon RIC
+  Load basic stock information via Refinitiv Eikon Data API.
+  Example: /eikon AAPL.O
+  Requires: EIKON_APP_KEY in .env and Eikon/Workspace running.
 
   Auto-sent at 06:00 & 22:00 KST to subscribed chats.
 
@@ -384,6 +402,57 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Error fetching news: {exc}"}]
 
+    if lower.startswith("/adr"):
+        parts = normalized.split()
+        symbols = [p.upper() for p in parts[1:] if p.strip()]
+        if not symbols:
+            return [{"text": "Usage: /adr TSM ASML ARM\n\n" + HELP_TEXT}]
+        try:
+            result = run_adr_analysis(symbols)
+            replies: list[dict] = [
+                {"text": "Analyzing ADR impact…"},
+                {"text": result["text_summary"]},
+                {"text": "ADR Impact — Summary chart", "photo": result["panel_chart"]},
+            ]
+            for sym, buf in result["single_charts"].items():
+                replies.append({"text": f"{sym} — event chart", "photo": buf})
+            replies.append(
+                {
+                    "text": "ADR Impact — Excel workbook",
+                    "document_path": str(result["excel_path"]),
+                }
+            )
+            return replies
+        except Exception as exc:
+            return [{"text": f"ADR analysis failed: {exc}"}]
+
+    if lower.startswith("/eikon"):
+        parts = normalized.split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].strip():
+            return [{"text": "Usage: /eikon AAPL.O\n\n" + HELP_TEXT}]
+        symbol = parts[1].strip()
+        try:
+            df = load_basic_stock_info(symbol)
+            row = df.iloc[0].to_dict()
+            lines = [f"Eikon basic info: {symbol}", ""]
+            for k, v in row.items():
+                if k == "Instrument":
+                    continue
+                lines.append(f"- {k}: {v}")
+            return [{"text": "\n".join(lines)[:4096]}]
+        except Exception as exc:
+            return [
+                {
+                    "text": (
+                        f"/eikon failed: {exc}\n\n"
+                        "Notes:\n"
+                        "- Set EIKON_APP_KEY in .env\n"
+                        "- Ensure Eikon/Workspace is running and logged in\n"
+                        "- Prefer RIC like AAPL.O, MSFT.O, 005930.KS\n"
+                    )[:4096]
+                }
+            ]
+
     if normalized.startswith("/port"):
         try:
             tickers = normalized.split()[1:]
@@ -475,6 +544,7 @@ def handle_telegram_message(message, chat_id: int):
 def send_reply(token, chat_id, reply):
     photo = reply.get("photo")
     chart_ticker = reply.get("chart_ticker")
+    document_path = reply.get("document_path")
 
     if photo is None and chart_ticker:
         try:
@@ -509,6 +579,28 @@ def send_reply(token, chat_id, reply):
             if text:
                 send_text(token, chat_id, text, parse_mode=parse_mode)
             response.raise_for_status()
+        return
+
+    if document_path is not None:
+        try:
+            path = Path(document_path)
+            data: dict = {"chat_id": chat_id}
+            if text:
+                data["caption"] = text[:1024]
+            with path.open("rb") as handle:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{token}/sendDocument",
+                    data=data,
+                    files={"document": (path.name, handle)},
+                    timeout=120,
+                )
+            if not response.ok:
+                print(f"sendDocument failed for chat {chat_id}: {response.text}")
+                if text:
+                    send_text(token, chat_id, text, parse_mode=parse_mode)
+                response.raise_for_status()
+        except Exception as exc:
+            send_text(token, chat_id, f"{text}\nDocument error: {exc}".strip())
         return
 
     send_text(token, chat_id, text, parse_mode=parse_mode)
