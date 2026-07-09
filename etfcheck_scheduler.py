@@ -33,6 +33,11 @@ def _poll_seconds() -> int:
 
 def run_scheduled_etfcheck_turnover(token: str, broadcast_fn) -> bool:
     from etfcheck_pipeline import run_etfcheck_turnover_capture
+    from etfcheck_subprocess import end_etfcheck_capture, try_begin_etfcheck_capture
+
+    if not try_begin_etfcheck_capture():
+        print("Scheduled ETF CHECK turnover skipped: another capture is in progress.")
+        return False
 
     try:
         result = run_etfcheck_turnover_capture()
@@ -46,6 +51,8 @@ def run_scheduled_etfcheck_turnover(token: str, broadcast_fn) -> bool:
     except Exception as exc:
         print(f"Scheduled ETF CHECK turnover failed: {exc}")
         return False
+    finally:
+        end_etfcheck_capture()
 
 
 def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:

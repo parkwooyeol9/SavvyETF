@@ -7,10 +7,12 @@ import io
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from etfcheck_browser import etfcheck_browser_context
+from etfcheck_browser import etfcheck_browser_context, _jpeg_quality
+from memory_debug import log_memory
 
 KST = ZoneInfo("Asia/Seoul")
 BASE_URL = "https://www.etfcheck.co.kr"
@@ -21,7 +23,7 @@ INFLOW_URL = f"{BASE_URL}/mobile/rank/inflow"
 
 def _viewport() -> dict[str, int]:
     width = int(os.environ.get("ETFCHECK_VIEWPORT_WIDTH", "430"))
-    height = int(os.environ.get("ETFCHECK_VIEWPORT_HEIGHT", "1200"))
+    height = int(os.environ.get("ETFCHECK_VIEWPORT_HEIGHT", "1000"))
     return {"width": width, "height": height}
 
 
@@ -69,9 +71,13 @@ def _select_period_option(page, option_text: str) -> None:
     page.wait_for_timeout(800)
 
 
+def _capture_page_bytes(page) -> bytes:
+    # JPEG keeps Telegram payloads and peak RAM much lower than full-page PNG.
+    return page.screenshot(full_page=True, type="jpeg", quality=_jpeg_quality())
+
+
 def _capture_page(page) -> io.BytesIO:
-    shot = page.screenshot(full_page=True)
-    buffer = io.BytesIO(shot)
+    buffer = io.BytesIO(_capture_page_bytes(page))
     buffer.seek(0)
     return buffer
 
@@ -82,6 +88,7 @@ def capture_volume_turnover_daily(page) -> io.BytesIO:
     page.get_by_role("button", name="한국").click(timeout=5000)
     page.get_by_role("button", name="거래대금").click(timeout=5000)
     _wait_rank_table(page)
+    log_memory("volume page ready")
     return _capture_page(page)
 
 
@@ -92,19 +99,42 @@ def capture_inflow_daily(page) -> io.BytesIO:
     _select_period_option(page, "전일")
     page.get_by_role("button", name="순유입").click(timeout=5000)
     _wait_rank_table(page)
+    log_memory("inflow page ready")
     return _capture_page(page)
 
 
 def _capture_volume_standalone() -> io.BytesIO:
     with etfcheck_browser_context(_viewport()) as context:
         page = context.new_page()
-        return capture_volume_turnover_daily(page)
+        try:
+            return capture_volume_turnover_daily(page)
+        finally:
+            page.close()
 
 
 def _capture_inflow_standalone() -> io.BytesIO:
     with etfcheck_browser_context(_viewport()) as context:
         page = context.new_page()
-        return capture_inflow_daily(page)
+        try:
+            return capture_inflow_daily(page)
+        finally:
+            page.close()
+
+
+def capture_volume_to_file(output: Path) -> None:
+    shot = _capture_volume_standalone()
+    try:
+        output.write_bytes(shot.getbuffer())
+    finally:
+        shot.close()
+
+
+def capture_inflow_to_file(output: Path) -> None:
+    shot = _capture_inflow_standalone()
+    try:
+        output.write_bytes(shot.getbuffer())
+    finally:
+        shot.close()
 
 
 def _wait_between_captures() -> None:
@@ -134,8 +164,9 @@ def capture_inflow_only() -> dict[str, Any]:
 
 def capture_etfcheck_screenshots() -> dict[str, Any]:
     """
-    Two separate browser sessions with a gap so 512MB hosts do not hold
-    one Chromium open across both pages.
+    Legacy in-process capture (two browser sessions).
+
+    Prefer etfcheck_subprocess.run_capture_in_subprocess() from the bot process.
     """
     generated_at = datetime.now(KST)
     volume_shot = _capture_volume_standalone()

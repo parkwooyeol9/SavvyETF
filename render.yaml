@@ -42,3 +42,7 @@ services:
         value: ""
       - key: MALLOC_ARENA_MAX
         value: "2"
+      - key: ETFCHECK_JPEG_QUALITY
+        value: "72"
+      - key: MEMORY_DEBUG
+        value: "true"

@@ -364,6 +364,10 @@ def process_telegram_update(token: str, update: dict) -> None:
     if chat_type != "channel":
         maybe_send_deferred_startup_guide(token, chat_id)
 
+    if command_text.lower().startswith("/etfcheck"):
+        handle_etfcheck_command(token, chat_id)
+        return
+
     replies = handle_telegram_message(command_text, chat_id)
     if not isinstance(replies, list):
         replies = [replies]
@@ -404,6 +408,37 @@ def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) 
 def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
     if chat_id not in _greeted_this_session:
         send_startup_guide_to_chat(token, chat_id)
+
+
+def handle_etfcheck_command(token: str, chat_id: int) -> None:
+    from etfcheck_pipeline import iter_etfcheck_capture_messages
+    from etfcheck_subprocess import (
+        cleanup_capture_file,
+        end_etfcheck_capture,
+        try_begin_etfcheck_capture,
+    )
+
+    if not try_begin_etfcheck_capture():
+        send_text(
+            token,
+            chat_id,
+            "ETF CHECK capture is already running. Please wait for it to finish.",
+        )
+        return
+
+    try:
+        send_text(token, chat_id, "Capturing ETF CHECK rankings from etfcheck.co.kr…")
+        messages = iter_etfcheck_capture_messages()
+        for message in messages:
+            photo_path = message.get("photo_path")
+            try:
+                send_reply(token, chat_id, message)
+            finally:
+                cleanup_capture_file(Path(photo_path) if photo_path else None)
+    except Exception as exc:
+        send_text(token, chat_id, f"ETF CHECK capture failed: {exc}")
+    finally:
+        end_etfcheck_capture()
 
 
 def handle_telegram_message(message, chat_id: int):
@@ -480,17 +515,6 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"ETF comparison failed: {exc}"}]
-
-    if lower.startswith("/etfcheck"):
-        try:
-            from etfcheck_pipeline import run_etfcheck_capture
-
-            replies: list[dict] = [{"text": "Capturing ETF CHECK rankings from etfcheck.co.kr…"}]
-            result = run_etfcheck_capture()
-            replies.extend(result.get("telegram_messages") or [])
-            return replies
-        except Exception as exc:
-            return [{"text": f"ETF CHECK capture failed: {exc}"}]
 
     if lower.startswith("/adr"):
         parts = normalized.split()
@@ -666,6 +690,7 @@ def handle_telegram_message(message, chat_id: int):
 
 def send_reply(token, chat_id, reply):
     photo = reply.get("photo")
+    photo_path = reply.get("photo_path")
     chart_ticker = reply.get("chart_ticker")
     document_path = reply.get("document_path")
 
@@ -685,6 +710,27 @@ def send_reply(token, chat_id, reply):
 
     text = reply.get("text", "")
     parse_mode = reply.get("parse_mode")
+
+    if photo is None and photo_path is not None:
+        path = Path(photo_path)
+        payload: dict = {"chat_id": chat_id}
+        if text:
+            payload["caption"] = text[:1024]
+        if parse_mode and text:
+            payload["parse_mode"] = parse_mode
+        with path.open("rb") as handle:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data=payload,
+                files={"photo": ("etfcheck.jpg", handle, "image/jpeg")},
+                timeout=60,
+            )
+        if not response.ok:
+            print(f"sendPhoto failed for chat {chat_id}: {response.text}")
+            if text:
+                send_text(token, chat_id, text, parse_mode=parse_mode)
+            response.raise_for_status()
+        return
 
     if photo is not None:
         photo.seek(0)
