@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 
 from etf_compare import parse_comp_tickers
 from etf_compare_pipeline import run_etf_comparison
+from etfcheck_pipeline import run_etfcheck_capture
+from etfcheck_scheduler import start_etfcheck_scheduler
 from ai_briefing import format_ai_briefing_telegram, generate_ai_briefing
 from analysis import analyze_crypto, analyze_stock, simulate_portfolio
 from adr_pipeline import run_adr_analysis
@@ -76,6 +78,10 @@ What each command returns:
 
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
+
+/etfcheck
+→ ETF CHECK (etfcheck.co.kr) 일간 거래대금·순유입 랭킹 캡처
+  Auto turnover capture after KRX close (~15:40 KST)
 
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 /macro auto: daily 17:00 KST
@@ -153,6 +159,13 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Compare US ETFs with charts (performance, returns, cost, overlap),
   price history (index proxy if short history), AI Korean pick, Excel export.
   Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
+
+/etfcheck
+  Capture ETF CHECK (etfcheck.co.kr) ranking screens via headless browser:
+  daily turnover (거래대금) and daily net inflow (순유입) for Korean ETFs.
+  Auto turnover capture: polls after KRX close (15:30 KST), sends once ranks stabilize
+  (default earliest ~15:40 KST, max wait 16:15 KST).
+  Example: /etfcheck
 
   Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
   and at 22:00 KST if SUMMARY_SCHEDULE_HOURS_KST includes 22.
@@ -338,7 +351,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /heatmap /macro /comp /news /aibriefing /summary /help",
+                "Commands: /etf /sp /nas /heatmap /macro /comp /etfcheck /news /aibriefing /summary /help",
             )
 
 
@@ -469,6 +482,15 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"ETF comparison failed: {exc}"}]
+
+    if lower.startswith("/etfcheck"):
+        try:
+            replies: list[dict] = [{"text": "Capturing ETF CHECK rankings from etfcheck.co.kr…"}]
+            result = run_etfcheck_capture()
+            replies.extend(result.get("telegram_messages") or [])
+            return replies
+        except Exception as exc:
+            return [{"text": f"ETF CHECK capture failed: {exc}"}]
 
     if lower.startswith("/adr"):
         parts = normalized.split()
@@ -815,4 +837,5 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_macro_scheduler(token=token, broadcast_fn=broadcast_messages)
+    start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_telegram_bot(token)
