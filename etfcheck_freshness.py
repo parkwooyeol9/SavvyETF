@@ -53,6 +53,29 @@ def scheduled_capture_datetime(session_date: date) -> datetime:
     return datetime.combine(session_date, scheduled_capture_time(), tzinfo=KST)
 
 
+def capture_window_minutes() -> int:
+    raw = os.environ.get("ETFCHECK_CAPTURE_WINDOW_MINUTES", "10").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 10
+
+
+def capture_window_end(session_date: date) -> datetime:
+    return scheduled_capture_datetime(session_date) + timedelta(
+        minutes=capture_window_minutes()
+    )
+
+
+def is_in_capture_window(now_kst: datetime, session_date: date) -> bool:
+    start = scheduled_capture_datetime(session_date)
+    return start <= now_kst < capture_window_end(session_date)
+
+
+def is_capture_window_passed(now_kst: datetime, session_date: date) -> bool:
+    return now_kst >= capture_window_end(session_date)
+
+
 def is_etfcheck_turnover_ready(now_kst: datetime | None = None) -> tuple[bool, str]:
     """
     Time-based readiness only (no Playwright polling).
@@ -69,7 +92,17 @@ def is_etfcheck_turnover_ready(now_kst: datetime | None = None) -> tuple[bool, s
         return False, "no expected KRX session date"
 
     target = scheduled_capture_datetime(session_date)
+    window_end = capture_window_end(session_date)
     if now_kst < target:
         return False, f"waiting until {target.strftime('%H:%M KST')} (ETF CHECK turnover capture)"
 
-    return True, f"scheduled capture window reached ({target.strftime('%H:%M KST')})"
+    if not is_in_capture_window(now_kst, session_date):
+        return (
+            False,
+            f"capture window closed ({target.strftime('%H:%M')}-"
+            f"{window_end.strftime('%H:%M')} KST; no catch-up on restart)",
+        )
+
+    return True, (
+        f"in capture window ({target.strftime('%H:%M')}-{window_end.strftime('%H:%M')} KST)"
+    )

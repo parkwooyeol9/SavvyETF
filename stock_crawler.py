@@ -391,7 +391,8 @@ def warmup_startup_caches(force: bool = False) -> None:
     raw = os.environ.get("BOT_STARTUP_CACHE_UNIVERSES", "etf").strip()
     universes = [part.strip() for part in raw.split(",") if part.strip()]
     if not universes:
-        universes = ["etf"]
+        print("Startup cache warmup skipped (BOT_STARTUP_CACHE_UNIVERSES empty).")
+        return
     for universe in universes:
         if universe in UNIVERSES:
             warmup_cache(universe, force=force)

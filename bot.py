@@ -8,17 +8,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-import matplotlib
-
-matplotlib.use("Agg")
-
 import requests
 from dotenv import load_dotenv
 
 from etf_compare import parse_comp_tickers
-from ai_briefing import format_ai_briefing_telegram, generate_ai_briefing
-from analysis import analyze_crypto, analyze_stock, simulate_portfolio
-from macro_data import macro_cache_ready
 from news_crawler import format_news_messages
 from stock_crawler import (
     format_rankings_message,
@@ -29,11 +22,11 @@ from stock_crawler import (
     warmup_all_caches,
     warmup_startup_caches,
 )
-from summary_builder import caches_ready, generate_and_save_summary, load_summary_html
 from summary_scheduler import start_summary_scheduler
 
 from etfcheck_scheduler import start_etfcheck_scheduler
 from macro_scheduler import start_macro_scheduler
+from scheduler_grace import mark_service_started
 
 PROJECT_DIR = Path(__file__).resolve().parent
 ENV_FILE = PROJECT_DIR / ".env"
@@ -422,6 +415,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/summary"):
         try:
+            from summary_builder import caches_ready, generate_and_save_summary
+
             if not caches_ready():
                 return [{"text": "Summary is not ready yet. Ranking caches are still loading."}]
             summary = generate_and_save_summary(public_url=summary_public_url())
@@ -431,6 +426,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower in {"/aibriefing", "/ai_briefing", "/ai briefing"} or lower.startswith("/aibriefing "):
         try:
+            from ai_briefing import format_ai_briefing_telegram, generate_ai_briefing
+
             briefing = generate_ai_briefing()
             return format_ai_briefing_telegram(briefing, include_sources=True)
         except Exception as exc:
@@ -553,6 +550,7 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/macro"):
         try:
+            from macro_data import macro_cache_ready
             from macro_pipeline import run_macro_dashboard
 
             parts = normalized.split()
@@ -576,6 +574,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if normalized.startswith("/port"):
         try:
+            from analysis import analyze_stock, simulate_portfolio
+
             tickers = normalized.split()[1:]
             if not tickers:
                 return [{"text": "Please provide stock tickers after /port (e.g. /port AAPL MSFT GOOGL)"}]
@@ -613,6 +613,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/coin"):
         try:
+            from analysis import analyze_crypto
+
             parts = normalized.split()
             if len(parts) < 2:
                 return [{"text": "Please provide a coin symbol (e.g. /coin BTC)"}]
@@ -669,6 +671,8 @@ def send_reply(token, chat_id, reply):
 
     if photo is None and chart_ticker:
         try:
+            from analysis import analyze_stock
+
             photo = analyze_stock(chart_ticker)
         except Exception as exc:
             send_text(
@@ -737,6 +741,8 @@ def start_web_server():
                 body = b"ok"
                 content_type = "text/plain; charset=utf-8"
             elif path == "/summary":
+                from summary_builder import load_summary_html
+
                 body_text = load_summary_html()
                 if not body_text:
                     body_text = (
@@ -837,6 +843,7 @@ def start_telegram_bot(token: str):
 
 if __name__ == "__main__":
     token = get_bot_token()
+    mark_service_started()
     start_web_server()
     if os.environ.get("BOT_DEFER_CACHE_WARMUP", "true").lower() not in {"0", "false", "no"}:
         threading.Thread(

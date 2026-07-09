@@ -15,8 +15,9 @@ from market_data_freshness import (
     post_close_send_time_kst,
     reference_ticker,
 )
-from summary_builder import KST, caches_ready, generate_and_save_summary
+from scheduler_grace import past_startup_grace
 
+KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
 DEFAULT_FIXED_HOURS = (22,)
@@ -71,6 +72,8 @@ def run_scheduled_summary(
     public_url: str = "",
     trigger: str = "scheduled",
 ) -> bool:
+    from summary_builder import KST, caches_ready, generate_and_save_summary
+
     if not caches_ready():
         print(f"Scheduled summary skipped ({trigger}): caches not ready.")
         return False
@@ -115,6 +118,8 @@ def _maybe_run_post_close_summary(
 
     if data_ready_at is None:
         data_ready_at = now_et
+        from summary_builder import KST
+
         send_at_kst = (data_ready_at + timedelta(minutes=data_ready_buffer_minutes())).astimezone(
             KST
         )
@@ -179,6 +184,10 @@ def start_summary_scheduler(
         print("Summary scheduler active — " + "; ".join(parts))
 
         while True:
+            if not past_startup_grace():
+                time.sleep(poll_seconds)
+                continue
+
             now = datetime.now(KST)
 
             if fixed_hours and now.hour in fixed_hours and now.minute == 0:

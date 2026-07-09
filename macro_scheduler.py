@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from macro_pipeline import run_macro_dashboard
+from scheduler_grace import past_startup_grace
 from summary_scheduler import _load_state, _save_state
 
 KST = ZoneInfo("Asia/Seoul")
@@ -34,6 +34,8 @@ def _poll_seconds() -> int:
 
 
 def run_scheduled_macro(token: str, broadcast_fn, force: bool = True) -> bool:
+    from macro_pipeline import run_macro_dashboard
+
     try:
         result = run_macro_dashboard(force=force)
         messages = result.get("telegram_messages") or []
@@ -62,6 +64,10 @@ def start_macro_scheduler(token: str, broadcast_fn) -> None:
         print(f"Macro scheduler active — daily at {hour:02d}:00 KST")
 
         while True:
+            if not past_startup_grace():
+                time.sleep(poll_seconds)
+                continue
+
             now = datetime.now(KST)
             if now.hour == hour and now.minute == 0:
                 slot = now.strftime("%Y-%m-%d-%H")
