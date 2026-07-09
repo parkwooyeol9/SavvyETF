@@ -8,19 +8,16 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+import matplotlib
+
+matplotlib.use("Agg")
+
 import requests
 from dotenv import load_dotenv
 
 from etf_compare import parse_comp_tickers
-from etf_compare_pipeline import run_etf_comparison
-from etfcheck_pipeline import run_etfcheck_capture
-from etfcheck_scheduler import start_etfcheck_scheduler
 from ai_briefing import format_ai_briefing_telegram, generate_ai_briefing
 from analysis import analyze_crypto, analyze_stock, simulate_portfolio
-from adr_pipeline import run_adr_analysis
-from heatmap import is_size_cache_ready, parse_heatmap_command, plot_market_heatmap
-from macro_pipeline import run_macro_dashboard
-from macro_scheduler import start_macro_scheduler
 from macro_data import macro_cache_ready
 from news_crawler import format_news_messages
 from stock_crawler import (
@@ -30,9 +27,13 @@ from stock_crawler import (
     is_cache_ready,
     parse_rank_command,
     warmup_all_caches,
+    warmup_startup_caches,
 )
 from summary_builder import caches_ready, generate_and_save_summary, load_summary_html
 from summary_scheduler import start_summary_scheduler
+
+from etfcheck_scheduler import start_etfcheck_scheduler
+from macro_scheduler import start_macro_scheduler
 
 PROJECT_DIR = Path(__file__).resolve().parent
 ENV_FILE = PROJECT_DIR / ".env"
@@ -469,6 +470,8 @@ def handle_telegram_message(message, chat_id: int):
                 }
             ]
         try:
+            from etf_compare_pipeline import run_etf_comparison
+
             result = run_etf_comparison(tickers)
             replies: list[dict] = [{"text": "Building ETF comparison…"}]
             replies.extend(result.get("telegram_messages") or [
@@ -484,6 +487,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/etfcheck"):
         try:
+            from etfcheck_pipeline import run_etfcheck_capture
+
             replies: list[dict] = [{"text": "Capturing ETF CHECK rankings from etfcheck.co.kr…"}]
             result = run_etfcheck_capture()
             replies.extend(result.get("telegram_messages") or [])
@@ -497,6 +502,8 @@ def handle_telegram_message(message, chat_id: int):
         if not symbols:
             return [{"text": "Usage: /adr TSM ASML ARM\n\n" + HELP_TEXT}]
         try:
+            from adr_pipeline import run_adr_analysis
+
             result = run_adr_analysis(symbols)
             replies: list[dict] = [
                 {"text": "Analyzing ADR impact…"},
@@ -521,6 +528,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/heatmap"):
         try:
+            from heatmap import is_size_cache_ready, parse_heatmap_command, plot_market_heatmap
+
             universe, top_n = parse_heatmap_command(normalized)
             if not is_cache_ready(universe):
                 label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
@@ -545,6 +554,8 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/macro"):
         try:
+            from macro_pipeline import run_macro_dashboard
+
             parts = normalized.split()
             force = len(parts) > 1 and parts[1].lower() == "refresh"
             replies: list[dict] = []
@@ -829,9 +840,13 @@ if __name__ == "__main__":
     token = get_bot_token()
     start_web_server()
     if os.environ.get("BOT_DEFER_CACHE_WARMUP", "true").lower() not in {"0", "false", "no"}:
-        threading.Thread(target=warmup_all_caches, name="cache-warmup", daemon=True).start()
+        threading.Thread(
+            target=warmup_startup_caches,
+            name="cache-warmup",
+            daemon=True,
+        ).start()
     else:
-        warmup_all_caches()
+        warmup_startup_caches()
     start_summary_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,

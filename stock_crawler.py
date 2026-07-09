@@ -387,6 +387,16 @@ def warmup_all_caches(force: bool = False) -> None:
         warmup_cache(universe, force=force)
 
 
+def warmup_startup_caches(force: bool = False) -> None:
+    raw = os.environ.get("BOT_STARTUP_CACHE_UNIVERSES", "etf").strip()
+    universes = [part.strip() for part in raw.split(",") if part.strip()]
+    if not universes:
+        universes = ["etf"]
+    for universe in universes:
+        if universe in UNIVERSES:
+            warmup_cache(universe, force=force)
+
+
 def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:
     if blocking:
         warmup_etf_cache(force=force)
