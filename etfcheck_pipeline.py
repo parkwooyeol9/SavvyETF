@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from etfcheck_capture import (
     capture_etfcheck_screenshots,
     capture_turnover_only,
@@ -32,9 +34,13 @@ def run_etfcheck_capture() -> dict:
     result = capture_etfcheck_screenshots()
     text = format_etfcheck_telegram(result)
     shots = result["screenshots"]
+    gap = int(os.environ.get("ETFCHECK_CAPTURE_GAP_SECONDS", "30"))
     telegram_messages = [
         {"text": "🇰🇷 ETF CHECK — 일간 거래대금 TOP\n(한국 ETF · 당일)", "photo": shots["volume_turnover"]},
-        {"text": "🇰🇷 ETF CHECK — 일간 순유입 TOP\n(한국 ETF · 전일)", "photo": shots["inflow_daily"]},
+        {
+            "text": f"🇰🇷 ETF CHECK — 일간 순유입 TOP\n(한국 ETF · 전일 · +{gap}s 후 2nd capture)",
+            "photo": shots["inflow_daily"],
+        },
         {"text": text, "parse_mode": "HTML"},
     ]
     return {

@@ -27,9 +27,11 @@ services:
       - key: FINNHUB_API_KEY
         sync: false
       - key: ETFCHECK_SCHEDULE_ENABLED
-        value: "false"
+        value: "true"
       - key: ETFCHECK_SCHEDULE_TIME_KST
         value: "15:45"
+      - key: ETFCHECK_CAPTURE_GAP_SECONDS
+        value: "30"
       - key: BOT_DEFER_CACHE_WARMUP
         value: "true"
       - key: BOT_STARTUP_CACHE_UNIVERSES

@@ -162,9 +162,8 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
 
 /etfcheck
-  Capture ETF CHECK (etfcheck.co.kr) ranking screens via headless browser:
-  daily turnover (거래대금) and daily net inflow (순유입) for Korean ETFs.
-  Auto turnover capture: weekdays at 15:45 KST (ETFCHECK_SCHEDULE_TIME_KST).
+  Capture ETF CHECK rankings: turnover + inflow as separate browser sessions
+  (30s gap by default). Auto: turnover only at 15:45 KST on weekdays.
   Example: /etfcheck
 
   Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),

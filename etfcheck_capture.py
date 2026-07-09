@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gc
 import io
 import os
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,6 +30,14 @@ def _wait_ms() -> int:
         return max(1000, int(os.environ.get("ETFCHECK_RENDER_WAIT_MS", "3000")))
     except ValueError:
         return 3000
+
+
+def _capture_gap_seconds() -> int:
+    raw = os.environ.get("ETFCHECK_CAPTURE_GAP_SECONDS", "30").strip()
+    try:
+        return max(5, int(raw))
+    except ValueError:
+        return 30
 
 
 def _dismiss_overlays(page) -> None:
@@ -85,32 +95,59 @@ def capture_inflow_daily(page) -> io.BytesIO:
     return _capture_page(page)
 
 
-def capture_turnover_only() -> dict[str, Any]:
-    generated_at = datetime.now(KST)
+def _capture_volume_standalone() -> io.BytesIO:
     with etfcheck_browser_context(_viewport()) as context:
         page = context.new_page()
-        shot = capture_volume_turnover_daily(page)
+        return capture_volume_turnover_daily(page)
 
+
+def _capture_inflow_standalone() -> io.BytesIO:
+    with etfcheck_browser_context(_viewport()) as context:
+        page = context.new_page()
+        return capture_inflow_daily(page)
+
+
+def _wait_between_captures() -> None:
+    gap = _capture_gap_seconds()
+    print(f"ETF CHECK: waiting {gap}s between browser sessions for memory reclaim")
+    time.sleep(gap)
+    gc.collect()
+
+
+def capture_turnover_only() -> dict[str, Any]:
+    generated_at = datetime.now(KST)
     return {
         "generated_at": generated_at.isoformat(),
         "source": "etfcheck.co.kr",
-        "screenshots": {"volume_turnover": shot},
+        "screenshots": {"volume_turnover": _capture_volume_standalone()},
+    }
+
+
+def capture_inflow_only() -> dict[str, Any]:
+    generated_at = datetime.now(KST)
+    return {
+        "generated_at": generated_at.isoformat(),
+        "source": "etfcheck.co.kr",
+        "screenshots": {"inflow_daily": _capture_inflow_standalone()},
     }
 
 
 def capture_etfcheck_screenshots() -> dict[str, Any]:
+    """
+    Two separate browser sessions with a gap so 512MB hosts do not hold
+    one Chromium open across both pages.
+    """
     generated_at = datetime.now(KST)
-    shots: dict[str, io.BytesIO] = {}
-
-    with etfcheck_browser_context(_viewport()) as context:
-        page = context.new_page()
-        shots["volume_turnover"] = capture_volume_turnover_daily(page)
-        shots["inflow_daily"] = capture_inflow_daily(page)
-
+    volume_shot = _capture_volume_standalone()
+    _wait_between_captures()
+    inflow_shot = _capture_inflow_standalone()
     return {
         "generated_at": generated_at.isoformat(),
         "source": "etfcheck.co.kr",
-        "screenshots": shots,
+        "screenshots": {
+            "volume_turnover": volume_shot,
+            "inflow_daily": inflow_shot,
+        },
     }
 
 
@@ -121,17 +158,18 @@ def format_etfcheck_turnover_telegram(result: dict[str, Any]) -> str:
         f"<i>{ts}</i>\n"
         f"출처: <a href=\"{BASE_URL}\">etfcheck.co.kr</a> (코스콤)\n"
         "한국 ETF · 당일 거래대금 TOP\n"
-        "<i>장마감 후 데이터 반영 시점에 자동 캡처</i>"
+        "<i>장마감 후 15:45 KST 자동 캡처 (브라우저 1회)</i>"
     )
 
 
 def format_etfcheck_telegram(result: dict[str, Any]) -> str:
     ts = datetime.fromisoformat(result["generated_at"]).strftime("%Y-%m-%d %H:%M KST")
+    gap = _capture_gap_seconds()
     return (
         "<b>🇰🇷 ETF CHECK 랭킹 캡처</b>\n"
         f"<i>{ts}</i>\n"
         f"출처: <a href=\"{BASE_URL}\">etfcheck.co.kr</a> (코스콤)\n\n"
         "1️⃣ 일간 거래대금 TOP (한국 ETF, 당일)\n"
         "2️⃣ 일간 순유입 TOP (한국 ETF, 전일)\n\n"
-        "<i>공식 Open API 없음 — 웹 화면 캡처 방식</i>"
+        f"<i>메모리 절약: 브라우저 2회 분리 캡처 (간격 {gap}s)</i>"
     )
