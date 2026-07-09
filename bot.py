@@ -163,8 +163,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /etfcheck
   Capture ETF CHECK (etfcheck.co.kr) ranking screens via headless browser:
   daily turnover (거래대금) and daily net inflow (순유입) for Korean ETFs.
-  Auto turnover capture: polls after KRX close (15:30 KST), sends once ranks stabilize
-  (default earliest ~15:40 KST, max wait 16:15 KST).
+  Auto turnover capture: weekdays at 15:45 KST (ETFCHECK_SCHEDULE_TIME_KST).
   Example: /etfcheck
 
   Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
@@ -829,7 +828,10 @@ def start_telegram_bot(token: str):
 if __name__ == "__main__":
     token = get_bot_token()
     start_web_server()
-    warmup_all_caches()
+    if os.environ.get("BOT_DEFER_CACHE_WARMUP", "true").lower() not in {"0", "false", "no"}:
+        threading.Thread(target=warmup_all_caches, name="cache-warmup", daemon=True).start()
+    else:
+        warmup_all_caches()
     start_summary_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,

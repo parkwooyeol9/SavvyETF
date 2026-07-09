@@ -8,13 +8,10 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from etfcheck_browser import etfcheck_browser_context
+
 KST = ZoneInfo("Asia/Seoul")
 BASE_URL = "https://www.etfcheck.co.kr"
-MOBILE_UA = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
-    "Mobile/15E148 Safari/604.1"
-)
 
 VOLUME_URL = f"{BASE_URL}/mobile/rank/volume"
 INFLOW_URL = f"{BASE_URL}/mobile/rank/inflow"
@@ -22,15 +19,15 @@ INFLOW_URL = f"{BASE_URL}/mobile/rank/inflow"
 
 def _viewport() -> dict[str, int]:
     width = int(os.environ.get("ETFCHECK_VIEWPORT_WIDTH", "430"))
-    height = int(os.environ.get("ETFCHECK_VIEWPORT_HEIGHT", "1400"))
+    height = int(os.environ.get("ETFCHECK_VIEWPORT_HEIGHT", "1200"))
     return {"width": width, "height": height}
 
 
 def _wait_ms() -> int:
     try:
-        return max(1000, int(os.environ.get("ETFCHECK_RENDER_WAIT_MS", "3500")))
+        return max(1000, int(os.environ.get("ETFCHECK_RENDER_WAIT_MS", "3000")))
     except ValueError:
-        return 3500
+        return 3000
 
 
 def _dismiss_overlays(page) -> None:
@@ -62,11 +59,8 @@ def _select_period_option(page, option_text: str) -> None:
     page.wait_for_timeout(800)
 
 
-def _capture_page(page, *, clip_height: int | None = None) -> io.BytesIO:
-    if clip_height:
-        shot = page.screenshot(full_page=False, clip={"x": 0, "y": 0, "width": _viewport()["width"], "height": clip_height})
-    else:
-        shot = page.screenshot(full_page=True)
+def _capture_page(page) -> io.BytesIO:
+    shot = page.screenshot(full_page=True)
     buffer = io.BytesIO(shot)
     buffer.seek(0)
     return buffer
@@ -92,23 +86,10 @@ def capture_inflow_daily(page) -> io.BytesIO:
 
 
 def capture_turnover_only() -> dict[str, Any]:
-    from playwright.sync_api import sync_playwright
-
     generated_at = datetime.now(KST)
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(
-            viewport=_viewport(),
-            user_agent=MOBILE_UA,
-            locale="ko-KR",
-            timezone_id="Asia/Seoul",
-        )
+    with etfcheck_browser_context(_viewport()) as context:
         page = context.new_page()
-        try:
-            shot = capture_volume_turnover_daily(page)
-        finally:
-            context.close()
-            browser.close()
+        shot = capture_volume_turnover_daily(page)
 
     return {
         "generated_at": generated_at.isoformat(),
@@ -118,26 +99,13 @@ def capture_turnover_only() -> dict[str, Any]:
 
 
 def capture_etfcheck_screenshots() -> dict[str, Any]:
-    from playwright.sync_api import sync_playwright
-
     generated_at = datetime.now(KST)
     shots: dict[str, io.BytesIO] = {}
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(
-            viewport=_viewport(),
-            user_agent=MOBILE_UA,
-            locale="ko-KR",
-            timezone_id="Asia/Seoul",
-        )
+    with etfcheck_browser_context(_viewport()) as context:
         page = context.new_page()
-        try:
-            shots["volume_turnover"] = capture_volume_turnover_daily(page)
-            shots["inflow_daily"] = capture_inflow_daily(page)
-        finally:
-            context.close()
-            browser.close()
+        shots["volume_turnover"] = capture_volume_turnover_daily(page)
+        shots["inflow_daily"] = capture_inflow_daily(page)
 
     return {
         "generated_at": generated_at.isoformat(),

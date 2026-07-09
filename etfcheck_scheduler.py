@@ -9,11 +9,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from etfcheck_freshness import (
-    earliest_capture_time_kst,
     expected_krx_session_date,
     is_after_krx_close,
-    post_close_buffer_minutes,
-    post_close_max_wait_minutes,
+    is_etfcheck_turnover_ready,
+    scheduled_capture_time,
 )
 from etfcheck_pipeline import run_etfcheck_turnover_capture
 from summary_scheduler import _load_state, _save_state
@@ -25,7 +24,7 @@ DEFAULT_POLL_SECONDS = 60
 def _poll_seconds() -> int:
     raw = os.environ.get("ETFCHECK_SCHEDULE_POLL_SECONDS", str(DEFAULT_POLL_SECONDS)).strip()
     try:
-        return max(20, int(raw))
+        return max(30, int(raw))
     except ValueError:
         return DEFAULT_POLL_SECONDS
 
@@ -51,32 +50,20 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
         return
 
     poll_seconds = _poll_seconds()
-    buffer_minutes = post_close_buffer_minutes()
-    max_wait_minutes = post_close_max_wait_minutes()
-    session_date = expected_krx_session_date()
-    approx_earliest = (
-        earliest_capture_time_kst(session_date, buffer_minutes).strftime("%H:%M KST")
-        if session_date
-        else "n/a"
-    )
+    capture_at = scheduled_capture_time().strftime("%H:%M KST")
 
     def loop() -> None:
         state = _load_state()
         last_session = state.get("last_etfcheck_turnover_session")
-        stable_hits = 0
-        last_fingerprint: str | None = None
 
         print(
-            "ETF CHECK scheduler active — post-close turnover capture after KRX close "
-            f"(15:30 KST + {buffer_minutes}m buffer ≈ {approx_earliest}, "
-            f"stable polls, max wait {max_wait_minutes}m)"
+            f"ETF CHECK scheduler active — turnover capture at {capture_at} "
+            f"(weekdays, after KRX close; no browser polling)"
         )
 
         while True:
             now = datetime.now(KST)
             if not is_after_krx_close(now):
-                stable_hits = 0
-                last_fingerprint = None
                 time.sleep(poll_seconds)
                 continue
 
@@ -90,28 +77,16 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
                 time.sleep(poll_seconds)
                 continue
 
-            from etfcheck_freshness import is_etfcheck_turnover_ready
-
-            ready, detail, fingerprint, stable_hits = is_etfcheck_turnover_ready(
-                now,
-                stable_hits=stable_hits,
-                last_fingerprint=last_fingerprint,
-            )
-            last_fingerprint = fingerprint
-
+            ready, detail = is_etfcheck_turnover_ready(now)
             if not ready:
-                if "waiting" in detail or "stable" in detail or "snapshot" in detail:
-                    print(f"ETF CHECK turnover: {detail}")
                 time.sleep(poll_seconds)
                 continue
 
-            print(f"ETF CHECK turnover ready: {detail}")
+            print(f"ETF CHECK turnover: {detail}")
             if run_scheduled_etfcheck_turnover(token, broadcast_fn):
                 last_session = session_key
                 state["last_etfcheck_turnover_session"] = session_key
                 _save_state(state)
-                stable_hits = 0
-                last_fingerprint = None
 
             time.sleep(poll_seconds)
 

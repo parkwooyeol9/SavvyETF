@@ -28,7 +28,7 @@ services:
         sync: false
       - key: ETFCHECK_SCHEDULE_ENABLED
         value: "true"
-      - key: ETFCHECK_POST_CLOSE_BUFFER_MINUTES
-        value: "10"
-      - key: ETFCHECK_POST_CLOSE_MAX_WAIT_MINUTES
-        value: "45"
+      - key: ETFCHECK_SCHEDULE_TIME_KST
+        value: "15:45"
+      - key: BOT_DEFER_CACHE_WARMUP
+        value: "true"
