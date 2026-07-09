@@ -11,8 +11,15 @@ from urllib.parse import urlparse
 import requests
 from dotenv import load_dotenv
 
+from etf_compare import parse_comp_tickers
+from etf_compare_pipeline import run_etf_comparison
+from ai_briefing import format_ai_briefing_telegram, generate_ai_briefing
 from analysis import analyze_crypto, analyze_stock, simulate_portfolio
 from adr_pipeline import run_adr_analysis
+from heatmap import is_size_cache_ready, parse_heatmap_command, plot_market_heatmap
+from macro_pipeline import run_macro_dashboard
+from macro_scheduler import start_macro_scheduler
+from macro_data import macro_cache_ready
 from news_crawler import format_news_messages
 from stock_crawler import (
     format_rankings_message,
@@ -49,16 +56,29 @@ What each command returns:
 /sp   (or /nas)
 → Same rankings for S&P 500 / NASDAQ 100
 
+/heatmap sp
+→ Treemap of top names by market cap (color = daily return)
+
+/macro
+→ Macro risk monitor: chart, metrics, Finnhub/EDGAR, AI macro risk comment
+
 /news
 → Headlines for the 6 tickers from your last /etf, /sp, or /nas result
 
 /summary
-→ ETF + S&P 500 + NASDAQ brief (top 3 per board + news)
+→ ETF + S&P 500 brief, /heatmap sp, then AI briefing from trending news (last)
+
+/aibriefing
+→ Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
 /adr TSM ASML ARM
 → ADR listing impact analysis (charts + Excel) for underlying shares
 
+/comp QQQ IVV QNDX
+→ ETF charts, metrics, AI pick, Excel workbook
+
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
+/macro auto: daily 17:00 KST
 
 Price: last trading day return | Volume: latest day / 21d avg
 Modes: surge | dropvol (default shows both leaders)
@@ -97,19 +117,42 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Price: last trading day return
   Volume: latest day / 21-day average
 
+/heatmap [etf|sp|nas] [N]
+  Finviz-style treemap: tile size = market cap (or ETF AUM),
+  color = last trading day return. Default: top 30 names.
+  Example: /heatmap sp | /heatmap nas 20 | /heatmap etf 30
+
+/macro
+  Macro risk monitor: chart dashboard, yield/credit/vol metrics,
+  Finnhub/EDGAR pulse, and AI Korean macro risk comment.
+  Auto-sent daily at 17:00 KST (MACRO_SCHEDULE_HOUR_KST).
+  Example: /macro | /macro refresh
+
 /news
   Headlines for the 6 tickers from your last ranking.
   Run /etf, /sp, or /nas first, then /news.
 
 /summary
-  Full market brief: ETF + S&P 500 + NASDAQ 100
-  (top 3 per surge/dropvol board, top-leader chart per universe, news).
+  Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
+  S&P 500 heatmap, then AI briefing from trending news at the end.
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
+  Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
+
+/aibriefing
+  Search 5-10 trending US market articles, read them, and return a
+  3-4 line Korean AI market brief. Aliases: /ai_briefing, /ai briefing
+  Example: /aibriefing
+  Requires GEMINI_API_KEY for full analysis.
 
 /adr ADR1 ADR2 ...
   Analyze whether US ADR listing impacted underlying home-market shares.
   Returns charts + an Excel workbook.
   Example: /adr TSM ASML ARM
+
+/comp ETF1 ETF2 ...
+  Compare US ETFs with charts (performance, returns, cost, overlap),
+  price history (index proxy if short history), AI Korean pick, Excel export.
+  Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
 
   Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
   and at 22:00 KST if SUMMARY_SCHEDULE_HOURS_KST includes 22.
@@ -295,7 +338,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /news /summary /help",
+                "Commands: /etf /sp /nas /heatmap /macro /comp /news /aibriefing /summary /help",
             )
 
 
@@ -374,6 +417,13 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Error building summary: {exc}"}]
 
+    if lower in {"/aibriefing", "/ai_briefing", "/ai briefing"} or lower.startswith("/aibriefing "):
+        try:
+            briefing = generate_ai_briefing()
+            return format_ai_briefing_telegram(briefing, include_sources=True)
+        except Exception as exc:
+            return [{"text": f"Error generating AI briefing: {exc}"}]
+
     if lower.startswith("/news"):
         try:
             context = _last_ranking_by_chat.get(chat_id)
@@ -393,6 +443,32 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": text} for text in messages]
         except Exception as exc:
             return [{"text": f"Error fetching news: {exc}"}]
+
+    if lower.startswith("/comp"):
+        tickers = parse_comp_tickers(normalized)
+        if len(tickers) < 2:
+            return [
+                {
+                    "text": (
+                        "Usage: /comp ETF1 ETF2 [ETF3 ...]\n"
+                        "Example: /comp QQQ IVV QNDX\n"
+                        "Example: /comp SPY, VOO, IVV"
+                    )
+                }
+            ]
+        try:
+            result = run_etf_comparison(tickers)
+            replies: list[dict] = [{"text": "Building ETF comparison…"}]
+            replies.extend(result.get("telegram_messages") or [
+                {
+                    "text": result["text_summary"],
+                    "document_path": str(result["excel_path"]),
+                    "parse_mode": "HTML",
+                }
+            ])
+            return replies
+        except Exception as exc:
+            return [{"text": f"ETF comparison failed: {exc}"}]
 
     if lower.startswith("/adr"):
         parts = normalized.split()
@@ -421,6 +497,51 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"ADR analysis failed: {exc}"}]
+
+    if lower.startswith("/heatmap"):
+        try:
+            universe, top_n = parse_heatmap_command(normalized)
+            if not is_cache_ready(universe):
+                label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+                return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
+            replies: list[dict] = []
+            if not is_size_cache_ready(universe):
+                replies.append(
+                    {
+                        "text": (
+                            "Building market-cap/AUM cache for heatmap "
+                            "(first run may take 1–2 minutes)…"
+                        )
+                    }
+                )
+            chart_buf, caption, _ = plot_market_heatmap(universe, top_n=top_n)
+            replies.append({"text": caption, "photo": chart_buf})
+            return replies
+        except ValueError as exc:
+            return [{"text": f"Invalid heatmap command: {exc}\n\nUsage: /heatmap sp | /heatmap nas 20 | /heatmap etf 30"}]
+        except Exception as exc:
+            return [{"text": f"Heatmap failed: {exc}"}]
+
+    if lower.startswith("/macro"):
+        try:
+            parts = normalized.split()
+            force = len(parts) > 1 and parts[1].lower() == "refresh"
+            replies: list[dict] = []
+            if force or not macro_cache_ready():
+                replies.append(
+                    {"text": "Building macro risk dashboard…" if force else "Loading macro data…"}
+                )
+            result = run_macro_dashboard(force=force)
+            replies.extend(result.get("telegram_messages") or [
+                {
+                    "text": result["text_summary"],
+                    "photo": result["chart"],
+                    "parse_mode": "HTML",
+                }
+            ])
+            return replies
+        except Exception as exc:
+            return [{"text": f"Macro dashboard failed: {exc}"}]
 
     if normalized.startswith("/port"):
         try:
@@ -693,4 +814,5 @@ if __name__ == "__main__":
         refresh_cache_fn=warmup_all_caches,
         public_url=summary_public_url(),
     )
+    start_macro_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_telegram_bot(token)

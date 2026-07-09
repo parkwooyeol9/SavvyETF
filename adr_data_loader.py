@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pandas as pd
-import yfinance as yf
 
 from adr_mapping import AdrProfile, get_listing_date
+from adr_providers import fetch_underlying_history
 
 WINDOW_YEARS = 2
 EVENT_BUFFER_DAYS = 5
@@ -18,23 +18,6 @@ def _calendar_window(listing: date) -> tuple[date, date]:
     start = listing - timedelta(days=WINDOW_YEARS * 365)
     end = listing + timedelta(days=WINDOW_YEARS * 365)
     return start, end
-
-
-def _fetch_history(symbol: str, fallback_symbol: str) -> pd.DataFrame:
-    df = yf.Ticker(symbol).history(period="max", auto_adjust=True)
-    if not df.empty:
-        return df
-    if fallback_symbol and fallback_symbol != symbol:
-        return yf.Ticker(fallback_symbol).history(period="max", auto_adjust=True)
-    return df
-
-
-def _prepare_df(df: pd.DataFrame) -> pd.DataFrame:
-    out = df[["Close", "Volume"]].copy()
-    out.index = pd.to_datetime(out.index).tz_localize(None)
-    out = out.rename(columns={"Close": "close", "Volume": "volume"})
-    out["daily_return"] = out["close"].pct_change()
-    return out
 
 
 def load_underlying_window(
@@ -50,49 +33,29 @@ def load_underlying_window(
     us_adr_listing_source = listing_source
 
     target_start, target_end = _calendar_window(listing_date)
+    fetch_start = target_start - timedelta(days=30)
+    fetch_end = target_end + timedelta(days=30)
 
-    raw = _fetch_history(profile.underlying_symbol, profile.adr_symbol)
-    if raw.empty:
-        raise ValueError(
-            f"No underlying data for {profile.underlying_symbol} ({profile.home_exchange})"
-        )
+    df, data_source = fetch_underlying_history(
+        profile,
+        start=fetch_start,
+        end=fetch_end,
+        listing=listing_date,
+    )
 
-    df = _prepare_df(raw)
     data_start = df.index.min().date()
     data_end = df.index.max().date()
-
-    # Use as much of the ±2y window as Yahoo provides
-    start = max(target_start, data_start)
-    end = min(target_end, data_end)
     listing_ts = pd.Timestamp(listing_date)
 
-    # If the ADR listing is older than Yahoo underlying history, align the event date.
-    if listing_ts < df.index.min() or listing_ts > df.index.max():
-        earliest_post_end = df.index.min() + pd.Timedelta(days=WINDOW_YEARS * 365)
-        if earliest_post_end > df.index.max():
-            raise ValueError(
-                f"Not enough underlying history for {profile.underlying_symbol} "
-                f"(listing {listing_date}, data {data_start}–{data_end})"
-            )
-        listing_ts = df.index.min() + pd.Timedelta(days=30)
-        listing_date = listing_ts.date()
-        listing_source = f"{listing_source}+aligned_to_underlying_data"
-        target_start, target_end = _calendar_window(listing_date)
-        start = max(target_start, data_start)
-        end = min(target_end, data_end)
+    start = max(target_start, data_start)
+    end = min(target_end, data_end)
 
     pre = df[df.index < listing_ts - pd.Timedelta(days=EVENT_BUFFER_DAYS)].copy()
     post = df[df.index > listing_ts + pd.Timedelta(days=EVENT_BUFFER_DAYS)].copy()
     pre = pre[pre.index >= pd.Timestamp(start)]
     post = post[post.index <= pd.Timestamp(end)]
 
-    coverage_note = ""
-    if listing_ts < pd.Timestamp(data_start) + pd.Timedelta(days=60):
-        coverage_note = (
-            "US ADR listing predates underlying Yahoo history; "
-            "event date aligned to start of underlying data."
-        )
-
+    coverage_note = profile.listing_caveat or ""
     if len(pre) < MIN_TRADING_DAYS and len(post) >= MIN_TRADING_DAYS:
         coverage_note = (
             (coverage_note + " " if coverage_note else "")
@@ -146,6 +109,7 @@ def load_underlying_window(
         "listing_source": listing_source,
         "us_adr_listing_date": us_adr_listing_date,
         "us_adr_listing_source": us_adr_listing_source,
+        "data_source": data_source,
         "full": event,
         "pre": pre,
         "post": post,
@@ -155,6 +119,5 @@ def load_underlying_window(
         "target_window_end": target_end,
         "data_start": data_start,
         "data_end": data_end,
-        "coverage_note": coverage_note,
+        "coverage_note": coverage_note.strip(),
     }
-

@@ -5,6 +5,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from news_crawler import fetch_news_for_tickers
+from heatmap import plot_market_heatmap
+from ai_briefing import _strip_disclaimer, generate_ai_briefing
+from summary_analyst import collect_leader_charts, generate_chart_notes
 from stock_crawler import (
     DEFAULT_TOP_N,
     UNIVERSES,
@@ -20,7 +23,7 @@ SUMMARY_HTML_PATH = DATA_DIR / "summary.html"
 SUMMARY_META_PATH = DATA_DIR / "summary_meta.json"
 
 KST = ZoneInfo("Asia/Seoul")
-SUMMARY_UNIVERSES = ("etf", "sp", "nas")
+SUMMARY_UNIVERSES = ("etf", "sp")
 SUMMARY_NEWS_PER_TICKER = 2
 TELEGRAM_CHUNK_SIZE = 3800
 
@@ -101,6 +104,83 @@ def _render_board_html(board: dict, mode: str) -> str:
     """
 
 
+def _render_heatmap_html(summary: dict) -> str:
+    pack = summary.get("heatmap_sp") or {}
+    if pack.get("error"):
+        return f"""
+    <section class="heatmap-section">
+      <h2>🗺️ S&amp;P 500 Heatmap</h2>
+      <p class="meta">Heatmap unavailable: {_esc(pack['error'])}</p>
+    </section>
+    """
+    chart = pack.get("chart")
+    if chart is None:
+        return ""
+    chart.seek(0)
+    import base64
+
+    encoded = base64.b64encode(chart.read()).decode("ascii")
+    chart.seek(0)
+    caption = _esc(pack.get("caption", "S&P 500 heatmap"))
+    return f"""
+    <section class="heatmap-section">
+      <h2>🗺️ S&amp;P 500 Heatmap</h2>
+      <p class="meta">{caption}</p>
+      <img src="data:image/png;base64,{encoded}" alt="S&amp;P 500 heatmap" style="width:100%;max-width:100%;border-radius:12px;border:1px solid var(--border);" />
+    </section>
+    """
+
+
+def _format_heatmap_telegram(summary: dict) -> list[dict]:
+    pack = summary.get("heatmap_sp") or {}
+    if pack.get("error"):
+        return [{"text": f"🗺️ S&P 500 heatmap\n\n(unavailable: {pack['error']})"}]
+    chart = pack.get("chart")
+    if chart is None:
+        return []
+    chart.seek(0)
+    return [{"text": pack.get("caption", "S&P 500 heatmap"), "photo": chart}]
+
+
+def _render_ai_html(summary: dict) -> str:
+    ai_analysis = summary.get("ai_analysis") or {}
+    brief_ko = _strip_disclaimer(ai_analysis.get("market_brief_ko", "").strip())
+    if not brief_ko:
+        return ""
+    ai_lines = "".join(f"<p>{_esc(line)}</p>" for line in brief_ko.split("\n") if line.strip())
+    source = ai_analysis.get("source", "")
+    article_count = ai_analysis.get("article_count", 0)
+    articles_html = ""
+    for item in (ai_analysis.get("articles") or [])[:8]:
+        articles_html += (
+            f"<li><strong>{_esc(item.get('title', ''))}</strong>"
+            f"<span class='meta'>{_esc(item.get('source', ''))}</span></li>"
+        )
+    articles_block = f"<ul>{articles_html}</ul>" if articles_html else ""
+    return f"""
+    <section class="ai-brief">
+      <h2>🤖 AI 시장 브리핑</h2>
+      <p class="meta">트렌딩 뉴스 {article_count}건 분석 ({_esc(source)})</p>
+      {ai_lines}
+      {articles_block}
+    </section>
+    """
+
+
+def _format_ai_telegram(summary: dict) -> list[dict]:
+    ai_analysis = summary.get("ai_analysis") or {}
+    brief_ko = _strip_disclaimer(ai_analysis.get("market_brief_ko", "").strip())
+    if not brief_ko:
+        return []
+    source = ai_analysis.get("source", "ai")
+    article_count = ai_analysis.get("article_count", 0)
+    ai_header = "🤖 AI 시장 브리핑 (한국어)\n"
+    if ai_analysis.get("error") and source == "rules":
+        ai_header += "(Gemini unavailable — headline-based fallback)\n"
+    ai_header += f"출처: {source} | 분석 기사 {article_count}건\n\n"
+    return [{"text": ai_header + brief_ko}]
+
+
 def render_summary_html(summary: dict, public_url: str = "") -> str:
     title = f"SavvyETF Market Brief — {summary['generated_at_display']}"
 
@@ -149,6 +229,9 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
         if public_url
         else ""
     )
+
+    heatmap_html = _render_heatmap_html(summary)
+    ai_html = _render_ai_html(summary)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -237,6 +320,22 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     li {{ margin-bottom: 8px; }}
     li .meta {{ display: block; margin-top: 2px; }}
     a {{ color: var(--accent); }}
+    .ai-brief {{
+      margin: 1.5rem 0 2.5rem;
+      padding: 1.25rem 1.25rem 1rem;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      background: var(--panel);
+    }}
+    .ai-brief p {{ margin: 0.55rem 0; line-height: 1.65; }}
+    .heatmap-section {{
+      margin: 2.5rem 0;
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+    }}
     @media (max-width: 720px) {{
       .split {{ grid-template-columns: 1fr; }}
     }}
@@ -248,6 +347,8 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     <p class="meta">Tickers with news: {summary['ticker_count']} (top {DEFAULT_TOP_N} per board)</p>
     {link_html}
     {''.join(sections_html)}
+    {heatmap_html}
+    {ai_html}
   </div>
 </body>
 </html>"""
@@ -276,14 +377,24 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     messages = [{"text": "\n".join(ranking_lines).rstrip(), "parse_mode": "HTML"}]
 
     leader = universe.get("leader_ticker")
+    leaders = summary.get("leader_charts") or {}
+    leader_pack = leaders.get(ukey) or {}
+    chart_notes = (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
     if leader:
-        messages.append(
-            {
-                "text": f"📈 Top leader: <b>{_esc(leader)}</b> (price up + volume surge)",
-                "parse_mode": "HTML",
-                "chart_ticker": leader,
-            }
-        )
+        caption_lines = [f"📈 Top leader: {leader} (price up + volume surge)"]
+        note = chart_notes.get(ukey, "").strip()
+        if note:
+            caption_lines.extend(["", note])
+        chart_reply: dict = {
+            "text": "\n".join(caption_lines),
+        }
+        chart_png = leader_pack.get("chart_png")
+        if chart_png is not None:
+            chart_png.seek(0)
+            chart_reply["photo"] = chart_png
+        else:
+            chart_reply["chart_ticker"] = leader
+        messages.append(chart_reply)
 
     news_lines = [header, "<b>📰 News</b>", ""]
     has_news = False
@@ -324,23 +435,11 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
 def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
     messages: list[dict] = []
 
-    header_lines = [
-        "<b>📊 SavvyETF Market Brief</b>",
-        "",
-        f"<i>{_esc(summary['generated_at_display'])}</i>",
-        "<i>Price: last trading day | Volume: latest / 21d avg</i>",
-    ]
-    if public_url:
-        header_lines.extend(["", f'🌐 <a href="{_esc(public_url)}">Open full summary page</a>'])
-    header_lines.extend([
-        "",
-        "<i>Next messages: ETF → S&P 500 → NASDAQ 100</i>",
-        "<i>(each: rankings, top-leader chart, then news)</i>",
-    ])
-    messages.append({"text": "\n".join(header_lines), "parse_mode": "HTML"})
-
     for universe in summary["universes"]:
         messages.extend(_format_universe_telegram(universe, summary))
+
+    messages.extend(_format_heatmap_telegram(summary))
+    messages.extend(_format_ai_telegram(summary))
 
     return messages
 
@@ -364,6 +463,16 @@ def load_summary_html() -> str | None:
 
 def generate_and_save_summary(public_url: str = "") -> dict:
     summary = build_market_summary()
+    leader_charts = collect_leader_charts(summary)
+    summary["leader_charts"] = leader_charts
+    ai_brief = generate_ai_briefing()
+    ai_brief["chart_notes_ko"] = generate_chart_notes(summary, leader_charts)
+    summary["ai_analysis"] = ai_brief
+    try:
+        heatmap_buf, heatmap_caption, _ = plot_market_heatmap("sp")
+        summary["heatmap_sp"] = {"chart": heatmap_buf, "caption": heatmap_caption}
+    except Exception as exc:
+        summary["heatmap_sp"] = {"error": str(exc)}
     html_content = render_summary_html(summary, public_url=public_url)
     save_summary(summary, html_content)
     summary["html"] = html_content

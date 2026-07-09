@@ -17,6 +17,9 @@ class AdrProfile:
     adr_to_ordinary_ratio: float
     listing_date: date | None  # US ADR listing date, if curated
     listing_source: str
+    underlying_fetch_symbol: str | None = None  # optional provider symbol override
+    finnhub_symbol: str | None = None  # optional Finnhub symbology override
+    listing_caveat: str | None = None  # structural limitation note for the event study
 
 
 # Curated ADR → underlying map (Yahoo Finance symbols).
@@ -49,6 +52,10 @@ ADR_REGISTRY: dict[str, dict] = {
         "name": "Alibaba Group",
         "ratio": 8.0,
         "listing_date": "2014-09-19",
+        "listing_caveat": (
+            "ADR listed 2014; 9988.HK secondary listing began 2019 — "
+            "home-market history cannot cover the ADR listing event."
+        ),
     },
     "TM": {
         "underlying": "7203.T",
@@ -150,6 +157,9 @@ def resolve_adr(symbol: str) -> AdrProfile:
         adr_to_ordinary_ratio=float(row.get("ratio", 1.0)),
         listing_date=_parse_date(row.get("listing_date")),
         listing_source="registry",
+        underlying_fetch_symbol=row.get("underlying_fetch"),
+        finnhub_symbol=row.get("finnhub_symbol"),
+        listing_caveat=row.get("listing_caveat"),
     )
 
 

@@ -79,9 +79,11 @@ class PortfolioSimulator:
         return buf
 
 
-def analyze_stock(symbol):
+def _stock_history_with_indicators(symbol: str) -> pd.DataFrame:
     stock = yf.Ticker(symbol)
     df = stock.history(period="1y")
+    if df.empty or len(df) < 30:
+        raise ValueError(f"Not enough price history for {symbol}")
 
     df["MA50"] = df["Close"].rolling(window=50).mean()
     df["MA200"] = df["Close"].rolling(window=200).mean()
@@ -106,6 +108,50 @@ def analyze_stock(symbol):
     df.loc[df["RSI"] > 70, "Sell_Signal"] |= True
     df.loc[(df["MA50"] > df["MA200"]) & (df["MA50"].shift(1) <= df["MA200"].shift(1)), "Buy_Signal"] |= True
     df.loc[(df["MA50"] < df["MA200"]) & (df["MA50"].shift(1) >= df["MA200"].shift(1)), "Sell_Signal"] |= True
+    return df
+
+
+def stock_ta_snapshot(symbol: str) -> dict:
+    df = _stock_history_with_indicators(symbol)
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+    close = float(latest["Close"])
+    prev_close = float(prev["Close"])
+    daily_return_pct = (close / prev_close - 1) * 100 if prev_close else 0.0
+    rsi = float(latest["RSI"]) if pd.notna(latest["RSI"]) else None
+    macd = float(latest["MACD"]) if pd.notna(latest["MACD"]) else None
+    signal = float(latest["Signal"]) if pd.notna(latest["Signal"]) else None
+    ma50 = float(latest["MA50"]) if pd.notna(latest["MA50"]) else None
+    ma200 = float(latest["MA200"]) if pd.notna(latest["MA200"]) else None
+
+    if rsi is None:
+        rsi_zone = "unknown"
+    elif rsi >= 70:
+        rsi_zone = "overbought"
+    elif rsi <= 30:
+        rsi_zone = "oversold"
+    else:
+        rsi_zone = "neutral"
+
+    macd_bias = "neutral"
+    if macd is not None and signal is not None:
+        macd_bias = "bullish" if macd > signal else "bearish"
+
+    return {
+        "symbol": symbol.upper(),
+        "close": round(close, 2),
+        "daily_return_pct": round(daily_return_pct, 2),
+        "rsi": round(rsi, 1) if rsi is not None else None,
+        "rsi_zone": rsi_zone,
+        "macd_bias": macd_bias,
+        "price_vs_ma50": "above" if ma50 and close > ma50 else "below" if ma50 else "unknown",
+        "price_vs_ma200": "above" if ma200 and close > ma200 else "below" if ma200 else "unknown",
+        "golden_cross": bool(ma50 and ma200 and ma50 > ma200),
+    }
+
+
+def analyze_stock(symbol):
+    df = _stock_history_with_indicators(symbol)
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 

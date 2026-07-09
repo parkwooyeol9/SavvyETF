@@ -75,6 +75,7 @@ def analyze_single(profile: AdrProfile) -> dict:
         "us_adr_listing_source": bundle["us_adr_listing_source"],
         "analysis_event_date": bundle["listing_date"].isoformat(),
         "analysis_event_source": bundle["listing_source"],
+        "data_source": bundle.get("data_source", ""),
         "window_years": WINDOW_YEARS,
         "pre_trading_days": len(pre),
         "post_trading_days": len(post),

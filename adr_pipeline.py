@@ -46,7 +46,8 @@ def run_adr_analysis(symbols: list[str]) -> dict:
             [
                 f"▸ {row['adr_symbol']} → {row['underlying_symbol']} ({row['company_name']})",
                 f"  US ADR listing: {row.get('us_adr_listing_date', '')}",
-                f"  Analysis event: {row.get('analysis_event_date', '')} ({row.get('analysis_event_source', '')})",
+                f"  Event date: {row.get('analysis_event_date', '')} ({row.get('analysis_event_source', '')})",
+                f"  Data source: {row.get('data_source', '')}",
                 f"  Pre avg return: {row['pre_avg_daily_return_pct']:.4f}%/day ({int(row['pre_trading_days'])}d)",
                 f"  Post avg return: {row['post_avg_daily_return_pct']:.4f}%/day ({int(row['post_trading_days'])}d)",
             ]

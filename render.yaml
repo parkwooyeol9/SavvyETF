@@ -16,3 +16,13 @@ services:
         value: "8080"
       - key: SUMMARY_SCHEDULE_ENABLED
         value: "true"
+      - key: MACRO_SCHEDULE_ENABLED
+        value: "true"
+      - key: MACRO_SCHEDULE_HOUR_KST
+        value: "17"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FRED_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false

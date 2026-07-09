@@ -54,6 +54,7 @@ def build_listing_dates_dataframe(analysis: dict) -> pd.DataFrame:
                 "us_adr_listing_date": m["us_adr_listing_date"],
                 "analysis_event_date": m["analysis_event_date"],
                 "analysis_event_source": m["analysis_event_source"],
+                "data_source": m.get("data_source", ""),
             }
         )
     return pd.DataFrame(rows)
@@ -179,7 +180,7 @@ def export_analysis_excel(
                 datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
                 "±2 calendar years around analysis event date",
                 f"Pre/post exclude ±{EVENT_BUFFER_DAYS} days around event (buffer)",
-                "US ADR listing date from registry/yfinance; event date aligned if underlying Yahoo history is limited",
+                "US ADR listing date from registry/yfinance; underlying prices from Finnhub/FinMind/EODHD/Yahoo",
                 "Welch t-test: post vs pre daily returns (skipped if limited pre data)",
                 "Aligned_Compare: trading_day_offset with rebased_return_pct per ADR (0% at t=0)",
                 "Charts: embedded PNGs + native line chart on Aligned_Compare",
