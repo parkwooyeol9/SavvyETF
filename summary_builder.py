@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 from news_crawler import fetch_news_for_tickers
 from stock_crawler import (
-    DEFAULT_BOTTOM_N,
     DEFAULT_TOP_N,
     UNIVERSES,
     _ranking_slice,
@@ -44,7 +43,7 @@ def _esc(text: str) -> str:
 def _summary_boards(universe: str) -> dict[str, dict]:
     boards: dict[str, dict] = {}
     for mode in ("surge", "dropvol"):
-        boards[mode] = _ranking_slice(universe, mode, DEFAULT_TOP_N, DEFAULT_BOTTOM_N)
+        boards[mode] = _ranking_slice(universe, mode, DEFAULT_TOP_N, 0)
     return boards
 
 
@@ -90,25 +89,14 @@ def _render_board_html(board: dict, mode: str) -> str:
         f"<tr><td>{html.escape(t)}</td><td class='pos'>{html.escape(v)}</td></tr>"
         for t, v in board["top"]
     )
-    bottom_rows = "".join(
-        f"<tr><td>{html.escape(t)}</td><td class='neg'>{html.escape(v)}</td></tr>"
-        for t, v in board["bottom"]
-    )
     return f"""
     <div class="card">
       <h3>{html.escape(BOARD_TITLES[mode])}</h3>
-      <div class="split">
-        <table>
-          <caption>Top {DEFAULT_TOP_N}</caption>
-          <thead><tr><th>Ticker</th><th>Daily | Vol</th></tr></thead>
-          <tbody>{top_rows}</tbody>
-        </table>
-        <table>
-          <caption>Bottom {DEFAULT_BOTTOM_N}</caption>
-          <thead><tr><th>Ticker</th><th>Daily | Vol</th></tr></thead>
-          <tbody>{bottom_rows}</tbody>
-        </table>
-      </div>
+      <table>
+        <caption>Top {DEFAULT_TOP_N}</caption>
+        <thead><tr><th>Ticker</th><th>Daily | Vol</th></tr></thead>
+        <tbody>{top_rows}</tbody>
+      </table>
     </div>
     """
 
@@ -257,7 +245,7 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
 <body>
   <div class="wrap">
     <h1>{html.escape(title)}</h1>
-    <p class="meta">Tickers with news: {summary['ticker_count']} (6 per universe)</p>
+    <p class="meta">Tickers with news: {summary['ticker_count']} (top {DEFAULT_TOP_N} per board)</p>
     {link_html}
     {''.join(sections_html)}
   </div>
@@ -265,13 +253,10 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
 </html>"""
 
 
-def _format_ranking_block_telegram(title: str, top: list, bottom: list) -> list[str]:
+def _format_ranking_block_telegram(title: str, top: list) -> list[str]:
     lines = [f"<b>{_esc(title)}</b>", ""]
     lines.append(f"<b>▲ Top {DEFAULT_TOP_N}</b>")
     for ticker, value in top:
-        lines.append(f"  • <code>{_esc(ticker)}</code>  {_esc(value)}")
-    lines.extend(["", f"<b>▼ Bottom {DEFAULT_BOTTOM_N}</b>"])
-    for ticker, value in bottom:
         lines.append(f"  • <code>{_esc(ticker)}</code>  {_esc(value)}")
     lines.append("")
     return lines
@@ -286,7 +271,7 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     for mode in ("surge", "dropvol"):
         board = universe["boards"][mode]
         ranking_lines.extend(
-            _format_ranking_block_telegram(BOARD_TITLES[mode], board["top"], board["bottom"])
+            _format_ranking_block_telegram(BOARD_TITLES[mode], board["top"])
         )
     messages = [{"text": "\n".join(ranking_lines).rstrip(), "parse_mode": "HTML"}]
 

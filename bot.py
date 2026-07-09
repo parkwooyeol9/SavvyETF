@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 
 from analysis import analyze_crypto, analyze_stock, simulate_portfolio
 from adr_pipeline import run_adr_analysis
-from eikon_client import load_basic_stock_info
 from news_crawler import format_news_messages
 from stock_crawler import (
     format_rankings_message,
@@ -54,15 +53,12 @@ What each command returns:
 → Headlines for the 6 tickers from your last /etf, /sp, or /nas result
 
 /summary
-→ ETF + S&P 500 + NASDAQ brief (combined rankings + news)
+→ ETF + S&P 500 + NASDAQ brief (top 3 per board + news)
 
 /adr TSM ASML ARM
 → ADR listing impact analysis (charts + Excel) for underlying shares
 
-/eikon AAPL.O
-→ Basic stock info from Eikon (requires EIKON_APP_KEY + Eikon/Workspace running)
-
-Auto brief: 06:00 & 22:00 KST
+Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 
 Price: last trading day return | Volume: latest day / 21d avg
 Modes: surge | dropvol (default shows both leaders)
@@ -107,7 +103,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 
 /summary
   Full market brief: ETF + S&P 500 + NASDAQ 100
-  (combined rankings, top-leader chart per universe, news).
+  (top 3 per surge/dropvol board, top-leader chart per universe, news).
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
 
 /adr ADR1 ADR2 ...
@@ -115,12 +111,8 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Returns charts + an Excel workbook.
   Example: /adr TSM ASML ARM
 
-/eikon RIC
-  Load basic stock information via Refinitiv Eikon Data API.
-  Example: /eikon AAPL.O
-  Requires: EIKON_APP_KEY in .env and Eikon/Workspace running.
-
-  Auto-sent at 06:00 & 22:00 KST to subscribed chats.
+  Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
+  and at 22:00 KST if SUMMARY_SCHEDULE_HOURS_KST includes 22.
 
 ℹ️ /help
   Show this guide again.
@@ -413,6 +405,10 @@ def handle_telegram_message(message, chat_id: int):
                 {"text": "Analyzing ADR impact…"},
                 {"text": result["text_summary"]},
                 {"text": "ADR Impact — Summary chart", "photo": result["panel_chart"]},
+                {
+                    "text": "ADR Impact — Aligned overlay (t=0 rebased returns)",
+                    "photo": result["overlay_chart"],
+                },
             ]
             for sym, buf in result["single_charts"].items():
                 replies.append({"text": f"{sym} — event chart", "photo": buf})
@@ -425,33 +421,6 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"ADR analysis failed: {exc}"}]
-
-    if lower.startswith("/eikon"):
-        parts = normalized.split(maxsplit=1)
-        if len(parts) < 2 or not parts[1].strip():
-            return [{"text": "Usage: /eikon AAPL.O\n\n" + HELP_TEXT}]
-        symbol = parts[1].strip()
-        try:
-            df = load_basic_stock_info(symbol)
-            row = df.iloc[0].to_dict()
-            lines = [f"Eikon basic info: {symbol}", ""]
-            for k, v in row.items():
-                if k == "Instrument":
-                    continue
-                lines.append(f"- {k}: {v}")
-            return [{"text": "\n".join(lines)[:4096]}]
-        except Exception as exc:
-            return [
-                {
-                    "text": (
-                        f"/eikon failed: {exc}\n\n"
-                        "Notes:\n"
-                        "- Set EIKON_APP_KEY in .env\n"
-                        "- Ensure Eikon/Workspace is running and logged in\n"
-                        "- Prefer RIC like AAPL.O, MSFT.O, 005930.KS\n"
-                    )[:4096]
-                }
-            ]
 
     if normalized.startswith("/port"):
         try:

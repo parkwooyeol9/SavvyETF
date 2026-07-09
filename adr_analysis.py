@@ -64,6 +64,7 @@ def analyze_single(profile: AdrProfile) -> dict:
     )
     event = event.copy()
     event["price_index"] = event["close"] / listing_close * 100
+    event["rebased_return_pct"] = (event["close"] / listing_close - 1) * 100
 
     metrics = {
         "adr_symbol": profile.adr_symbol,

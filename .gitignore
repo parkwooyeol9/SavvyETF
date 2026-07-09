@@ -9,4 +9,4 @@ data/*.pkl
 data/known_chats.json
 data/summary.html
 data/summary_meta.json
-data/scheduler_state.json
+data/adr_output/

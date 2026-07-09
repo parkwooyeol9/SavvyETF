@@ -6,7 +6,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from adr_analysis import analyze_adr_list
-from adr_charts import plot_panel_summary, plot_single_adr, save_all_charts
+from adr_charts import (
+    plot_aligned_overlay_returns,
+    plot_panel_summary,
+    plot_single_adr,
+    save_all_charts,
+)
 from adr_excel_export import export_analysis_excel
 
 KST = ZoneInfo("Asia/Seoul")
@@ -18,10 +23,11 @@ def run_adr_analysis(symbols: list[str]) -> dict:
 
     run_id = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     analysis = analyze_adr_list(symbols)
-    excel_path = export_analysis_excel(analysis, run_id=run_id)
     chart_paths = save_all_charts(analysis, run_id=run_id)
+    excel_path = export_analysis_excel(analysis, run_id=run_id, chart_paths=chart_paths)
 
     panel_buf = plot_panel_summary(analysis)
+    overlay_buf = plot_aligned_overlay_returns(analysis)
     single_charts: dict[str, object] = {}
     for result in analysis["results"]:
         sym = result["metrics"]["adr_symbol"]
@@ -65,6 +71,7 @@ def run_adr_analysis(symbols: list[str]) -> dict:
         "excel_path": excel_path,
         "chart_paths": chart_paths,
         "panel_chart": panel_buf,
+        "overlay_chart": overlay_buf,
         "single_charts": single_charts,
         "text_summary": "\n".join(text_lines).strip(),
     }

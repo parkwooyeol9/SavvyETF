@@ -121,12 +121,57 @@ def plot_panel_summary(analysis: dict, save_path: Path | None = None) -> io.Byte
     return buf
 
 
+def plot_aligned_overlay_returns(analysis: dict, save_path: Path | None = None) -> io.BytesIO:
+    """
+    Overlay multiple underlying series aligned to the ADR listing event (t=0).
+
+    X-axis: trading_day_offset (0 = first trading day on/after listing date)
+    Y-axis: rebased cumulative return (%) where t=0 is 0%.
+    """
+    results = analysis["results"]
+    if not results:
+        raise ValueError("No results to chart")
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6.5))
+
+    for result in results:
+        m = result["metrics"]
+        event = result["event"]
+        x = event.get("trading_day_offset")
+        y = event.get("rebased_return_pct")
+        if x is None or y is None:
+            continue
+        label = f"{m['adr_symbol']} → {m['underlying_symbol']}"
+        ax.plot(x, y, linewidth=1.4, label=label)
+
+    ax.axvline(0, color="#dc2626", linestyle="--", linewidth=1.4, label="t=0 (listing)")
+    ax.axhline(0, color="#9ca3af", linestyle=":", linewidth=0.9)
+    ax.set_title("Aligned ADR impact — underlying cumulative return (rebased at t=0)")
+    ax.set_xlabel("Trading-day offset from listing (t=0)")
+    ax.set_ylabel("Cumulative return (%) (0% at t=0)")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc="best", fontsize=9)
+
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+    if save_path:
+        fig.savefig(save_path, format="png", dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
 def save_all_charts(analysis: dict, run_id: str) -> dict[str, Path]:
     out_dir = _ensure_dir(run_id)
     paths: dict[str, Path] = {}
 
     plot_panel_summary(analysis, out_dir / "summary_panel.png")
     paths["summary_panel"] = out_dir / "summary_panel.png"
+
+    plot_aligned_overlay_returns(analysis, out_dir / "aligned_overlay.png")
+    paths["aligned_overlay"] = out_dir / "aligned_overlay.png"
 
     for result in analysis["results"]:
         sym = result["metrics"]["adr_symbol"]
