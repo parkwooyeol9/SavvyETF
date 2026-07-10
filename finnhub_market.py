@@ -1,4 +1,7 @@
-"""Shared Finnhub market-data helpers (rate-limited candles + quotes)."""
+"""Finnhub helpers for pre-market quotes only (/etf_pre, /sp_pre, /nas_pre).
+
+Do not use this module for /sp /nas daily rankings — those use yahoo_market.
+"""
 
 from __future__ import annotations
 

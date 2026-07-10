@@ -379,15 +379,40 @@ _last_ranking_by_chat: dict[int, dict] = {}
 _bot_username: str | None = None
 
 
+def _redact_telegram(text: str, token: str) -> str:
+    """Never log the bot token (Telegram puts it in request URLs)."""
+    if token and token in text:
+        return text.replace(token, "***")
+    return text
+
+
+def clear_telegram_webhook(token: str) -> None:
+    """Polling and webhooks cannot run together; clear any leftover webhook."""
+    try:
+        response = requests.get(
+            f"https://api.telegram.org/bot{token}/deleteWebhook",
+            params={"drop_pending_updates": "false"},
+            timeout=30,
+        )
+        if response.ok and (response.json() or {}).get("ok"):
+            print("Telegram webhook cleared (polling mode).")
+        else:
+            print(f"Telegram deleteWebhook: {_redact_telegram(response.text[:200], token)}")
+    except requests.RequestException as exc:
+        print(f"Telegram deleteWebhook failed: {_redact_telegram(str(exc), token)}")
+
+
 def fetch_bot_username(token: str) -> str | None:
     try:
         response = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=30)
-        response.raise_for_status()
+        if not response.ok:
+            print(f"Could not fetch bot username: HTTP {response.status_code}")
+            return None
         payload = response.json()
         if payload.get("ok"):
             return payload["result"].get("username")
     except requests.RequestException as exc:
-        print(f"Could not fetch bot username: {exc}")
+        print(f"Could not fetch bot username: {_redact_telegram(str(exc), token)}")
     return None
 
 
@@ -423,22 +448,41 @@ def extract_chat_id_from_update(update: dict) -> int | None:
 
 
 def fetch_pending_updates(token: str) -> tuple[list[dict], int | None]:
-    response = requests.get(
-        f"https://api.telegram.org/bot{token}/getUpdates",
-        params={
-            "allowed_updates": json.dumps(
-                [
-                    "message",
-                    "edited_message",
-                    "channel_post",
-                    "edited_channel_post",
-                    "my_chat_member",
-                ]
-            )
-        },
-        timeout=35,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            f"https://api.telegram.org/bot{token}/getUpdates",
+            params={
+                "allowed_updates": json.dumps(
+                    [
+                        "message",
+                        "edited_message",
+                        "channel_post",
+                        "edited_channel_post",
+                        "my_chat_member",
+                    ]
+                )
+            },
+            timeout=35,
+        )
+    except requests.RequestException as exc:
+        print(f"fetch_pending_updates failed: {_redact_telegram(str(exc), token)}")
+        return [], None
+
+    if response.status_code == 409:
+        print(
+            "Telegram 409 on startup getUpdates — another poller holds the token. "
+            "Retrying after 15s…"
+        )
+        time.sleep(15)
+        return [], None
+
+    if not response.ok:
+        print(
+            f"fetch_pending_updates HTTP {response.status_code}: "
+            f"{_redact_telegram(response.text[:200], token)}"
+        )
+        return [], None
+
     payload = response.json()
     if not payload.get("ok"):
         return [], None
@@ -1193,6 +1237,7 @@ def get_bot_token() -> str:
 
 def start_telegram_bot(token: str):
     global _bot_username
+    clear_telegram_webhook(token)
     _bot_username = fetch_bot_username(token)
     if _bot_username:
         print(f"Bot username: @{_bot_username}")
@@ -1227,7 +1272,25 @@ def start_telegram_bot(token: str):
                 params=params,
                 timeout=35,
             )
-            response.raise_for_status()
+
+            # 409 = another getUpdates long-poll is active (local bot, old Render
+            # instance during deploy, etc.). Wait and retry; never log the token URL.
+            if response.status_code == 409:
+                print(
+                    "Telegram 409 Conflict: another getUpdates poller is using this bot token. "
+                    "Stop any local bot.py / extra Render instance. Retrying in 20s…"
+                )
+                time.sleep(20)
+                continue
+
+            if not response.ok:
+                print(
+                    f"Telegram getUpdates HTTP {response.status_code}: "
+                    f"{_redact_telegram(response.text[:200], token)}"
+                )
+                time.sleep(5)
+                continue
+
             payload = response.json()
 
             if not payload.get("ok"):
@@ -1240,10 +1303,10 @@ def start_telegram_bot(token: str):
                 enqueue_telegram_update(token, update)
 
         except requests.RequestException as exc:
-            print(f"Network error in bot loop: {exc}")
+            print(f"Network error in bot loop: {_redact_telegram(str(exc), token)}")
             time.sleep(5)
         except Exception as exc:
-            print(f"Error in bot loop: {exc}")
+            print(f"Error in bot loop: {_redact_telegram(str(exc), token)}")
             time.sleep(5)
 
 
