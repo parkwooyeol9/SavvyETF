@@ -263,7 +263,7 @@ def _telegram_error_description(response: requests.Response) -> str:
 
 
 def _is_unreachable_chat_error(response: requests.Response) -> bool:
-    if response.status_code == 403:
+    if response.status_code in {403, 404}:
         return True
     if response.status_code == 400:
         description = _telegram_error_description(response).lower()
@@ -275,6 +275,14 @@ def _is_unreachable_chat_error(response: requests.Response) -> bool:
                 "group chat was upgraded",
                 "bot was kicked",
                 "user is deactivated",
+                "bot can't initiate conversation",
+                "can't initiate conversation",
+                "bot is not a member",
+                "have no rights",
+                "need administrator",
+                "group chat was deactivated",
+                "blocked by the user",
+                "user_is_blocked",
             )
         )
     return False
@@ -284,21 +292,23 @@ def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None
     payload: dict = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
-    response = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json=payload,
-        timeout=60,
-    )
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json=payload,
+            timeout=60,
+        )
+    except requests.RequestException as exc:
+        print(f"sendMessage network error for chat {chat_id}: {exc}")
+        return False
+
     if response.ok:
         return True
 
     description = _telegram_error_description(response)
-    if _is_unreachable_chat_error(response):
-        block_chat(chat_id, description)
-        return False
-
     print(f"sendMessage failed for chat {chat_id}: {response.text}")
-    response.raise_for_status()
+    if response.status_code in {400, 403, 404} or _is_unreachable_chat_error(response):
+        block_chat(chat_id, description)
     return False
 
 
@@ -784,14 +794,12 @@ def _handle_telegram_send_response(
         return True
 
     description = _telegram_error_description(response)
+    print(f"{method} failed for chat {chat_id}: {response.text}")
     if _is_unreachable_chat_error(response):
         block_chat(chat_id, description)
         return False
-
-    print(f"{method} failed for chat {chat_id}: {response.text}")
     if fallback_text and token:
         send_text(token, chat_id, fallback_text, parse_mode=parse_mode)
-    response.raise_for_status()
     return False
 
 
