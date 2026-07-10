@@ -35,6 +35,11 @@ def clear_heavy_work_yield() -> None:
     _yield_requested.clear()
 
 
+def heavy_work_status() -> str:
+    owner = heavy_work_owner()
+    return owner or "none"
+
+
 def heavy_work_should_yield() -> bool:
     return _yield_requested.is_set()
 

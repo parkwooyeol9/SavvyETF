@@ -403,6 +403,7 @@ def warmup_all_caches(force: bool = False) -> None:
 
 def warmup_startup_caches(force: bool = False) -> None:
     from heavy_work import (
+        HeavyWorkYield,
         end_heavy_work,
         heavy_work_owner,
         try_begin_heavy_work,
@@ -416,27 +417,24 @@ def warmup_startup_caches(force: bool = False) -> None:
         return
 
     wait_for_startup_grace("startup-cache-warmup")
-    if not try_begin_heavy_work("startup-cache-warmup"):
-        print("Startup cache warmup skipped: another heavy task is running.")
-        return
 
-    try:
-        for universe in universes:
-            if universe in UNIVERSES:
-                try:
-                    warmup_cache(universe, force=force)
-                except Exception as exc:
-                    from heavy_work import HeavyWorkYield
+    for universe in universes:
+        if universe not in UNIVERSES:
+            continue
 
-                    if isinstance(exc, HeavyWorkYield):
-                        print("Startup cache warmup paused for higher-priority work.")
-                        break
-                    raise
-    finally:
-        from heavy_work import end_heavy_work, heavy_work_owner
+        while not try_begin_heavy_work("startup-cache-warmup"):
+            owner = heavy_work_owner() or "unknown"
+            print(f"Startup cache warmup waiting ({universe}): heavy work busy ({owner})")
+            time.sleep(15)
 
-        if heavy_work_owner() == "startup-cache-warmup":
-            end_heavy_work("startup-cache-warmup")
+        try:
+            warmup_cache(universe, force=force)
+        except HeavyWorkYield:
+            print("Startup cache warmup paused for higher-priority work.")
+            break
+        finally:
+            if heavy_work_owner() == "startup-cache-warmup":
+                end_heavy_work("startup-cache-warmup")
 
 
 def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:

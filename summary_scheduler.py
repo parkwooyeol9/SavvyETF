@@ -65,6 +65,14 @@ def _current_fixed_slot(now: datetime) -> str:
     return now.strftime("%Y-%m-%d-%H")
 
 
+def _summary_heavy_wait_seconds() -> int:
+    raw = os.environ.get("SUMMARY_HEAVY_WORK_WAIT_SECONDS", "600").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 600
+
+
 def run_scheduled_summary(
     token: str,
     broadcast_fn,
@@ -72,12 +80,27 @@ def run_scheduled_summary(
     public_url: str = "",
     trigger: str = "scheduled",
 ) -> bool:
-    from heavy_work import end_heavy_work, try_begin_heavy_work
-    from summary_builder import KST, caches_ready, generate_and_save_summary
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
-    if not try_begin_heavy_work("scheduled-summary"):
-        print(f"Scheduled summary skipped ({trigger}): another heavy task is running.")
+    wait_seconds = _summary_heavy_wait_seconds()
+    if wait_seconds == 0:
+        from heavy_work import try_begin_heavy_work
+
+        acquired = try_begin_heavy_work("scheduled-summary")
+    else:
+        acquired = begin_heavy_work_blocking(
+            "scheduled-summary",
+            timeout=wait_seconds,
+        )
+
+    if not acquired:
+        print(
+            f"Scheduled summary skipped ({trigger}): heavy work still busy "
+            f"({heavy_work_status()})"
+        )
         return False
+
+    from summary_builder import caches_ready, generate_and_save_summary
 
     try:
         if not caches_ready():

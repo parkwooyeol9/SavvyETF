@@ -48,5 +48,7 @@ services:
         value: "true"
       - key: HEAVY_WORK_SERIALIZE
         value: "true"
+      - key: SUMMARY_HEAVY_WORK_WAIT_SECONDS
+        value: "600"
       - key: BOT_SKIP_STARTUP_ETFCHECK
         value: "true"
