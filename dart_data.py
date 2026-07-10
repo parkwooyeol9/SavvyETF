@@ -44,7 +44,14 @@ ACCOUNT_RULES: dict[str, list[str]] = {
 }
 
 
+def _ensure_dotenv() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_DIR / ".env", override=False)
+
+
 def _dart_api_key() -> str:
+    _ensure_dotenv()
     return (
         os.environ.get("DART_API_KEY", "").strip()
         or os.environ.get("dart_api_key", "").strip().strip("'\"")
@@ -54,7 +61,11 @@ def _dart_api_key() -> str:
 def _dart_get(path: str, params: dict[str, Any]) -> dict:
     key = _dart_api_key()
     if not key:
-        raise RuntimeError("DART_API_KEY is not set in .env")
+        raise RuntimeError(
+            "DART_API_KEY is not set. "
+            "Local: add DART_API_KEY=... to .env (exact uppercase name). "
+            "Render: Dashboard → Environment → add DART_API_KEY ( .env is not deployed )."
+        )
 
     query = {**params, "crtfc_key": key}
     response = requests.get(f"{DART_BASE}/{path}", params=query, timeout=45)
@@ -105,7 +116,11 @@ def load_corp_directory(force: bool = False) -> list[dict]:
 
     key = _dart_api_key()
     if not key:
-        raise RuntimeError("DART_API_KEY is not set in .env")
+        raise RuntimeError(
+            "DART_API_KEY is not set. "
+            "Local: add DART_API_KEY=... to .env (exact uppercase name). "
+            "Render: Dashboard → Environment → add DART_API_KEY ( .env is not deployed )."
+        )
 
     response = requests.get(f"{DART_BASE}/corpCode.xml", params={"crtfc_key": key}, timeout=90)
     response.raise_for_status()

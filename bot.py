@@ -55,7 +55,10 @@ What each command returns:
 → Top 3 & bottom 3 by price-up + volume surge
 
 /sp   (or /nas)
-→ Same rankings for S&P 500 / NASDAQ 100
+→ Same rankings for S&P 500 / NASDAQ 100 (Yahoo chart API)
+
+/etf_pre  /sp_pre  /nas_pre
+→ Pre-market % vs previous close (Finnhub live/pre trade quotes)
 
 /heatmap sp
 → Treemap of top names by market cap (color = daily return)
@@ -83,6 +86,9 @@ What each command returns:
 
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
+
+/dart etf memb 0167A0
+→ 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 /macro auto: daily 17:00 KST
@@ -115,8 +121,15 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /nas [MODE]
   Rank NASDAQ 100 stocks (same logic).
   Example: /nas | /nas dropvol
+  Data: Yahoo chart API (yfinance fallback).
 
-  MODE (optional):
+/etf_pre | /sp_pre | /nas_pre
+  Pre-market / extended-hours return vs previous close.
+  Call ~1–2 hours before US open (04:00–09:30 ET).
+  Uses Finnhub quote?trade=true. /etf_pre uses a liquid ETF subset.
+  Example: /sp_pre
+
+/etf /sp /nas MODE (optional):
     surge   — price up + volume surge (top 3 & bottom 3)
     dropvol — price down + volume surge (top 3 & bottom 3)
     (omit)  — top 3 from each pattern (6 tickers total)
@@ -173,6 +186,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   assets, equity, EPS, margins, ROE, YoY growth, and trend charts.
   Example: /dart 삼성전자 | /dart SK하이닉스 | /dart 005930
   Requires DART_API_KEY in .env (https://opendart.fss.or.kr/)
+
+/dart etf memb TICKER|NAME
+  Korean ETF holdings (구성종목) and weights (편입비), plus change vs last snapshot.
+  Open DART has no ETF PDF API — uses Naver Finance (KRX PDF-based).
+  Example: /dart etf memb 0167A0
+  Example: /dart etf memb SOL AI반도체TOP2플러스
 
 ℹ️ /help
   Show this guide again.
@@ -458,7 +477,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /heatmap /macro /comp /financial /dart /news /aibriefing /summary /help",
+                "Commands: /etf /sp /nas /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -528,8 +547,9 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
     return [
         {
             "text": (
-                f"Loading {label} rankings from Yahoo Finance now "
-                f"(first run may take 2–5 minutes). Try /{universe} again shortly."
+                f"Loading {label} rankings "
+                f"(Finnhub for S&P/NASDAQ, Yahoo for ETF; "
+                f"first run may take a few minutes). Try /{universe} again shortly."
             )
         }
     ]
@@ -598,11 +618,20 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/dart"):
         try:
+            from dart_etf_memb import is_dart_etf_memb_command, parse_dart_etf_memb_query
+            from dart_pipeline import run_dart_analysis, run_dart_etf_memb
+
+            if is_dart_etf_memb_command(normalized):
+                query = parse_dart_etf_memb_query(normalized)
+                replies: list[dict] = [{"text": f"ETF 편입종목 조회 중: {query}…"}]
+                result = run_dart_etf_memb(query)
+                replies.extend(result["telegram_messages"])
+                return replies
+
             from dart_data import parse_dart_query
-            from dart_pipeline import run_dart_analysis
 
             query = parse_dart_query(normalized)
-            replies: list[dict] = [{"text": f"DART 재무분석 중: {query}…"}]
+            replies = [{"text": f"DART 재무분석 중: {query}…"}]
             result = run_dart_analysis(query)
             replies.extend(result["telegram_messages"])
             return replies
@@ -610,10 +639,12 @@ def handle_telegram_message(message, chat_id: int):
             return [
                 {
                     "text": (
-                        "Usage: /dart 한국기업명\n"
-                        "Example: /dart 삼성전자\n"
-                        "Example: /dart SK하이닉스\n"
-                        "Example: /dart 005930\n\n"
+                        "Usage:\n"
+                        "/dart 한국기업명\n"
+                        "  Example: /dart 삼성전자 | /dart 005930\n"
+                        "/dart etf memb TICKER|NAME\n"
+                        "  Example: /dart etf memb 0167A0\n"
+                        "  Example: /dart etf memb SOL AI반도체TOP2플러스\n\n"
                         f"{exc}"
                     )
                 }
@@ -810,7 +841,54 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Error analyzing cryptocurrency: {str(exc)}"}]
 
-    if lower.startswith(("/etf", "/sp", "/nas")):
+    if lower.startswith(("/etf_pre", "/sp_pre", "/nas_pre")):
+        try:
+            from premarket_rankings import (
+                format_premarket_telegram,
+                build_premarket_rankings,
+                parse_premarket_command,
+            )
+
+            universe = parse_premarket_command(normalized)
+            label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+            replies: list[dict] = [
+                {
+                    "text": (
+                        f"Fetching {label} pre-market quotes via Finnhub… "
+                        "(may take 1–3 min for full universes)"
+                    )
+                }
+            ]
+            result = build_premarket_rankings(universe)
+            replies.append({"text": format_premarket_telegram(result), "parse_mode": "HTML"})
+            tickers = [row["ticker"] for row in (result["gainers"] + result["losers"])]
+            if tickers:
+                _last_ranking_by_chat[chat_id] = {
+                    "tickers": tickers,
+                    "label": f"{result['label']} pre-market",
+                    "universe": universe,
+                }
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /etf_pre | /sp_pre | /nas_pre\n"
+                        "Returns live/pre-market % vs previous close (Finnhub).\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"Pre-market ranking failed: {exc}"}]
+
+    if lower.startswith(("/etf", "/sp", "/nas")) and not lower.startswith(
+        ("/etf_pre", "/sp_pre", "/nas_pre", "/etfcheck")
+    ):
+        # Avoid matching /etf_pre etc.; require command token exactly /etf|/sp|/nas
+        first = lower.split()[0]
+        if first not in {"/etf", "/sp", "/nas"}:
+            return [{"text": HELP_TEXT}]
         try:
             universe, mode = parse_rank_command(normalized)
             if not is_cache_ready(universe):

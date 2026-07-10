@@ -17,7 +17,7 @@ import yfinance as yf
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 ETF_MASTER_PATH = PROJECT_DIR / "colab" / "ETF_Master.xlsx"
-CACHE_VERSION = 5
+CACHE_VERSION = 7
 
 DAILY_RETURN_COL = "Daily Return"
 VOL_RATIO_COL = "Vol Ratio"
@@ -275,7 +275,7 @@ def _chunk_all_metrics(tickers: list[str]) -> dict[str, dict[str, float]]:
         try:
             data = yf.download(
                 download_arg,
-                period="1y",
+                period="2mo",
                 group_by="ticker",
                 auto_adjust=True,
                 progress=False,
@@ -300,12 +300,65 @@ def _chunk_all_metrics(tickers: list[str]) -> dict[str, dict[str, float]]:
     return results
 
 
+def _metrics_from_yahoo_chart_ticker(ticker: str) -> dict[str, float] | None:
+    from yahoo_market import fetch_daily_candles
+
+    frame = fetch_daily_candles(ticker)
+    if frame.empty or len(frame) < 2:
+        return None
+    metrics = _metrics_from_series(frame["close"], frame.get("volume"))
+    return metrics or None
+
+
+def build_metrics_table_yahoo_chart(
+    tickers: list[str],
+    *,
+    on_progress: Callable[[int, int, int], None] | None = None,
+    max_workers: int = 10,
+) -> tuple[pd.DataFrame, int, int]:
+    """Build ranking metrics via Yahoo chart API (preferred for /sp /nas)."""
+    from yahoo_market import map_tickers
+
+    scanned = len(tickers)
+
+    def worker(ticker: str) -> dict[str, float] | None:
+        from heavy_work import heavy_work_yield_point
+
+        heavy_work_yield_point("yahoo-chart-cache")
+        return _metrics_from_yahoo_chart_ticker(ticker)
+
+    def progress(done: int, total: int) -> None:
+        if on_progress:
+            on_progress(done, total, done)
+
+    mapped = map_tickers(tickers, worker, max_workers=max_workers, on_progress=progress)
+    rows = [{"Ticker": ticker, **values} for ticker, values in sorted(mapped.items()) if values]
+    df = pd.DataFrame(rows)
+    skipped = scanned - len(df)
+    return df, scanned, skipped
+
+
 def build_metrics_table(
     tickers: list[str],
     chunk_size: int = 25,
     pause_seconds: float = 0.35,
     on_progress: Callable[[int, int, int], None] | None = None,
+    *,
+    provider: str = "auto",
 ) -> tuple[pd.DataFrame, int, int]:
+    """
+    provider:
+      - auto / yahoo_chart: parallel Yahoo chart API (fast; used for /sp /nas)
+      - yfinance: batched yfinance.download fallback
+    """
+    use_yahoo_chart = provider in {"auto", "yahoo_chart"}
+
+    if use_yahoo_chart:
+        try:
+            return build_metrics_table_yahoo_chart(tickers, on_progress=on_progress)
+        except Exception as exc:
+            print(f"Yahoo chart metrics failed ({exc}); falling back to yfinance")
+
     scanned = len(tickers)
     ticker_values: dict[str, dict[str, float]] = {}
     total_chunks = (len(tickers) + chunk_size - 1) // chunk_size if tickers else 0
@@ -424,15 +477,20 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
             print(f"Preloading {label} rankings...")
             tickers = _load_universe_tickers(universe)
             chunk_size = UNIVERSES[universe]["chunk_size"]
+            # /sp /nas: Yahoo chart API (parallel HTTP). Finnhub candles are 403 on free tier.
+            # /etf: keep yfinance batch download (large master list).
+            provider = "yahoo_chart" if universe in {"sp", "nas"} else "yfinance"
+            print(f"{label}: data provider = {provider}")
 
             def progress(done: int, total: int, active: int) -> None:
-                print(f"  {label}: chunk {done}/{total} | active tickers: {active}")
+                print(f"  {label}: {done}/{total} | active tickers: {active}")
 
             try:
                 df, scanned, skipped = build_metrics_table(
                     tickers,
                     chunk_size=chunk_size,
                     on_progress=progress,
+                    provider=provider,
                 )
             except Exception as exc:
                 from heavy_work import HeavyWorkYield
