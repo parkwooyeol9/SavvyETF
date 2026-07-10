@@ -14,12 +14,14 @@ from dotenv import load_dotenv
 from etf_compare import parse_comp_tickers
 from news_crawler import format_news_messages
 from stock_crawler import (
+    ensure_universe_caches,
     format_rankings_message,
     get_ranking_tickers,
     get_top_leader_ticker,
     is_cache_ready,
     is_cache_warmup_running,
     parse_rank_command,
+    start_cache_watchdog,
     start_universe_cache_warmup,
     warmup_all_caches,
     warmup_deferred_caches,
@@ -561,10 +563,23 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/summary"):
         try:
-            from summary_builder import caches_ready, generate_and_save_summary
+            from summary_builder import SUMMARY_UNIVERSES, caches_ready, generate_and_save_summary
 
             if not caches_ready():
-                return [{"text": "Summary is not ready yet. Ranking caches are still loading."}]
+                missing = ensure_universe_caches(SUMMARY_UNIVERSES)
+                if missing:
+                    labels = ", ".join(
+                        {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}.get(u, u)
+                        for u in missing
+                    )
+                    return [
+                        {
+                            "text": (
+                                f"Summary caches are loading ({labels}). "
+                                "First run may take 2–5 minutes — try /summary again shortly."
+                            )
+                        }
+                    ]
             summary = generate_and_save_summary(public_url=summary_public_url())
             return summary["telegram_messages"]
         except Exception as exc:
@@ -1053,9 +1068,11 @@ if __name__ == "__main__":
             name="deferred-cache-warmup",
             daemon=True,
         ).start()
+        start_cache_watchdog()
     else:
         warmup_startup_caches()
         warmup_deferred_caches()
+        start_cache_watchdog()
     start_summary_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,

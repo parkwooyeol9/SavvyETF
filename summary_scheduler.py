@@ -100,11 +100,18 @@ def run_scheduled_summary(
         )
         return False
 
-    from summary_builder import caches_ready, generate_and_save_summary
+    from summary_builder import SUMMARY_UNIVERSES, caches_ready, generate_and_save_summary
 
     try:
         if not caches_ready():
-            print(f"Scheduled summary skipped ({trigger}): caches not ready.")
+            from stock_crawler import ensure_universe_caches, is_cache_ready
+
+            missing = [universe for universe in SUMMARY_UNIVERSES if not is_cache_ready(universe)]
+            if missing:
+                ensure_universe_caches(missing)
+                print(f"Scheduled summary waiting ({trigger}): warming {missing}")
+            else:
+                print(f"Scheduled summary skipped ({trigger}): caches not ready.")
             return False
 
         refresh_cache_fn()

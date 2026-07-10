@@ -38,6 +38,7 @@ RANK_MODES = {
 VOL_LOOKBACK_DAYS = 21
 
 CACHE_TTL_SECONDS = 3600
+DEFAULT_STALE_MAX_AGE_SECONDS = 7 * 24 * 3600
 DEFAULT_TOP_N = 3
 DEFAULT_BOTTOM_N = 3
 WIKI_USER_AGENT = "SavvyETF/1.0 (telegram-bot)"
@@ -72,6 +73,7 @@ _states: dict[str, dict] = {
 }
 _warmup_lock = threading.Lock()
 _warmup_running: set[str] = set()
+_refresh_scheduled: set[str] = set()
 
 for _logger_name in ("yfinance", "peewee"):
     logging.getLogger(_logger_name).setLevel(logging.ERROR)
@@ -145,11 +147,62 @@ def _load_universe_tickers(universe: str) -> list[str]:
     raise ValueError(f"Unknown universe: {universe}")
 
 
+def _stale_max_age_seconds() -> int:
+    raw = os.environ.get("CACHE_STALE_MAX_AGE_SECONDS", str(DEFAULT_STALE_MAX_AGE_SECONDS)).strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_STALE_MAX_AGE_SECONDS
+
+
+def cache_age_seconds(universe: str) -> float | None:
+    if universe not in UNIVERSES:
+        return None
+    loaded_at = float(_states[universe]["meta"].get("loaded_at", 0))
+    if loaded_at <= 0:
+        return None
+    return max(0.0, time.time() - loaded_at)
+
+
+def cache_is_stale(universe: str) -> bool:
+    age = cache_age_seconds(universe)
+    return age is not None and age > CACHE_TTL_SECONDS
+
+
 def is_cache_ready(universe: str = "etf") -> bool:
     state = _states[universe]
     if state["ready"] and state["df"] is not None and not state["df"].empty:
         return True
-    return _load_disk_cache(universe)
+    if _load_disk_cache(universe):
+        return True
+
+    stale_max = _stale_max_age_seconds()
+    if stale_max > 0 and _load_disk_cache(universe, max_age=stale_max):
+        _schedule_cache_refresh(universe)
+        return True
+    return False
+
+
+def _schedule_cache_refresh(universe: str) -> None:
+    if universe not in UNIVERSES:
+        return
+    if universe in _warmup_running or universe in _refresh_scheduled:
+        return
+    if not cache_is_stale(universe):
+        return
+
+    def worker() -> None:
+        try:
+            start_universe_cache_warmup(universe, force=True)
+        finally:
+            _refresh_scheduled.discard(universe)
+
+    _refresh_scheduled.add(universe)
+    threading.Thread(
+        target=worker,
+        name=f"refresh-{universe}",
+        daemon=True,
+    ).start()
 
 
 def is_cache_warmup_running(universe: str) -> bool:
@@ -446,6 +499,55 @@ def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:
     start_universe_cache_warmup("etf", blocking=blocking, force=force)
 
 
+def _warmup_retry_seconds() -> int:
+    raw = os.environ.get("CACHE_WARMUP_RETRY_SECONDS", "120").strip()
+    try:
+        return max(15, int(raw))
+    except ValueError:
+        return 120
+
+
+def _warmup_yield_retries() -> int:
+    raw = os.environ.get("CACHE_WARMUP_YIELD_RETRIES", "30").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 30
+
+
+def _warmup_universe_blocking(universe: str, *, force: bool = False) -> bool:
+    from heavy_work import (
+        HeavyWorkYield,
+        end_heavy_work,
+        heavy_work_owner,
+        try_begin_heavy_work,
+    )
+
+    label = UNIVERSES[universe]["label"]
+    lock_label = f"cache-warmup-{universe}"
+
+    for attempt in range(1, _warmup_yield_retries() + 1):
+        while not try_begin_heavy_work(lock_label):
+            time.sleep(15)
+
+        try:
+            print(f"Cache warmup started for {label} (attempt {attempt})")
+            warmup_cache(universe, force=force)
+            if is_cache_ready(universe):
+                print(f"Cache warmup finished for {label}")
+                return True
+            print(f"Cache warmup finished for {label} but cache is still not ready")
+            return False
+        except HeavyWorkYield:
+            print(f"Cache warmup paused for {label} (attempt {attempt}); retrying soon")
+            time.sleep(min(30, _warmup_retry_seconds()))
+        finally:
+            if heavy_work_owner() == lock_label:
+                end_heavy_work(lock_label)
+
+    return is_cache_ready(universe)
+
+
 def start_universe_cache_warmup(
     universe: str,
     *,
@@ -454,31 +556,13 @@ def start_universe_cache_warmup(
 ) -> None:
     if universe not in UNIVERSES:
         raise ValueError(f"Unknown universe: {universe}")
-    if is_cache_ready(universe) or is_cache_warmup_running(universe):
+    if is_cache_warmup_running(universe):
+        return
+    if is_cache_ready(universe) and not force and not cache_is_stale(universe):
         return
 
     def worker() -> None:
-        from heavy_work import (
-            HeavyWorkYield,
-            end_heavy_work,
-            heavy_work_owner,
-            try_begin_heavy_work,
-        )
-
-        label = UNIVERSES[universe]["label"]
-        lock_label = f"cache-warmup-{universe}"
-        while not try_begin_heavy_work(lock_label):
-            time.sleep(15)
-
-        try:
-            print(f"Background cache warmup started for {label}")
-            warmup_cache(universe, force=force)
-            print(f"Background cache warmup finished for {label}")
-        except HeavyWorkYield:
-            print(f"Background cache warmup paused for {label}")
-        finally:
-            if heavy_work_owner() == lock_label:
-                end_heavy_work(lock_label)
+        _warmup_universe_blocking(universe, force=force)
 
     if blocking:
         worker()
@@ -491,6 +575,19 @@ def start_universe_cache_warmup(
     ).start()
 
 
+def ensure_universe_caches(universes: list[str] | tuple[str, ...], *, force: bool = False) -> list[str]:
+    """Start warmup for universes that are not ready; return those still missing."""
+    missing: list[str] = []
+    for universe in universes:
+        if universe not in UNIVERSES:
+            continue
+        if is_cache_ready(universe) and not force and not cache_is_stale(universe):
+            continue
+        missing.append(universe)
+        start_universe_cache_warmup(universe, force=force)
+    return missing
+
+
 def warmup_deferred_caches(force: bool = False) -> None:
     from heavy_work import wait_for_startup_grace
 
@@ -500,9 +597,56 @@ def warmup_deferred_caches(force: bool = False) -> None:
         return
 
     wait_for_startup_grace("deferred-cache-warmup")
-    for universe in universes:
-        if universe in UNIVERSES and not is_cache_ready(universe):
-            start_universe_cache_warmup(universe, blocking=True, force=force)
+    retry_seconds = _warmup_retry_seconds()
+
+    while True:
+        pending = [universe for universe in universes if universe in UNIVERSES and not is_cache_ready(universe)]
+        if not pending:
+            print("Deferred cache warmup complete.")
+            break
+
+        for universe in pending:
+            print(f"Deferred cache warmup: {universe}")
+            _warmup_universe_blocking(universe, force=force)
+
+        still_pending = [universe for universe in universes if universe in UNIVERSES and not is_cache_ready(universe)]
+        if not still_pending:
+            print("Deferred cache warmup complete.")
+            break
+
+        print(f"Deferred cache warmup retry in {retry_seconds}s for {still_pending}")
+        time.sleep(retry_seconds)
+
+
+def start_cache_watchdog(universes: list[str] | tuple[str, ...] | None = None) -> None:
+    raw = os.environ.get("CACHE_WATCHDOG_SECONDS", "600").strip()
+    try:
+        interval = max(60, int(raw))
+    except ValueError:
+        interval = 600
+
+    if os.environ.get("CACHE_WATCHDOG_ENABLED", "true").lower() in {"0", "false", "no"}:
+        print("Cache watchdog disabled.")
+        return
+
+    watch = list(universes or ("etf", "sp"))
+
+    def loop() -> None:
+        while True:
+            time.sleep(interval)
+            missing = [universe for universe in watch if universe in UNIVERSES and not is_cache_ready(universe)]
+            if missing:
+                print(f"Cache watchdog: warming missing universes {missing}")
+                ensure_universe_caches(missing)
+                continue
+
+            stale = [universe for universe in watch if universe in UNIVERSES and cache_is_stale(universe)]
+            if stale:
+                print(f"Cache watchdog: refreshing stale universes {stale}")
+                ensure_universe_caches(stale, force=True)
+
+    threading.Thread(target=loop, name="cache-watchdog", daemon=True).start()
+    print(f"Cache watchdog active every {interval}s for {watch}")
 
 
 def _format_price(value: float) -> str:
