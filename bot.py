@@ -31,6 +31,7 @@ from scheduler_grace import mark_service_started
 PROJECT_DIR = Path(__file__).resolve().parent
 ENV_FILE = PROJECT_DIR / ".env"
 KNOWN_CHATS_FILE = PROJECT_DIR / "data" / "known_chats.json"
+BLOCKED_CHATS_FILE = PROJECT_DIR / "data" / "blocked_chats.json"
 load_dotenv(ENV_FILE)
 
 STARTUP_TEXT = """SavvyETF Bot is online.
@@ -75,7 +76,7 @@ What each command returns:
 
 /etfcheck
 → ETF CHECK (etfcheck.co.kr) 일간 거래대금·순유입 랭킹 캡처
-  Auto turnover capture after KRX close (~15:40 KST)
+  Auto turnover once daily at 15:45 KST (weekdays)
 
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 /macro auto: daily 17:00 KST
@@ -155,8 +156,8 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
 
 /etfcheck
-  Capture ETF CHECK rankings: turnover + inflow as separate browser sessions
-  (30s gap by default). Auto: turnover only at 15:45 KST on weekdays.
+  Capture ETF CHECK rankings: turnover + inflow (manual).
+  Auto: turnover only once at 15:45 KST on weekdays.
   Example: /etfcheck
 
   Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
@@ -186,6 +187,52 @@ def load_known_chats() -> set[int]:
         return set()
 
 
+def load_blocked_chats() -> set[int]:
+    if not BLOCKED_CHATS_FILE.exists():
+        return set()
+    try:
+        with BLOCKED_CHATS_FILE.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+        return {int(chat_id) for chat_id in data}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return set()
+
+
+def save_blocked_chats(chat_ids: set[int]) -> None:
+    BLOCKED_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with BLOCKED_CHATS_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(sorted(chat_ids), handle)
+
+
+def block_chat(chat_id: int, reason: str) -> None:
+    blocked = load_blocked_chats()
+    if chat_id in blocked:
+        return
+    blocked.add(chat_id)
+    save_blocked_chats(blocked)
+    remove_known_chat(chat_id)
+    print(f"Chat {chat_id} removed from delivery list: {reason}")
+
+
+def unblock_chat(chat_id: int) -> None:
+    blocked = load_blocked_chats()
+    if chat_id not in blocked:
+        return
+    blocked.remove(chat_id)
+    save_blocked_chats(blocked)
+    print(f"Chat {chat_id} unblocked for delivery")
+
+
+def remove_known_chat(chat_id: int) -> None:
+    chats = load_known_chats()
+    if chat_id not in chats:
+        return
+    chats.remove(chat_id)
+    KNOWN_CHATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with KNOWN_CHATS_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(sorted(chats), handle)
+
+
 def save_known_chat(chat_id: int) -> None:
     chats = load_known_chats()
     if chat_id in chats:
@@ -202,10 +249,38 @@ def startup_chat_ids() -> set[int]:
         raw_id = raw_id.strip()
         if raw_id:
             chats.add(int(raw_id))
-    return chats
+    return chats - load_blocked_chats()
 
 
-def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None) -> None:
+def _telegram_error_description(response: requests.Response) -> str:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            return str(payload.get("description", ""))
+    except ValueError:
+        pass
+    return response.text
+
+
+def _is_unreachable_chat_error(response: requests.Response) -> bool:
+    if response.status_code == 403:
+        return True
+    if response.status_code == 400:
+        description = _telegram_error_description(response).lower()
+        return any(
+            phrase in description
+            for phrase in (
+                "chat not found",
+                "peer_id_invalid",
+                "group chat was upgraded",
+                "bot was kicked",
+                "user is deactivated",
+            )
+        )
+    return False
+
+
+def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None) -> bool:
     payload: dict = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
@@ -214,9 +289,17 @@ def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None
         json=payload,
         timeout=60,
     )
-    if not response.ok:
-        print(f"sendMessage failed for chat {chat_id}: {response.text}")
-        response.raise_for_status()
+    if response.ok:
+        return True
+
+    description = _telegram_error_description(response)
+    if _is_unreachable_chat_error(response):
+        block_chat(chat_id, description)
+        return False
+
+    print(f"sendMessage failed for chat {chat_id}: {response.text}")
+    response.raise_for_status()
+    return False
 
 
 def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None:
@@ -335,6 +418,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
 
     new_status = member_update.get("new_chat_member", {}).get("status")
     if new_status in {"administrator", "member"}:
+        unblock_chat(chat_id)
         save_known_chat(chat_id)
         chat_type = chat.get("type", "unknown")
         print(f"Bot added to {chat_type} {chat_id}")
@@ -345,6 +429,8 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 "SavvyETF Bot is ready in this channel.\n"
                 "Commands: /etf /sp /nas /heatmap /macro /comp /etfcheck /news /aibriefing /summary /help",
             )
+    elif new_status in {"left", "kicked"}:
+        block_chat(chat_id, f"bot status is {new_status}")
 
 
 def process_telegram_update(token: str, update: dict) -> None:
@@ -379,15 +465,12 @@ def process_telegram_update(token: str, update: dict) -> None:
 def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
     if chat_id in _greeted_this_session:
         return False
-    try:
-        send_text(token, chat_id, STARTUP_TEXT)
-        _greeted_this_session.add(chat_id)
-        save_known_chat(chat_id)
-        print(f"Startup guide sent to chat {chat_id}")
-        return True
-    except requests.RequestException as exc:
-        print(f"Failed to send startup guide to {chat_id}: {exc}")
+    if not send_text(token, chat_id, STARTUP_TEXT):
         return False
+    _greeted_this_session.add(chat_id)
+    save_known_chat(chat_id)
+    print(f"Startup guide sent to chat {chat_id}")
+    return True
 
 
 def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) -> bool:
@@ -413,16 +496,17 @@ def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
 def handle_etfcheck_command(token: str, chat_id: int) -> None:
     from etfcheck_pipeline import iter_etfcheck_capture_messages
     from etfcheck_subprocess import (
+        begin_etfcheck_capture_blocking,
         cleanup_capture_file,
         end_etfcheck_capture,
-        try_begin_etfcheck_capture,
     )
 
-    if not try_begin_etfcheck_capture():
+    if not begin_etfcheck_capture_blocking():
         send_text(
             token,
             chat_id,
-            "ETF CHECK capture is already running. Please wait for it to finish.",
+            "Another heavy task is still running (Yahoo cache preload or scheduled job). "
+            "Please wait a minute and try /etfcheck again.",
         )
         return
 
@@ -688,6 +772,30 @@ def handle_telegram_message(message, chat_id: int):
     return [{"text": HELP_TEXT}]
 
 
+def _handle_telegram_send_response(
+    response: requests.Response,
+    chat_id: int,
+    *,
+    method: str,
+    fallback_text: str = "",
+    token: str = "",
+    parse_mode: str | None = None,
+) -> bool:
+    if response.ok:
+        return True
+
+    description = _telegram_error_description(response)
+    if _is_unreachable_chat_error(response):
+        block_chat(chat_id, description)
+        return False
+
+    print(f"{method} failed for chat {chat_id}: {response.text}")
+    if fallback_text and token:
+        send_text(token, chat_id, fallback_text, parse_mode=parse_mode)
+    response.raise_for_status()
+    return False
+
+
 def send_reply(token, chat_id, reply):
     photo = reply.get("photo")
     photo_path = reply.get("photo_path")
@@ -725,11 +833,14 @@ def send_reply(token, chat_id, reply):
                 files={"photo": ("etfcheck.jpg", handle, "image/jpeg")},
                 timeout=60,
             )
-        if not response.ok:
-            print(f"sendPhoto failed for chat {chat_id}: {response.text}")
-            if text:
-                send_text(token, chat_id, text, parse_mode=parse_mode)
-            response.raise_for_status()
+        _handle_telegram_send_response(
+            response,
+            chat_id,
+            method="sendPhoto",
+            fallback_text=text,
+            token=token,
+            parse_mode=parse_mode,
+        )
         return
 
     if photo is not None:
@@ -745,11 +856,14 @@ def send_reply(token, chat_id, reply):
             files={"photo": ("chart.png", photo, "image/png")},
             timeout=60,
         )
-        if not response.ok:
-            print(f"sendPhoto failed for chat {chat_id}: {response.text}")
-            if text:
-                send_text(token, chat_id, text, parse_mode=parse_mode)
-            response.raise_for_status()
+        _handle_telegram_send_response(
+            response,
+            chat_id,
+            method="sendPhoto",
+            fallback_text=text,
+            token=token,
+            parse_mode=parse_mode,
+        )
         return
 
     if document_path is not None:
@@ -765,11 +879,13 @@ def send_reply(token, chat_id, reply):
                     files={"document": (path.name, handle)},
                     timeout=120,
                 )
-            if not response.ok:
-                print(f"sendDocument failed for chat {chat_id}: {response.text}")
-                if text:
-                    send_text(token, chat_id, text, parse_mode=parse_mode)
-                response.raise_for_status()
+            _handle_telegram_send_response(
+                response,
+                chat_id,
+                method="sendDocument",
+                fallback_text=text,
+                token=token,
+            )
         except Exception as exc:
             send_text(token, chat_id, f"{text}\nDocument error: {exc}".strip())
         return
@@ -831,6 +947,12 @@ def get_bot_token() -> str:
     return token
 
 
+def _skip_startup_etfcheck(command_text: str) -> bool:
+    if os.environ.get("BOT_SKIP_STARTUP_ETFCHECK", "true").lower() in {"0", "false", "no"}:
+        return False
+    return command_text.strip().lower().startswith("/etfcheck")
+
+
 def start_telegram_bot(token: str):
     global _bot_username
     _bot_username = fetch_bot_username(token)
@@ -842,6 +964,12 @@ def start_telegram_bot(token: str):
     broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
 
     for update in pending_updates:
+        message = extract_incoming_message(update)
+        if message:
+            command_text = normalize_command_text(message.get("text", ""))
+            if _skip_startup_etfcheck(command_text):
+                print("Skipping queued /etfcheck from startup backlog (manual only after bot is online).")
+                continue
         process_telegram_update(token, update)
 
     while True:

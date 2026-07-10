@@ -253,6 +253,9 @@ def build_metrics_table(
     total_chunks = (len(tickers) + chunk_size - 1) // chunk_size if tickers else 0
 
     for index, start in enumerate(range(0, len(tickers), chunk_size), start=1):
+        from heavy_work import heavy_work_yield_point
+
+        heavy_work_yield_point("yfinance-cache")
         chunk = tickers[start : start + chunk_size]
         ticker_values.update(_chunk_all_metrics(chunk))
         if on_progress:
@@ -352,30 +355,41 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
             return
         _warmup_running.add(universe)
 
-    label = UNIVERSES[universe]["label"]
-    try:
-        if not force and _load_disk_cache(universe):
-            age_min = int((time.time() - _states[universe]["meta"]["loaded_at"]) // 60)
-            count = len(_states[universe]["df"])
-            print(f"{label} cache loaded from disk ({count} tickers, {age_min}m old).")
-            return
+        label = UNIVERSES[universe]["label"]
+        try:
+            if not force and _load_disk_cache(universe):
+                age_min = int((time.time() - _states[universe]["meta"]["loaded_at"]) // 60)
+                count = len(_states[universe]["df"])
+                print(f"{label} cache loaded from disk ({count} tickers, {age_min}m old).")
+                return
 
-        print(f"Preloading {label} rankings...")
-        tickers = _load_universe_tickers(universe)
-        chunk_size = UNIVERSES[universe]["chunk_size"]
+            print(f"Preloading {label} rankings...")
+            tickers = _load_universe_tickers(universe)
+            chunk_size = UNIVERSES[universe]["chunk_size"]
 
-        def progress(done: int, total: int, active: int) -> None:
-            print(f"  {label}: chunk {done}/{total} | active tickers: {active}")
+            def progress(done: int, total: int, active: int) -> None:
+                print(f"  {label}: chunk {done}/{total} | active tickers: {active}")
 
-        df, scanned, skipped = build_metrics_table(
-            tickers,
-            chunk_size=chunk_size,
-            on_progress=progress,
-        )
-        _set_memory_cache(universe, df, scanned, skipped)
-        print(f"{label} preload complete: {len(df)} active / {scanned} scanned / {skipped} skipped.")
-    finally:
-        _warmup_running.discard(universe)
+            try:
+                df, scanned, skipped = build_metrics_table(
+                    tickers,
+                    chunk_size=chunk_size,
+                    on_progress=progress,
+                )
+            except Exception as exc:
+                from heavy_work import HeavyWorkYield
+
+                if isinstance(exc, HeavyWorkYield):
+                    print(f"{label} preload paused to free RAM for higher-priority work.")
+                    raise
+                raise
+
+            _set_memory_cache(universe, df, scanned, skipped)
+            print(
+                f"{label} preload complete: {len(df)} active / {scanned} scanned / {skipped} skipped."
+            )
+        finally:
+            _warmup_running.discard(universe)
 
 
 def warmup_etf_cache(force: bool = False) -> None:
@@ -388,14 +402,40 @@ def warmup_all_caches(force: bool = False) -> None:
 
 
 def warmup_startup_caches(force: bool = False) -> None:
+    from heavy_work import (
+        begin_heavy_work_blocking,
+        end_heavy_work,
+        wait_for_startup_grace,
+    )
+
     raw = os.environ.get("BOT_STARTUP_CACHE_UNIVERSES", "etf").strip()
     universes = [part.strip() for part in raw.split(",") if part.strip()]
     if not universes:
         print("Startup cache warmup skipped (BOT_STARTUP_CACHE_UNIVERSES empty).")
         return
-    for universe in universes:
-        if universe in UNIVERSES:
-            warmup_cache(universe, force=force)
+
+    wait_for_startup_grace("startup-cache-warmup")
+    if not begin_heavy_work_blocking("startup-cache-warmup"):
+        print("Startup cache warmup skipped: another heavy task is running.")
+        return
+
+    try:
+        for universe in universes:
+            if universe in UNIVERSES:
+                try:
+                    warmup_cache(universe, force=force)
+                except Exception as exc:
+                    from heavy_work import HeavyWorkYield
+
+                    if isinstance(exc, HeavyWorkYield):
+                        print("Startup cache warmup paused for higher-priority work.")
+                        break
+                    raise
+    finally:
+        from heavy_work import end_heavy_work, heavy_work_owner
+
+        if heavy_work_owner() == "startup-cache-warmup":
+            end_heavy_work("startup-cache-warmup")
 
 
 def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:

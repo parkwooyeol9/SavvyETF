@@ -34,7 +34,12 @@ def _poll_seconds() -> int:
 
 
 def run_scheduled_macro(token: str, broadcast_fn, force: bool = True) -> bool:
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work
     from macro_pipeline import run_macro_dashboard
+
+    if not begin_heavy_work_blocking("scheduled-macro"):
+        print("Scheduled macro skipped: another heavy task is running.")
+        return False
 
     try:
         result = run_macro_dashboard(force=force)
@@ -48,6 +53,8 @@ def run_scheduled_macro(token: str, broadcast_fn, force: bool = True) -> bool:
     except Exception as exc:
         print(f"Scheduled macro dashboard failed: {exc}")
         return False
+    finally:
+        end_heavy_work("scheduled-macro")
 
 
 def start_macro_scheduler(token: str, broadcast_fn) -> None:

@@ -7,6 +7,7 @@ venv/
 .ipynb_checkpoints/
 data/*.pkl
 data/known_chats.json
+data/blocked_chats.json
 data/summary.html
 data/summary_meta.json
 data/adr_output/

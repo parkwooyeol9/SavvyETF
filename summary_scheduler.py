@@ -72,13 +72,18 @@ def run_scheduled_summary(
     public_url: str = "",
     trigger: str = "scheduled",
 ) -> bool:
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work
     from summary_builder import KST, caches_ready, generate_and_save_summary
 
-    if not caches_ready():
-        print(f"Scheduled summary skipped ({trigger}): caches not ready.")
+    if not begin_heavy_work_blocking("scheduled-summary"):
+        print(f"Scheduled summary skipped ({trigger}): another heavy task is running.")
         return False
 
     try:
+        if not caches_ready():
+            print(f"Scheduled summary skipped ({trigger}): caches not ready.")
+            return False
+
         refresh_cache_fn()
         summary = generate_and_save_summary(public_url=public_url)
         messages = summary["telegram_messages"]
@@ -88,6 +93,8 @@ def run_scheduled_summary(
     except Exception as exc:
         print(f"Scheduled summary failed ({trigger}): {exc}")
         return False
+    finally:
+        end_heavy_work("scheduled-summary")
 
 
 def _maybe_run_post_close_summary(

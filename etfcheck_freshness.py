@@ -54,7 +54,7 @@ def scheduled_capture_datetime(session_date: date) -> datetime:
 
 
 def capture_window_minutes() -> int:
-    raw = os.environ.get("ETFCHECK_CAPTURE_WINDOW_MINUTES", "10").strip()
+    raw = os.environ.get("ETFCHECK_CAPTURE_WINDOW_MINUTES", "5").strip()
     try:
         return max(1, int(raw))
     except ValueError:

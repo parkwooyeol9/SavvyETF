@@ -6,25 +6,29 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
 from pathlib import Path
 
+from heavy_work import (
+    begin_heavy_work_blocking,
+    clear_heavy_work_yield,
+    end_heavy_work,
+    request_heavy_work_yield,
+    try_begin_heavy_work,
+)
 from memory_debug import log_memory
 
 PROJECT_DIR = Path(__file__).resolve().parent
 WORKER_SCRIPT = PROJECT_DIR / "etfcheck_worker.py"
-_capture_lock = threading.Lock()
 
 
 def try_begin_etfcheck_capture() -> bool:
-    return _capture_lock.acquire(blocking=False)
+    request_heavy_work_yield()
+    return try_begin_heavy_work("etfcheck-capture")
 
 
 def end_etfcheck_capture() -> None:
-    try:
-        _capture_lock.release()
-    except RuntimeError:
-        pass
+    clear_heavy_work_yield()
+    end_heavy_work("etfcheck-capture")
 
 
 def run_capture_in_subprocess(mode: str) -> Path:
@@ -32,7 +36,6 @@ def run_capture_in_subprocess(mode: str) -> Path:
     Spawn a fresh Python process for one screenshot capture.
 
     When the child exits, Chromium + Playwright driver RAM is returned to the OS.
-    This prevents /etfcheck repeats from accumulating leaked browser memory in the bot.
     """
     if mode not in {"volume", "inflow"}:
         raise ValueError(f"unsupported capture mode: {mode}")
@@ -78,3 +81,8 @@ def cleanup_capture_file(path: Path | None) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def begin_etfcheck_capture_blocking() -> bool:
+    request_heavy_work_yield()
+    return begin_heavy_work_blocking("etfcheck-capture")

@@ -31,12 +31,22 @@ def _poll_seconds() -> int:
         return DEFAULT_POLL_SECONDS
 
 
-def run_scheduled_etfcheck_turnover(token: str, broadcast_fn) -> bool:
-    from etfcheck_pipeline import run_etfcheck_turnover_capture
-    from etfcheck_subprocess import end_etfcheck_capture, try_begin_etfcheck_capture
+def _mark_session_done(state: dict, session_key: str) -> None:
+    state["last_etfcheck_turnover_session"] = session_key
+    _save_state(state)
 
-    if not try_begin_etfcheck_capture():
-        print("Scheduled ETF CHECK turnover skipped: another capture is in progress.")
+
+def run_scheduled_etfcheck_turnover(
+    token: str,
+    broadcast_fn,
+    *,
+    lock_held: bool = False,
+) -> bool:
+    from etfcheck_pipeline import run_etfcheck_turnover_capture
+    from etfcheck_subprocess import begin_etfcheck_capture_blocking, end_etfcheck_capture
+
+    if not lock_held and not begin_etfcheck_capture_blocking():
+        print("Scheduled ETF CHECK turnover skipped: another heavy task is running.")
         return False
 
     try:
@@ -52,12 +62,13 @@ def run_scheduled_etfcheck_turnover(token: str, broadcast_fn) -> bool:
         print(f"Scheduled ETF CHECK turnover failed: {exc}")
         return False
     finally:
-        end_etfcheck_capture()
+        if not lock_held:
+            end_etfcheck_capture()
 
 
 def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
     if os.environ.get("ETFCHECK_SCHEDULE_ENABLED", "true").lower() in {"0", "false", "no"}:
-        print("ETF CHECK scheduler disabled.")
+        print("ETF CHECK scheduler disabled (manual /etfcheck only).")
         return
 
     poll_seconds = _poll_seconds()
@@ -69,8 +80,8 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
         last_session = state.get("last_etfcheck_turnover_session")
 
         print(
-            f"ETF CHECK scheduler active — turnover at {capture_at} "
-            f"(+{window_min}m window, weekdays; no catch-up after window)"
+            f"ETF CHECK scheduler active — once daily at {capture_at} "
+            f"(+{window_min}m window, weekdays only; no retries)"
         )
 
         while True:
@@ -79,6 +90,10 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
                 continue
 
             now = datetime.now(KST)
+            if now.weekday() >= 5:
+                time.sleep(poll_seconds)
+                continue
+
             if not is_after_krx_close(now):
                 time.sleep(poll_seconds)
                 continue
@@ -98,16 +113,25 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
                 if is_capture_window_passed(now, session_date):
                     print(f"ETF CHECK turnover skipped for {session_key}: {detail}")
                     last_session = session_key
-                    state["last_etfcheck_turnover_session"] = session_key
-                    _save_state(state)
+                    _mark_session_done(state, session_key)
                 time.sleep(poll_seconds)
                 continue
 
-            print(f"ETF CHECK turnover: {detail}")
-            if run_scheduled_etfcheck_turnover(token, broadcast_fn):
-                last_session = session_key
-                state["last_etfcheck_turnover_session"] = session_key
-                _save_state(state)
+            # Claim the session only once we have the heavy-work lock (at most one run per day).
+            from etfcheck_subprocess import begin_etfcheck_capture_blocking, end_etfcheck_capture
+
+            if not begin_etfcheck_capture_blocking():
+                print("ETF CHECK turnover waiting: another heavy task is running.")
+                time.sleep(poll_seconds)
+                continue
+
+            print(f"ETF CHECK turnover (once daily): {detail}")
+            last_session = session_key
+            _mark_session_done(state, session_key)
+            try:
+                run_scheduled_etfcheck_turnover(token, broadcast_fn, lock_held=True)
+            finally:
+                end_etfcheck_capture()
 
             time.sleep(poll_seconds)
 

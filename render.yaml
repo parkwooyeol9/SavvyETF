@@ -33,7 +33,7 @@ services:
       - key: ETFCHECK_CAPTURE_GAP_SECONDS
         value: "30"
       - key: ETFCHECK_CAPTURE_WINDOW_MINUTES
-        value: "10"
+        value: "5"
       - key: SCHEDULER_STARTUP_GRACE_SECONDS
         value: "180"
       - key: BOT_DEFER_CACHE_WARMUP
@@ -45,4 +45,8 @@ services:
       - key: ETFCHECK_JPEG_QUALITY
         value: "72"
       - key: MEMORY_DEBUG
+        value: "true"
+      - key: HEAVY_WORK_SERIALIZE
+        value: "true"
+      - key: BOT_SKIP_STARTUP_ETFCHECK
         value: "true"
