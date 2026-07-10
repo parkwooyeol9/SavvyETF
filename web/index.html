@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SavvyETF — Telegram bot for ETF rankings, market briefs, macro dashboard, and ETF CHECK captures." />
+  <title>SavvyETF</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Instrument+Serif&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="mesh" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <nav class="nav container">
+      <a class="logo" href="/">
+        <span class="logo-dot" aria-hidden="true"></span>
+        SavvyETF
+      </a>
+      <div class="nav-links">
+        <a href="#commands">Commands</a>
+        <a href="#schedule">Schedule</a>
+        <a href="#architecture">Architecture</a>
+        <a href="/summary">Latest brief</a>
+        <a href="/summary.pdf">PDF</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero container">
+      <p class="eyebrow">Telegram market intelligence bot</p>
+      <h1>ETF rankings, macro risk, and daily market briefs — on autopilot</h1>
+      <p class="lead">
+        SavvyETF monitors US equity ETFs, S&amp;P 500, and NASDAQ 100 with volume-aware rankings,
+        captures Korean ETF CHECK screens, and publishes a post-close summary with heatmap and AI briefing.
+      </p>
+      <div class="hero-actions">
+        <a class="btn" href="/summary">Open latest market brief</a>
+        <a class="btn btn-ghost" href="/summary.pdf">Download PDF</a>
+        <a class="btn btn-ghost" href="#schedule">Daily schedule</a>
+      </div>
+      <div class="pill-row">
+        <span class="pill">Yahoo Finance</span>
+        <span class="pill">etfcheck.co.kr</span>
+        <span class="pill">Gemini AI</span>
+        <span class="pill">Render 24/7</span>
+        <span class="pill">KST schedules</span>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="commands">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Telegram commands</p>
+          <h2>What the bot can do</h2>
+          <p>Send these in Telegram. Rankings use last trading day return and volume vs. 21-day average.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>What you get</th>
+                <th>Auto?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="cmd">/etf</span> <span class="cmd">/sp</span> <span class="cmd">/nas</span></td>
+                <td>Top 3 price-up + volume surge and top 3 price-down + volume surge. Leader chart for #1 surge.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/summary</span></td>
+                <td>ETF + S&amp;P 500 brief, news, S&amp;P heatmap, AI Korean market briefing. Also saved as web page.</td>
+                <td><span class="tag auto">Auto</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/macro</span></td>
+                <td>Macro risk dashboard — yields, credit, vol metrics, Finnhub/EDGAR pulse, AI comment.</td>
+                <td><span class="tag auto">Auto 17:00</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/etfcheck</span></td>
+                <td>ETF CHECK (etfcheck.co.kr) daily turnover + inflow ranking screenshots.</td>
+                <td><span class="tag auto">Auto 15:45</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/heatmap sp</span></td>
+                <td>Finviz-style treemap — tile size = market cap, color = daily return.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/news</span></td>
+                <td>Headlines for tickers from your last <span class="cmd">/etf</span>, <span class="cmd">/sp</span>, or <span class="cmd">/nas</span>.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/aibriefing</span></td>
+                <td>5–10 trending US market articles → 3–4 line Korean AI brief.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/port</span> <span class="cmd">/coin</span></td>
+                <td>Portfolio backtest or crypto technical analysis charts.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/adr</span> <span class="cmd">/comp</span></td>
+                <td>ADR listing impact analysis or ETF comparison with Excel export.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container" id="schedule">
+      <div class="section-head">
+        <p class="eyebrow">Daily automation</p>
+        <h2>Schedule (KST)</h2>
+        <p>All times are Korea Standard Time. Schedulers wait 3 minutes after boot before running.</p>
+      </div>
+
+      <div class="timeline">
+        <article class="timeline-item card">
+          <div class="time-badge">Boot + 3 min</div>
+          <h3>Cache warmup</h3>
+          <p>ETF rankings load first, then S&amp;P 500 and NASDAQ 100 in the background. A watchdog refreshes stale caches every 10 minutes.</p>
+        </article>
+
+        <article class="timeline-item card">
+          <div class="time-badge">Weekdays 15:45 – 15:50</div>
+          <h3>ETF CHECK auto-capture</h3>
+          <p>KRX close is 15:30. Bot captures etfcheck.co.kr turnover rankings once per weekday. No catch-up if the bot restarts after the window.</p>
+        </article>
+
+        <article class="timeline-item card">
+          <div class="time-badge">Daily 17:00</div>
+          <h3>Macro dashboard</h3>
+          <p>Same as <span class="cmd">/macro</span> — charts and AI macro risk comment broadcast to registered chats.</p>
+        </article>
+
+        <article class="timeline-item card">
+          <div class="time-badge">After US close + ~5 min</div>
+          <h3>Post-close market brief</h3>
+          <p>Waits for SPY daily bar on Yahoo Finance, then sends <span class="cmd">/summary</span>. Roughly 05:05–06:05 KST depending on US daylight saving.</p>
+        </article>
+
+        <article class="timeline-item card">
+          <div class="time-badge">Daily 22:00</div>
+          <h3>Fixed evening brief</h3>
+          <p>Second <span class="cmd">/summary</span> run with refreshed rankings, heatmap, and AI briefing. Saved to <a href="/summary">/summary</a>.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="architecture">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Under the hood</p>
+          <h2>Built for 24/7 on Render Starter (512MB)</h2>
+        </div>
+
+        <div class="grid-3">
+          <article class="card">
+            <h3>Memory safety</h3>
+            <ul>
+              <li>Heavy tasks serialized (ETF CHECK, summary, macro, cache warmup)</li>
+              <li>Playwright runs in short-lived child processes</li>
+              <li>180s startup grace before schedulers fire</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Cache strategy</h3>
+            <ul>
+              <li>ETF warmed at boot; S&amp;P/NAS deferred</li>
+              <li>Stale on-disk cache used if fresh TTL (1h) expired</li>
+              <li>On-demand warmup when you run <span class="cmd">/sp</span> or <span class="cmd">/summary</span></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Telegram delivery</h3>
+            <ul>
+              <li>Broadcasts to <code>TELEGRAM_CHAT_ID</code> + known chats</li>
+              <li>Auto-blocks chats that return 400/403</li>
+              <li>Manual <span class="cmd">/etfcheck</span> runs in background thread</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="grid-2">
+        <article class="card">
+          <h3>Ranking modes</h3>
+          <p><strong>surge</strong> — price up × volume ratio<br />
+             <strong>dropvol</strong> — |price down| × volume ratio<br />
+             Default shows top 3 from each pattern (6 tickers).</p>
+        </article>
+        <article class="card">
+          <h3>Local dev</h3>
+          <p>
+            <span class="cmd">python bot.py</span> serves this page at
+            <span class="cmd">http://localhost:8080</span> and the latest brief at
+            <a href="/summary">/summary</a>.
+          </p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span>SavvyETF · parkwooyeol9/SavvyETF</span>
+      <span><a href="/summary">Latest market brief</a> · <a href="/health">Health</a></span>
+    </div>
+  </footer>
+</body>
+</html>

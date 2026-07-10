@@ -34,6 +34,7 @@ from macro_scheduler import start_macro_scheduler
 from scheduler_grace import mark_service_started
 
 PROJECT_DIR = Path(__file__).resolve().parent
+WEB_DIR = PROJECT_DIR / "web"
 ENV_FILE = PROJECT_DIR / ".env"
 KNOWN_CHATS_FILE = PROJECT_DIR / "data" / "known_chats.json"
 BLOCKED_CHATS_FILE = PROJECT_DIR / "data" / "blocked_chats.json"
@@ -609,6 +610,7 @@ def handle_telegram_message(message, chat_id: int):
             messages = format_news_messages(
                 context["tickers"],
                 context_label=context["label"],
+                universe=context.get("universe"),
             )
             return [{"text": text} for text in messages]
         except Exception as exc:
@@ -791,15 +793,21 @@ def handle_telegram_message(message, chat_id: int):
             _last_ranking_by_chat[chat_id] = {
                 "tickers": tickers,
                 "label": context_label,
+                "universe": universe,
             }
             text = format_rankings_message(universe=universe, mode=mode)
             responses = [{"text": text}]
             leader = get_top_leader_ticker(universe, mode)
             if leader:
                 label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+                leader_label = leader.upper()
+                if universe == "etf":
+                    from etf_names import format_etf_ticker_label
+
+                    leader_label = format_etf_ticker_label(leader)
                 responses.append(
                     {
-                        "text": f"📈 {label} top leader: {leader.upper()}",
+                        "text": f"📈 {label} top leader: {leader_label}",
                         "chart_ticker": leader,
                     }
                 )
@@ -931,16 +939,61 @@ def send_reply(token, chat_id, reply):
     send_text(token, chat_id, text, parse_mode=parse_mode)
 
 
+def _web_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".html": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".ico": "image/x-icon",
+        ".pdf": "application/pdf",
+    }.get(suffix, "application/octet-stream")
+
+
+def _read_web_file(relative_path: str) -> tuple[bytes, str] | None:
+    target = (WEB_DIR / relative_path).resolve()
+    if not str(target).startswith(str(WEB_DIR.resolve())):
+        return None
+    if not target.is_file():
+        return None
+    return target.read_bytes(), _web_content_type(target)
+
+
 def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
 
     class AppHandler(BaseHTTPRequestHandler):
+        def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
             path = urlparse(self.path).path
-            if path in {"/", "/health"}:
-                body = b"ok"
-                content_type = "text/plain; charset=utf-8"
-            elif path == "/summary":
+
+            if path == "/health":
+                self._send(b"ok", "text/plain; charset=utf-8")
+                return
+
+            if path in {"/", "/index.html"}:
+                payload = _read_web_file("index.html")
+                if payload:
+                    self._send(*payload)
+                    return
+
+            if path.startswith("/css/"):
+                payload = _read_web_file(path.lstrip("/"))
+                if payload:
+                    self._send(*payload)
+                    return
+
+            if path == "/summary":
                 from summary_builder import load_summary_html
 
                 body_text = load_summary_html()
@@ -949,19 +1002,22 @@ def start_web_server():
                         "<html><body><p>Summary not generated yet. "
                         "Use /summary in Telegram or wait for the scheduled brief.</p></body></html>"
                     )
-                body = body_text.encode("utf-8")
-                content_type = "text/html; charset=utf-8"
-            else:
-                self.send_response(404)
-                self.end_headers()
-                self.wfile.write(b"not found")
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            if path == "/summary.pdf":
+                from summary_pdf import SUMMARY_PDF_PATH
+
+                if SUMMARY_PDF_PATH.is_file():
+                    self._send(
+                        SUMMARY_PDF_PATH.read_bytes(),
+                        "application/pdf",
+                    )
+                    return
+                self._send(b"PDF not generated yet", "text/plain; charset=utf-8", status=404)
+                return
+
+            self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def log_message(self, format, *args):
             return
@@ -969,7 +1025,7 @@ def start_web_server():
     server = HTTPServer(("0.0.0.0", port), AppHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    print(f"Web server listening on port {port} ( /summary )")
+    print(f"Web server listening on port {port} ( / , /summary , /summary.pdf , /health )")
 
 
 def get_bot_token() -> str:

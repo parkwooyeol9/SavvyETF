@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from news_crawler import fetch_news_for_tickers
+from news_crawler import _display_ticker_label, fetch_news_for_tickers
 from heatmap import plot_market_heatmap
 from ai_briefing import _strip_disclaimer, generate_ai_briefing
 from summary_analyst import collect_leader_charts, generate_chart_notes
@@ -61,12 +61,16 @@ def build_market_summary(news_limit: int = SUMMARY_NEWS_PER_TICKER) -> dict:
     generated_at = datetime.now(KST)
     universes: list[dict] = []
     all_tickers: list[str] = []
+    ticker_universe: dict[str, str] = {}
 
     for universe in SUMMARY_UNIVERSES:
         boards = _summary_boards(universe)
         tickers, _ = get_ranking_tickers(universe=universe, mode="all")
         leader_ticker = get_top_leader_ticker(universe, "surge")
-        all_tickers.extend(t for t in tickers if t not in all_tickers)
+        for ticker in tickers:
+            if ticker not in all_tickers:
+                all_tickers.append(ticker)
+            ticker_universe[ticker] = universe
         universes.append(
             {
                 "key": universe,
@@ -77,19 +81,30 @@ def build_market_summary(news_limit: int = SUMMARY_NEWS_PER_TICKER) -> dict:
             }
         )
 
-    news_by_ticker = fetch_news_for_tickers(all_tickers, limit=news_limit)
+    news_by_ticker: dict[str, list[dict[str, str]]] = {}
+    for universe in SUMMARY_UNIVERSES:
+        universe_tickers = [ticker for ticker in all_tickers if ticker_universe.get(ticker) == universe]
+        if universe_tickers:
+            news_by_ticker.update(
+                fetch_news_for_tickers(universe_tickers, limit=news_limit, universe=universe)
+            )
+
     return {
         "generated_at": generated_at.isoformat(),
         "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
         "universes": universes,
         "news_by_ticker": news_by_ticker,
+        "ticker_universe": ticker_universe,
         "ticker_count": len(all_tickers),
     }
 
 
-def _render_board_html(board: dict, mode: str) -> str:
+def _render_board_html(board: dict, mode: str, *, universe_key: str) -> str:
     top_rows = "".join(
-        f"<tr><td>{html.escape(t)}</td><td class='pos'>{html.escape(v)}</td></tr>"
+        (
+            f"<tr><td>{html.escape(_display_ticker_label(t, universe_key if universe_key == 'etf' else None))}</td>"
+            f"<td class='pos'>{html.escape(v)}</td></tr>"
+        )
         for t, v in board["top"]
     )
     return f"""
@@ -190,7 +205,7 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
         style = UNIVERSE_STYLE.get(ukey, {"emoji": "📊", "label": universe["name"], "color": "#4da3ff"})
         divider = '<hr class="section-divider" />' if index > 0 else ""
         cards = "".join(
-            _render_board_html(universe["boards"][mode], mode)
+            _render_board_html(universe["boards"][mode], mode, universe_key=ukey)
             for mode in ("surge", "dropvol")
         )
 
@@ -206,7 +221,11 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
             )
             if not items:
                 items = "<li class='meta'>No recent headlines</li>"
-            news_html.append(f"<div class='news-block'><h4>{html.escape(ticker)}</h4><ul>{items}</ul></div>")
+            label = _display_ticker_label(
+                ticker,
+                summary.get("ticker_universe", {}).get(ticker),
+            )
+            news_html.append(f"<div class='news-block'><h4>{html.escape(label)}</h4><ul>{items}</ul></div>")
 
         sections_html.append(
             f"""
@@ -354,11 +373,12 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
 </html>"""
 
 
-def _format_ranking_block_telegram(title: str, top: list) -> list[str]:
+def _format_ranking_block_telegram(title: str, top: list, *, universe_key: str) -> list[str]:
     lines = [f"<b>{_esc(title)}</b>", ""]
     lines.append(f"<b>▲ Top {DEFAULT_TOP_N}</b>")
     for ticker, value in top:
-        lines.append(f"  • <code>{_esc(ticker)}</code>  {_esc(value)}")
+        label = _esc(_display_ticker_label(ticker, universe_key if universe_key == "etf" else None))
+        lines.append(f"  • <code>{label}</code>  {_esc(value)}")
     lines.append("")
     return lines
 
@@ -372,7 +392,7 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     for mode in ("surge", "dropvol"):
         board = universe["boards"][mode]
         ranking_lines.extend(
-            _format_ranking_block_telegram(BOARD_TITLES[mode], board["top"])
+            _format_ranking_block_telegram(BOARD_TITLES[mode], board["top"], universe_key=ukey)
         )
     messages = [{"text": "\n".join(ranking_lines).rstrip(), "parse_mode": "HTML"}]
 
@@ -381,7 +401,10 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     leader_pack = leaders.get(ukey) or {}
     chart_notes = (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
     if leader:
-        caption_lines = [f"📈 Top leader: {leader} (price up + volume surge)"]
+        leader_label = leader
+        if ukey == "etf":
+            leader_label = _display_ticker_label(leader, "etf")
+        caption_lines = [f"📈 Top leader: {leader_label} (price up + volume surge)"]
         note = chart_notes.get(ukey, "").strip()
         if note:
             caption_lines.extend(["", note])
@@ -404,7 +427,13 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
         if not headlines:
             continue
         has_news = True
-        block = [f"<b>{_esc(ticker)}</b>"]
+        label = _esc(
+            _display_ticker_label(
+                ticker,
+                summary.get("ticker_universe", {}).get(ticker),
+            )
+        )
+        block = [f"<b>{label}</b>"]
         for item in headlines:
             block.append(f"• {_esc(item['title'])}")
             block.append(f"  <i>{_esc(item['source'])} | {_esc(item['date'])}</i>")
@@ -477,4 +506,17 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     save_summary(summary, html_content)
     summary["html"] = html_content
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
+
+    from summary_pdf import generate_and_attach_summary_pdf
+
+    pdf_path = generate_and_attach_summary_pdf(summary, public_url=public_url)
+    if pdf_path is not None:
+        summary["pdf_path"] = str(pdf_path)
+        summary["telegram_messages"].append(
+            {
+                "text": f"📄 SavvyETF Market Brief PDF\n{summary['generated_at_display']}",
+                "document_path": str(pdf_path),
+            }
+        )
+
     return summary

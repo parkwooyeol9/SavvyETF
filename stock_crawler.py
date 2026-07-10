@@ -744,7 +744,22 @@ def get_ranking_tickers(
     return tickers, context
 
 
-def _append_ranking_block(lines: list[str], board: dict, top_n: int, bottom_n: int) -> None:
+def _format_ticker_display(ticker: str, universe: str) -> str:
+    if universe == "etf":
+        from etf_names import format_etf_ticker_label
+
+        return format_etf_ticker_label(ticker)
+    return ticker
+
+
+def _append_ranking_block(
+    lines: list[str],
+    board: dict,
+    top_n: int,
+    bottom_n: int,
+    *,
+    universe: str,
+) -> None:
     lines.append(board["title"])
     lines.append(f"({board['label']})")
     lines.append("")
@@ -752,13 +767,13 @@ def _append_ranking_block(lines: list[str], board: dict, top_n: int, bottom_n: i
     if top_n > 0 and board["top"]:
         lines.append(f"Top {top_n}:")
         for idx, (ticker, value) in enumerate(board["top"], start=1):
-            lines.append(f"{idx}. {ticker}  {value}")
+            lines.append(f"{idx}. {_format_ticker_display(ticker, universe)}  {value}")
         lines.append("")
 
     if bottom_n > 0 and board["bottom"]:
         lines.append(f"Bottom {bottom_n}:")
         for idx, (ticker, value) in enumerate(board["bottom"], start=1):
-            lines.append(f"{idx}. {ticker}  {value}")
+            lines.append(f"{idx}. {_format_ticker_display(ticker, universe)}  {value}")
         lines.append("")
 
 
@@ -779,6 +794,20 @@ def format_rankings_message(
     )
     first_board = _ranking_slice(universe, modes[0], top_n, 0 if mode == "all" else bottom_n)
 
+    if universe == "etf":
+        preview_tickers: list[str] = []
+        for rank_mode in modes:
+            use_bottom = 0 if mode == "all" else bottom_n
+            board = _ranking_slice(universe, rank_mode, top_n, use_bottom)
+            for group in (board["top"], board["bottom"]):
+                for ticker, _ in group:
+                    if ticker not in preview_tickers:
+                        preview_tickers.append(ticker)
+        if preview_tickers:
+            from etf_names import prefetch_etf_names
+
+            prefetch_etf_names(preview_tickers)
+
     lines = [
         f"{label_name} rankings",
         "Price: last trading day return | Volume: latest day / 21d avg",
@@ -794,7 +823,7 @@ def format_rankings_message(
             lines.append(f"{board['title']}: no data")
             lines.append("")
             continue
-        _append_ranking_block(lines, board, top_n, use_bottom)
+        _append_ranking_block(lines, board, top_n, use_bottom, universe=universe)
 
     if lines and lines[-1] == "":
         lines.pop()
