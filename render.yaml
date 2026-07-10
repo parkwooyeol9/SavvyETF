@@ -11,7 +11,7 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: SUMMARY_PUBLIC_URL
-        sync: false
+        value: https://savvyetf-bot.onrender.com
       - key: PORT
         value: "8080"
       - key: SUMMARY_SCHEDULE_ENABLED

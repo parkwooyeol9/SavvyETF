@@ -180,11 +180,9 @@ HELP_TEXT = """SavvyETF Bot — Commands
 
 
 def summary_public_url() -> str:
-    base = os.environ.get("SUMMARY_PUBLIC_URL", "").strip().rstrip("/")
-    if base:
-        return f"{base}/summary"
-    port = os.environ.get("PORT", "8080")
-    return f"http://localhost:{port}/summary"
+    from summary_builder import resolve_summary_public_url
+
+    return resolve_summary_public_url()
 
 
 def load_known_chats() -> set[int]:

@@ -596,6 +596,45 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     return messages
 
 
+def resolve_summary_public_url() -> str:
+    explicit = os.environ.get("SUMMARY_PUBLIC_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit if explicit.endswith("/summary") else f"{explicit}/summary"
+
+    for env_key in ("RENDER_EXTERNAL_URL", "RENDER_SERVICE_URL"):
+        render_base = os.environ.get(env_key, "").strip().rstrip("/")
+        if render_base:
+            return f"{render_base}/summary"
+
+    port = os.environ.get("PORT", "8080")
+    return f"http://localhost:{port}/summary"
+
+
+def _format_macro_crypto_telegram(summary: dict) -> list[dict]:
+    messages: list[dict] = []
+
+    macro = summary.get("macro") or {}
+    if macro.get("error"):
+        messages.append({"text": f"📊 Macro dashboard\n\n(unavailable: {macro['error']})"})
+    elif macro.get("chart") is not None:
+        chart = macro["chart"]
+        chart.seek(0)
+        messages.append({"text": macro.get("caption", "Macro risk dashboard"), "photo": chart})
+
+    crypto = summary.get("crypto") or {}
+    for symbol in ("BTC", "ETH"):
+        entry = crypto.get(symbol) or {}
+        label = entry.get("label", symbol)
+        if entry.get("chart") is not None:
+            chart = entry["chart"]
+            chart.seek(0)
+            messages.append({"text": f"🪙 {label} ({symbol}) technical chart", "photo": chart})
+        elif entry.get("chart_error"):
+            messages.append({"text": f"🪙 {label} ({symbol})\nChart unavailable: {entry['chart_error']}"})
+
+    return messages
+
+
 def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
     messages: list[dict] = []
 
@@ -604,6 +643,7 @@ def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
 
     messages.extend(_format_heatmap_telegram(summary))
     messages.extend(_format_ai_telegram(summary))
+    messages.extend(_format_macro_crypto_telegram(summary))
 
     return messages
 
@@ -691,23 +731,29 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     save_summary(summary, html_content)
     summary["html"] = html_content
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
-    summary["telegram_messages"].append(format_summary_web_link_message(summary, public_url))
+    web_url = public_url.strip() if public_url else resolve_summary_public_url()
+    summary["telegram_messages"].append(format_summary_web_link_message(summary, web_url))
 
     return summary
 
 
 def format_summary_web_link_message(summary: dict, public_url: str = "") -> dict:
-    url = public_url.strip() if public_url else ""
-    if not url:
-        port = os.environ.get("PORT", "8080")
-        url = f"http://localhost:{port}/summary"
+    url = public_url.strip() if public_url else resolve_summary_public_url()
+    is_local = "localhost" in url or "127.0.0.1" in url
 
-    return {
-        "text": (
-            f"🌐 Full market brief (web)\n"
-            f"{summary['generated_at_display']}\n\n"
-            "Open the homepage-style brief in your browser — rankings, charts, macro, and crypto."
-        ),
-        "button_text": "Open market brief",
-        "button_url": url,
-    }
+    lines = [
+        "🌐 전체 마켓 브리프 (웹 페이지)",
+        summary["generated_at_display"],
+        "",
+        "랭킹·리더 차트·히트맵·매크로·BTC/ETH·AI 브리핑이 한 페이지에 모여 있습니다.",
+        f"🔗 {url}",
+    ]
+    if is_local:
+        lines.append("")
+        lines.append("로컬 테스트: PC 브라우저에서 위 주소를 여세요.")
+
+    message: dict = {"text": "\n".join(lines)}
+    if not is_local:
+        message["button_text"] = "웹 브리프 열기"
+        message["button_url"] = url
+    return message
