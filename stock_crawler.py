@@ -7,8 +7,10 @@ import threading
 import time
 import warnings
 from collections.abc import Callable
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -17,7 +19,8 @@ import yfinance as yf
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 ETF_MASTER_PATH = PROJECT_DIR / "colab" / "ETF_Master.xlsx"
-CACHE_VERSION = 7
+ETF_TICKERS_PATH = PROJECT_DIR / "colab" / "etf_tickers.txt"
+CACHE_VERSION = 8
 
 DAILY_RETURN_COL = "Daily Return"
 VOL_RATIO_COL = "Vol Ratio"
@@ -37,11 +40,13 @@ RANK_MODES = {
 
 VOL_LOOKBACK_DAYS = 21
 
-CACHE_TTL_SECONDS = 3600
+# Daily bars only change once per session — keep cache fresh for the US trading day.
+CACHE_TTL_SECONDS = 20 * 3600
 DEFAULT_STALE_MAX_AGE_SECONDS = 7 * 24 * 3600
 DEFAULT_TOP_N = 3
 DEFAULT_BOTTOM_N = 3
 WIKI_USER_AGENT = "SavvyETF/1.0 (telegram-bot)"
+ET = ZoneInfo("America/New_York")
 
 UNIVERSES: dict[str, dict] = {
     "etf": {
@@ -108,15 +113,43 @@ def _fetch_wikipedia_html(url: str) -> str:
     return response.text
 
 
+def _market_as_of_date() -> str:
+    """US/Eastern calendar date used as the daily rankings cache key."""
+    return datetime.now(ET).strftime("%Y-%m-%d")
+
+
+def _is_same_market_day(loaded_at: float, as_of_date: str | None = None) -> bool:
+    today = _market_as_of_date()
+    if as_of_date:
+        return str(as_of_date) == today
+    if loaded_at <= 0:
+        return False
+    return datetime.fromtimestamp(loaded_at, ET).strftime("%Y-%m-%d") == today
+
+
 def load_etf_tickers(excel_path: Path | None = None) -> list[str]:
+    """Load ETF universe: prefer committed ticker list, fall back to Excel master."""
+    tickers_path = ETF_TICKERS_PATH
+    if tickers_path.exists():
+        tickers: list[str] = []
+        for line in tickers_path.read_text(encoding="utf-8").splitlines():
+            ticker = line.strip().upper().replace(" ", "")
+            if not ticker or ticker.startswith("#") or ticker.startswith("@") or ticker.startswith("U:"):
+                continue
+            tickers.append(ticker)
+        if tickers:
+            return tickers
+
     path = excel_path or ETF_MASTER_PATH
     if not path.exists():
-        raise FileNotFoundError(f"ETF master file not found: {path}")
+        raise FileNotFoundError(
+            f"ETF ticker list not found. Expected {tickers_path} or Excel master {path}"
+        )
 
     df = pd.read_excel(path)
-    tickers = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
+    raw = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
     cleaned = []
-    for ticker in tickers:
+    for ticker in raw:
         if not ticker or ticker.startswith("@") or ticker.startswith("U:"):
             continue
         cleaned.append(ticker.replace(" ", ""))
@@ -165,6 +198,10 @@ def cache_age_seconds(universe: str) -> float | None:
 
 
 def cache_is_stale(universe: str) -> bool:
+    state = _states[universe]
+    meta = state.get("meta") or {}
+    if _is_same_market_day(float(meta.get("loaded_at", 0)), meta.get("as_of_date")):
+        return False
     age = cache_age_seconds(universe)
     return age is not None and age > CACHE_TTL_SECONDS
 
@@ -173,7 +210,8 @@ def is_cache_ready(universe: str = "etf") -> bool:
     state = _states[universe]
     if state["ready"] and state["df"] is not None and not state["df"].empty:
         return True
-    if _load_disk_cache(universe):
+    # Prefer today's disk cache (daily bars) before falling back to older stale copies.
+    if _load_disk_cache(universe, max_age=CACHE_TTL_SECONDS):
         return True
 
     stale_max = _stale_max_age_seconds()
@@ -393,9 +431,11 @@ def build_etf_return_table(
 def _save_disk_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: int) -> None:
     cache_file = UNIVERSES[universe]["cache_file"]
     cache_file.parent.mkdir(parents=True, exist_ok=True)
+    loaded_at = time.time()
     payload = {
         "version": CACHE_VERSION,
-        "loaded_at": time.time(),
+        "loaded_at": loaded_at,
+        "as_of_date": _market_as_of_date(),
         "scanned": scanned,
         "skipped": skipped,
         "dataframe": df,
@@ -421,7 +461,15 @@ def _load_disk_cache(universe: str, max_age: int = CACHE_TTL_SECONDS) -> bool:
         return False
 
     loaded_at = float(payload.get("loaded_at", 0))
-    if time.time() - loaded_at > max_age:
+    as_of_date = payload.get("as_of_date")
+    age = time.time() - loaded_at
+    same_day = _is_same_market_day(loaded_at, as_of_date)
+
+    # Same US calendar day: reuse even if older than the short TTL window.
+    if same_day:
+        if age > DEFAULT_STALE_MAX_AGE_SECONDS:
+            return False
+    elif age > max_age:
         return False
 
     df = payload.get("dataframe")
@@ -433,21 +481,31 @@ def _load_disk_cache(universe: str, max_age: int = CACHE_TTL_SECONDS) -> bool:
         "scanned": int(payload.get("scanned", len(df))),
         "skipped": int(payload.get("skipped", 0)),
         "loaded_at": loaded_at,
+        "as_of_date": as_of_date or _market_as_of_date(),
     }
     state["ready"] = True
     return True
 
 
 def _set_memory_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: int) -> None:
+    if df is None or df.empty:
+        print(f"{UNIVERSES[universe]['label']}: refusing to cache empty dataframe")
+        return
     state = _states[universe]
+    loaded_at = time.time()
     state["df"] = df
     state["meta"] = {
         "scanned": scanned,
         "skipped": skipped,
-        "loaded_at": time.time(),
+        "loaded_at": loaded_at,
+        "as_of_date": _market_as_of_date(),
     }
     state["ready"] = True
     _save_disk_cache(universe, df, scanned, skipped)
+    print(
+        f"{UNIVERSES[universe]['label']} cache saved to disk "
+        f"({len(df)} tickers, as_of={state['meta']['as_of_date']} ET)."
+    )
 
 
 def warmup_cache(universe: str = "etf", force: bool = False) -> None:
@@ -477,10 +535,10 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
             print(f"Preloading {label} rankings...")
             tickers = _load_universe_tickers(universe)
             chunk_size = UNIVERSES[universe]["chunk_size"]
-            # /sp /nas: Yahoo chart API (parallel HTTP). Finnhub candles are 403 on free tier.
-            # /etf: keep yfinance batch download (large master list).
-            provider = "yahoo_chart" if universe in {"sp", "nas"} else "yfinance"
-            print(f"{label}: data provider = {provider}")
+            # All ranking universes use Yahoo chart API (fast parallel HTTP).
+            # yfinance remains the fallback inside build_metrics_table.
+            provider = "yahoo_chart"
+            print(f"{label}: data provider = {provider} ({len(tickers)} tickers)")
 
             def progress(done: int, total: int, active: int) -> None:
                 print(f"  {label}: {done}/{total} | active tickers: {active}")
@@ -499,6 +557,10 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
                     print(f"{label} preload paused to free RAM for higher-priority work.")
                     raise
                 raise
+
+            if df is None or df.empty:
+                print(f"{label} preload produced no rows — cache not updated.")
+                return
 
             _set_memory_cache(universe, df, scanned, skipped)
             print(

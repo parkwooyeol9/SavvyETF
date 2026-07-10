@@ -635,8 +635,8 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
         {
             "text": (
                 f"Loading {label} rankings "
-                f"(Yahoo chart for S&P/NASDAQ, Yahoo for ETF; "
-                f"first run may take a few minutes). Try /{universe} again shortly."
+                f"(Yahoo chart; first run builds a same-day disk cache). "
+                f"Try /{universe} again shortly."
             )
         }
     ]
