@@ -86,3 +86,12 @@ def cleanup_capture_file(path: Path | None) -> None:
 def begin_etfcheck_capture_blocking() -> bool:
     request_heavy_work_yield()
     return begin_heavy_work_blocking("etfcheck-capture")
+
+
+def run_capture_with_heavy_lock(mode: str) -> Path:
+    if not begin_etfcheck_capture_blocking():
+        raise RuntimeError("another heavy task is running")
+    try:
+        return run_capture_in_subprocess(mode)
+    finally:
+        end_etfcheck_capture()

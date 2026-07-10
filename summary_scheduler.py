@@ -72,10 +72,10 @@ def run_scheduled_summary(
     public_url: str = "",
     trigger: str = "scheduled",
 ) -> bool:
-    from heavy_work import begin_heavy_work_blocking, end_heavy_work
+    from heavy_work import end_heavy_work, try_begin_heavy_work
     from summary_builder import KST, caches_ready, generate_and_save_summary
 
-    if not begin_heavy_work_blocking("scheduled-summary"):
+    if not try_begin_heavy_work("scheduled-summary"):
         print(f"Scheduled summary skipped ({trigger}): another heavy task is running.")
         return False
 

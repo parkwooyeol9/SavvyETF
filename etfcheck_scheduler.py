@@ -36,18 +36,8 @@ def _mark_session_done(state: dict, session_key: str) -> None:
     _save_state(state)
 
 
-def run_scheduled_etfcheck_turnover(
-    token: str,
-    broadcast_fn,
-    *,
-    lock_held: bool = False,
-) -> bool:
+def run_scheduled_etfcheck_turnover(token: str, broadcast_fn) -> bool:
     from etfcheck_pipeline import run_etfcheck_turnover_capture
-    from etfcheck_subprocess import begin_etfcheck_capture_blocking, end_etfcheck_capture
-
-    if not lock_held and not begin_etfcheck_capture_blocking():
-        print("Scheduled ETF CHECK turnover skipped: another heavy task is running.")
-        return False
 
     try:
         result = run_etfcheck_turnover_capture()
@@ -61,9 +51,6 @@ def run_scheduled_etfcheck_turnover(
     except Exception as exc:
         print(f"Scheduled ETF CHECK turnover failed: {exc}")
         return False
-    finally:
-        if not lock_held:
-            end_etfcheck_capture()
 
 
 def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
@@ -117,21 +104,10 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
                 time.sleep(poll_seconds)
                 continue
 
-            # Claim the session only once we have the heavy-work lock (at most one run per day).
-            from etfcheck_subprocess import begin_etfcheck_capture_blocking, end_etfcheck_capture
-
-            if not begin_etfcheck_capture_blocking():
-                print("ETF CHECK turnover waiting: another heavy task is running.")
-                time.sleep(poll_seconds)
-                continue
-
             print(f"ETF CHECK turnover (once daily): {detail}")
             last_session = session_key
             _mark_session_done(state, session_key)
-            try:
-                run_scheduled_etfcheck_turnover(token, broadcast_fn, lock_held=True)
-            finally:
-                end_etfcheck_capture()
+            run_scheduled_etfcheck_turnover(token, broadcast_fn)
 
             time.sleep(poll_seconds)
 

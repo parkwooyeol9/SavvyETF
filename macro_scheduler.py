@@ -34,10 +34,10 @@ def _poll_seconds() -> int:
 
 
 def run_scheduled_macro(token: str, broadcast_fn, force: bool = True) -> bool:
-    from heavy_work import begin_heavy_work_blocking, end_heavy_work
+    from heavy_work import end_heavy_work, try_begin_heavy_work
     from macro_pipeline import run_macro_dashboard
 
-    if not begin_heavy_work_blocking("scheduled-macro"):
+    if not try_begin_heavy_work("scheduled-macro"):
         print("Scheduled macro skipped: another heavy task is running.")
         return False
 

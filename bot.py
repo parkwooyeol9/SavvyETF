@@ -326,6 +326,7 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
 _greeted_this_session: set[int] = set()
 _last_ranking_by_chat: dict[int, dict] = {}
 _bot_username: str | None = None
+_etfcheck_command_lock = threading.Lock()
 
 
 def fetch_bot_username(token: str) -> str | None:
@@ -494,35 +495,33 @@ def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
 
 
 def handle_etfcheck_command(token: str, chat_id: int) -> None:
-    from etfcheck_pipeline import iter_etfcheck_capture_messages
-    from etfcheck_subprocess import (
-        begin_etfcheck_capture_blocking,
-        cleanup_capture_file,
-        end_etfcheck_capture,
-    )
-
-    if not begin_etfcheck_capture_blocking():
+    if not _etfcheck_command_lock.acquire(blocking=False):
         send_text(
             token,
             chat_id,
-            "Another heavy task is still running (Yahoo cache preload or scheduled job). "
-            "Please wait a minute and try /etfcheck again.",
+            "ETF CHECK capture is already running. Please wait for it to finish.",
         )
         return
 
-    try:
-        send_text(token, chat_id, "Capturing ETF CHECK rankings from etfcheck.co.kr…")
-        messages = iter_etfcheck_capture_messages()
-        for message in messages:
-            photo_path = message.get("photo_path")
-            try:
+    def worker() -> None:
+        from etfcheck_pipeline import run_manual_etfcheck_capture
+
+        try:
+            send_text(token, chat_id, "Capturing ETF CHECK rankings from etfcheck.co.kr…")
+
+            def deliver(message: dict) -> None:
                 send_reply(token, chat_id, message)
-            finally:
-                cleanup_capture_file(Path(photo_path) if photo_path else None)
-    except Exception as exc:
-        send_text(token, chat_id, f"ETF CHECK capture failed: {exc}")
-    finally:
-        end_etfcheck_capture()
+                print(f"ETF CHECK message delivered to chat {chat_id}")
+
+            run_manual_etfcheck_capture(deliver)
+            print(f"ETF CHECK capture complete for chat {chat_id}")
+        except Exception as exc:
+            print(f"ETF CHECK capture failed for chat {chat_id}: {exc}")
+            send_text(token, chat_id, f"ETF CHECK capture failed: {exc}")
+        finally:
+            _etfcheck_command_lock.release()
+
+    threading.Thread(target=worker, name=f"etfcheck-{chat_id}", daemon=True).start()
 
 
 def handle_telegram_message(message, chat_id: int):

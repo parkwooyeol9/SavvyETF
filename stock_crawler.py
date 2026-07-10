@@ -403,8 +403,9 @@ def warmup_all_caches(force: bool = False) -> None:
 
 def warmup_startup_caches(force: bool = False) -> None:
     from heavy_work import (
-        begin_heavy_work_blocking,
         end_heavy_work,
+        heavy_work_owner,
+        try_begin_heavy_work,
         wait_for_startup_grace,
     )
 
@@ -415,7 +416,7 @@ def warmup_startup_caches(force: bool = False) -> None:
         return
 
     wait_for_startup_grace("startup-cache-warmup")
-    if not begin_heavy_work_blocking("startup-cache-warmup"):
+    if not try_begin_heavy_work("startup-cache-warmup"):
         print("Startup cache warmup skipped: another heavy task is running.")
         return
 
