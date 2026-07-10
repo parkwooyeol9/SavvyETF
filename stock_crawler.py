@@ -147,8 +147,13 @@ def _load_universe_tickers(universe: str) -> list[str]:
 
 def is_cache_ready(universe: str = "etf") -> bool:
     state = _states[universe]
-    df = state["df"]
-    return state["ready"] and df is not None and not df.empty
+    if state["ready"] and state["df"] is not None and not state["df"].empty:
+        return True
+    return _load_disk_cache(universe)
+
+
+def is_cache_warmup_running(universe: str) -> bool:
+    return universe in _warmup_running
 
 
 def is_etf_cache_ready() -> bool:
@@ -438,17 +443,66 @@ def warmup_startup_caches(force: bool = False) -> None:
 
 
 def start_etf_cache_warmup(blocking: bool = False, force: bool = False) -> None:
-    if blocking:
-        warmup_etf_cache(force=force)
+    start_universe_cache_warmup("etf", blocking=blocking, force=force)
+
+
+def start_universe_cache_warmup(
+    universe: str,
+    *,
+    blocking: bool = False,
+    force: bool = False,
+) -> None:
+    if universe not in UNIVERSES:
+        raise ValueError(f"Unknown universe: {universe}")
+    if is_cache_ready(universe) or is_cache_warmup_running(universe):
         return
 
-    thread = threading.Thread(
-        target=warmup_etf_cache,
-        kwargs={"force": force},
-        name="etf-cache-warmup",
+    def worker() -> None:
+        from heavy_work import (
+            HeavyWorkYield,
+            end_heavy_work,
+            heavy_work_owner,
+            try_begin_heavy_work,
+        )
+
+        label = UNIVERSES[universe]["label"]
+        lock_label = f"cache-warmup-{universe}"
+        while not try_begin_heavy_work(lock_label):
+            time.sleep(15)
+
+        try:
+            print(f"Background cache warmup started for {label}")
+            warmup_cache(universe, force=force)
+            print(f"Background cache warmup finished for {label}")
+        except HeavyWorkYield:
+            print(f"Background cache warmup paused for {label}")
+        finally:
+            if heavy_work_owner() == lock_label:
+                end_heavy_work(lock_label)
+
+    if blocking:
+        worker()
+        return
+
+    threading.Thread(
+        target=worker,
+        name=f"{universe}-cache-warmup",
         daemon=True,
-    )
-    thread.start()
+    ).start()
+
+
+def warmup_deferred_caches(force: bool = False) -> None:
+    from heavy_work import wait_for_startup_grace
+
+    raw = os.environ.get("BOT_DEFERRED_CACHE_UNIVERSES", "sp,nas").strip()
+    universes = [part.strip() for part in raw.split(",") if part.strip()]
+    if not universes:
+        return
+
+    wait_for_startup_grace("deferred-cache-warmup")
+    for universe in universes:
+        if universe in UNIVERSES and not is_cache_ready(universe):
+            start_universe_cache_warmup(universe, blocking=True, force=force)
 
 
 def _format_price(value: float) -> str:

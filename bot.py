@@ -18,8 +18,11 @@ from stock_crawler import (
     get_ranking_tickers,
     get_top_leader_ticker,
     is_cache_ready,
+    is_cache_warmup_running,
     parse_rank_command,
+    start_universe_cache_warmup,
     warmup_all_caches,
+    warmup_deferred_caches,
     warmup_startup_caches,
 )
 from summary_scheduler import start_summary_scheduler
@@ -534,6 +537,21 @@ def handle_etfcheck_command(token: str, chat_id: int) -> None:
     threading.Thread(target=worker, name=f"etfcheck-{chat_id}", daemon=True).start()
 
 
+def _ranking_loading_reply(universe: str) -> list[dict]:
+    label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+    if is_cache_warmup_running(universe):
+        return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
+    start_universe_cache_warmup(universe)
+    return [
+        {
+            "text": (
+                f"Loading {label} rankings from Yahoo Finance now "
+                f"(first run may take 2–5 minutes). Try /{universe} again shortly."
+            )
+        }
+    ]
+
+
 def handle_telegram_message(message, chat_id: int):
     normalized = message.strip()
     lower = normalized.lower()
@@ -645,8 +663,7 @@ def handle_telegram_message(message, chat_id: int):
 
             universe, top_n = parse_heatmap_command(normalized)
             if not is_cache_ready(universe):
-                label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
-                return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
+                return _ranking_loading_reply(universe)
             replies: list[dict] = []
             if not is_size_cache_ready(universe):
                 replies.append(
@@ -751,8 +768,7 @@ def handle_telegram_message(message, chat_id: int):
         try:
             universe, mode = parse_rank_command(normalized)
             if not is_cache_ready(universe):
-                label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
-                return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
+                return _ranking_loading_reply(universe)
             tickers, context_label = get_ranking_tickers(
                 universe=universe,
                 mode=mode,
@@ -1032,8 +1048,14 @@ if __name__ == "__main__":
             name="cache-warmup",
             daemon=True,
         ).start()
+        threading.Thread(
+            target=warmup_deferred_caches,
+            name="deferred-cache-warmup",
+            daemon=True,
+        ).start()
     else:
         warmup_startup_caches()
+        warmup_deferred_caches()
     start_summary_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,

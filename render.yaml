@@ -39,7 +39,9 @@ services:
       - key: BOT_DEFER_CACHE_WARMUP
         value: "true"
       - key: BOT_STARTUP_CACHE_UNIVERSES
-        value: ""
+        value: "etf"
+      - key: BOT_DEFERRED_CACHE_UNIVERSES
+        value: "sp,nas"
       - key: MALLOC_ARENA_MAX
         value: "2"
       - key: ETFCHECK_JPEG_QUALITY
