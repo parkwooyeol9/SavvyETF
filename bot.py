@@ -78,6 +78,12 @@ What each command returns:
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
 
+/financial AAPL
+→ S&P 500 fundamental analysis: PER, PBR, ROE, margins, EPS growth + charts
+
+/dart 삼성전자
+→ 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
+
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 /macro auto: daily 17:00 KST
 
@@ -137,7 +143,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
-  PDF attached on each run. Auto-sent after US close (+5m) and 22:00 KST.
+  Web brief link with button sent at the end (homepage-style page).
   Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
 
 /aibriefing
@@ -155,6 +161,18 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Compare US ETFs with charts (performance, returns, cost, overlap),
   price history (index proxy if short history), AI Korean pick, Excel export.
   Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
+
+/financial TICKER
+  Fundamental analysis for S&P 500 stocks: PER, PBR, ROE, margins,
+  EPS/revenue growth, and historical trend charts.
+  Primary data: Finnhub (FINNHUB_API_KEY). Fallback: Yahoo Finance.
+  Example: /financial AAPL | /financial MSFT
+
+/dart COMPANY
+  Korean listed company fundamentals from Open DART: revenue, operating/net income,
+  assets, equity, EPS, margins, ROE, YoY growth, and trend charts.
+  Example: /dart 삼성전자 | /dart SK하이닉스 | /dart 005930
+  Requires DART_API_KEY in .env (https://opendart.fss.or.kr/)
 
 ℹ️ /help
   Show this guide again.
@@ -281,10 +299,22 @@ def _is_unreachable_chat_error(response: requests.Response) -> bool:
     return False
 
 
-def send_text(token: str, chat_id: int, text: str, parse_mode: str | None = None) -> bool:
+def send_text(
+    token: str,
+    chat_id: int,
+    text: str,
+    parse_mode: str | None = None,
+    *,
+    button_url: str | None = None,
+    button_text: str = "Open in browser",
+) -> bool:
     payload: dict = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if button_url:
+        payload["reply_markup"] = {
+            "inline_keyboard": [[{"text": button_text, "url": button_url}]]
+        }
     try:
         response = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -430,7 +460,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /heatmap /macro /comp /news /aibriefing /summary /help",
+                "Commands: /etf /sp /nas /heatmap /macro /comp /financial /dart /news /aibriefing /summary /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -567,6 +597,55 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": text} for text in messages]
         except Exception as exc:
             return [{"text": f"Error fetching news: {exc}"}]
+
+    if lower.startswith("/dart"):
+        try:
+            from dart_data import parse_dart_query
+            from dart_pipeline import run_dart_analysis
+
+            query = parse_dart_query(normalized)
+            replies: list[dict] = [{"text": f"DART 재무분석 중: {query}…"}]
+            result = run_dart_analysis(query)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /dart 한국기업명\n"
+                        "Example: /dart 삼성전자\n"
+                        "Example: /dart SK하이닉스\n"
+                        "Example: /dart 005930\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"DART analysis failed: {exc}"}]
+
+    if lower.startswith("/financial"):
+        try:
+            from financial_data import parse_financial_ticker
+            from financial_pipeline import run_financial_analysis
+
+            symbol = parse_financial_ticker(normalized)
+            replies: list[dict] = [{"text": f"Analyzing {symbol} fundamentals…"}]
+            result = run_financial_analysis(symbol)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /financial TICKER\n"
+                        "Example: /financial AAPL\n"
+                        "Example: /financial MSFT\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"Financial analysis failed: {exc}"}]
 
     if lower.startswith("/comp"):
         tickers = parse_comp_tickers(normalized)
@@ -870,12 +949,13 @@ def send_reply(token, chat_id, reply):
             data: dict = {"chat_id": chat_id}
             if text:
                 data["caption"] = text[:1024]
+            mime = _web_content_type(path)
             with path.open("rb") as handle:
                 response = requests.post(
                     f"https://api.telegram.org/bot{token}/sendDocument",
                     data=data,
-                    files={"document": (path.name, handle)},
-                    timeout=120,
+                    files={"document": (path.name, handle, mime)},
+                    timeout=180,
                 )
             _handle_telegram_send_response(
                 response,
@@ -888,7 +968,16 @@ def send_reply(token, chat_id, reply):
             send_text(token, chat_id, f"{text}\nDocument error: {exc}".strip())
         return
 
-    send_text(token, chat_id, text, parse_mode=parse_mode)
+    button_url = reply.get("button_url")
+    button_text = reply.get("button_text", "Open in browser")
+    send_text(
+        token,
+        chat_id,
+        text,
+        parse_mode=parse_mode,
+        button_url=button_url,
+        button_text=button_text,
+    )
 
 
 def _web_content_type(path: Path) -> str:
@@ -903,6 +992,7 @@ def _web_content_type(path: Path) -> str:
         ".jpeg": "image/jpeg",
         ".ico": "image/x-icon",
         ".pdf": "application/pdf",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }.get(suffix, "application/octet-stream")
 
 
@@ -957,18 +1047,6 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
-            if path == "/summary.pdf":
-                from summary_builder import SUMMARY_PDF_PATH
-
-                if SUMMARY_PDF_PATH.is_file():
-                    self._send(
-                        SUMMARY_PDF_PATH.read_bytes(),
-                        "application/pdf",
-                    )
-                    return
-                self._send(b"PDF not generated yet", "text/plain; charset=utf-8", status=404)
-                return
-
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def log_message(self, format, *args):
@@ -977,7 +1055,7 @@ def start_web_server():
     server = HTTPServer(("0.0.0.0", port), AppHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    print(f"Web server listening on port {port} ( / , /summary , /summary.pdf , /health )")
+    print(f"Web server listening on port {port} ( / , /summary , /health )")
 
 
 def get_bot_token() -> str:

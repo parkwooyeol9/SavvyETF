@@ -26,6 +26,8 @@ services:
         sync: false
       - key: FINNHUB_API_KEY
         sync: false
+      - key: DART_API_KEY
+        sync: false
       - key: SCHEDULER_STARTUP_GRACE_SECONDS
         value: "180"
       - key: BOT_DEFER_CACHE_WARMUP
