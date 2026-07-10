@@ -113,7 +113,8 @@ def build_premarket_rankings(
         )
 
     tickers = load_premarket_tickers(universe)
-    rows_map = map_tickers(tickers, _quote_row, max_workers=4)
+    # Serial quotes (~30/min) to stay under Finnhub free-tier limits.
+    rows_map = map_tickers(tickers, _quote_row, max_workers=1)
     rows = [row for row in rows_map.values() if row]
     rows.sort(key=lambda item: item["change_pct"], reverse=True)
 

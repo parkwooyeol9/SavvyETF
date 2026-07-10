@@ -13,8 +13,11 @@ import pandas as pd
 import requests
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
-DEFAULT_MAX_PER_MINUTE = 55
+# Free tier is ~60/min; stay under and serialize callers to avoid 429 stampedes.
+DEFAULT_MAX_PER_MINUTE = 30
 DEFAULT_CANDLE_LOOKBACK_DAYS = 45
+DEFAULT_MAX_WORKERS = 1
+MAX_RETRIES = 6
 
 
 class FinnhubRateLimiter:
@@ -29,6 +32,12 @@ class FinnhubRateLimiter:
             delay = self.min_interval - (now - self._last)
             if delay > 0:
                 time.sleep(delay)
+            self._last = time.time()
+
+    def penalty(self, seconds: float) -> None:
+        """Pause the shared limiter after a 429 so other workers don't stampede."""
+        with self._lock:
+            time.sleep(max(0.0, seconds))
             self._last = time.time()
 
 
@@ -48,26 +57,54 @@ def to_yahoo_symbol(ticker: str) -> str:
     return ticker.strip().upper().replace(".", "-")
 
 
+def _redact(text: str) -> str:
+    key = finnhub_api_key()
+    if key and key in text:
+        return text.replace(key, "***")
+    return text
+
+
 def _get(path: str, params: dict[str, Any], *, timeout: float = 30) -> Any:
     key = finnhub_api_key()
     if not key:
         raise RuntimeError("FINNHUB_API_KEY is not set")
-    _limiter.wait()
-    response = requests.get(
-        f"{FINNHUB_BASE}/{path}",
-        params={**params, "token": key},
-        timeout=timeout,
-    )
-    if response.status_code == 429:
-        time.sleep(2.0)
+
+    last_status = 0
+    last_body = ""
+    for attempt in range(MAX_RETRIES):
         _limiter.wait()
-        response = requests.get(
-            f"{FINNHUB_BASE}/{path}",
-            params={**params, "token": key},
-            timeout=timeout,
-        )
-    response.raise_for_status()
-    return response.json()
+        try:
+            response = requests.get(
+                f"{FINNHUB_BASE}/{path}",
+                params={**params, "token": key},
+                timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Finnhub {path} network error: {_redact(str(exc))}") from exc
+
+        if response.status_code == 429:
+            backoff = min(60.0, 5.0 * (2**attempt))
+            print(f"Finnhub 429 on /{path} (attempt {attempt + 1}/{MAX_RETRIES}); sleep {backoff:.0f}s")
+            _limiter.penalty(backoff)
+            last_status = 429
+            last_body = response.text[:200]
+            continue
+
+        if response.status_code >= 400:
+            # Never raise_for_status(): the URL embeds the API token.
+            raise RuntimeError(
+                f"Finnhub /{path} HTTP {response.status_code}: {_redact(response.text[:200])}"
+            )
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Finnhub /{path} returned non-JSON") from exc
+
+    raise RuntimeError(
+        f"Finnhub /{path} rate limited after {MAX_RETRIES} retries "
+        f"(last HTTP {last_status}: {_redact(last_body)})"
+    )
 
 
 def fetch_daily_candles(
@@ -153,14 +190,15 @@ def map_tickers(
     tickers: list[str],
     worker: Callable[[str], Any],
     *,
-    max_workers: int = 4,
+    max_workers: int = DEFAULT_MAX_WORKERS,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, Any]:
-    """Run worker(ticker) with shared Finnhub rate limiting."""
+    """Run worker(ticker) with shared Finnhub rate limiting (default: serial)."""
     results: dict[str, Any] = {}
     total = len(tickers)
     done = 0
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    workers = max(1, min(max_workers, 2))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(worker, ticker): ticker for ticker in tickers}
         for future in as_completed(futures):
             ticker = futures[future]
@@ -168,7 +206,7 @@ def map_tickers(
             try:
                 value = future.result()
             except Exception as exc:
-                print(f"Finnhub worker failed for {ticker}: {exc}")
+                print(f"Finnhub worker failed for {ticker}: {_redact(str(exc))}")
                 value = None
             if value is not None:
                 results[ticker] = value

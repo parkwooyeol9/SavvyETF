@@ -897,8 +897,9 @@ def handle_telegram_message(message, chat_id: int):
             replies: list[dict] = [
                 {
                     "text": (
-                        f"Fetching {label} pre-market quotes via Finnhub… "
-                        "(may take 1–3 min for full universes)"
+                        f"Fetching {label} pre-market quotes via Finnhub "
+                        f"(~30 quotes/min to avoid rate limits; "
+                        f"S&P 500 can take ~15–20 min)…"
                     )
                 }
             ]
