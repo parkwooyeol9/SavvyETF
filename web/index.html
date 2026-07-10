@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="SavvyETF — Telegram bot for ETF rankings, market briefs, macro dashboard, and ETF CHECK captures." />
+  <meta name="description" content="SavvyETF — Telegram bot for ETF rankings, market briefs, and macro dashboard." />
   <title>SavvyETF</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -35,7 +35,7 @@
       <h1>ETF rankings, macro risk, and daily market briefs — on autopilot</h1>
       <p class="lead">
         SavvyETF monitors US equity ETFs, S&amp;P 500, and NASDAQ 100 with volume-aware rankings,
-        captures Korean ETF CHECK screens, and publishes a post-close summary with heatmap and AI briefing.
+        and publishes a post-close summary with heatmap and AI briefing.
       </p>
       <div class="hero-actions">
         <a class="btn" href="/summary">Open latest market brief</a>
@@ -44,7 +44,6 @@
       </div>
       <div class="pill-row">
         <span class="pill">Yahoo Finance</span>
-        <span class="pill">etfcheck.co.kr</span>
         <span class="pill">Gemini AI</span>
         <span class="pill">Render 24/7</span>
         <span class="pill">KST schedules</span>
@@ -83,11 +82,6 @@
                 <td><span class="cmd">/macro</span></td>
                 <td>Macro risk dashboard — yields, credit, vol metrics, Finnhub/EDGAR pulse, AI comment.</td>
                 <td><span class="tag auto">Auto 17:00</span></td>
-              </tr>
-              <tr>
-                <td><span class="cmd">/etfcheck</span></td>
-                <td>ETF CHECK (etfcheck.co.kr) daily turnover + inflow ranking screenshots.</td>
-                <td><span class="tag auto">Auto 15:45</span></td>
               </tr>
               <tr>
                 <td><span class="cmd">/heatmap sp</span></td>
@@ -135,12 +129,6 @@
         </article>
 
         <article class="timeline-item card">
-          <div class="time-badge">Weekdays 15:45 – 15:50</div>
-          <h3>ETF CHECK auto-capture</h3>
-          <p>KRX close is 15:30. Bot captures etfcheck.co.kr turnover rankings once per weekday. No catch-up if the bot restarts after the window.</p>
-        </article>
-
-        <article class="timeline-item card">
           <div class="time-badge">Daily 17:00</div>
           <h3>Macro dashboard</h3>
           <p>Same as <span class="cmd">/macro</span> — charts and AI macro risk comment broadcast to registered chats.</p>
@@ -171,7 +159,7 @@
           <article class="card">
             <h3>Memory safety</h3>
             <ul>
-              <li>Heavy tasks serialized (ETF CHECK, summary, macro, cache warmup)</li>
+              <li>Heavy tasks serialized (summary, macro, cache warmup)</li>
               <li>Playwright runs in short-lived child processes</li>
               <li>180s startup grace before schedulers fire</li>
             </ul>
@@ -189,7 +177,6 @@
             <ul>
               <li>Broadcasts to <code>TELEGRAM_CHAT_ID</code> + known chats</li>
               <li>Auto-blocks chats that return 400/403</li>
-              <li>Manual <span class="cmd">/etfcheck</span> runs in background thread</li>
             </ul>
           </article>
         </div>

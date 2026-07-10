@@ -28,8 +28,6 @@ from stock_crawler import (
     warmup_startup_caches,
 )
 from summary_scheduler import start_summary_scheduler
-
-from etfcheck_scheduler import start_etfcheck_scheduler
 from macro_scheduler import start_macro_scheduler
 from scheduler_grace import mark_service_started
 
@@ -79,10 +77,6 @@ What each command returns:
 
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
-
-/etfcheck
-→ ETF CHECK (etfcheck.co.kr) 일간 거래대금·순유입 랭킹 캡처
-  Auto turnover once daily at 15:45 KST (weekdays)
 
 Auto brief: after US close (YF data ready + 5m) & 22:00 KST
 /macro auto: daily 17:00 KST
@@ -143,6 +137,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
   Web page: see SUMMARY_PUBLIC_URL or /summary on server.
+  PDF attached on each run. Auto-sent after US close (+5m) and 22:00 KST.
   Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
 
 /aibriefing
@@ -160,14 +155,6 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Compare US ETFs with charts (performance, returns, cost, overlap),
   price history (index proxy if short history), AI Korean pick, Excel export.
   Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
-
-/etfcheck
-  Capture ETF CHECK rankings: turnover + inflow (manual).
-  Auto: turnover only once at 15:45 KST on weekdays.
-  Example: /etfcheck
-
-  Auto-sent after US market close once Yahoo Finance daily data is ready (+5m),
-  and at 22:00 KST if SUMMARY_SCHEDULE_HOURS_KST includes 22.
 
 ℹ️ /help
   Show this guide again.
@@ -342,7 +329,6 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
 _greeted_this_session: set[int] = set()
 _last_ranking_by_chat: dict[int, dict] = {}
 _bot_username: str | None = None
-_etfcheck_command_lock = threading.Lock()
 
 
 def fetch_bot_username(token: str) -> str | None:
@@ -444,7 +430,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /heatmap /macro /comp /etfcheck /news /aibriefing /summary /help",
+                "Commands: /etf /sp /nas /heatmap /macro /comp /news /aibriefing /summary /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -466,10 +452,6 @@ def process_telegram_update(token: str, update: dict) -> None:
     save_known_chat(chat_id)
     if chat_type != "channel":
         maybe_send_deferred_startup_guide(token, chat_id)
-
-    if command_text.lower().startswith("/etfcheck"):
-        handle_etfcheck_command(token, chat_id)
-        return
 
     replies = handle_telegram_message(command_text, chat_id)
     if not isinstance(replies, list):
@@ -508,36 +490,6 @@ def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) 
 def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
     if chat_id not in _greeted_this_session:
         send_startup_guide_to_chat(token, chat_id)
-
-
-def handle_etfcheck_command(token: str, chat_id: int) -> None:
-    if not _etfcheck_command_lock.acquire(blocking=False):
-        send_text(
-            token,
-            chat_id,
-            "ETF CHECK capture is already running. Please wait for it to finish.",
-        )
-        return
-
-    def worker() -> None:
-        from etfcheck_pipeline import run_manual_etfcheck_capture
-
-        try:
-            send_text(token, chat_id, "Capturing ETF CHECK rankings from etfcheck.co.kr…")
-
-            def deliver(message: dict) -> None:
-                send_reply(token, chat_id, message)
-                print(f"ETF CHECK message delivered to chat {chat_id}")
-
-            run_manual_etfcheck_capture(deliver)
-            print(f"ETF CHECK capture complete for chat {chat_id}")
-        except Exception as exc:
-            print(f"ETF CHECK capture failed for chat {chat_id}: {exc}")
-            send_text(token, chat_id, f"ETF CHECK capture failed: {exc}")
-        finally:
-            _etfcheck_command_lock.release()
-
-    threading.Thread(target=worker, name=f"etfcheck-{chat_id}", daemon=True).start()
 
 
 def _ranking_loading_reply(universe: str) -> list[dict]:
@@ -876,7 +828,7 @@ def send_reply(token, chat_id, reply):
             response = requests.post(
                 f"https://api.telegram.org/bot{token}/sendPhoto",
                 data=payload,
-                files={"photo": ("etfcheck.jpg", handle, "image/jpeg")},
+                files={"photo": ("photo.jpg", handle, "image/jpeg")},
                 timeout=60,
             )
         _handle_telegram_send_response(
@@ -1006,7 +958,7 @@ def start_web_server():
                 return
 
             if path == "/summary.pdf":
-                from summary_pdf import SUMMARY_PDF_PATH
+                from summary_builder import SUMMARY_PDF_PATH
 
                 if SUMMARY_PDF_PATH.is_file():
                     self._send(
@@ -1041,12 +993,6 @@ def get_bot_token() -> str:
     return token
 
 
-def _skip_startup_etfcheck(command_text: str) -> bool:
-    if os.environ.get("BOT_SKIP_STARTUP_ETFCHECK", "true").lower() in {"0", "false", "no"}:
-        return False
-    return command_text.strip().lower().startswith("/etfcheck")
-
-
 def start_telegram_bot(token: str):
     global _bot_username
     _bot_username = fetch_bot_username(token)
@@ -1058,12 +1004,6 @@ def start_telegram_bot(token: str):
     broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
 
     for update in pending_updates:
-        message = extract_incoming_message(update)
-        if message:
-            command_text = normalize_command_text(message.get("text", ""))
-            if _skip_startup_etfcheck(command_text):
-                print("Skipping queued /etfcheck from startup backlog (manual only after bot is online).")
-                continue
         process_telegram_update(token, update)
 
     while True:
@@ -1136,5 +1076,4 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_macro_scheduler(token=token, broadcast_fn=broadcast_messages)
-    start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_telegram_bot(token)

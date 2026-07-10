@@ -104,6 +104,20 @@ def fetch_etf_news(ticker: str, limit: int = DEFAULT_HEADLINES_PER_TICKER) -> li
     return _fetch_google_news_rss(f"{ticker} ETF", limit=limit)
 
 
+CRYPTO_NEWS_QUERIES = {
+    "BTC": "Bitcoin cryptocurrency market",
+    "ETH": "Ethereum cryptocurrency market",
+}
+
+
+def fetch_crypto_news(symbol: str, limit: int = DEFAULT_HEADLINES_PER_TICKER) -> list[dict[str, str]]:
+    query = CRYPTO_NEWS_QUERIES.get(symbol.strip().upper(), f"{symbol} cryptocurrency")
+    headlines = _fetch_google_news_rss(query, limit=limit)
+    if headlines:
+        return headlines
+    return _fetch_google_news_rss(f"{symbol} crypto", limit=limit)
+
+
 def fetch_ticker_news(ticker: str, limit: int = DEFAULT_HEADLINES_PER_TICKER) -> list[dict[str, str]]:
     with _quiet_yfinance():
         try:

@@ -1,4 +1,4 @@
-"""Serialize memory-heavy work (yfinance warmup, ETF CHECK, summary, macro)."""
+"""Serialize memory-heavy work (yfinance warmup, summary, macro)."""
 
 from __future__ import annotations
 
