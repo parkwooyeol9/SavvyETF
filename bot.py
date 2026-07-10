@@ -4,6 +4,7 @@ import re
 import sys
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -508,6 +509,48 @@ def process_telegram_update(token: str, update: dict) -> None:
         send_reply(token, chat_id, reply)
 
 
+# Keep getUpdates responsive: heavy commands run off the poll loop.
+# Cap workers to limit RAM on Render Starter (512MB).
+_UPDATE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tg-cmd")
+_chat_inflight: dict[int, Future] = {}
+_chat_inflight_lock = threading.Lock()
+
+
+def _run_telegram_update(token: str, update: dict, chat_id: int | None) -> None:
+    update_id = update.get("update_id")
+    try:
+        print(f"Handling update {update_id} (chat={chat_id})")
+        process_telegram_update(token, update)
+    except Exception as exc:
+        print(f"Update handler error (update={update_id}, chat={chat_id}): {exc}")
+        if chat_id is not None:
+            send_text(token, chat_id, f"Command failed: {exc}")
+    finally:
+        if chat_id is not None:
+            with _chat_inflight_lock:
+                _chat_inflight.pop(chat_id, None)
+        print(f"Finished update {update_id} (chat={chat_id})")
+
+
+def enqueue_telegram_update(token: str, update: dict) -> None:
+    """Poller calls this and returns to getUpdates immediately."""
+    chat_id = extract_chat_id_from_update(update)
+
+    with _chat_inflight_lock:
+        if chat_id is not None:
+            existing = _chat_inflight.get(chat_id)
+            if existing is not None and not existing.done():
+                send_text(
+                    token,
+                    chat_id,
+                    "Still working on your previous command. Please wait a moment.",
+                )
+                return
+        future = _UPDATE_EXECUTOR.submit(_run_telegram_update, token, update, chat_id)
+        if chat_id is not None:
+            _chat_inflight[chat_id] = future
+
+
 def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
     if chat_id in _greeted_this_session:
         return False
@@ -548,7 +591,7 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
         {
             "text": (
                 f"Loading {label} rankings "
-                f"(Finnhub for S&P/NASDAQ, Yahoo for ETF; "
+                f"(Yahoo chart for S&P/NASDAQ, Yahoo for ETF; "
                 f"first run may take a few minutes). Try /{universe} again shortly."
             )
         }
@@ -1153,16 +1196,18 @@ def start_telegram_bot(token: str):
     if _bot_username:
         print(f"Bot username: @{_bot_username}")
 
-    print("Starting Telegram bot...")
+    print("Starting Telegram bot (async command workers)...")
     pending_updates, last_update_id = fetch_pending_updates(token)
     broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
 
+    # Never block the poll loop on command handlers — including backlog at boot.
     for update in pending_updates:
-        process_telegram_update(token, update)
+        enqueue_telegram_update(token, update)
 
     while True:
         try:
             params = {
+                "timeout": 25,
                 "allowed_updates": json.dumps(
                     [
                         "message",
@@ -1171,7 +1216,7 @@ def start_telegram_bot(token: str):
                         "edited_channel_post",
                         "my_chat_member",
                     ]
-                )
+                ),
             }
             if last_update_id is not None:
                 params["offset"] = last_update_id + 1
@@ -1191,9 +1236,7 @@ def start_telegram_bot(token: str):
 
             for update in payload.get("result", []):
                 last_update_id = update["update_id"]
-                process_telegram_update(token, update)
-
-            time.sleep(1)
+                enqueue_telegram_update(token, update)
 
         except requests.RequestException as exc:
             print(f"Network error in bot loop: {exc}")
