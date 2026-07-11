@@ -124,12 +124,12 @@ def _add_text_block(pdf: PdfPages, title: str, paragraphs: list[str]) -> None:
     for para in paragraphs:
         wrapped = textwrap.wrap(_safe(para), width=88) or [""]
         if y < 0.08:
-            pdf.savefig(fig, bbox_inches="tight")
+            pdf.savefig(fig)
             plt.close(fig)
             fig, ax, y = _new_text_page(title)
         y = _write_lines(ax, y, wrapped, fontsize=10)
         y -= 0.015
-    pdf.savefig(fig, bbox_inches="tight")
+    pdf.savefig(fig)
     plt.close(fig)
 
 
@@ -146,10 +146,14 @@ def _add_chart_page(pdf: PdfPages, png_bytes: bytes | None, caption: str = "") -
         ax = fig.add_axes([0.06, 0.2, 0.88, 0.7])
         ax.imshow(img)
         ax.axis("off")
-        pdf.savefig(fig, bbox_inches="tight")
+        pdf.savefig(fig)
         plt.close(fig)
     except Exception as exc:
         print(f"PDF chart page skipped: {exc}")
+        try:
+            plt.close(fig)
+        except Exception:
+            pass
 
 
 def _leader_chart(pack: dict):
