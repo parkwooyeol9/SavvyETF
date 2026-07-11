@@ -136,17 +136,15 @@ def _render_heatmap_html(summary: dict) -> str:
     chart = pack.get("chart")
     if chart is None:
         return ""
-    chart.seek(0)
-    import base64
-
-    encoded = base64.b64encode(chart.read()).decode("ascii")
-    chart.seek(0)
+    data_uri = _buffer_to_data_uri(chart, "image/png")
+    if not data_uri:
+        return ""
     caption = _esc(pack.get("caption", "S&P 500 heatmap"))
     return f"""
     <section class="heatmap-section">
       <h2>🗺️ S&amp;P 500 Heatmap</h2>
       <p class="meta">{caption}</p>
-      <img src="data:image/png;base64,{encoded}" alt="S&amp;P 500 heatmap" style="width:100%;max-width:100%;border-radius:12px;border:1px solid var(--border);" />
+      <img src="{data_uri}" alt="S&amp;P 500 heatmap" style="width:100%;max-width:100%;border-radius:12px;border:1px solid var(--border);" />
     </section>
     """
 
@@ -155,11 +153,10 @@ def _format_heatmap_telegram(summary: dict) -> list[dict]:
     pack = summary.get("heatmap_sp") or {}
     if pack.get("error"):
         return [{"text": f"🗺️ S&P 500 heatmap\n\n(unavailable: {pack['error']})"}]
-    chart = pack.get("chart")
-    if chart is None:
+    photo = _as_photo_buffer(pack.get("chart"))
+    if photo is None:
         return []
-    chart.seek(0)
-    return [{"text": pack.get("caption", "S&P 500 heatmap"), "photo": chart}]
+    return [{"text": pack.get("caption", "S&P 500 heatmap"), "photo": photo}]
 
 
 def _render_ai_html(summary: dict) -> str:
@@ -201,12 +198,51 @@ def _format_ai_telegram(summary: dict) -> list[dict]:
     return [{"text": ai_header + brief_ko}]
 
 
-def _buffer_to_data_uri(buffer: BytesIO | None, mime: str) -> str:
-    if buffer is None:
+def _chart_png_bytes(chart) -> bytes | None:
+    """Return raw PNG bytes from bytes or a buffer (never requires a live handle)."""
+    if chart is None:
+        return None
+    if isinstance(chart, (bytes, bytearray, memoryview)):
+        data = bytes(chart)
+        return data or None
+    if getattr(chart, "closed", False):
+        return None
+    getvalue = getattr(chart, "getvalue", None)
+    if callable(getvalue):
+        try:
+            data = getvalue()
+            return bytes(data) if data else None
+        except Exception:
+            pass
+    try:
+        if hasattr(chart, "seek"):
+            chart.seek(0)
+        data = chart.read()
+        if hasattr(chart, "seek"):
+            try:
+                chart.seek(0)
+            except Exception:
+                pass
+        return bytes(data) if data else None
+    except Exception:
+        return None
+
+
+def _as_photo_buffer(chart) -> BytesIO | None:
+    """Telegram sendPhoto needs a file-like object."""
+    data = _chart_png_bytes(chart)
+    if not data:
+        return None
+    buf = BytesIO(data)
+    buf.seek(0)
+    return buf
+
+
+def _buffer_to_data_uri(buffer, mime: str) -> str:
+    data = _chart_png_bytes(buffer)
+    if not data:
         return ""
-    buffer.seek(0)
-    encoded = base64.b64encode(buffer.read()).decode("ascii")
-    buffer.seek(0)
+    encoded = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{encoded}"
 
 
@@ -557,10 +593,9 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
         chart_reply: dict = {
             "text": "\n".join(caption_lines),
         }
-        chart_png = leader_pack.get("chart_png")
-        if chart_png is not None:
-            chart_png.seek(0)
-            chart_reply["photo"] = chart_png
+        photo = _as_photo_buffer(leader_pack.get("chart_png"))
+        if photo is not None:
+            chart_reply["photo"] = photo
         else:
             chart_reply["chart_ticker"] = leader
         messages.append(chart_reply)
@@ -628,18 +663,22 @@ def _format_macro_crypto_telegram(summary: dict) -> list[dict]:
     if macro.get("error"):
         messages.append({"text": f"📊 Macro dashboard\n\n(unavailable: {macro['error']})"})
     elif macro.get("chart") is not None:
-        chart = macro["chart"]
-        chart.seek(0)
-        messages.append({"text": macro.get("caption", "Macro risk dashboard"), "photo": chart})
+        photo = _as_photo_buffer(macro.get("chart"))
+        if photo is not None:
+            messages.append(
+                {"text": macro.get("caption", "Macro risk dashboard"), "photo": photo}
+            )
 
     crypto = summary.get("crypto") or {}
     for symbol in ("BTC", "ETH"):
         entry = crypto.get(symbol) or {}
         label = entry.get("label", symbol)
         if entry.get("chart") is not None:
-            chart = entry["chart"]
-            chart.seek(0)
-            messages.append({"text": f"🪙 {label} ({symbol}) technical chart", "photo": chart})
+            photo = _as_photo_buffer(entry.get("chart"))
+            if photo is not None:
+                messages.append(
+                    {"text": f"🪙 {label} ({symbol}) technical chart", "photo": photo}
+                )
         elif entry.get("chart_error"):
             messages.append({"text": f"🪙 {label} ({symbol})\nChart unavailable: {entry['chart_error']}"})
 
@@ -751,24 +790,9 @@ def _build_crypto_appendix() -> dict:
     return appendix
 
 
-def _freeze_chart_buffer(chart) -> BytesIO | None:
-    """Return a fresh BytesIO copy so later readers cannot hit a closed buffer."""
-    if chart is None:
-        return None
-    try:
-        if hasattr(chart, "getvalue"):
-            data = chart.getvalue()
-        else:
-            chart.seek(0)
-            data = chart.read()
-        if not data:
-            return None
-        clone = BytesIO(data)
-        clone.seek(0)
-        return clone
-    except Exception as exc:
-        print(f"Chart buffer freeze failed: {exc}")
-        return None
+def _freeze_chart_buffer(chart) -> bytes | None:
+    """Copy chart payload to immutable bytes so later readers never hit a closed buffer."""
+    return _chart_png_bytes(chart)
 
 
 def _freeze_summary_charts(summary: dict) -> None:
@@ -807,9 +831,9 @@ def generate_and_save_summary(public_url: str = "") -> dict:
 
     summary["macro"] = _build_macro_appendix()
     summary["crypto"] = _build_crypto_appendix()
+    # Freeze to raw bytes BEFORE any consumer (PDF/HTML/Telegram) touches charts.
     _freeze_summary_charts(summary)
 
-    # Build PDF before HTML/Telegram so chart buffers stay usable.
     try:
         from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf
 

@@ -1,6 +1,7 @@
-"""Build /summary PDF without matplotlib PdfPages (avoids closed-file I/O bugs).
+"""Build /summary PDF with Pillow only (no matplotlib file handles).
 
-Each page is rendered to PNG with matplotlib, then stitched into a PDF with Pillow.
+Charts must already be PNG bytes (or anything convertible via getvalue/read).
+Text pages are drawn with ImageDraw + a downloaded CJK TTF.
 """
 
 from __future__ import annotations
@@ -9,12 +10,6 @@ import re
 import textwrap
 from io import BytesIO
 from pathlib import Path
-
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib import font_manager
 
 from ai_briefing import _strip_disclaimer
 
@@ -27,8 +22,13 @@ _FONT_URL = (
     "NanumGothic-Regular.ttf"
 )
 
-_font_name: str | None = None
-_PAGE_SIZE = (8.27, 11.69)  # A4 inches
+# A4 at 140 DPI
+_PAGE_W = 1158
+_PAGE_H = 1637
+_MARGIN = 56
+
+_font_path: Path | None = None
+_font_tried = False
 
 
 def _safe(text: object) -> str:
@@ -38,10 +38,11 @@ def _safe(text: object) -> str:
     return value.strip()
 
 
-def _ensure_font() -> str:
-    global _font_name
-    if _font_name:
-        return _font_name
+def _ensure_font_path() -> Path | None:
+    global _font_path, _font_tried
+    if _font_tried:
+        return _font_path
+    _font_tried = True
 
     font_path = _RUNTIME_FONT
     if not font_path.is_file() or font_path.stat().st_size < 1000:
@@ -55,45 +56,60 @@ def _ensure_font() -> str:
             print(f"Downloaded PDF font to {font_path} ({len(response.content)} bytes)")
         except Exception as exc:
             print(f"PDF CJK font download skipped: {exc}")
-            _font_name = "DejaVu Sans"
-            return _font_name
+            _font_path = None
+            return None
 
-    try:
-        font_manager.fontManager.addfont(str(font_path))
-        props = font_manager.FontProperties(fname=str(font_path))
-        _font_name = props.get_name()
-        plt.rcParams["font.family"] = _font_name
-        plt.rcParams["axes.unicode_minus"] = False
-        print(f"PDF using font: {_font_name}")
-        return _font_name
-    except Exception as exc:
-        print(f"PDF font register failed: {exc}")
-        _font_name = "DejaVu Sans"
-        return _font_name
+    _font_path = font_path
+    return font_path
 
 
-def _chart_to_png_bytes(chart) -> bytes | None:
+def _load_font(size: int):
+    from PIL import ImageFont
+
+    path = _ensure_font_path()
+    if path is not None:
+        try:
+            return ImageFont.truetype(str(path), size=size)
+        except Exception as exc:
+            print(f"PDF font load failed ({size}pt): {exc}")
+    return ImageFont.load_default()
+
+
+def chart_to_png_bytes(chart) -> bytes | None:
+    """Snapshot chart payload to raw PNG bytes. Never reuses live buffers."""
     if chart is None:
         return None
-    if isinstance(chart, (bytes, bytearray)):
-        return bytes(chart)
-    # Prefer getbuffer/getvalue before seek/read — works even at EOF.
-    for getter in ("getbuffer", "getvalue"):
-        fn = getattr(chart, getter, None)
-        if not callable(fn):
-            continue
+    if isinstance(chart, (bytes, bytearray, memoryview)):
+        data = bytes(chart)
+        return data or None
+    if getattr(chart, "closed", False):
+        return None
+    getvalue = getattr(chart, "getvalue", None)
+    if callable(getvalue):
         try:
-            data = bytes(fn())
+            data = getvalue()
             if data:
-                return data
-        except Exception:
-            continue
+                return bytes(data)
+        except Exception as exc:
+            print(f"PDF chart getvalue failed: {exc}")
     try:
-        pos = chart.tell() if hasattr(chart, "tell") else None
-        if hasattr(chart, "seek"):
-            chart.seek(0)
-        data = chart.read()
-        if hasattr(chart, "seek") and pos is not None:
+        read = getattr(chart, "read", None)
+        seek = getattr(chart, "seek", None)
+        if not callable(read):
+            return None
+        pos = None
+        if callable(seek) and hasattr(chart, "tell"):
+            try:
+                pos = chart.tell()
+            except Exception:
+                pos = None
+            try:
+                chart.seek(0)
+            except Exception as exc:
+                print(f"PDF chart seek failed: {exc}")
+                return None
+        data = read()
+        if callable(seek) and pos is not None:
             try:
                 chart.seek(pos)
             except Exception:
@@ -104,72 +120,87 @@ def _chart_to_png_bytes(chart) -> bytes | None:
         return None
 
 
-def _fig_to_png_bytes(fig) -> bytes:
-    buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=140, facecolor="white")
-    plt.close(fig)
-    return buf.getvalue()
+def _render_text_page(title: str, paragraphs: list[str]):
+    from PIL import Image, ImageDraw
 
-
-def _render_text_page(title: str, paragraphs: list[str]) -> bytes:
-    _ensure_font()
-    fig = plt.figure(figsize=_PAGE_SIZE, facecolor="white")
-    ax = fig.add_axes([0.08, 0.06, 0.84, 0.88])
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-    y = 0.97
+    img = Image.new("RGB", (_PAGE_W, _PAGE_H), "white")
+    draw = ImageDraw.Draw(img)
+    title_font = _load_font(28)
+    body_font = _load_font(16)
+    y = _MARGIN
     if title:
-        ax.text(0, y, _safe(title), fontsize=16, fontweight="bold", va="top", color="#111")
-        y -= 0.05
+        draw.text((_MARGIN, y), _safe(title), font=title_font, fill=(17, 17, 17))
+        y += 44
     for para in paragraphs:
-        for line in textwrap.wrap(_safe(para), width=88) or [""]:
-            if y < 0.04:
+        for line in textwrap.wrap(_safe(para), width=78) or [""]:
+            if y > _PAGE_H - _MARGIN:
                 break
-            ax.text(0, y, line, fontsize=10, va="top", color="#222")
-            y -= 0.028
-        y -= 0.012
-    return _fig_to_png_bytes(fig)
+            draw.text((_MARGIN, y), line, font=body_font, fill=(34, 34, 34))
+            y += 24
+        y += 10
+    return img
 
 
-def _render_chart_page(png_bytes: bytes, caption: str = "") -> bytes:
-    import matplotlib.image as mpimg
+def _render_chart_page(png_bytes: bytes, caption: str = ""):
+    from PIL import Image, ImageDraw
 
-    img = mpimg.imread(BytesIO(png_bytes), format="png")
-    fig = plt.figure(figsize=_PAGE_SIZE, facecolor="white")
+    page = Image.new("RGB", (_PAGE_W, _PAGE_H), "white")
+    draw = ImageDraw.Draw(page)
+    y = _MARGIN
     if caption:
-        fig.suptitle(_safe(caption), fontsize=11, y=0.97, color="#111")
-    ax = fig.add_axes([0.06, 0.18, 0.88, 0.72])
-    ax.imshow(img)
-    ax.axis("off")
-    return _fig_to_png_bytes(fig)
+        draw.text((_MARGIN, y), _safe(caption), font=_load_font(20), fill=(17, 17, 17))
+        y += 36
+
+    with Image.open(BytesIO(png_bytes)) as src:
+        chart = src.convert("RGB")
+        chart.load()
+        chart = chart.copy()
+
+    max_w = _PAGE_W - 2 * _MARGIN
+    max_h = _PAGE_H - y - _MARGIN
+    chart.thumbnail((max_w, max_h))
+    x = _MARGIN + (max_w - chart.width) // 2
+    page.paste(chart, (x, y))
+    return page
 
 
-def _png_pages_to_pdf(pages: list[bytes], out: Path) -> None:
-    from PIL import Image
-
-    if not pages:
+def _images_to_pdf(images: list, out: Path) -> None:
+    """Write RGB PIL images to PDF via an in-memory buffer (no live file handles)."""
+    if not images:
         raise RuntimeError("No PDF pages to write")
 
-    images: list[Image.Image] = []
-    try:
-        for raw in pages:
-            images.append(Image.open(BytesIO(raw)).convert("RGB"))
-        first, rest = images[0], images[1:]
-        out.parent.mkdir(parents=True, exist_ok=True)
-        first.save(
-            str(out),
-            format="PDF",
-            save_all=True,
-            append_images=rest,
-            resolution=140.0,
-        )
-    finally:
-        for image in images:
-            try:
-                image.close()
-            except Exception:
-                pass
+    # Detach every page into a fully-loaded RGB copy.
+    pages = []
+    for image in images:
+        rgb = image.convert("RGB")
+        rgb.load()
+        pages.append(rgb.copy())
+        try:
+            image.close()
+        except Exception:
+            pass
+
+    first, rest = pages[0], pages[1:]
+    pdf_buf = BytesIO()
+    first.save(
+        pdf_buf,
+        format="PDF",
+        save_all=True,
+        append_images=rest,
+        resolution=140.0,
+    )
+    data = pdf_buf.getvalue()
+    pdf_buf.close()
+    for page in pages:
+        try:
+            page.close()
+        except Exception:
+            pass
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    if not out.is_file() or out.stat().st_size < 100:
+        raise RuntimeError(f"PDF write failed or empty: {out}")
 
 
 def _leader_chart(pack: dict):
@@ -178,14 +209,12 @@ def _leader_chart(pack: dict):
 
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     out = output_path or SUMMARY_PDF_PATH
-    _ensure_font()
-
-    pages: list[bytes] = []
+    pages = []
 
     header_lines = [
         _safe(summary.get("generated_at_display", "")),
         f"Tickers with news: {summary.get('ticker_count', 0)}",
-        "PDF export via matplotlib+Pillow (no Selenium)",
+        "PDF export via Pillow (no Selenium / no matplotlib)",
     ]
     pages.append(_render_text_page("SavvyETF Market Brief", header_lines))
 
@@ -231,7 +260,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         pages.append(_render_text_page("AI market briefing", paras))
 
     heatmap = summary.get("heatmap_sp") or {}
-    heatmap_png = _chart_to_png_bytes(heatmap.get("chart"))
+    heatmap_png = chart_to_png_bytes(heatmap.get("chart"))
     if heatmap_png:
         try:
             pages.append(
@@ -245,7 +274,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     for key, pack in (summary.get("leader_charts") or {}).items():
         if not isinstance(pack, dict):
             continue
-        raw = _chart_to_png_bytes(_leader_chart(pack))
+        raw = chart_to_png_bytes(_leader_chart(pack))
         if not raw:
             continue
         caption = pack.get("caption") or pack.get("ticker") or str(key)
@@ -255,7 +284,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
             print(f"PDF leader page skipped: {exc}")
 
     macro = summary.get("macro") or {}
-    macro_png = _chart_to_png_bytes(macro.get("chart"))
+    macro_png = chart_to_png_bytes(macro.get("chart"))
     if macro_png:
         try:
             pages.append(_render_chart_page(macro_png, macro.get("caption", "Macro dashboard")))
@@ -264,7 +293,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
 
     for symbol in ("BTC", "ETH"):
         entry = (summary.get("crypto") or {}).get(symbol) or {}
-        raw = _chart_to_png_bytes(entry.get("chart"))
+        raw = chart_to_png_bytes(entry.get("chart"))
         if not raw:
             continue
         try:
@@ -283,9 +312,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         )
     )
 
-    _png_pages_to_pdf(pages, out)
-    if not out.is_file() or out.stat().st_size < 100:
-        raise RuntimeError(f"PDF write failed or empty: {out}")
+    _images_to_pdf(pages, out)
     print(f"Summary PDF written: {out} ({out.stat().st_size} bytes, pages={len(pages)})")
     return out
 
