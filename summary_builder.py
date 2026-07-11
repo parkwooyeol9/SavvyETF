@@ -835,9 +835,9 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     _freeze_summary_charts(summary)
 
     try:
-        from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf
+        from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf_safe
 
-        pdf_path = build_summary_pdf(summary, output_path=SUMMARY_PDF_PATH)
+        pdf_path = build_summary_pdf_safe(summary, output_path=SUMMARY_PDF_PATH)
         summary["pdf_path"] = str(pdf_path)
     except Exception as exc:
         summary["pdf_path"] = None
