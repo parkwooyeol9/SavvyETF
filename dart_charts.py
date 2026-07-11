@@ -132,11 +132,14 @@ def plot_dart_dashboard(profile: dict[str, Any]) -> io.BytesIO:
         y=0.98,
     )
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=130, facecolor=PALETTE["bg"], bbox_inches="tight")
-    buf.seek(0)
-    plt.close(fig)
-    return buf
+    from chart_buffers import figure_to_png_buffer
+
+    return figure_to_png_buffer(
+        fig,
+        dpi=130,
+        facecolor=PALETTE["bg"],
+        bbox_inches="tight",
+    )
 
 
 def format_dart_chart_caption(profile: dict[str, Any]) -> str:

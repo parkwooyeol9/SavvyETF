@@ -106,11 +106,14 @@ def plot_etf_memb_dashboard(profile: dict[str, Any]) -> io.BytesIO:
     ax2.grid(True, axis="x", color=PALETTE["grid"], alpha=0.35)
 
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=130, facecolor=PALETTE["bg"], bbox_inches="tight")
-    buf.seek(0)
-    plt.close(fig)
-    return buf
+    from chart_buffers import figure_to_png_buffer
+
+    return figure_to_png_buffer(
+        fig,
+        dpi=130,
+        facecolor=PALETTE["bg"],
+        bbox_inches="tight",
+    )
 
 
 def format_etf_memb_chart_caption(profile: dict[str, Any]) -> str:

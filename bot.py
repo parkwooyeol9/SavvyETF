@@ -1105,7 +1105,19 @@ def send_reply(token, chat_id, reply):
         return
 
     if photo is not None:
-        photo.seek(0)
+        from chart_buffers import photo_to_upload_bytes
+        from io import BytesIO
+
+        try:
+            png_bytes = photo_to_upload_bytes(photo)
+        except Exception as exc:
+            send_text(
+                token,
+                chat_id,
+                f"{text}\nChart upload error: {exc}".strip(),
+                parse_mode=parse_mode,
+            )
+            return
         payload: dict = {"chat_id": chat_id}
         if text:
             payload["caption"] = text[:1024]
@@ -1114,7 +1126,7 @@ def send_reply(token, chat_id, reply):
         response = requests.post(
             f"https://api.telegram.org/bot{token}/sendPhoto",
             data=payload,
-            files={"photo": ("chart.png", photo, "image/png")},
+            files={"photo": ("chart.png", BytesIO(png_bytes), "image/png")},
             timeout=60,
         )
         _handle_telegram_send_response(
