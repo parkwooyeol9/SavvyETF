@@ -298,26 +298,29 @@ def _paste_chart_in_frame(
     title: str = "",
     subtitle: str = "",
 ) -> int:
-    """Draw a framed chart panel; returns bottom y."""
-    header_h = 0
+    """Draw a framed chart sized to content (no tall empty padding). Returns bottom y."""
+    start_y = y
     if title:
-        draw.text((x + 4, y), _safe(title), font=_load_font(20), fill=TEXT)
-        header_h = 28
+        draw.text((x + 4, y), _safe(title), font=_load_font(18), fill=TEXT)
+        y += 24
         if subtitle:
-            draw.text((x + 4, y + 26), _safe(subtitle)[:110], font=_load_font(12), fill=MUTED)
-            header_h = 48
-        y += header_h + 8
+            draw.text((x + 4, y), _safe(subtitle)[:110], font=_load_font(12), fill=MUTED)
+            y += 20
+        y += 6
 
-    pad = 14
-    inner_w = max_w - 2
-    inner_h = max_h - header_h - 8
-    frame = (x, y, x + max_w, y + inner_h)
-    draw.rounded_rectangle(frame, radius=16, fill=PANEL, outline=BORDER, width=1)
+    pad = 10
+    used = y - start_y
+    avail_w = max(40, max_w - pad * 2)
+    avail_h = max(40, max_h - used - pad * 2)
 
     chart = chart.copy()
-    chart.thumbnail((inner_w - pad * 2, inner_h - pad * 2))
-    cx = x + pad + (inner_w - pad * 2 - chart.width) // 2
-    cy = y + pad + (inner_h - pad * 2 - chart.height) // 2
+    chart.thumbnail((avail_w, avail_h))
+    frame_h = chart.height + pad * 2
+    frame = (x, y, x + max_w, y + frame_h)
+    draw.rounded_rectangle(frame, radius=14, fill=PANEL, outline=BORDER, width=1)
+
+    cx = x + pad + (avail_w - chart.width) // 2
+    cy = y + pad
     page.paste(chart, (cx, cy))
     try:
         chart.close()
@@ -338,29 +341,29 @@ def _render_cover_page(summary: dict) -> bytes:
     draw.text((_MARGIN + 72, 78), "SavvyETF", font=_load_font(36), fill=TEXT)
     draw.text((_MARGIN + 72, 122), "Market Brief", font=_load_font(22), fill=ACCENT)
 
-    y = 190
+    y = 170
     draw.text(
         (_MARGIN, y),
         _safe(summary.get("generated_at_display", "")),
         font=_load_font(16),
         fill=MUTED,
     )
-    y += 42
+    y += 34
 
-    draw.text((_MARGIN, y), "오늘의 마켓 브리프", font=_load_font(42), fill=TEXT)
-    y += 56
+    draw.text((_MARGIN, y), "오늘의 마켓 브리프", font=_load_font(40), fill=TEXT)
+    y += 48
     y = _draw_wrapped(
         draw,
         "ETF · S&P 500 랭킹, 리더 차트, 히트맵, 매크로, BTC/ETH, AI 브리핑을 한 권으로 정리했습니다.",
         _MARGIN,
         y,
         42,
-        _load_font(16),
+        _load_font(15),
         MUTED,
-        26,
-        400,
+        24,
+        380,
     )
-    y += 28
+    y += 18
 
     x = _MARGIN
     for label, value in (
@@ -370,7 +373,7 @@ def _render_cover_page(summary: dict) -> bytes:
     ):
         w = _draw_stat_chip(draw, x, y, label, value)
         x += w + 14
-    y += 82
+    y += 72
 
     draw.rounded_rectangle(
         (_MARGIN, y, _PAGE_W - _MARGIN, y + 100),
@@ -388,11 +391,11 @@ def _render_cover_page(summary: dict) -> bytes:
     )
     draw.text(
         (_MARGIN + 24, y + 70),
-        "Charts are full-page showcases — swipe through for the visual brief.",
+        "Rankings → news → heatmap → macro → crypto → AI brief",
         font=_load_font(13),
         fill=MUTED,
     )
-    y += 124
+    y += 118
 
     # Cover collage: up to 3 chart thumbnails
     thumbs: list[tuple[bytes, str]] = []
@@ -411,9 +414,9 @@ def _render_cover_page(summary: dict) -> bytes:
     thumbs = thumbs[:3]
 
     if thumbs:
-        gap = 16
+        gap = 14
         col_w = (_PAGE_W - 2 * _MARGIN - gap * (len(thumbs) - 1)) // len(thumbs)
-        max_h = _PAGE_H - y - 70
+        max_h = min(420, _PAGE_H - y - 56)
         for i, (raw, label) in enumerate(thumbs):
             tx = _MARGIN + i * (col_w + gap)
             chart = _open_chart(raw)
@@ -453,14 +456,14 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, ukey.upper() or "UNI", accent)
     draw.text((_MARGIN + 90, y), name, font=_load_font(28), fill=TEXT)
-    y += 44
+    y += 40
     draw.text(
         (_MARGIN, y),
         "Price: last trading day return  ·  Volume: latest / 21d avg",
         font=_load_font(13),
         fill=MUTED,
     )
-    y += 32
+    y += 26
 
     leader_pack = (summary.get("leader_charts") or {}).get(ukey) or {}
     leader_png = (
@@ -469,35 +472,33 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
         else None
     )
 
-    col_gap = 20
-    # If we have a leader chart, use top band for rankings and bottom for chart
-    rank_bottom = (_PAGE_H // 2 + 40) if leader_png else (_PAGE_H - 160)
+    col_gap = 16
     col_w = (_PAGE_W - 2 * _MARGIN - col_gap) // 2
     boards = [
         ("surge", "Price up + volume surge", True, ACCENT2),
         ("dropvol", "Price down + volume surge", False, DANGER),
     ]
 
+    content_bottom = y
     for col, (mode, title, bullish, mode_color) in enumerate(boards):
         x = _MARGIN + col * (col_w + col_gap)
         cy = y
         draw.rounded_rectangle(
-            (x, cy, x + col_w, cy + 36),
+            (x, cy, x + col_w, cy + 34),
             radius=10,
             fill=PANEL,
             outline=mode_color,
             width=2,
         )
-        draw.text((x + 12, cy + 8), title, font=_load_font(13), fill=mode_color)
-        cy += 46
+        draw.text((x + 12, cy + 7), title, font=_load_font(13), fill=mode_color)
+        cy += 42
 
         rows = ((universe.get("boards") or {}).get(mode) or {}).get("top") or []
         if not rows:
             draw.text((x + 8, cy), "(no rows)", font=_load_font(14), fill=MUTED)
+            content_bottom = max(content_bottom, cy + 28)
             continue
         for idx, row in enumerate(rows[:6], start=1):
-            if cy + 44 > rank_bottom:
-                break
             if isinstance(row, (list, tuple)) and len(row) >= 2:
                 ticker, metric = row[0], row[1]
             else:
@@ -505,21 +506,24 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             h = _draw_rank_row(
                 draw, x, cy, col_w, idx, str(ticker), str(metric), accent, bullish
             )
-            cy += h + 7
+            cy += h + 6
+        content_bottom = max(content_bottom, cy)
 
     if leader_png:
         note = ((summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}).get(ukey, "")
         ticker = (leader_pack or {}).get("ticker") or universe.get("leader_ticker") or ukey
+        chart_y = content_bottom + 14
+        chart_budget = max(220, _PAGE_H - chart_y - 56)
         chart = _open_chart(leader_png)
         _paste_chart_in_frame(
             img,
             draw,
             chart,
             _MARGIN,
-            rank_bottom + 8,
+            chart_y,
             _PAGE_W - 2 * _MARGIN,
-            _PAGE_H - rank_bottom - 70,
-            title=f"Leader chart — {_safe(ticker)}",
+            chart_budget,
+            title=f"Leader — {_safe(ticker)}",
             subtitle=_safe(note),
         )
         try:
@@ -529,16 +533,16 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     else:
         leader = universe.get("leader_ticker")
         if leader:
-            ly = _PAGE_H - 150
+            ly = content_bottom + 18
             draw.rounded_rectangle(
-                (_MARGIN, ly, _PAGE_W - _MARGIN, ly + 68),
+                (_MARGIN, ly, _PAGE_W - _MARGIN, ly + 64),
                 radius=14,
                 fill=PANEL,
                 outline=accent,
                 width=2,
             )
-            draw.text((_MARGIN + 20, ly + 12), "Top surge leader", font=_load_font(12), fill=MUTED)
-            draw.text((_MARGIN + 20, ly + 32), _safe(leader), font=_load_font(24), fill=TEXT)
+            draw.text((_MARGIN + 20, ly + 10), "Top surge leader", font=_load_font(12), fill=MUTED)
+            draw.text((_MARGIN + 20, ly + 30), _safe(leader), font=_load_font(24), fill=TEXT)
 
     _draw_footer(draw, f"{ukey} rankings")
     return _image_to_png_bytes(img)
@@ -564,29 +568,29 @@ def _render_news_page(universe: dict, summary: dict) -> bytes | None:
         font=_load_font(26),
         fill=TEXT,
     )
-    y += 56
+    y += 48
 
     for ticker, headlines in blocks:
-        if y > _PAGE_H - 160:
+        if y > _PAGE_H - 140:
             break
         draw.rounded_rectangle(
-            (_MARGIN, y, _PAGE_W - _MARGIN, y + 34),
+            (_MARGIN, y, _PAGE_W - _MARGIN, y + 30),
             radius=8,
             fill=PANEL2,
             outline=BORDER,
             width=1,
         )
-        draw.text((_MARGIN + 14, y + 8), ticker, font=_load_font(15), fill=accent)
-        y += 44
+        draw.text((_MARGIN + 14, y + 6), ticker, font=_load_font(15), fill=accent)
+        y += 38
         for item in headlines:
             title = _safe(item.get("title", ""))
             source = _safe(item.get("source", ""))
-            y = _draw_wrapped(draw, f"• {title}", _MARGIN + 8, y, 68, _load_font(14), TEXT, 22, _PAGE_H - 80)
+            y = _draw_wrapped(draw, f"• {title}", _MARGIN + 8, y, 68, _load_font(14), TEXT, 20, _PAGE_H - 70)
             if source:
                 draw.text((_MARGIN + 22, y), source, font=_load_font(12), fill=MUTED)
-                y += 20
-            y += 6
-        y += 14
+                y += 16
+            y += 4
+        y += 10
 
     _draw_footer(draw, f"{ukey} news")
     return _image_to_png_bytes(img)
@@ -602,55 +606,71 @@ def _render_ai_page(summary: dict) -> bytes | None:
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, "AI", WARN)
     draw.text((_MARGIN + 70, y), "AI 시장 브리핑", font=_load_font(28), fill=TEXT)
-    y += 40
+    y += 36
     meta = f"source: {_safe(ai.get('source', 'ai'))}  ·  articles: {ai.get('article_count', 0)}"
     draw.text((_MARGIN, y), meta, font=_load_font(13), fill=MUTED)
-    y += 28
+    y += 24
 
+    paras = [p.strip() for p in re.split(r"\n+", brief) if p.strip()]
+    notes = ai.get("chart_notes_ko") or {}
+
+    # Pre-measure content height so the panel hugs the text (no empty mid-page box).
+    body_font = _load_font(15)
+    note_font = _load_font(13)
+    line_h, note_h = 22, 18
+    content_h = 18
+    for para in paras:
+        content_h += max(1, len(textwrap.wrap(para, width=58))) * line_h + 10
+    if notes:
+        content_h += 28
+        for key, note in notes.items():
+            content_h += max(1, len(textwrap.wrap(f"[{key}] {note}", width=58))) * note_h
+
+    panel_top = y
+    panel_h = min(_PAGE_H - 56 - panel_top, content_h + 16)
     draw.rounded_rectangle(
-        (_MARGIN, y, _PAGE_W - _MARGIN, _PAGE_H - 70),
+        (_MARGIN, panel_top, _PAGE_W - _MARGIN, panel_top + panel_h),
         radius=16,
         fill=PANEL,
         outline=BORDER,
         width=1,
     )
-    y += 22
-    for para in re.split(r"\n+", brief):
-        if not para.strip():
-            y += 10
-            continue
+    y = panel_top + 16
+    max_y = panel_top + panel_h - 12
+
+    for para in paras:
         y = _draw_wrapped(
             draw,
-            para.strip(),
-            _MARGIN + 22,
+            para,
+            _MARGIN + 20,
             y,
             58,
-            _load_font(15),
+            body_font,
             TEXT,
-            24,
-            _PAGE_H - 100,
+            line_h,
+            max_y,
         )
-        y += 12
-        if y > _PAGE_H - 100:
+        y += 10
+        if y > max_y:
             break
 
-    notes = ai.get("chart_notes_ko") or {}
-    if notes and y < _PAGE_H - 160:
-        y += 8
-        draw.text((_MARGIN + 22, y), "Chart notes", font=_load_font(14), fill=ACCENT)
-        y += 24
+    if notes and y < max_y - 40:
+        draw.text((_MARGIN + 20, y), "Chart notes", font=_load_font(14), fill=ACCENT)
+        y += 22
         for key, note in notes.items():
             y = _draw_wrapped(
                 draw,
                 f"[{key}] {note}",
-                _MARGIN + 22,
+                _MARGIN + 20,
                 y,
                 58,
-                _load_font(13),
+                note_font,
                 MUTED,
-                20,
-                _PAGE_H - 80,
+                note_h,
+                max_y,
             )
+            if y > max_y:
+                break
 
     _draw_footer(draw, "AI briefing")
     return _image_to_png_bytes(img)
@@ -666,11 +686,11 @@ def _render_chart_showcase(
     img, draw = _new_page()
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, eyebrow, accent)
-    draw.text((_MARGIN + 100, y), _safe(title)[:48], font=_load_font(26), fill=TEXT)
-    y += 44
+    draw.text((_MARGIN + 100, y), _safe(title)[:48], font=_load_font(24), fill=TEXT)
+    y += 40
     if subtitle:
-        y = _draw_wrapped(draw, subtitle, _MARGIN, y, 70, _load_font(13), MUTED, 20, y + 60)
-        y += 12
+        y = _draw_wrapped(draw, subtitle, _MARGIN, y, 72, _load_font(12), MUTED, 18, y + 54)
+        y += 8
 
     chart = _open_chart(png_bytes)
     _paste_chart_in_frame(
@@ -680,7 +700,7 @@ def _render_chart_showcase(
         _MARGIN,
         y,
         _PAGE_W - 2 * _MARGIN,
-        _PAGE_H - y - 70,
+        _PAGE_H - y - 52,
     )
     try:
         chart.close()
@@ -700,12 +720,12 @@ def _render_dual_chart_page(
     img, draw = _new_page()
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, eyebrow, ACCENT)
-    draw.text((_MARGIN + 100, y), _safe(title), font=_load_font(26), fill=TEXT)
-    y += 50
+    draw.text((_MARGIN + 100, y), _safe(title), font=_load_font(24), fill=TEXT)
+    y += 42
 
-    gap = 20
+    gap = 16
     col_w = (_PAGE_W - 2 * _MARGIN - gap) // 2
-    max_h = _PAGE_H - y - 70
+    max_h = _PAGE_H - y - 52
 
     for col, (raw, caption) in enumerate((left, right)):
         x = _MARGIN + col * (col_w + gap)
@@ -722,9 +742,9 @@ def _render_dual_chart_page(
 
 def _render_notes_page() -> bytes:
     img, draw = _new_page()
-    y = _MARGIN + 40
-    draw.text((_MARGIN, y), "Notes", font=_load_font(32), fill=TEXT)
-    y += 56
+    y = _MARGIN
+    draw.text((_MARGIN, y), "Notes", font=_load_font(28), fill=TEXT)
+    y += 44
     lines = [
         "본 자료는 투자 권유가 아닙니다. Not financial advice.",
         "데이터: Yahoo Finance chart API · Finnhub (premarket) · Gemini (AI brief).",
@@ -733,14 +753,14 @@ def _render_notes_page() -> bytes:
     ]
     for line in lines:
         draw.rounded_rectangle(
-            (_MARGIN, y, _PAGE_W - _MARGIN, y + 52),
+            (_MARGIN, y, _PAGE_W - _MARGIN, y + 48),
             radius=12,
             fill=PANEL,
             outline=BORDER,
             width=1,
         )
-        draw.text((_MARGIN + 18, y + 16), line, font=_load_font(14), fill=MUTED)
-        y += 66
+        draw.text((_MARGIN + 18, y + 14), line, font=_load_font(14), fill=MUTED)
+        y += 58
 
     _draw_footer(draw, "notes")
     return _image_to_png_bytes(img)
@@ -850,29 +870,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         news_page = _render_news_page(universe, summary)
         if news_page:
             png_pages.append(news_page)
-
-        # Leader chart right after its universe section
-        ukey = str(universe.get("key", ""))
-        pack = (summary.get("leader_charts") or {}).get(ukey) or {}
-        if isinstance(pack, dict):
-            raw = chart_to_png_bytes(_leader_chart(pack))
-            if raw:
-                try:
-                    note = ((summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}).get(
-                        ukey, ""
-                    )
-                    ticker = pack.get("ticker") or ukey
-                    png_pages.append(
-                        _render_chart_showcase(
-                            raw,
-                            "CHART",
-                            f"{ticker} — leader TA",
-                            subtitle=_safe(note) or _safe(pack.get("caption", "")),
-                            accent=UNIVERSE_COLORS.get(ukey, ACCENT),
-                        )
-                    )
-                except Exception as exc:
-                    print(f"PDF leader page skipped: {exc}")
+        # Leader TA is already embedded under rankings — skip duplicate full-page chart.
 
     ai_page = _render_ai_page(summary)
     if ai_page:
@@ -943,7 +941,6 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
 
     if len(crypto_charts) == 2:
         try:
-            # Overview spread + individual deep-dives
             png_pages.append(
                 _render_dual_chart_page(
                     crypto_charts[0],
@@ -952,10 +949,6 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
                     "Bitcoin & Ethereum",
                 )
             )
-            for raw, label in crypto_charts:
-                png_pages.append(
-                    _render_chart_showcase(raw, "CRYPTO", f"{label} technical chart", accent=ACCENT)
-                )
         except Exception as exc:
             print(f"PDF crypto pages skipped: {exc}")
     else:
