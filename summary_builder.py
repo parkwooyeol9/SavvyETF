@@ -25,6 +25,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_HTML_PATH = DATA_DIR / "summary.html"
 SUMMARY_META_PATH = DATA_DIR / "summary_meta.json"
+SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 
 KST = ZoneInfo("Asia/Seoul")
 SUMMARY_UNIVERSES = ("etf", "sp")
@@ -387,8 +388,14 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     link_html = ""
     base_url = _summary_web_base_url(public_url)
     if public_url:
+        pdf_url = (
+            f"{public_url}.pdf"
+            if public_url.rstrip("/").endswith("/summary")
+            else f"{public_url.rstrip('/')}/summary.pdf"
+        )
         link_html = (
-            f"<p class='meta'>Live brief: <a href='{html.escape(public_url)}'>{html.escape(public_url)}</a></p>"
+            f"<p class='meta'>Live brief: <a href='{html.escape(public_url)}'>{html.escape(public_url)}</a>"
+            f" · <a href='{html.escape(pdf_url)}'>Download PDF</a></p>"
         )
 
     css_link = (
@@ -655,6 +662,7 @@ def save_summary(summary: dict, html_content: str) -> None:
         "generated_at": summary["generated_at"],
         "generated_at_display": summary["generated_at_display"],
         "ticker_count": summary["ticker_count"],
+        "has_pdf": bool(summary.get("pdf_path")),
     }
     SUMMARY_META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
@@ -663,6 +671,34 @@ def load_summary_html() -> str | None:
     if SUMMARY_HTML_PATH.exists():
         return SUMMARY_HTML_PATH.read_text(encoding="utf-8")
     return None
+
+
+def resolve_summary_pdf_public_url(public_url: str = "") -> str:
+    web = public_url.strip() if public_url else resolve_summary_public_url()
+    if web.endswith("/summary"):
+        return f"{web}.pdf"
+    return f"{web.rstrip('/')}/summary.pdf"
+
+
+def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | None:
+    pdf_path = summary.get("pdf_path")
+    if not pdf_path:
+        return None
+    path = Path(pdf_path)
+    if not path.exists():
+        return None
+    url = resolve_summary_pdf_public_url(public_url)
+    return {
+        "text": (
+            "📄 Market brief PDF\n"
+            f"{summary.get('generated_at_display', '')}\n\n"
+            "Browser-free export (no Selenium).\n"
+            f"🔗 {url}"
+        ),
+        "document_path": str(path),
+        "button_text": "PDF 다운로드",
+        "button_url": url,
+    }
 
 
 def _build_macro_appendix() -> dict:
@@ -730,9 +766,28 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     html_content = render_summary_html(summary, public_url=public_url)
     save_summary(summary, html_content)
     summary["html"] = html_content
+
+    try:
+        from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf
+
+        pdf_path = build_summary_pdf(summary, output_path=SUMMARY_PDF_PATH)
+        summary["pdf_path"] = str(pdf_path)
+        save_summary(summary, html_content)
+    except Exception as exc:
+        summary["pdf_path"] = None
+        summary["pdf_error"] = str(exc)
+        print(f"Summary PDF export skipped: {exc}")
+
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
     web_url = public_url.strip() if public_url else resolve_summary_public_url()
     summary["telegram_messages"].append(format_summary_web_link_message(summary, web_url))
+    pdf_message = format_summary_pdf_message(summary, web_url)
+    if pdf_message:
+        summary["telegram_messages"].append(pdf_message)
+    elif summary.get("pdf_error"):
+        summary["telegram_messages"].append(
+            {"text": f"PDF export unavailable: {summary['pdf_error']}"}
+        )
 
     return summary
 

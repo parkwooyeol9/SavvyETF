@@ -157,7 +157,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /summary
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
-  Web page: see SUMMARY_PUBLIC_URL or /summary on server.
+  Web page: SUMMARY_PUBLIC_URL/summary · PDF: /summary.pdf
   Web brief link with button sent at the end (homepage-style page).
   Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
 
@@ -1133,6 +1133,12 @@ def send_reply(token, chat_id, reply):
             data: dict = {"chat_id": chat_id}
             if text:
                 data["caption"] = text[:1024]
+            button_url = reply.get("button_url")
+            button_text = reply.get("button_text", "Open in browser")
+            if button_url:
+                data["reply_markup"] = json.dumps(
+                    {"inline_keyboard": [[{"text": button_text, "url": button_url}]]}
+                )
             mime = _web_content_type(path)
             with path.open("rb") as handle:
                 response = requests.post(
@@ -1231,6 +1237,28 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
+            if path == "/summary.pdf":
+                from summary_pdf import SUMMARY_PDF_PATH
+
+                if SUMMARY_PDF_PATH.is_file():
+                    data = SUMMARY_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-summary.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"PDF not generated yet. Run /summary in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def log_message(self, format, *args):
@@ -1239,7 +1267,7 @@ def start_web_server():
     server = HTTPServer(("0.0.0.0", port), AppHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    print(f"Web server listening on port {port} ( / , /summary , /health )")
+    print(f"Web server listening on port {port} ( / , /summary , /summary.pdf , /health )")
 
 
 def get_bot_token() -> str:
