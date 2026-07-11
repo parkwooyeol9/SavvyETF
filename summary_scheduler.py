@@ -118,6 +118,12 @@ def run_scheduled_summary(
         summary = generate_and_save_summary(public_url=public_url)
         messages = summary["telegram_messages"]
         broadcast_fn(token, messages)
+        try:
+            from kakao_notify import send_scheduled_summary_to_kakao
+
+            send_scheduled_summary_to_kakao(summary, public_url=public_url)
+        except Exception as kakao_exc:
+            print(f"Kakao notify after summary failed: {kakao_exc}")
         print(f"Scheduled summary sent ({trigger}, {len(messages)} message(s)).")
         return True
     except Exception as exc:

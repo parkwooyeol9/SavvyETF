@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import re
@@ -7,7 +8,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -1271,6 +1272,132 @@ def start_web_server():
                 )
                 return
 
+            if path in {"/kakao", "/kakao/"}:
+                from kakao_notify import status_payload
+
+                st = status_payload()
+                auth = html.escape(st.get("authorize_url") or "")
+                body = f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>SavvyETF Kakao</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem;line-height:1.5}}
+code{{background:#f2f2f2;padding:0.1rem 0.3rem}}a.button{{display:inline-block;margin-top:1rem;padding:0.7rem 1rem;
+background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-weight:700}}</style></head>
+<body>
+<h1>Kakao notify setup</h1>
+<p>스케줄된 <code>/summary</code> 결과를 카카오톡 <b>나에게 보내기</b>로 받습니다.</p>
+<ul>
+<li>enabled: <code>{st['enabled']}</code></li>
+<li>REST API key: <code>{st['has_rest_api_key']}</code></li>
+<li>access token: <code>{st['has_access_token']}</code></li>
+<li>refresh token: <code>{st['has_refresh_token']}</code></li>
+<li>redirect: <code>{html.escape(st['redirect_uri'])}</code></li>
+</ul>
+<p>1) Developers에서 카카오 로그인 + talk_message 동의 항목을 켜세요.<br>
+2) Redirect URI를 위 주소로 등록하세요.<br>
+3) 아래 버튼으로 한 번 로그인/동의하세요.</p>
+{"<a class='button' href='" + auth + "'>카카오 계정 연결</a>" if auth else "<p><b>KAKAO_REST_API_KEY</b> env가 필요합니다.</p>"}
+<p class="meta">Open Builder 스킬 URL: <code>/kakao/skill</code> (POST)</p>
+</body></html>"""
+                self._send(body.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
+            if path == "/kakao/auth":
+                from kakao_notify import build_authorize_url, _rest_api_key
+
+                if not _rest_api_key():
+                    self._send(b"KAKAO_REST_API_KEY not set", "text/plain; charset=utf-8", 400)
+                    return
+                self.send_response(302)
+                self.send_header("Location", build_authorize_url())
+                self.end_headers()
+                return
+
+            if path == "/kakao/callback":
+                from kakao_notify import exchange_code_for_tokens
+
+                query = parse_qs(urlparse(self.path).query)
+                code = (query.get("code") or [""])[0]
+                err = (query.get("error") or [""])[0]
+                if err:
+                    self._send(
+                        f"Kakao auth error: {err}".encode("utf-8"),
+                        "text/plain; charset=utf-8",
+                        400,
+                    )
+                    return
+                if not code:
+                    self._send(b"Missing code", "text/plain; charset=utf-8", 400)
+                    return
+                try:
+                    exchange_code_for_tokens(code)
+                except Exception as exc:
+                    self._send(
+                        f"Token exchange failed: {exc}".encode("utf-8"),
+                        "text/plain; charset=utf-8",
+                        500,
+                    )
+                    return
+                self._send(
+                    b"Kakao connected. Scheduled summaries will also go to KakaoTalk (memo to me).",
+                    "text/plain; charset=utf-8",
+                )
+                return
+
+            if path == "/kakao/status":
+                from kakao_notify import status_payload
+
+                body = json.dumps(status_payload(), ensure_ascii=False, indent=2).encode("utf-8")
+                self._send(body, "application/json; charset=utf-8")
+                return
+
+            if path == "/kakao/test":
+                from kakao_notify import kakao_notify_enabled, send_scheduled_summary_to_kakao
+
+                if not kakao_notify_enabled():
+                    self._send(
+                        b"KAKAO_NOTIFY_ENABLED is false or KAKAO_REST_API_KEY missing",
+                        "text/plain; charset=utf-8",
+                        400,
+                    )
+                    return
+                # Minimal payload for a live smoke test
+                summary = {
+                    "generated_at_display": "Kakao test ping",
+                    "ticker_count": 0,
+                    "universes": [],
+                    "ai_analysis": {
+                        "market_brief_ko": "SavvyETF Kakao notify test. Open the web brief link."
+                    },
+                }
+                ok = send_scheduled_summary_to_kakao(summary, public_url=summary_public_url())
+                if ok:
+                    self._send(b"Kakao test memo sent (check Chat with myself).", "text/plain; charset=utf-8")
+                else:
+                    self._send(b"Kakao test failed — see server logs.", "text/plain; charset=utf-8", 500)
+                return
+
+            self._send(b"not found", "text/plain; charset=utf-8", status=404)
+
+        def do_POST(self):
+            path = urlparse(self.path).path
+            if path == "/kakao/skill":
+                from kakao_notify import build_skill_response
+                from summary_builder import SUMMARY_META_PATH, resolve_summary_public_url
+
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)  # body unused for this lightweight skill
+                meta = None
+                if SUMMARY_META_PATH.is_file():
+                    try:
+                        meta = json.loads(SUMMARY_META_PATH.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        meta = None
+                payload = build_skill_response(meta, public_url=summary_public_url() or resolve_summary_public_url())
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send(body, "application/json; charset=utf-8")
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def log_message(self, format, *args):
@@ -1279,7 +1406,10 @@ def start_web_server():
     server = HTTPServer(("0.0.0.0", port), AppHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    print(f"Web server listening on port {port} ( / , /summary , /summary.pdf , /health )")
+    print(
+        f"Web server listening on port {port} "
+        f"( / , /summary , /summary.pdf , /kakao , /kakao/skill , /health )"
+    )
 
 
 def get_bot_token() -> str:

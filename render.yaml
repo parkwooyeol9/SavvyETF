@@ -44,3 +44,13 @@ services:
         value: "true"
       - key: SUMMARY_HEAVY_WORK_WAIT_SECONDS
         value: "600"
+      - key: KAKAO_NOTIFY_ENABLED
+        value: "false"
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: KAKAO_CLIENT_SECRET
+        sync: false
+      - key: KAKAO_REDIRECT_URI
+        value: https://savvyetf-bot.onrender.com/kakao/callback
+      - key: KAKAO_REFRESH_TOKEN
+        sync: false
