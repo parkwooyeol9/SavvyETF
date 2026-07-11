@@ -339,8 +339,9 @@ def _render_crypto_html(summary: dict) -> str:
         label = entry.get("label", symbol)
         news_items = "".join(
             (
-                f"<li><strong>{_esc(item['title'])}</strong>"
-                f"<span class='meta'>{_esc(item['source'])} | {_esc(item['date'])}</span></li>"
+                f"<li><strong>{_esc(item.get('title', ''))}</strong>"
+                f"<span class='meta'>{_esc(item.get('source', ''))} | "
+                f"{_esc(item.get('date', 'N/A'))}</span></li>"
             )
             for item in (entry.get("news") or [])
         )
@@ -393,8 +394,9 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
             headlines = summary["news_by_ticker"].get(ticker, [])
             items = "".join(
                 (
-                    f"<li><strong>{html.escape(item['title'])}</strong>"
-                    f"<span class='meta'>{html.escape(item['source'])} | {html.escape(item['date'])}</span></li>"
+                    f"<li><strong>{html.escape(item.get('title', ''))}</strong>"
+                    f"<span class='meta'>{html.escape(item.get('source', ''))} | "
+                    f"{html.escape(item.get('date', 'N/A'))}</span></li>"
                 )
                 for item in headlines
             )
@@ -816,6 +818,29 @@ def _freeze_summary_charts(summary: dict) -> None:
             entry["chart"] = _freeze_chart_buffer(entry.get("chart"))
 
 
+def _minimal_summary_html(summary: dict, public_url: str = "", *, error: str = "") -> str:
+    """Fallback page so /summary is never blank after a partial generate."""
+    when = html.escape(str(summary.get("generated_at_display", "")))
+    err = html.escape(error) if error else ""
+    pdf_link = ""
+    if summary.get("pdf_path"):
+        pdf_url = resolve_summary_pdf_public_url(public_url)
+        pdf_link = f'<p><a href="{html.escape(pdf_url)}">Download PDF</a></p>'
+    detail = f"<p class='meta'>HTML render note: {err}</p>" if err else ""
+    return f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>SavvyETF Market Brief</title>
+<style>body{{font-family:system-ui,sans-serif;background:#0b1018;color:#e8eef5;padding:2rem}}
+a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
+<body>
+  <h1>SavvyETF Market Brief</h1>
+  <p class="meta">{when}</p>
+  <p>Full web layout was unavailable, but the brief was generated.</p>
+  {pdf_link}
+  {detail}
+  <p class="meta">Re-run /summary if this page looks incomplete.</p>
+</body></html>"""
+
+
 def generate_and_save_summary(public_url: str = "") -> dict:
     summary = build_market_summary()
     leader_charts = collect_leader_charts(summary)
@@ -834,19 +859,36 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     # Freeze to raw bytes BEFORE any consumer (PDF/HTML/Telegram) touches charts.
     _freeze_summary_charts(summary)
 
+    # Save HTML first so /summary is never left blank when PDF succeeds but HTML fails.
+    try:
+        html_content = render_summary_html(summary, public_url=public_url)
+        save_summary(summary, html_content)
+        summary["html"] = html_content
+    except Exception as exc:
+        summary["html_error"] = str(exc)
+        print(f"Summary HTML export failed: {exc}")
+        try:
+            stub = _minimal_summary_html(summary, public_url, error=str(exc))
+            save_summary(summary, stub)
+            summary["html"] = stub
+        except Exception as stub_exc:
+            print(f"Summary HTML stub failed: {stub_exc}")
+
     try:
         from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf_safe
 
         pdf_path = build_summary_pdf_safe(summary, output_path=SUMMARY_PDF_PATH)
         summary["pdf_path"] = str(pdf_path)
+        # Refresh meta now that PDF exists.
+        if summary.get("html"):
+            try:
+                save_summary(summary, summary["html"])
+            except Exception as meta_exc:
+                print(f"Summary meta refresh failed: {meta_exc}")
     except Exception as exc:
         summary["pdf_path"] = None
         summary["pdf_error"] = str(exc)
         print(f"Summary PDF export skipped: {exc}")
-
-    html_content = render_summary_html(summary, public_url=public_url)
-    save_summary(summary, html_content)
-    summary["html"] = html_content
 
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
     web_url = public_url.strip() if public_url else resolve_summary_public_url()
@@ -857,6 +899,10 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     elif summary.get("pdf_error"):
         summary["telegram_messages"].append(
             {"text": f"PDF export unavailable: {summary['pdf_error']}"}
+        )
+    if summary.get("html_error"):
+        summary["telegram_messages"].append(
+            {"text": f"Web page note: HTML fell back to a simple page ({summary['html_error']})"}
         )
 
     return summary
