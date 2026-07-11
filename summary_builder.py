@@ -751,6 +751,47 @@ def _build_crypto_appendix() -> dict:
     return appendix
 
 
+def _freeze_chart_buffer(chart) -> BytesIO | None:
+    """Return a fresh BytesIO copy so later readers cannot hit a closed buffer."""
+    if chart is None:
+        return None
+    try:
+        if hasattr(chart, "getvalue"):
+            data = chart.getvalue()
+        else:
+            chart.seek(0)
+            data = chart.read()
+        if not data:
+            return None
+        clone = BytesIO(data)
+        clone.seek(0)
+        return clone
+    except Exception as exc:
+        print(f"Chart buffer freeze failed: {exc}")
+        return None
+
+
+def _freeze_summary_charts(summary: dict) -> None:
+    heatmap = summary.get("heatmap_sp") or {}
+    if heatmap.get("chart") is not None:
+        heatmap["chart"] = _freeze_chart_buffer(heatmap.get("chart"))
+
+    for pack in (summary.get("leader_charts") or {}).values():
+        if not isinstance(pack, dict):
+            continue
+        for key in ("chart_png", "chart"):
+            if pack.get(key) is not None:
+                pack[key] = _freeze_chart_buffer(pack.get(key))
+
+    macro = summary.get("macro") or {}
+    if macro.get("chart") is not None:
+        macro["chart"] = _freeze_chart_buffer(macro.get("chart"))
+
+    for entry in (summary.get("crypto") or {}).values():
+        if isinstance(entry, dict) and entry.get("chart") is not None:
+            entry["chart"] = _freeze_chart_buffer(entry.get("chart"))
+
+
 def generate_and_save_summary(public_url: str = "") -> dict:
     summary = build_market_summary()
     leader_charts = collect_leader_charts(summary)
@@ -766,9 +807,9 @@ def generate_and_save_summary(public_url: str = "") -> dict:
 
     summary["macro"] = _build_macro_appendix()
     summary["crypto"] = _build_crypto_appendix()
+    _freeze_summary_charts(summary)
 
-    # Build PDF before HTML/Telegram so chart buffers are still open, and keep
-    # independent PNG bytes for later reuse.
+    # Build PDF before HTML/Telegram so chart buffers stay usable.
     try:
         from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf
 
