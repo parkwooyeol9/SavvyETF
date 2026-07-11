@@ -54,14 +54,11 @@ What each command returns:
 /etf
 → Top 3 price-up+volume surge & top 3 price-down+volume surge ETFs
 
-/etf surge
-→ Top 3 & bottom 3 by price-up + volume surge
-
 /sp   (or /nas)
-→ Same rankings for S&P 500 / NASDAQ 100 (Yahoo chart API)
+→ Same rankings for S&P 500 / NASDAQ 100
 
 /etf_pre  /sp_pre  /nas_pre
-→ Pre-market % vs previous close (Finnhub live/pre trade quotes)
+→ Pre-market % vs previous close
 
 /heatmap sp
 → Treemap of top names by market cap (color = daily return)
@@ -96,16 +93,18 @@ What each command returns:
 /dart etf memb 0167A0
 → 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
-Auto brief: /summary 06:00 KST · /summary_pre 21:50 KST (skip weekend/US holiday)
-/macro auto: daily 17:00 KST
-
-Price: last trading day return | Volume: latest day / 21d avg
-Modes: surge | dropvol (default shows both leaders)
+Auto schedule (KST, skip weekend/US holiday):
+  /summary 06:00 · /summary_pre 21:50 · /macro 17:00
 
 Type /help for the full command list.
 """
 
 HELP_TEXT = """SavvyETF Bot — Commands
+
+⏱ Auto schedule (KST, skip weekend & US holidays)
+  /summary      06:00  — post-close market brief
+  /summary_pre  21:50  — premarket brief (/sp_pre only)
+  /macro        17:00  — macro risk monitor
 
 /port TICKER1 TICKER2 ...
   Portfolio backtest + TA chart per ticker.
@@ -115,34 +114,6 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Crypto technical analysis chart.
   Example: /coin BTC
 
-/etf [MODE]
-  Rank US equity ETFs (default: top 3 surge + top 3 drop/vol leaders).
-  Includes a TA chart for the #1 surge leader.
-  Example: /etf | /etf surge | /etf dropvol
-
-/sp [MODE]
-  Rank S&P 500 stocks (same logic).
-  Example: /sp | /sp surge
-
-/nas [MODE]
-  Rank NASDAQ 100 stocks (same logic).
-  Example: /nas | /nas dropvol
-  Data: Yahoo chart API (yfinance fallback).
-
-/etf_pre | /sp_pre | /nas_pre
-  Pre-market / extended-hours return vs previous close.
-  Call ~1–2 hours before US open (04:00–09:30 ET).
-  Uses Finnhub quote?trade=true. /etf_pre uses a liquid ETF subset.
-  Example: /sp_pre
-
-/etf /sp /nas MODE (optional):
-    surge   — price up + volume surge (top 3 & bottom 3)
-    dropvol — price down + volume surge (top 3 & bottom 3)
-    (omit)  — top 3 from each pattern (6 tickers total)
-
-  Price: last trading day return
-  Volume: latest day / 21-day average
-
 /heatmap [etf|sp|nas] [N]
   Finviz-style treemap: tile size = market cap (or ETF AUM),
   color = last trading day return. Default: top 30 names.
@@ -151,7 +122,6 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /macro
   Macro risk monitor: chart dashboard, yield/credit/vol metrics,
   Finnhub/EDGAR pulse, and AI Korean macro risk comment.
-  Auto-sent daily at 17:00 KST (MACRO_SCHEDULE_HOUR_KST).
   Example: /macro | /macro refresh
 
 /news
@@ -162,13 +132,11 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
   Web page: SUMMARY_PUBLIC_URL/summary · PDF: /summary.pdf
-  Scheduled: 06:00 KST (skips weekend & US holidays).
   Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
 
 /summary_pre
   Premarket brief: S&P 500 via /sp_pre only (ETF excluded).
   Includes premarket rankings, news, and leader TA chart.
-  Scheduled: 21:50 KST (skips weekend & US holidays).
   Requires FINNHUB_API_KEY.
   Example: /summary_pre
 
@@ -1396,7 +1364,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 if ok:
                     self._send(b"Kakao test memo sent (check Chat with myself).", "text/plain; charset=utf-8")
                 else:
-                    self._send(b"Kakao test failed — see server logs.", "text/plain; charset=utf-8", 500)
+                    self._send("Kakao test failed — see server logs.".encode("utf-8"), "text/plain; charset=utf-8", 500)
                 return
 
             self._send(b"not found", "text/plain; charset=utf-8", status=404)

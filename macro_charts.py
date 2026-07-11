@@ -90,7 +90,9 @@ def _plot_yield_curve(ax, snapshot: dict) -> None:
     ax.plot(x, vals, color=PALETTE["blue"], marker="o", linewidth=2.2, markersize=7)
     ax.fill_between(x, vals, alpha=0.12, color=PALETTE["blue"])
     ax.set_xticks(x)
-    ax.set_xticklabels([label for label, _ in valid])
+    ax.set_xticklabels([label for label, _ in valid], color=PALETTE["text"])
+    for label in ax.get_xticklabels():
+        label.set_color(PALETTE["text"])
     ax.set_ylabel("%", color=PALETTE["muted"], fontsize=8)
     spread = snapshot.get("T10Y2Y")
     subtitle = f"10Y-2Y: {spread:+.2f}%" if spread is not None else ""
@@ -117,15 +119,33 @@ def _plot_spread_history(ax, hy: pd.Series, ig: pd.Series) -> None:
 
 def _plot_vix(ax, vix: pd.Series, spy: pd.Series | None) -> None:
     _style_axis(ax)
+    handles = []
+    labels = []
     if not vix.empty:
-        ax.plot(vix.index, vix.values, color=PALETTE["purple"], linewidth=1.8, label="VIX")
+        (line_vix,) = ax.plot(vix.index, vix.values, color=PALETTE["purple"], linewidth=1.8, label="VIX")
+        handles.append(line_vix)
+        labels.append("VIX")
         ax.axhline(20, color=PALETTE["yellow"], linestyle="--", linewidth=0.9, alpha=0.8)
         ax.axhline(30, color=PALETTE["red"], linestyle="--", linewidth=0.9, alpha=0.8)
     if spy is not None and not spy.empty:
         ax2 = ax.twinx()
-        ax2.plot(spy.index, spy.values, color=PALETTE["blue"], linewidth=1.2, alpha=0.75, label="SPY")
+        (line_spy,) = ax2.plot(spy.index, spy.values, color=PALETTE["blue"], linewidth=1.2, alpha=0.75, label="SPY")
+        handles.append(line_spy)
+        labels.append("SPY")
         ax2.tick_params(colors=PALETTE["muted"], labelsize=8)
         ax2.set_ylabel("SPY", color=PALETTE["muted"], fontsize=8)
+        for spine in ax2.spines.values():
+            spine.set_color(PALETTE["grid"])
+    if handles:
+        ax.legend(
+            handles,
+            labels,
+            facecolor=PALETTE["panel"],
+            edgecolor=PALETTE["grid"],
+            labelcolor=PALETTE["text"],
+            fontsize=8,
+            loc="upper left",
+        )
     ax.set_title("Volatility & Equities", color=PALETTE["text"], fontsize=11, pad=8)
     ax.set_ylabel("VIX", color=PALETTE["muted"], fontsize=8)
 
@@ -156,7 +176,9 @@ def _plot_component_bars(ax, stress: StressResult) -> None:
     y = np.arange(len(labels))
     ax.barh(y, values, color=colors, alpha=0.9, height=0.55)
     ax.set_yticks(y)
-    ax.set_yticklabels(labels)
+    ax.set_yticklabels(labels, color=PALETTE["text"])
+    for label in ax.get_yticklabels():
+        label.set_color(PALETTE["text"])
     ax.set_xlim(0, 100)
     ax.set_title("Stress Components", color=PALETTE["text"], fontsize=11, pad=8)
     ax.set_xlabel("score", color=PALETTE["muted"], fontsize=8)

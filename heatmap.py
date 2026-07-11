@@ -229,9 +229,12 @@ def _draw_finviz_legend(ax, cap_pct: float) -> None:
     strip.set_xticks([-cap_pct, 0, cap_pct])
     strip.set_xticklabels(
         [f"{-cap_pct:.1f}%", "0%", f"+{cap_pct:.1f}%"],
-        color=MUTED_TEXT,
+        color=TEXT_COLOR,
         fontsize=8,
     )
+    strip.tick_params(colors=TEXT_COLOR, labelsize=8)
+    for label in strip.get_xticklabels():
+        label.set_color(TEXT_COLOR)
     for spine in strip.spines.values():
         spine.set_color("#2a2a30")
 
@@ -239,7 +242,7 @@ def _draw_finviz_legend(ax, cap_pct: float) -> None:
         0.08,
         0.78,
         "1-Day Performance",
-        color=MUTED_TEXT,
+        color=TEXT_COLOR,
         fontsize=9,
         ha="left",
         va="center",
@@ -319,47 +322,51 @@ def plot_market_heatmap(universe: str, top_n: int = DEFAULT_HEATMAP_TOP_N) -> tu
     returns = frame[DAILY_RETURN_COL].astype(float).values
     cap_pct = _color_cap_pct(returns)
 
-    plt.rcParams.update(
+    # Isolate style so dark facecolor does not leak into later charts.
+    with plt.rc_context(
         {
             "font.family": "DejaVu Sans",
             "figure.facecolor": BG_COLOR,
             "axes.facecolor": BG_COLOR,
+            "text.color": TEXT_COLOR,
+            "axes.labelcolor": TEXT_COLOR,
+            "xtick.color": TEXT_COLOR,
+            "ytick.color": TEXT_COLOR,
         }
-    )
+    ):
+        fig = plt.figure(figsize=(13.5, 8.8), facecolor=BG_COLOR)
+        grid = fig.add_gridspec(2, 1, height_ratios=[12.5, 1.2], hspace=0.06)
+        ax_map = fig.add_subplot(grid[0])
+        ax_legend = fig.add_subplot(grid[1])
 
-    fig = plt.figure(figsize=(13.5, 8.8), facecolor=BG_COLOR)
-    grid = fig.add_gridspec(2, 1, height_ratios=[12.5, 1.2], hspace=0.06)
-    ax_map = fig.add_subplot(grid[0])
-    ax_legend = fig.add_subplot(grid[1])
+        ax_map.set_facecolor(BG_COLOR)
+        _draw_treemap(ax_map, frame, cap_pct)
+        _draw_finviz_legend(ax_legend, cap_pct)
 
-    ax_map.set_facecolor(BG_COLOR)
-    _draw_treemap(ax_map, frame, cap_pct)
-    _draw_finviz_legend(ax_legend, cap_pct)
+        fig.text(
+            0.03,
+            0.965,
+            meta["short"],
+            color=TEXT_COLOR,
+            fontsize=18,
+            fontweight="bold",
+            ha="left",
+            va="top",
+        )
+        fig.text(
+            0.03,
+            0.925,
+            f"Top {len(frame)} by {meta['size_label'].lower()}  •  Tile size = {meta['size_label'].lower()}  •  Color = 1-day % change",
+            color=MUTED_TEXT,
+            fontsize=9.5,
+            ha="left",
+            va="top",
+        )
 
-    fig.text(
-        0.03,
-        0.965,
-        meta["short"],
-        color=TEXT_COLOR,
-        fontsize=18,
-        fontweight="bold",
-        ha="left",
-        va="top",
-    )
-    fig.text(
-        0.03,
-        0.925,
-        f"Top {len(frame)} by {meta['size_label'].lower()}  •  Tile size = {meta['size_label'].lower()}  •  Color = 1-day % change",
-        color=MUTED_TEXT,
-        fontsize=9.5,
-        ha="left",
-        va="top",
-    )
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=BG_COLOR, pad_inches=0.18)
-    plt.close(fig)
-    buf.seek(0)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=BG_COLOR, pad_inches=0.18)
+        plt.close(fig)
+        buf.seek(0)
 
     best = frame.loc[frame[DAILY_RETURN_COL].idxmax()]
     worst = frame.loc[frame[DAILY_RETURN_COL].idxmin()]

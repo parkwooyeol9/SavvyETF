@@ -10,6 +10,38 @@ import pandas as pd
 import yfinance as yf
 from pycoingecko import CoinGeckoAPI
 
+# Match summary / homepage dark UI; keep legend text light.
+CHART_PALETTE = {
+    "bg": "#0b1220",
+    "panel": "#121b2d",
+    "grid": "#243049",
+    "text": "#e8edf7",
+    "muted": "#93a4c3",
+    "blue": "#60a5fa",
+    "orange": "#fb923c",
+    "red": "#f87171",
+    "green": "#34d399",
+    "purple": "#a78bfa",
+}
+
+
+def _style_dark_axis(ax) -> None:
+    ax.set_facecolor(CHART_PALETTE["panel"])
+    ax.tick_params(colors=CHART_PALETTE["muted"], labelsize=8)
+    for spine in ax.spines.values():
+        spine.set_color(CHART_PALETTE["grid"])
+    ax.grid(True, color=CHART_PALETTE["grid"], alpha=0.35, linewidth=0.6)
+
+
+def _dark_legend(ax, **kwargs) -> None:
+    ax.legend(
+        facecolor=CHART_PALETTE["panel"],
+        edgecolor=CHART_PALETTE["grid"],
+        labelcolor=CHART_PALETTE["text"],
+        fontsize=8,
+        **kwargs,
+    )
+
 
 class PortfolioSimulator:
     def __init__(self, tickers, start_date=None, end_date=None):
@@ -63,19 +95,19 @@ class PortfolioSimulator:
     def plot_returns(self):
         results = self.calculate_returns()
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(results["cumulative_returns"], label="Portfolio")
-        plt.plot(results["spy_cumulative_returns"], label="SPY")
-        plt.title("Portfolio Performance vs SPY")
-        plt.xlabel("Date")
-        plt.ylabel("Cumulative Returns")
-        plt.legend()
-        plt.grid(True)
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor=CHART_PALETTE["bg"])
+        _style_dark_axis(ax)
+        ax.plot(results["cumulative_returns"], label="Portfolio", color=CHART_PALETTE["blue"], linewidth=1.8)
+        ax.plot(results["spy_cumulative_returns"], label="SPY", color=CHART_PALETTE["orange"], linewidth=1.6)
+        ax.set_title("Portfolio Performance vs SPY", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+        ax.set_xlabel("Date", color=CHART_PALETTE["muted"])
+        ax.set_ylabel("Cumulative Returns", color=CHART_PALETTE["muted"])
+        _dark_legend(ax)
 
         buf = io.BytesIO()
-        plt.savefig(buf, format="png")
+        fig.savefig(buf, format="png", facecolor=CHART_PALETTE["bg"], bbox_inches="tight")
         buf.seek(0)
-        plt.close()
+        plt.close(fig)
         return buf
 
 
@@ -153,42 +185,46 @@ def stock_ta_snapshot(symbol: str) -> dict:
 def analyze_stock(symbol):
     df = _stock_history_with_indicators(symbol)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(14, 12), sharex=True, facecolor=CHART_PALETTE["bg"]
+    )
+    for ax in (ax1, ax2, ax3):
+        _style_dark_axis(ax)
 
-    ax1.plot(df.index, df["Close"], label="Price", color="blue")
-    ax1.plot(df.index, df["MA50"], label="MA50", color="orange")
-    ax1.plot(df.index, df["MA200"], label="MA200", color="red")
+    ax1.plot(df.index, df["Close"], label="Price", color=CHART_PALETTE["blue"], linewidth=1.6)
+    ax1.plot(df.index, df["MA50"], label="MA50", color=CHART_PALETTE["orange"], linewidth=1.3)
+    ax1.plot(df.index, df["MA200"], label="MA200", color=CHART_PALETTE["red"], linewidth=1.3)
     buy_points = df[df["Buy_Signal"]]["Close"]
     sell_points = df[df["Sell_Signal"]]["Close"]
-    ax1.scatter(buy_points.index, buy_points, color="green", marker="^", s=100, label="Buy Signal")
-    ax1.scatter(sell_points.index, sell_points, color="red", marker="v", s=100, label="Sell Signal")
-    ax1.set_title(f"{symbol.upper()} Price with Trading Signals")
-    ax1.legend()
+    ax1.scatter(buy_points.index, buy_points, color=CHART_PALETTE["green"], marker="^", s=100, label="Buy Signal", zorder=5)
+    ax1.scatter(sell_points.index, sell_points, color=CHART_PALETTE["red"], marker="v", s=100, label="Sell Signal", zorder=5)
+    ax1.set_title(f"{symbol.upper()} Price with Trading Signals", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax1)
 
-    ax2.plot(df.index, df["MACD"], label="MACD", color="green")
-    ax2.plot(df.index, df["Signal"], label="Signal", color="red")
+    ax2.plot(df.index, df["MACD"], label="MACD", color=CHART_PALETTE["green"], linewidth=1.4)
+    ax2.plot(df.index, df["Signal"], label="Signal", color=CHART_PALETTE["red"], linewidth=1.4)
     ax2.bar(
         df.index,
         df["MACD"] - df["Signal"],
-        color=["red" if x < 0 else "green" for x in (df["MACD"] - df["Signal"])],
-        alpha=0.3,
+        color=[CHART_PALETTE["red"] if x < 0 else CHART_PALETTE["green"] for x in (df["MACD"] - df["Signal"])],
+        alpha=0.35,
     )
-    ax2.set_title("MACD with Signal Line Crossovers")
-    ax2.legend()
+    ax2.set_title("MACD with Signal Line Crossovers", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax2)
 
-    ax3.plot(df.index, df["RSI"], label="RSI", color="purple")
-    ax3.axhline(30, linestyle="--", color="green", label="Oversold (30)")
-    ax3.axhline(70, linestyle="--", color="red", label="Overbought (70)")
-    ax3.fill_between(df.index, 30, df["RSI"], where=(df["RSI"] < 30), color="green", alpha=0.3)
-    ax3.fill_between(df.index, 70, df["RSI"], where=(df["RSI"] > 70), color="red", alpha=0.3)
-    ax3.set_title("RSI with Overbought/Oversold Signals")
-    ax3.legend()
+    ax3.plot(df.index, df["RSI"], label="RSI", color=CHART_PALETTE["purple"], linewidth=1.5)
+    ax3.axhline(30, linestyle="--", color=CHART_PALETTE["green"], label="Oversold (30)", linewidth=1.0)
+    ax3.axhline(70, linestyle="--", color=CHART_PALETTE["red"], label="Overbought (70)", linewidth=1.0)
+    ax3.fill_between(df.index, 30, df["RSI"], where=(df["RSI"] < 30), color=CHART_PALETTE["green"], alpha=0.25)
+    ax3.fill_between(df.index, 70, df["RSI"], where=(df["RSI"] > 70), color=CHART_PALETTE["red"], alpha=0.25)
+    ax3.set_title("RSI with Overbought/Oversold Signals", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax3)
 
-    plt.tight_layout()
+    fig.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format="png")
+    fig.savefig(buf, format="png", facecolor=CHART_PALETTE["bg"], bbox_inches="tight")
     buf.seek(0)
-    plt.close()
+    plt.close(fig)
     return buf
 
 
@@ -238,40 +274,44 @@ def analyze_crypto(symbol):
     df.loc[(df["MA50"] > df["MA200"]) & (df["MA50"].shift(1) <= df["MA200"].shift(1)), "Buy_Signal"] |= True
     df.loc[(df["MA50"] < df["MA200"]) & (df["MA50"].shift(1) >= df["MA200"].shift(1)), "Sell_Signal"] |= True
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(14, 12), sharex=True, facecolor=CHART_PALETTE["bg"]
+    )
+    for ax in (ax1, ax2, ax3):
+        _style_dark_axis(ax)
 
-    ax1.plot(df.index, df["price"], label="Price", color="blue")
-    ax1.plot(df.index, df["MA50"], label="MA50", color="orange")
-    ax1.plot(df.index, df["MA200"], label="MA200", color="red")
+    ax1.plot(df.index, df["price"], label="Price", color=CHART_PALETTE["blue"], linewidth=1.6)
+    ax1.plot(df.index, df["MA50"], label="MA50", color=CHART_PALETTE["orange"], linewidth=1.3)
+    ax1.plot(df.index, df["MA200"], label="MA200", color=CHART_PALETTE["red"], linewidth=1.3)
     buy_points = df[df["Buy_Signal"]]["price"]
     sell_points = df[df["Sell_Signal"]]["price"]
-    ax1.scatter(buy_points.index, buy_points, color="green", marker="^", s=100, label="Buy Signal")
-    ax1.scatter(sell_points.index, sell_points, color="red", marker="v", s=100, label="Sell Signal")
-    ax1.set_title(f"{symbol.upper()} Price with Trading Signals")
-    ax1.legend()
+    ax1.scatter(buy_points.index, buy_points, color=CHART_PALETTE["green"], marker="^", s=100, label="Buy Signal", zorder=5)
+    ax1.scatter(sell_points.index, sell_points, color=CHART_PALETTE["red"], marker="v", s=100, label="Sell Signal", zorder=5)
+    ax1.set_title(f"{symbol.upper()} Price with Trading Signals", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax1)
 
-    ax2.plot(df.index, df["MACD"], label="MACD", color="green")
-    ax2.plot(df.index, df["Signal"], label="Signal", color="red")
+    ax2.plot(df.index, df["MACD"], label="MACD", color=CHART_PALETTE["green"], linewidth=1.4)
+    ax2.plot(df.index, df["Signal"], label="Signal", color=CHART_PALETTE["red"], linewidth=1.4)
     ax2.bar(
         df.index,
         df["MACD"] - df["Signal"],
-        color=["red" if x < 0 else "green" for x in (df["MACD"] - df["Signal"])],
-        alpha=0.3,
+        color=[CHART_PALETTE["red"] if x < 0 else CHART_PALETTE["green"] for x in (df["MACD"] - df["Signal"])],
+        alpha=0.35,
     )
-    ax2.set_title("MACD with Signal Line Crossovers")
-    ax2.legend()
+    ax2.set_title("MACD with Signal Line Crossovers", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax2)
 
-    ax3.plot(df.index, df["RSI"], label="RSI", color="purple")
-    ax3.axhline(30, linestyle="--", color="green", label="Oversold (30)")
-    ax3.axhline(70, linestyle="--", color="red", label="Overbought (70)")
-    ax3.fill_between(df.index, 30, df["RSI"], where=(df["RSI"] < 30), color="green", alpha=0.3)
-    ax3.fill_between(df.index, 70, df["RSI"], where=(df["RSI"] > 70), color="red", alpha=0.3)
-    ax3.set_title("RSI with Overbought/Oversold Signals")
-    ax3.legend()
+    ax3.plot(df.index, df["RSI"], label="RSI", color=CHART_PALETTE["purple"], linewidth=1.5)
+    ax3.axhline(30, linestyle="--", color=CHART_PALETTE["green"], label="Oversold (30)", linewidth=1.0)
+    ax3.axhline(70, linestyle="--", color=CHART_PALETTE["red"], label="Overbought (70)", linewidth=1.0)
+    ax3.fill_between(df.index, 30, df["RSI"], where=(df["RSI"] < 30), color=CHART_PALETTE["green"], alpha=0.25)
+    ax3.fill_between(df.index, 70, df["RSI"], where=(df["RSI"] > 70), color=CHART_PALETTE["red"], alpha=0.25)
+    ax3.set_title("RSI with Overbought/Oversold Signals", color=CHART_PALETTE["text"], fontsize=12, pad=8)
+    _dark_legend(ax3)
 
-    plt.tight_layout()
+    fig.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format="png")
+    fig.savefig(buf, format="png", facecolor=CHART_PALETTE["bg"], bbox_inches="tight")
     buf.seek(0)
-    plt.close()
+    plt.close(fig)
     return buf
