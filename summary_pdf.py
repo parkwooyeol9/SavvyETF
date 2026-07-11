@@ -25,7 +25,7 @@ DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 
 # Built into ReportLab — no TTF download / apt fonts needed on Render.
-_KOREAN_FONT = "HYGoThic-Medium"
+_KOREAN_FONT = "HYGothic-Medium"
 
 
 def _ensure_fonts() -> str:
