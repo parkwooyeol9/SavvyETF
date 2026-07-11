@@ -70,6 +70,31 @@ def _ensure_font() -> str:
         return _font_name
 
 
+def _chart_to_png_bytes(chart) -> bytes | None:
+    """Copy chart bytes immediately — never reuse a possibly-closed buffer later."""
+    if chart is None:
+        return None
+    if isinstance(chart, (bytes, bytearray)):
+        return bytes(chart)
+    try:
+        if hasattr(chart, "getvalue"):
+            # BytesIO: getvalue works even if position is at EOF
+            data = chart.getvalue()
+            if data:
+                return bytes(data)
+        chart.seek(0)
+        data = chart.read()
+        if hasattr(chart, "seek"):
+            try:
+                chart.seek(0)
+            except Exception:
+                pass
+        return bytes(data) if data else None
+    except Exception as exc:
+        print(f"PDF chart snapshot failed: {exc}")
+        return None
+
+
 def _new_text_page(title: str = "") -> tuple:
     fig = plt.figure(figsize=(8.27, 11.69))  # A4 inches
     ax = fig.add_axes([0.08, 0.06, 0.84, 0.88])
@@ -99,40 +124,36 @@ def _add_text_block(pdf: PdfPages, title: str, paragraphs: list[str]) -> None:
     for para in paragraphs:
         wrapped = textwrap.wrap(_safe(para), width=88) or [""]
         if y < 0.08:
-            pdf.savefig(fig)
+            pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
             fig, ax, y = _new_text_page(title)
         y = _write_lines(ax, y, wrapped, fontsize=10)
         y -= 0.015
-    pdf.savefig(fig)
+    pdf.savefig(fig, bbox_inches="tight")
     plt.close(fig)
 
 
-def _add_chart_page(pdf: PdfPages, chart, caption: str = "") -> None:
-    if chart is None:
-        return
-    try:
-        chart.seek(0)
-        raw = chart.read()
-        chart.seek(0)
-    except Exception:
-        return
-    if not raw:
+def _add_chart_page(pdf: PdfPages, png_bytes: bytes | None, caption: str = "") -> None:
+    if not png_bytes:
         return
     try:
         import matplotlib.image as mpimg
 
-        img = mpimg.imread(BytesIO(raw), format="png")
+        img = mpimg.imread(BytesIO(png_bytes), format="png")
         fig = plt.figure(figsize=(8.27, 11.69))
         if caption:
             fig.suptitle(_safe(caption), fontsize=11, y=0.98)
         ax = fig.add_axes([0.06, 0.2, 0.88, 0.7])
         ax.imshow(img)
         ax.axis("off")
-        pdf.savefig(fig)
+        pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
     except Exception as exc:
         print(f"PDF chart page skipped: {exc}")
+
+
+def _leader_chart(pack: dict):
+    return pack.get("chart_png") or pack.get("chart")
 
 
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
@@ -140,7 +161,26 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     _ensure_font()
 
-    with PdfPages(out) as pdf:
+    # Snapshot all images up front so later HTML/Telegram cannot close them mid-build.
+    heatmap = summary.get("heatmap_sp") or {}
+    heatmap_png = _chart_to_png_bytes(heatmap.get("chart"))
+    leader_pngs: list[tuple[str, bytes]] = []
+    for key, pack in (summary.get("leader_charts") or {}).items():
+        if not isinstance(pack, dict):
+            continue
+        raw = _chart_to_png_bytes(_leader_chart(pack))
+        if raw:
+            leader_pngs.append((pack.get("caption") or pack.get("ticker") or str(key), raw))
+    macro = summary.get("macro") or {}
+    macro_png = _chart_to_png_bytes(macro.get("chart"))
+    crypto_pngs: list[tuple[str, bytes]] = []
+    for symbol in ("BTC", "ETH"):
+        entry = (summary.get("crypto") or {}).get(symbol) or {}
+        raw = _chart_to_png_bytes(entry.get("chart"))
+        if raw:
+            crypto_pngs.append((entry.get("label") or symbol, raw))
+
+    with PdfPages(str(out)) as pdf:
         header_lines = [
             _safe(summary.get("generated_at_display", "")),
             f"Tickers with news: {summary.get('ticker_count', 0)}",
@@ -191,28 +231,20 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
                     paras.append(f"[{key}] {note}")
             _add_text_block(pdf, "AI market briefing", paras)
 
-        heatmap = summary.get("heatmap_sp") or {}
-        if heatmap.get("chart") is not None:
-            _add_chart_page(pdf, heatmap.get("chart"), heatmap.get("caption", "S&P 500 heatmap"))
+        if heatmap_png:
+            _add_chart_page(pdf, heatmap_png, heatmap.get("caption", "S&P 500 heatmap"))
         elif heatmap.get("error"):
             _add_text_block(pdf, "S&P 500 heatmap", [f"Unavailable: {heatmap['error']}"])
 
-        leaders = summary.get("leader_charts") or {}
-        for key, pack in (leaders or {}).items():
-            if isinstance(pack, dict) and pack.get("chart") is not None:
-                _add_chart_page(pdf, pack.get("chart"), pack.get("caption") or str(key))
+        for caption, raw in leader_pngs:
+            _add_chart_page(pdf, raw, caption)
 
-        macro = summary.get("macro") or {}
-        if macro.get("chart") is not None:
-            _add_chart_page(pdf, macro.get("chart"), macro.get("caption", "Macro dashboard"))
+        if macro_png:
+            _add_chart_page(pdf, macro_png, macro.get("caption", "Macro dashboard"))
 
-        crypto = summary.get("crypto") or {}
-        for symbol in ("BTC", "ETH"):
-            entry = (crypto or {}).get(symbol) or {}
-            if entry.get("chart") is not None:
-                _add_chart_page(pdf, entry.get("chart"), entry.get("label") or symbol)
+        for caption, raw in crypto_pngs:
+            _add_chart_page(pdf, raw, caption)
 
-        # Footer page
         _add_text_block(
             pdf,
             "Notes",

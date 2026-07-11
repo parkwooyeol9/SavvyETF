@@ -206,6 +206,7 @@ def _buffer_to_data_uri(buffer: BytesIO | None, mime: str) -> str:
         return ""
     buffer.seek(0)
     encoded = base64.b64encode(buffer.read()).decode("ascii")
+    buffer.seek(0)
     return f"data:{mime};base64,{encoded}"
 
 
@@ -766,20 +767,21 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     summary["macro"] = _build_macro_appendix()
     summary["crypto"] = _build_crypto_appendix()
 
-    html_content = render_summary_html(summary, public_url=public_url)
-    save_summary(summary, html_content)
-    summary["html"] = html_content
-
+    # Build PDF before HTML/Telegram so chart buffers are still open, and keep
+    # independent PNG bytes for later reuse.
     try:
         from summary_pdf import SUMMARY_PDF_PATH, build_summary_pdf
 
         pdf_path = build_summary_pdf(summary, output_path=SUMMARY_PDF_PATH)
         summary["pdf_path"] = str(pdf_path)
-        save_summary(summary, html_content)
     except Exception as exc:
         summary["pdf_path"] = None
         summary["pdf_error"] = str(exc)
         print(f"Summary PDF export skipped: {exc}")
+
+    html_content = render_summary_html(summary, public_url=public_url)
+    save_summary(summary, html_content)
+    summary["html"] = html_content
 
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
     web_url = public_url.strip() if public_url else resolve_summary_public_url()
