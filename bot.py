@@ -73,7 +73,10 @@ What each command returns:
 → Headlines for the 6 tickers from your last /etf, /sp, or /nas result
 
 /summary
-→ ETF + S&P 500 brief, /heatmap sp, then AI briefing from trending news (last)
+→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:00 KST)
+
+/summary_pre
+→ Premarket brief: /sp_pre only (ETF excluded); 21:50 KST schedule
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -93,7 +96,7 @@ What each command returns:
 /dart etf memb 0167A0
 → 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
-Auto brief: after US close (YF data ready + 5m) & 22:00 KST
+Auto brief: /summary 06:00 KST · /summary_pre 21:50 KST (skip weekend/US holiday)
 /macro auto: daily 17:00 KST
 
 Price: last trading day return | Volume: latest day / 21d avg
@@ -159,8 +162,15 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
   Web page: SUMMARY_PUBLIC_URL/summary · PDF: /summary.pdf
-  Web brief link with button sent at the end (homepage-style page).
+  Scheduled: 06:00 KST (skips weekend & US holidays).
   Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
+
+/summary_pre
+  Premarket brief: S&P 500 via /sp_pre only (ETF excluded).
+  Includes premarket rankings, news, and leader TA chart.
+  Scheduled: 21:50 KST (skips weekend & US holidays).
+  Requires FINNHUB_API_KEY.
+  Example: /summary_pre
 
 /aibriefing
   Search 5-10 trending US market articles, read them, and return a
@@ -524,7 +534,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /help",
+                "Commands: /etf /sp /nas /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /summary_pre /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -669,6 +679,19 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower in {"/help", "/start", "help"}:
         return [{"text": HELP_TEXT}]
+
+    if lower.startswith("/summary_pre"):
+        try:
+            from summary_pre_builder import generate_summary_pre
+
+            replies: list[dict] = [
+                {"text": "🌅 Building premarket brief (/sp_pre, ETF excluded)…"}
+            ]
+            summary = generate_summary_pre(public_url=summary_public_url())
+            replies.extend(summary["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error building premarket summary: {exc}"}]
 
     if lower.startswith("/summary"):
         try:

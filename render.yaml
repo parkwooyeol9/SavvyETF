@@ -16,6 +16,14 @@ services:
         value: "8080"
       - key: SUMMARY_SCHEDULE_ENABLED
         value: "true"
+      - key: SUMMARY_SCHEDULE_HOURS_KST
+        value: "6"
+      - key: SUMMARY_POST_CLOSE_ENABLED
+        value: "false"
+      - key: SUMMARY_PRE_SCHEDULE_ENABLED
+        value: "true"
+      - key: SUMMARY_PRE_SCHEDULE_KST
+        value: "21:50"
       - key: MACRO_SCHEDULE_ENABLED
         value: "true"
       - key: MACRO_SCHEDULE_HOUR_KST

@@ -16,16 +16,19 @@ from market_data_freshness import (
     reference_ticker,
 )
 from scheduler_grace import past_startup_grace
+from us_calendar import is_us_equity_trading_day
 
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
-DEFAULT_FIXED_HOURS = (22,)
+DEFAULT_FIXED_HOURS = (6,)
 DEFAULT_POLL_SECONDS = 60
+DEFAULT_SUMMARY_PRE_HOUR = 21
+DEFAULT_SUMMARY_PRE_MINUTE = 50
 
 
 def _fixed_schedule_hours() -> tuple[int, ...]:
-    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "22").strip()
+    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "6").strip()
     if not raw:
         return ()
     return tuple(int(part.strip()) for part in raw.split(",") if part.strip())
@@ -40,11 +43,33 @@ def _poll_seconds() -> int:
 
 
 def _post_close_enabled() -> bool:
-    return os.environ.get("SUMMARY_POST_CLOSE_ENABLED", "true").lower() not in {
+    # Default off: fixed 06:00 KST summary is the primary close brief.
+    return os.environ.get("SUMMARY_POST_CLOSE_ENABLED", "false").lower() not in {
         "0",
         "false",
         "no",
     }
+
+
+def _summary_pre_enabled() -> bool:
+    return os.environ.get("SUMMARY_PRE_SCHEDULE_ENABLED", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
+def _summary_pre_time_kst() -> tuple[int, int]:
+    raw = os.environ.get("SUMMARY_PRE_SCHEDULE_KST", "21:50").strip()
+    try:
+        hour_s, minute_s = raw.split(":", 1)
+        hour = int(hour_s)
+        minute = int(minute_s)
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return hour, minute
+    except ValueError:
+        pass
+    return DEFAULT_SUMMARY_PRE_HOUR, DEFAULT_SUMMARY_PRE_MINUTE
 
 
 def _load_state() -> dict:
@@ -63,6 +88,18 @@ def _save_state(state: dict) -> None:
 
 def _current_fixed_slot(now: datetime) -> str:
     return now.strftime("%Y-%m-%d-%H")
+
+
+def _current_minute_slot(now: datetime) -> str:
+    return now.strftime("%Y-%m-%d-%H-%M")
+
+
+def _should_skip_non_trading(now_kst: datetime) -> bool:
+    """Skip Sat/Sun (KST) and US full-day holidays (ET date at fire time)."""
+    if now_kst.weekday() >= 5:
+        return True
+    now_et = datetime.now(ET)
+    return not is_us_equity_trading_day(now_et.date())
 
 
 def _summary_heavy_wait_seconds() -> int:
@@ -133,6 +170,48 @@ def run_scheduled_summary(
         end_heavy_work("scheduled-summary")
 
 
+def run_scheduled_summary_pre(
+    token: str,
+    broadcast_fn,
+    public_url: str = "",
+    trigger: str = "scheduled-pre",
+) -> bool:
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    wait_seconds = min(180, _summary_heavy_wait_seconds())
+    acquired = begin_heavy_work_blocking(
+        "scheduled-summary-pre",
+        timeout=wait_seconds,
+    )
+    if not acquired:
+        print(
+            f"Scheduled summary_pre skipped ({trigger}): heavy work still busy "
+            f"({heavy_work_status()})"
+        )
+        return False
+
+    try:
+        from summary_pre_builder import generate_summary_pre
+
+        summary = generate_summary_pre(public_url=public_url)
+        messages = summary["telegram_messages"]
+        broadcast_fn(token, messages)
+        print(f"Scheduled summary_pre sent ({trigger}, {len(messages)} message(s)).")
+        return True
+    except Exception as exc:
+        print(f"Scheduled summary_pre failed ({trigger}): {exc}")
+        try:
+            broadcast_fn(
+                token,
+                [{"text": f"🌅 Premarket brief failed: {exc}"}],
+            )
+        except Exception:
+            pass
+        return False
+    finally:
+        end_heavy_work("scheduled-summary-pre")
+
+
 def _maybe_run_post_close_summary(
     token: str,
     broadcast_fn,
@@ -161,8 +240,6 @@ def _maybe_run_post_close_summary(
 
     if data_ready_at is None:
         data_ready_at = now_et
-        from summary_builder import KST
-
         send_at_kst = (data_ready_at + timedelta(minutes=data_ready_buffer_minutes())).astimezone(
             KST
         )
@@ -203,6 +280,8 @@ def start_summary_scheduler(
     fixed_hours = _fixed_schedule_hours()
     poll_seconds = _poll_seconds()
     post_close = _post_close_enabled()
+    pre_enabled = _summary_pre_enabled()
+    pre_hour, pre_minute = _summary_pre_time_kst()
     buffer_minutes = data_ready_buffer_minutes()
     session_date = expected_latest_daily_date()
     approx_kst = (
@@ -214,16 +293,22 @@ def start_summary_scheduler(
     def loop() -> None:
         state = _load_state()
         last_fixed_slot = state.get("last_fixed_slot")
+        last_pre_slot = state.get("last_summary_pre_slot")
         data_ready_at: datetime | None = None
 
         parts = []
+        if fixed_hours:
+            parts.append(f"/summary fixed KST hours: {fixed_hours} (skip weekend/US holiday)")
+        if pre_enabled:
+            parts.append(
+                f"/summary_pre daily {pre_hour:02d}:{pre_minute:02d} KST "
+                "(skip weekend/US holiday, SP pre only)"
+            )
         if post_close:
             parts.append(
                 f"post-close after {reference_ticker()} daily bar + {buffer_minutes}m "
                 f"(~{approx_kst} on regular days)"
             )
-        if fixed_hours:
-            parts.append(f"fixed KST hours: {fixed_hours}")
         print("Summary scheduler active — " + "; ".join(parts))
 
         while True:
@@ -236,7 +321,12 @@ def start_summary_scheduler(
             if fixed_hours and now.hour in fixed_hours and now.minute == 0:
                 slot = _current_fixed_slot(now)
                 if slot != last_fixed_slot:
-                    if run_scheduled_summary(
+                    if _should_skip_non_trading(now):
+                        print(f"Scheduled summary skipped ({slot}): weekend or US holiday")
+                        last_fixed_slot = slot
+                        state["last_fixed_slot"] = slot
+                        _save_state(state)
+                    elif run_scheduled_summary(
                         token,
                         broadcast_fn,
                         refresh_cache_fn,
@@ -245,6 +335,31 @@ def start_summary_scheduler(
                     ):
                         last_fixed_slot = slot
                         state["last_fixed_slot"] = slot
+                        _save_state(state)
+
+            if (
+                pre_enabled
+                and now.hour == pre_hour
+                and now.minute == pre_minute
+            ):
+                pre_slot = _current_minute_slot(now)
+                if pre_slot != last_pre_slot:
+                    if _should_skip_non_trading(now):
+                        print(
+                            f"Scheduled summary_pre skipped ({pre_slot}): "
+                            "weekend or US holiday"
+                        )
+                        last_pre_slot = pre_slot
+                        state["last_summary_pre_slot"] = pre_slot
+                        _save_state(state)
+                    elif run_scheduled_summary_pre(
+                        token,
+                        broadcast_fn,
+                        public_url,
+                        trigger=f"pre {pre_slot}",
+                    ):
+                        last_pre_slot = pre_slot
+                        state["last_summary_pre_slot"] = pre_slot
                         _save_state(state)
 
             if post_close:
