@@ -385,7 +385,10 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
             """
         )
 
-    link_html = ""
+    link_html = (
+        "<p class='meta'><a href='/summary.pdf'>Download PDF</a>"
+        " · browser-free export (no Selenium)</p>"
+    )
     base_url = _summary_web_base_url(public_url)
     if public_url:
         pdf_url = (
