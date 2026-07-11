@@ -20,6 +20,8 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 ETF_MASTER_PATH = PROJECT_DIR / "colab" / "ETF_Master.xlsx"
 ETF_TICKERS_PATH = PROJECT_DIR / "colab" / "etf_tickers.txt"
+SP500_TICKERS_PATH = PROJECT_DIR / "colab" / "sp500_tickers.txt"
+NASDAQ100_TICKERS_PATH = PROJECT_DIR / "colab" / "nasdaq100_tickers.txt"
 CACHE_VERSION = 8
 
 DAILY_RETURN_COL = "Daily Return"
@@ -79,6 +81,10 @@ _states: dict[str, dict] = {
 _warmup_lock = threading.Lock()
 _warmup_running: set[str] = set()
 _refresh_scheduled: set[str] = set()
+_warmup_status: dict[str, dict] = {
+    key: {"phase": "idle", "error": "", "started_at": 0.0, "message": ""}
+    for key in UNIVERSES
+}
 
 for _logger_name in ("yfinance", "peewee"):
     logging.getLogger(_logger_name).setLevel(logging.ERROR)
@@ -127,23 +133,48 @@ def _is_same_market_day(loaded_at: float, as_of_date: str | None = None) -> bool
     return datetime.fromtimestamp(loaded_at, ET).strftime("%Y-%m-%d") == today
 
 
+def _read_ticker_file(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    tickers: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        ticker = line.strip().upper().replace(" ", "").replace(".", "-")
+        if not ticker or ticker.startswith("#") or ticker.startswith("@") or ticker.startswith("U:"):
+            continue
+        tickers.append(ticker)
+    return tickers
+
+
+def _set_warmup_status(universe: str, *, phase: str, message: str = "", error: str = "") -> None:
+    status = _warmup_status.setdefault(universe, {})
+    status["phase"] = phase
+    status["message"] = message
+    status["error"] = error
+    if phase in {"starting", "running"}:
+        status["started_at"] = time.time()
+    if phase in {"ready", "failed", "idle"}:
+        status["started_at"] = float(status.get("started_at") or 0.0)
+
+
+def get_warmup_status(universe: str) -> dict:
+    status = dict(_warmup_status.get(universe) or {})
+    status["running"] = universe in _warmup_running or status.get("phase") in {"starting", "running", "queued"}
+    if is_cache_ready(universe):
+        status["phase"] = "ready"
+        status["running"] = False
+    return status
+
+
 def load_etf_tickers(excel_path: Path | None = None) -> list[str]:
     """Load ETF universe: prefer committed ticker list, fall back to Excel master."""
-    tickers_path = ETF_TICKERS_PATH
-    if tickers_path.exists():
-        tickers: list[str] = []
-        for line in tickers_path.read_text(encoding="utf-8").splitlines():
-            ticker = line.strip().upper().replace(" ", "")
-            if not ticker or ticker.startswith("#") or ticker.startswith("@") or ticker.startswith("U:"):
-                continue
-            tickers.append(ticker)
-        if tickers:
-            return tickers
+    tickers = _read_ticker_file(ETF_TICKERS_PATH)
+    if tickers:
+        return tickers
 
     path = excel_path or ETF_MASTER_PATH
     if not path.exists():
         raise FileNotFoundError(
-            f"ETF ticker list not found. Expected {tickers_path} or Excel master {path}"
+            f"ETF ticker list not found. Expected {ETF_TICKERS_PATH} or Excel master {path}"
         )
 
     df = pd.read_excel(path)
@@ -157,17 +188,30 @@ def load_etf_tickers(excel_path: Path | None = None) -> list[str]:
 
 
 def load_sp500_tickers() -> list[str]:
+    tickers = _read_ticker_file(SP500_TICKERS_PATH)
+    if tickers:
+        return tickers
     html = _fetch_wikipedia_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
     table = pd.read_html(StringIO(html))[0]
     return _clean_symbols(table["Symbol"])
 
 
 def load_nasdaq100_tickers() -> list[str]:
+    tickers = _read_ticker_file(NASDAQ100_TICKERS_PATH)
+    if tickers:
+        return tickers
     html = _fetch_wikipedia_html("https://en.wikipedia.org/wiki/Nasdaq-100")
     for table in pd.read_html(StringIO(html)):
-        if "Ticker" in table.columns and 95 <= len(table) <= 105:
-            return _clean_symbols(table["Ticker"])
-    raise RuntimeError("Could not parse NASDAQ-100 tickers from Wikipedia")
+        cols = {str(col).strip().lower(): col for col in table.columns}
+        ticker_col = cols.get("ticker") or cols.get("symbol")
+        if ticker_col is None:
+            continue
+        cleaned = _clean_symbols(table[ticker_col])
+        if 90 <= len(cleaned) <= 110:
+            return cleaned
+    raise RuntimeError(
+        "Could not parse NASDAQ-100 tickers. Add colab/nasdaq100_tickers.txt to the deploy."
+    )
 
 
 def _load_universe_tickers(universe: str) -> list[str]:
@@ -244,7 +288,10 @@ def _schedule_cache_refresh(universe: str) -> None:
 
 
 def is_cache_warmup_running(universe: str) -> bool:
-    return universe in _warmup_running
+    if universe in _warmup_running:
+        return True
+    phase = (_warmup_status.get(universe) or {}).get("phase")
+    return phase in {"starting", "queued", "running"}
 
 
 def is_etf_cache_ready() -> bool:
@@ -354,15 +401,14 @@ def build_metrics_table_yahoo_chart(
     on_progress: Callable[[int, int, int], None] | None = None,
     max_workers: int = 10,
 ) -> tuple[pd.DataFrame, int, int]:
-    """Build ranking metrics via Yahoo chart API (preferred for /sp /nas)."""
+    """Build ranking metrics via Yahoo chart API (preferred for /sp /nas /etf)."""
     from yahoo_market import map_tickers
 
     scanned = len(tickers)
 
     def worker(ticker: str) -> dict[str, float] | None:
-        from heavy_work import heavy_work_yield_point
-
-        heavy_work_yield_point("yahoo-chart-cache")
+        # Do not call heavy_work_yield_point here — mid-build yields left caches empty
+        # while /sp kept showing the loading message forever.
         return _metrics_from_yahoo_chart_ticker(ticker)
 
     def progress(done: int, total: int) -> None:
@@ -523,13 +569,15 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
                 time.sleep(0.5)
             return
         _warmup_running.add(universe)
-
         label = UNIVERSES[universe]["label"]
+        _set_warmup_status(universe, phase="running", message=f"Building {label} cache…")
+
         try:
             if not force and _load_disk_cache(universe):
                 age_min = int((time.time() - _states[universe]["meta"]["loaded_at"]) // 60)
                 count = len(_states[universe]["df"])
                 print(f"{label} cache loaded from disk ({count} tickers, {age_min}m old).")
+                _set_warmup_status(universe, phase="ready", message=f"Loaded {count} tickers from disk")
                 return
 
             print(f"Preloading {label} rankings...")
@@ -539,9 +587,19 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
             # yfinance remains the fallback inside build_metrics_table.
             provider = "yahoo_chart"
             print(f"{label}: data provider = {provider} ({len(tickers)} tickers)")
+            _set_warmup_status(
+                universe,
+                phase="running",
+                message=f"Fetching Yahoo chart for {len(tickers)} tickers…",
+            )
 
             def progress(done: int, total: int, active: int) -> None:
                 print(f"  {label}: {done}/{total} | active tickers: {active}")
+                _set_warmup_status(
+                    universe,
+                    phase="running",
+                    message=f"Yahoo chart {done}/{total} (active {active})",
+                )
 
             try:
                 df, scanned, skipped = build_metrics_table(
@@ -555,17 +613,28 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
 
                 if isinstance(exc, HeavyWorkYield):
                     print(f"{label} preload paused to free RAM for higher-priority work.")
+                    _set_warmup_status(universe, phase="failed", error="paused for higher-priority work")
                     raise
                 raise
 
             if df is None or df.empty:
                 print(f"{label} preload produced no rows — cache not updated.")
+                _set_warmup_status(universe, phase="failed", error="Yahoo chart returned no rows")
                 return
 
             _set_memory_cache(universe, df, scanned, skipped)
+            _set_warmup_status(
+                universe,
+                phase="ready",
+                message=f"Ready: {len(df)} active / {scanned} scanned",
+            )
             print(
                 f"{label} preload complete: {len(df)} active / {scanned} scanned / {skipped} skipped."
             )
+        except Exception as exc:
+            _set_warmup_status(universe, phase="failed", error=str(exc)[:240])
+            print(f"{label} preload failed: {exc}")
+            raise
         finally:
             _warmup_running.discard(universe)
 
@@ -636,36 +705,28 @@ def _warmup_yield_retries() -> int:
 
 
 def _warmup_universe_blocking(universe: str, *, force: bool = False) -> bool:
-    from heavy_work import (
-        HeavyWorkYield,
-        end_heavy_work,
-        heavy_work_owner,
-        try_begin_heavy_work,
-    )
+    """Build ranking cache without the global heavy-work lock.
 
+    Yahoo chart warmups are light HTTP. Waiting on HEAVY_WORK_SERIALIZE (held by
+    ETF/summary/macro) left /sp stuck on the loading message indefinitely.
+    """
     label = UNIVERSES[universe]["label"]
-    lock_label = f"cache-warmup-{universe}"
-
-    for attempt in range(1, _warmup_yield_retries() + 1):
-        while not try_begin_heavy_work(lock_label):
-            time.sleep(15)
-
-        try:
-            print(f"Cache warmup started for {label} (attempt {attempt})")
-            warmup_cache(universe, force=force)
-            if is_cache_ready(universe):
-                print(f"Cache warmup finished for {label}")
-                return True
-            print(f"Cache warmup finished for {label} but cache is still not ready")
-            return False
-        except HeavyWorkYield:
-            print(f"Cache warmup paused for {label} (attempt {attempt}); retrying soon")
-            time.sleep(min(30, _warmup_retry_seconds()))
-        finally:
-            if heavy_work_owner() == lock_label:
-                end_heavy_work(lock_label)
-
-    return is_cache_ready(universe)
+    _set_warmup_status(universe, phase="queued", message=f"Queued {label} cache build")
+    try:
+        print(f"Cache warmup started for {label}")
+        warmup_cache(universe, force=force)
+        if is_cache_ready(universe):
+            print(f"Cache warmup finished for {label}")
+            return True
+        status = get_warmup_status(universe)
+        err = status.get("error") or "cache still not ready"
+        print(f"Cache warmup finished for {label} but not ready: {err}")
+        _set_warmup_status(universe, phase="failed", error=str(err))
+        return False
+    except Exception as exc:
+        print(f"Cache warmup failed for {label}: {exc}")
+        _set_warmup_status(universe, phase="failed", error=str(exc)[:240])
+        return False
 
 
 def start_universe_cache_warmup(
@@ -681,8 +742,14 @@ def start_universe_cache_warmup(
     if is_cache_ready(universe) and not force and not cache_is_stale(universe):
         return
 
+    _set_warmup_status(universe, phase="starting", message="Starting cache build…")
+
     def worker() -> None:
-        _warmup_universe_blocking(universe, force=force)
+        try:
+            _warmup_universe_blocking(universe, force=force)
+        except Exception as exc:
+            print(f"Cache warmup thread crashed for {universe}: {exc}")
+            _set_warmup_status(universe, phase="failed", error=str(exc)[:240])
 
     if blocking:
         worker()

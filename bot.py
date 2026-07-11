@@ -19,6 +19,7 @@ from stock_crawler import (
     format_rankings_message,
     get_ranking_tickers,
     get_top_leader_ticker,
+    get_warmup_status,
     is_cache_ready,
     is_cache_warmup_running,
     parse_rank_command,
@@ -628,15 +629,34 @@ def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
 
 def _ranking_loading_reply(universe: str) -> list[dict]:
     label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
-    if is_cache_warmup_running(universe):
-        return [{"text": f"{label} rankings are still loading. Please try again in a few minutes."}]
+    status = get_warmup_status(universe)
+    if status.get("phase") == "failed" and status.get("error"):
+        start_universe_cache_warmup(universe, force=True)
+        return [
+            {
+                "text": (
+                    f"{label} cache build failed earlier:\n{status['error']}\n\n"
+                    f"Retrying now. Send /{universe} again in ~30–60 seconds."
+                )
+            }
+        ]
+    if is_cache_warmup_running(universe) or status.get("running"):
+        detail = status.get("message") or "still building"
+        return [
+            {
+                "text": (
+                    f"{label} rankings are still loading ({detail}).\n"
+                    f"S&P/NASDAQ usually finish within ~1 minute. Try /{universe} again shortly."
+                )
+            }
+        ]
     start_universe_cache_warmup(universe)
     return [
         {
             "text": (
                 f"Loading {label} rankings "
-                f"(Yahoo chart; first run builds a same-day disk cache). "
-                f"Try /{universe} again shortly."
+                f"(Yahoo chart → same-day disk cache).\n"
+                f"First build usually takes under a minute. Try /{universe} again shortly."
             )
         }
     ]
