@@ -2,15 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Avoid apt fonts-nanum (heavy/flaky on Render). Fetch a single TTF at build time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6 \
-    ca-certificates \
-    curl \
-    && mkdir -p /app/fonts \
-    && curl -fsSL -o /app/fonts/NanumGothic.ttf \
-      "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Regular.ttf" \
-    && test -s /app/fonts/NanumGothic.ttf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -23,9 +16,7 @@ COPY macro_data.py macro_supplements.py macro_scores.py macro_charts.py macro_an
 COPY adr_analysis.py adr_charts.py adr_data_loader.py adr_excel_export.py adr_mapping.py adr_pipeline.py adr_providers.py ./
 COPY colab/ETF_Master.xlsx colab/etf_tickers.txt colab/sp500_tickers.txt colab/nasdaq100_tickers.txt colab/
 COPY web/ web/
-RUN mkdir -p data \
-    && test -f /app/fonts/NanumGothic.ttf \
-    && python -c "from pathlib import Path; p=Path('fonts/NanumGothic.ttf'); assert p.stat().st_size>1000, p"
+RUN mkdir -p data
 
 ENV PYTHONUNBUFFERED=1
 
