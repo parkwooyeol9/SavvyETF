@@ -14,21 +14,32 @@ EVENT_HTML_PATH = DATA_DIR / "event.html"
 EVENT_META_PATH = DATA_DIR / "event_meta.json"
 
 
-def _buffer_to_data_uri(buf: BytesIO | bytes | None, mime: str = "image/png") -> str:
+def _buffer_to_data_uri(buf: BytesIO | bytes | Path | None, mime: str = "image/png") -> str:
     if buf is None:
         return ""
-    if isinstance(buf, (bytes, bytearray)):
+    if isinstance(buf, Path):
+        if not buf.is_file():
+            return ""
+        data = buf.read_bytes()
+    elif isinstance(buf, (bytes, bytearray)):
         data = bytes(buf)
     else:
         if getattr(buf, "closed", False):
             return ""
-        pos = buf.tell()
-        buf.seek(0)
-        data = buf.read()
-        try:
-            buf.seek(pos)
-        except Exception:
-            pass
+        getvalue = getattr(buf, "getvalue", None)
+        if callable(getvalue):
+            try:
+                data = getvalue()
+            except Exception:
+                data = b""
+        else:
+            pos = buf.tell()
+            buf.seek(0)
+            data = buf.read()
+            try:
+                buf.seek(pos)
+            except Exception:
+                pass
     if not data:
         return ""
     encoded = base64.b64encode(data).decode("ascii")
@@ -42,19 +53,23 @@ def _fmt_pct(value: float | None) -> str:
 
 
 def resolve_event_public_url(public_url: str = "") -> str:
-    base = (public_url or "").rstrip("/")
-    if not base:
-        return ""
-    if base.endswith("/event"):
-        return base
-    return f"{base}/event"
+    """Map SUMMARY_PUBLIC_URL (.../summary) → .../event."""
+    from summary_builder import resolve_summary_public_url
+
+    web = (public_url or "").strip() or resolve_summary_public_url()
+    web = web.rstrip("/")
+    if web.endswith("/summary"):
+        return f"{web.rsplit('/summary', 1)[0]}/event"
+    if web.endswith("/event"):
+        return web
+    return f"{web}/event"
 
 
 def resolve_event_pdf_public_url(public_url: str = "") -> str:
-    event_url = resolve_event_public_url(public_url)
-    if not event_url:
-        return ""
-    return event_url.rstrip("/").removesuffix("/event") + "/event.pdf"
+    web = resolve_event_public_url(public_url)
+    if web.endswith("/event"):
+        return f"{web}.pdf"
+    return f"{web.rstrip('/')}/event.pdf"
 
 
 def render_event_html(
@@ -156,23 +171,30 @@ def render_event_html(
   {fonts_link}
   {css_link}
   <style>
-    body {{ margin: 0; }}
+    :root {{
+      --bg: #0b1018; --panel: #141d2b; --border: #2b3648;
+      --text: #e8eef5; --muted: #8fa3b8; --accent: #4da3ff;
+    }}
+    body {{
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: "DM Sans", system-ui, sans-serif; line-height: 1.5;
+    }}
     .summary-wrap {{ max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }}
     .summary-hero {{
-      margin-bottom: 2rem; padding: 1.5rem; border: 1px solid var(--border, #2b3648);
-      border-radius: 14px; background: var(--panel, #141d2b);
+      margin-bottom: 2rem; padding: 1.5rem; border: 1px solid var(--border);
+      border-radius: 14px; background: var(--panel);
     }}
-    .summary-hero h1 {{ font-family: var(--serif, Georgia, serif); font-size: 1.75rem; margin: 0 0 0.5rem; }}
+    .summary-hero h1 {{ font-family: "Instrument Serif", Georgia, serif; font-size: 1.75rem; margin: 0 0 0.5rem; }}
     .brand {{ display: flex; align-items: center; gap: 10px; font-weight: 700; margin-bottom: 1rem; }}
-    .brand-dot {{ width: 9px; height: 9px; border-radius: 50%; background: #4da3ff; }}
+    .brand-dot {{ width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }}
     .card-section {{
-      margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--border, #2b3648);
-      border-radius: 12px; background: var(--panel, #141d2b);
+      margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--panel);
     }}
-    .card-section img {{ width: 100%; border-radius: 8px; border: 1px solid var(--border, #2b3648); }}
+    .card-section img {{ width: 100%; border-radius: 8px; border: 1px solid var(--border); }}
     .impact-grid {{ display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }}
     .impact-card {{
-      padding: 12px; border-radius: 10px; border: 1px solid var(--border, #2b3648);
+      padding: 12px; border-radius: 10px; border: 1px solid var(--border);
       background: rgba(255,255,255,0.02);
     }}
     .impact-card.tone-negative {{ border-color: #f87171; }}
@@ -180,15 +202,16 @@ def render_event_html(
     .impact-card.tone-neutral {{ border-color: #fbbf24; }}
     .badge {{
       font-size: 0.75rem; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
-      border: 1px solid var(--border, #2b3648); color: var(--muted, #8fa3b8);
+      border: 1px solid var(--border); color: var(--muted);
     }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; }}
-    th, td {{ padding: 6px 4px; border-bottom: 1px solid var(--border, #2b3648); text-align: left; }}
-    th {{ color: var(--muted, #8fa3b8); font-weight: 500; }}
-    .meta {{ color: var(--muted, #8fa3b8); font-size: 0.9rem; }}
-    a {{ color: #4da3ff; }}
-    h2 {{ margin: 0 0 0.75rem; font-size: 1.2rem; }}
-    h3 {{ margin: 0 0 0.4rem; font-size: 1.05rem; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; color: var(--text); }}
+    th, td {{ padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: left; }}
+    th {{ color: var(--muted); font-weight: 500; }}
+    .meta {{ color: var(--muted); font-size: 0.9rem; }}
+    a {{ color: var(--accent); }}
+    h2 {{ margin: 0 0 0.75rem; font-size: 1.2rem; color: var(--text); }}
+    h3 {{ margin: 0 0 0.4rem; font-size: 1.05rem; color: var(--text); }}
+    p {{ color: var(--text); }}
   </style>
 </head>
 <body>

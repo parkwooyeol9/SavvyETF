@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from chart_buffers import snapshot_png_buffer
 from event_charts import (
     plot_average_across_events,
     plot_event_country_overlay,
@@ -30,7 +33,6 @@ KST = ZoneInfo("Asia/Seoul")
 def _format_dates_message(discovery: dict[str, Any]) -> str:
     lines = [
         f"<b>📅 Event dates — {discovery.get('query', '')}</b>",
-        f"<i>source: {discovery.get('source', '')}</i>",
         "",
     ]
     summary = (discovery.get("summary_ko") or "").strip()
@@ -67,14 +69,41 @@ def _format_impact_message(impact: dict[str, Any]) -> str:
             f"<b>{row.get('country_ko') or row.get('country')}</b> "
             f"— <b>{imp.get('label') or '?'}</b>"
         )
-        lines.append(
-            f"  +30 {_p('d30')} · +60 {_p('d60')} · +90 {_p('d90')}"
-        )
+        lines.append(f"  +30 {_p('d30')} · +60 {_p('d60')} · +90 {_p('d90')}")
         summary = (imp.get("summary_ko") or "").strip()
         if summary:
             lines.append(f"  <i>{summary}</i>")
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def _freeze_buffers(raw: dict[str, Any]) -> dict[str, BytesIO]:
+    frozen: dict[str, BytesIO] = {}
+    for key, buf in (raw or {}).items():
+        if buf is None:
+            continue
+        try:
+            frozen[key] = snapshot_png_buffer(buf)
+        except Exception as exc:
+            print(f"event chart freeze skipped ({key}): {exc}")
+    return frozen
+
+
+def _chart_assets(
+    buffers: dict[str, BytesIO],
+    chart_paths: dict[str, Path],
+) -> dict[str, Any]:
+    """Prefer in-memory PNG buffers; fall back to saved files for HTML/PDF."""
+    assets: dict[str, Any] = {}
+    keys = set(buffers) | {k for k, v in chart_paths.items() if isinstance(v, Path)}
+    for key in keys:
+        if key in buffers:
+            assets[key] = buffers[key]
+        else:
+            path = chart_paths.get(key)
+            if isinstance(path, Path) and path.is_file():
+                assets[key] = path
+    return assets
 
 
 def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
@@ -88,24 +117,29 @@ def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
 
     discovery = discover_event_dates(query)
     study = run_event_study(discovery.get("events") or [], query=query)
-    chart_paths = save_event_charts(study, run_id=run_id, query=query)
-    buffers = chart_paths.pop("_buffers", {}) if isinstance(chart_paths, dict) else {}
+    chart_paths_raw = save_event_charts(study, run_id=run_id, query=query)
+    raw_buffers = chart_paths_raw.pop("_buffers", {}) if isinstance(chart_paths_raw, dict) else {}
+    chart_paths = {
+        k: v for k, v in (chart_paths_raw or {}).items() if isinstance(v, Path)
+    }
 
-    # Ensure key chart buffers exist even if save skipped somehow
     usable_n = sum(1 for p in (study.get("panels") or []) if p.get("series"))
     averages = study.get("averages") or []
-    if averages and "horizon_bars" not in buffers:
-        buffers["horizon_bars"] = plot_horizon_bar_chart(
+    if averages and "horizon_bars" not in raw_buffers:
+        raw_buffers["horizon_bars"] = plot_horizon_bar_chart(
             averages, query=query, n_events=usable_n
         )
-    if averages and usable_n >= 1 and "average" not in buffers:
-        buffers["average"] = plot_average_across_events(
+    if averages and usable_n >= 1 and "average" not in raw_buffers:
+        raw_buffers["average"] = plot_average_across_events(
             averages, query=query, n_events=usable_n
         )
     for panel in study.get("panels") or []:
         date_str = panel.get("event_date_str") or ""
-        if panel.get("series") and date_str and date_str not in buffers:
-            buffers[date_str] = plot_event_country_overlay(panel, query=query)
+        if panel.get("series") and date_str and date_str not in raw_buffers:
+            raw_buffers[date_str] = plot_event_country_overlay(panel, query=query)
+
+    buffers = _freeze_buffers(raw_buffers)
+    assets = _chart_assets(buffers, chart_paths)
 
     report = {
         "kind": "event",
@@ -117,22 +151,39 @@ def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
         "impact": study.get("impact") or {},
     }
 
-    html_content = render_event_html(
-        report, public_url=public_url, chart_buffers=buffers
-    )
-    html_path = save_event_html(html_content)
-    pdf_path = build_event_pdf(report, buffers, output_path=EVENT_PDF_PATH)
+    event_url = resolve_event_public_url(public_url)
+    pdf_url = resolve_event_pdf_public_url(public_url)
+
+    html_path = None
+    pdf_path = None
+    artifacts_errors: list[str] = []
+
+    try:
+        html_content = render_event_html(
+            report, public_url=public_url, chart_buffers=assets
+        )
+        html_path = save_event_html(html_content)
+    except Exception as exc:
+        artifacts_errors.append(f"HTML: {exc}")
+        print(f"/event HTML failed: {exc}")
+
+    try:
+        pdf_path = build_event_pdf(report, assets, output_path=EVENT_PDF_PATH)
+    except Exception as exc:
+        artifacts_errors.append(f"PDF: {exc}")
+        print(f"/event PDF failed: {exc}")
 
     meta = {
         "query": query,
         "run_id": run_id,
         "generated_at_display": generated_at_display,
-        "html_path": str(html_path),
-        "pdf_path": str(pdf_path),
-        "event_url": resolve_event_public_url(public_url),
-        "pdf_url": resolve_event_pdf_public_url(public_url),
+        "html_path": str(html_path) if html_path else "",
+        "pdf_path": str(pdf_path) if pdf_path else "",
+        "event_url": event_url,
+        "pdf_url": pdf_url,
         "n_events": usable_n,
         "countries": list(EVENT_STUDY_COUNTRIES),
+        "artifacts_errors": artifacts_errors,
     }
     EVENT_META_PATH.parent.mkdir(parents=True, exist_ok=True)
     EVENT_META_PATH.write_text(
@@ -160,7 +211,6 @@ def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
             }
         )
 
-    # Cap per-event photos to keep Telegram light; full set is in PDF.
     shown = 0
     for panel in study.get("panels") or []:
         if shown >= 2:
@@ -189,23 +239,40 @@ def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
         )
     else:
         links = []
-        event_url = resolve_event_public_url(public_url)
-        pdf_url = resolve_event_pdf_public_url(public_url)
         if event_url:
             links.append(f'<a href="{event_url}">Web</a>')
         if pdf_url:
             links.append(f'<a href="{pdf_url}">PDF</a>')
-        link_bit = (" · ".join(links) + "\n") if links else ""
-        telegram_messages.append(
-            {
-                "text": (
-                    f"{link_bit}"
-                    f"📄 /event PDF report — {query}"
-                ).strip(),
-                "document_path": str(pdf_path),
-                "parse_mode": "HTML",
-            }
-        )
+        link_bit = (" · ".join(links)) if links else ""
+
+        if pdf_path and Path(pdf_path).is_file():
+            telegram_messages.append(
+                {
+                    "text": (
+                        f"📄 /event report — {query}"
+                        + (f"\n{link_bit}" if link_bit else "")
+                    ).strip(),
+                    "document_path": str(pdf_path),
+                    "parse_mode": "HTML",
+                    "button_url": event_url or None,
+                    "button_text": "Open web report",
+                }
+            )
+        elif link_bit:
+            telegram_messages.append(
+                {
+                    "text": f"📄 /event report — {query}\n{link_bit}",
+                    "parse_mode": "HTML",
+                }
+            )
+
+        if artifacts_errors:
+            telegram_messages.append(
+                {
+                    "text": "Artifact warning:\n"
+                    + "\n".join(f"• {e}" for e in artifacts_errors)
+                }
+            )
 
     return {
         "run_id": run_id,
@@ -213,7 +280,7 @@ def run_event_pipeline(query: str, *, public_url: str = "") -> dict[str, Any]:
         "discovery": discovery,
         "study": study,
         "impact": report["impact"],
-        "chart_paths": {k: v for k, v in chart_paths.items() if k != "_buffers"},
+        "chart_paths": chart_paths,
         "html_path": html_path,
         "pdf_path": pdf_path,
         "telegram_messages": telegram_messages,

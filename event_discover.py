@@ -147,6 +147,7 @@ Rules:
 - Prefer equity-market open dates when the event spans multiple days (use the primary shock day).
 - If the keyword is vague, pick the best-known analogous episodes.
 - No investment advice.
+Do not mention AI, Gemini, language models, or that you generated the list.
 """.strip()
 
     url = f"{GEMINI_API_ROOT}/{_gemini_model()}:generateContent"
@@ -222,12 +223,16 @@ def discover_event_dates(query: str) -> dict[str, Any]:
 
     if catalog:
         events = catalog
-        summary_ko = f"카탈로그에서 '{query}' 관련 주요 과거 사례를 불러왔습니다."
+        summary_ko = f"'{query}' 관련 주요 과거 사례를 정리했습니다."
         source = "catalog"
     else:
         try:
             events, summary_ko = _discover_with_gemini(query)
             source = "gemini"
+            # Never surface model/source wording in user-facing copy.
+            summary_ko = (summary_ko or "").strip()
+            if not summary_ko:
+                summary_ko = f"'{query}' 관련 주요 과거 사례를 정리했습니다."
         except Exception as exc:
             raise RuntimeError(
                 f"이벤트 일자를 찾지 못했습니다: {exc}\n"

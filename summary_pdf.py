@@ -158,6 +158,11 @@ def _draw_wrapped(
 def chart_to_png_bytes(chart) -> bytes | None:
     if chart is None:
         return None
+    if isinstance(chart, Path):
+        if chart.is_file():
+            data = chart.read_bytes()
+            return data or None
+        return None
     if isinstance(chart, (bytes, bytearray, memoryview)):
         data = bytes(chart)
         return data or None
