@@ -180,7 +180,8 @@ def export_analysis_excel(
                 datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
                 "±2 calendar years around analysis event date",
                 f"Pre/post exclude ±{EVENT_BUFFER_DAYS} days around event (buffer)",
-                "US ADR listing date from registry/yfinance; underlying prices from Finnhub/FinMind/EODHD/Yahoo",
+                "US ADR listing date from registry/yfinance; underlying prices merged from "
+                "FinMind/EODHD/Finnhub/Stooq/Yahoo (±3y window)",
                 "Welch t-test: post vs pre daily returns (skipped if limited pre data)",
                 "Aligned_Compare: trading_day_offset with rebased_return_pct per ADR (0% at t=0)",
                 "Charts: embedded PNGs + native line chart on Aligned_Compare",

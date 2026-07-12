@@ -42,6 +42,10 @@ services:
         sync: false
       - key: FINNHUB_API_KEY
         sync: false
+      - key: FINMIND_TOKEN
+        sync: false
+      - key: EODHD_API_KEY
+        sync: false
       - key: DART_API_KEY
         sync: false
       - key: SCHEDULER_STARTUP_GRACE_SECONDS

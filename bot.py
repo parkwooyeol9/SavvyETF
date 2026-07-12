@@ -201,6 +201,8 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /adr ADR1 ADR2 ...
   Analyze whether US ADR listing impacted underlying home-market shares.
   Returns charts + an Excel workbook.
+  Underlying history is merged across FinMind/EODHD/Finnhub/Stooq/Yahoo
+  (±3y around listing) so pre-listing series is less Yahoo-limited.
   Example: /adr TSM ASML ARM
 
 /comp ETF1 ETF2 ...

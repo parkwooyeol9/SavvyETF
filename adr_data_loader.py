@@ -9,7 +9,7 @@ import pandas as pd
 from adr_mapping import AdrProfile, get_listing_date
 from adr_providers import fetch_underlying_history
 
-WINDOW_YEARS = 2
+WINDOW_YEARS = 3
 EVENT_BUFFER_DAYS = 5
 MIN_TRADING_DAYS = 40
 
@@ -101,6 +101,12 @@ def load_underlying_window(
             (coverage_note + " " if coverage_note else "")
             + f"Pre-window clipped: requested {pre_target_days}d, "
             f"available {pre_actual_days}d (data from {data_start})."
+        )
+    if data_start > listing_date:
+        coverage_note = (
+            (coverage_note + " " if coverage_note else "")
+            + f"Underlying prints start {data_start} (after US listing {listing_date}); "
+            "merged multi-source history used with limited pre-listing sample."
         )
 
     return {
