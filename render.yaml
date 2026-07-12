@@ -24,10 +24,10 @@ services:
         value: "true"
       - key: SUMMARY_PRE_SCHEDULE_KST
         value: "21:50"
-      - key: MACRO_SCHEDULE_ENABLED
+      - key: REDDIT_SCHEDULE_ENABLED
         value: "true"
-      - key: MACRO_SCHEDULE_HOUR_KST
-        value: "17"
+      - key: REDDIT_SCHEDULE_HOURS_KST
+        value: "17,19,21"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

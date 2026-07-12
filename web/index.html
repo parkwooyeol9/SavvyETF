@@ -84,7 +84,7 @@
               <tr>
                 <td><span class="cmd">/macro</span></td>
                 <td>Macro risk dashboard — yields, credit, vol metrics, Finnhub/EDGAR pulse, AI comment.</td>
-                <td><span class="tag auto">Auto 17:00</span></td>
+                <td><span class="tag manual">Manual</span></td>
               </tr>
               <tr>
                 <td><span class="cmd">/heatmap sp</span></td>
@@ -137,9 +137,9 @@
         </article>
 
         <article class="timeline-item card">
-          <div class="time-badge">Daily 17:00</div>
-          <h3>Macro dashboard</h3>
-          <p>Same as <span class="cmd">/macro</span> — charts and AI macro risk comment broadcast to registered chats.</p>
+          <div class="time-badge">Daily 17:00 / 19:00 / 21:00</div>
+          <h3>Reddit / WSB brief</h3>
+          <p>Same as <span class="cmd">/reddit</span> — hot topics from r/wallstreetbets plus Gemini Korean summary.</p>
         </article>
 
         <article class="timeline-item card">
@@ -167,7 +167,7 @@
           <article class="card">
             <h3>Memory safety</h3>
             <ul>
-              <li>Heavy tasks serialized (summary, macro, cache warmup)</li>
+              <li>Heavy tasks serialized (summary, reddit, cache warmup)</li>
               <li>Playwright runs in short-lived child processes</li>
               <li>180s startup grace before schedulers fire</li>
             </ul>

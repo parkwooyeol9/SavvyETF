@@ -32,7 +32,7 @@ from stock_crawler import (
     warmup_startup_caches,
 )
 from summary_scheduler import start_summary_scheduler
-from macro_scheduler import start_macro_scheduler
+from reddit_scheduler import start_reddit_scheduler
 from scheduler_grace import mark_service_started
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -106,18 +106,18 @@ What each command returns:
 /dart etf memb 0167A0
 → 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
-Auto schedule (KST, skip weekend/US holiday):
-  /summary 06:00 · /summary_pre 21:50 · /macro 17:00
+Auto schedule (KST):
+  /summary 06:00 · /summary_pre 21:50 · /reddit 17:00 / 19:00 / 21:00
 
 Type /help for the full command list.
 """
 
 HELP_TEXT = """SavvyETF Bot — Commands
 
-⏱ Auto schedule (KST, skip weekend & US holidays)
-  /summary      06:00  — post-close market brief
+⏱ Auto schedule (KST)
+  /summary      06:00  — post-close market brief (skip weekend/US holiday)
   /summary_pre  21:50  — premarket brief (/sp_pre only)
-  /macro        17:00  — macro risk monitor
+  /reddit       17:00, 19:00, 21:00 — r/wallstreetbets hot + Gemini KR
 
 /port TICKER1 TICKER2 ...
   Portfolio backtest + TA chart per ticker.
@@ -135,6 +135,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /macro
   Macro risk monitor: chart dashboard, yield/credit/vol metrics,
   Finnhub/EDGAR pulse, and AI Korean macro risk comment.
+  Manual only (no auto schedule).
   Example: /macro | /macro refresh
 
 /news
@@ -174,6 +175,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 /reddit
   Crawl r/wallstreetbets hot posts, list themes/tickers investors are
   watching, and attach a Gemini Korean summary.
+  Auto: 17:00, 19:00, 21:00 KST.
   Example: /reddit
   Requires GEMINI_API_KEY for AI summary (rule-based fallback if unset).
   Optional: REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET for OAuth JSON feed.
@@ -1691,5 +1693,5 @@ if __name__ == "__main__":
         refresh_cache_fn=warmup_all_caches,
         public_url=summary_public_url(),
     )
-    start_macro_scheduler(token=token, broadcast_fn=broadcast_messages)
+    start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_telegram_bot(token)
