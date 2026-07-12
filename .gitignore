@@ -21,6 +21,9 @@ data/summary_kor_intra_meta.json
 data/reddit.html
 data/reddit_meta.json
 data/reddit.pdf
+data/event.html
+data/event_meta.json
+data/event.pdf
 data/adr_output/
 data/event_output/
 data/event_studies/

@@ -103,7 +103,7 @@ What each command returns:
 → MSCI ACWI/World/EM country top5 → major markets index/futures/FX returns
 
 /event [keyword]
-→ Historical event study on /idx country indices (t=0 = event date)
+→ Event study (US/JP/KR/CN indices) + impact comment + PDF
 
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
@@ -219,8 +219,10 @@ HELP_TEXT = """SavvyETF Bot — Commands
 
 /event [keyword]
   Ask which event to study (or pass a keyword). Discovers past similar event dates,
-  saves them, then compares /idx representative country indices with each event as t=0
-  (cumulative return charts, ±60 calendar days). No stock tickers — indices only.
+  then compares US / Japan / Korea / China indices with each event as t=0.
+  Includes 30/60/90-day average return bars, per-country impact judgment
+  (negative / neutral / positive), HTML page + PDF (Pillow, no Selenium).
+  Web: /event · PDF: /event.pdf
   Example: /event → then 일본 지진 | /event 리먼 | /event covid
 
 /comp ETF1 ETF2 ...
@@ -729,6 +731,23 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
     ]
 
 
+_EVENT_PROMPT_TEXT = """어떤 이벤트 스터디를 원하십니까?
+
+<b>참고 — 이벤트 중요도 · 영향 자산</b>
+<pre>중요도   이벤트                    영향 자산
+★★★★★  중앙은행(Fed, ECB, BOJ)    모든 자산
+★★★★★  미국 CPI, PCE, 고용지표    미국 주식, 채권, 달러
+★★★★★  전쟁·대형 테러             주식, 원유, 금
+★★★★★  금융위기                   전 자산
+★★★★☆  미국 대통령/중간선거       주식, 섹터
+★★★★☆  중국 경기 및 정책          원자재, 아시아
+★★★★☆  대형 자연재해              특정 국가 및 산업
+★★★★☆  기업 실적 시즌             개별주·지수
+★★★☆☆  지정학적 회담              환율, 원자재</pre>
+
+예: <code>일본 지진</code> · <code>리먼</code> · <code>코로나</code> · <code>우크라이나</code>"""
+
+
 def _is_pending_event_reply(chat_id: int, text: str) -> bool:
     """True when chat is waiting for an /event keyword and text is not a slash command."""
     if not text or text.lstrip().startswith("/"):
@@ -753,14 +772,14 @@ def _handle_event_command(normalized: str, chat_id: int) -> list[dict]:
             query = parts[1].strip()
         if not query:
             _pending_event_by_chat[chat_id] = time.time()
-            return [{"text": "어떤 이벤트 스터디를 원하십니까?"}]
+            return [{"text": _EVENT_PROMPT_TEXT, "parse_mode": "HTML"}]
     else:
         # Follow-up keyword after the prompt
         query = normalized.strip()
 
     _pending_event_by_chat.pop(chat_id, None)
     if not query:
-        return [{"text": "어떤 이벤트 스터디를 원하십니까?"}]
+        return [{"text": _EVENT_PROMPT_TEXT, "parse_mode": "HTML"}]
 
     try:
         from event_pipeline import run_event_pipeline
@@ -773,7 +792,7 @@ def _handle_event_command(normalized: str, chat_id: int) -> list[dict]:
                 )
             }
         ]
-        result = run_event_pipeline(query)
+        result = run_event_pipeline(query, public_url=summary_public_url())
         replies.extend(result.get("telegram_messages") or [])
         return replies
     except Exception as exc:
@@ -1644,6 +1663,40 @@ def start_web_server():
                 )
                 return
 
+            if path == "/event":
+                from event_report import load_event_html
+
+                body_text = load_event_html()
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>Event study not generated yet. "
+                        "Use /event in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
+            if path == "/event.pdf":
+                from event_pdf import EVENT_PDF_PATH
+
+                if EVENT_PDF_PATH.is_file():
+                    data = EVENT_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-event.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"Event PDF not generated yet. Run /event in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
             if path in {"/kakao", "/kakao/"}:
                 from kakao_notify import status_payload
 
@@ -1780,7 +1833,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /reddit , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health )"
     )
 
 
