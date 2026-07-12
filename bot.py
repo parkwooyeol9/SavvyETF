@@ -99,6 +99,9 @@ What each command returns:
 /adr TSM ASML ARM
 → ADR listing impact analysis (charts + Excel) for underlying shares
 
+/idx
+→ MSCI ACWI/World/EM country top5 → major markets index/futures/FX returns
+
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
 
@@ -204,6 +207,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Underlying history is merged across FinMind/EODHD/Finnhub/Stooq/Yahoo
   (±3y around listing) so pre-listing series is less Yahoo-limited.
   Example: /adr TSM ASML ARM
+
+/idx
+  MSCI ACWI / World / EM country weight top 5 (via iShares geographic breakdown),
+  treat the union as major countries, map each to a representative cash index,
+  then show latest daily index return, futures return (when available), and FX.
+  Example: /idx
 
 /comp ETF1 ETF2 ...
   Compare US ETFs with charts (performance, returns, cost, overlap),
@@ -558,7 +567,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -975,6 +984,19 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"ADR analysis failed: {exc}"}]
+
+    if lower.startswith("/idx"):
+        try:
+            from idx_pipeline import run_idx_dashboard
+
+            replies: list[dict] = [
+                {"text": "🌍 Building MSCI country / major-market dashboard…"}
+            ]
+            result = run_idx_dashboard()
+            replies.extend(result.get("telegram_messages") or [])
+            return replies
+        except Exception as exc:
+            return [{"text": f"/idx failed: {exc}"}]
 
     if lower.startswith("/heatmap"):
         try:
