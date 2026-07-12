@@ -725,6 +725,13 @@ def resolve_summary_pdf_public_url(public_url: str = "") -> str:
     return f"{web.rstrip('/')}/summary.pdf"
 
 
+def resolve_summary_pre_pdf_public_url(public_url: str = "") -> str:
+    web = public_url.strip() if public_url else resolve_summary_public_url()
+    if web.endswith("/summary"):
+        return f"{web.rsplit('/summary', 1)[0]}/summary_pre.pdf"
+    return f"{web.rstrip('/')}/summary_pre.pdf"
+
+
 def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | None:
     pdf_path = summary.get("pdf_path")
     if not pdf_path:
@@ -732,12 +739,18 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     path = Path(pdf_path)
     if not path.exists():
         return None
-    url = resolve_summary_pdf_public_url(public_url)
+    is_pre = summary.get("kind") == "summary_pre"
+    url = (
+        resolve_summary_pre_pdf_public_url(public_url)
+        if is_pre
+        else resolve_summary_pdf_public_url(public_url)
+    )
+    title = "Premarket brief PDF" if is_pre else "Market brief PDF"
     return {
         "text": (
-            "📄 Market brief PDF\n"
+            f"📄 {title}\n"
             f"{summary.get('generated_at_display', '')}\n\n"
-            "Browser-free export (no Selenium).\n"
+            "Same dense layout as the Telegram brief.\n"
             f"🔗 {url}"
         ),
         "document_path": str(path),

@@ -11,6 +11,7 @@ data/blocked_chats.json
 data/summary.html
 data/summary_meta.json
 data/summary.pdf
+data/summary_pre.pdf
 data/adr_output/
 data/etf_compare/
 data/scheduler_state.json

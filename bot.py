@@ -73,7 +73,7 @@ What each command returns:
 → ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:00 KST)
 
 /summary_pre
-→ Premarket brief: /sp_pre only (ETF excluded); 21:50 KST schedule
+→ Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -136,7 +136,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
 
 /summary_pre
   Premarket brief: S&P 500 via /sp_pre only (ETF excluded).
-  Includes premarket rankings, news, and leader TA chart.
+  Includes premarket rankings, news, leader TA chart, and PDF (/summary_pre.pdf).
   Requires FINNHUB_API_KEY.
   Example: /summary_pre
 
@@ -1263,6 +1263,28 @@ def start_web_server():
                 )
                 return
 
+            if path == "/summary_pre.pdf":
+                from summary_pdf import SUMMARY_PRE_PDF_PATH
+
+                if SUMMARY_PRE_PDF_PATH.is_file():
+                    data = SUMMARY_PRE_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-summary-pre.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"Premarket PDF not generated yet. Run /summary_pre in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
             if path in {"/kakao", "/kakao/"}:
                 from kakao_notify import status_payload
 
@@ -1399,7 +1421,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary.pdf , /summary_pre.pdf , /kakao , /kakao/skill , /health )"
     )
 
 

@@ -17,6 +17,7 @@ from ai_briefing import _strip_disclaimer
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
+SUMMARY_PRE_PDF_PATH = DATA_DIR / "summary_pre.pdf"
 _RUNTIME_FONT = DATA_DIR / "fonts" / "NanumGothic.ttf"
 _FONT_URL = (
     "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/"
@@ -204,18 +205,6 @@ def _draw_section_chip(draw, x: int, y: int, label: str, color: tuple[int, int, 
     return h
 
 
-def _draw_stat_chip(draw, x: int, y: int, label: str, value: str) -> int:
-    font_l = _load_font(11)
-    font_v = _load_font(16)
-    pad = 14
-    inner_w = max(_text_width(draw, label, font_l), _text_width(draw, value, font_v)) + pad * 2
-    h = 58
-    draw.rounded_rectangle((x, y, x + inner_w, y + h), radius=12, fill=PANEL, outline=BORDER, width=1)
-    draw.text((x + pad, y + 8), label, font=font_l, fill=MUTED)
-    draw.text((x + pad, y + 28), value, font=font_v, fill=TEXT)
-    return inner_w
-
-
 def _parse_metric(value: object) -> tuple[str, bool | None]:
     text = _safe(value)
     positive = None
@@ -398,129 +387,30 @@ def _draw_compact_news(
 # ── Page builders ──────────────────────────────────────────────────────────
 
 
-def _render_cover_page(summary: dict) -> bytes:
-    img, draw = _new_page()
-
-    draw.rounded_rectangle((_MARGIN, 48, _MARGIN + 48, 96), radius=12, fill=ACCENT)
-    draw.text((_MARGIN + 12, 58), "S", font=_load_font(28), fill=BG)
-    draw.text((_MARGIN + 64, 52), "SavvyETF", font=_load_font(32), fill=TEXT)
-    draw.text((_MARGIN + 64, 90), "Market Brief", font=_load_font(18), fill=ACCENT)
-
-    y = 120
-    draw.text(
-        (_MARGIN, y),
-        _safe(summary.get("generated_at_display", "")),
-        font=_load_font(14),
-        fill=MUTED,
-    )
-    y += 28
-    draw.text((_MARGIN, y), "오늘의 마켓 브리프", font=_load_font(34), fill=TEXT)
-    y += 42
-    y = _draw_wrapped(
-        draw,
-        "ETF · S&P 500 랭킹, 리더 차트, 히트맵, 매크로, BTC/ETH, AI 브리핑",
-        _MARGIN,
-        y,
-        48,
-        _load_font(14),
-        MUTED,
-        22,
-        280,
-    )
-    y += 12
-
-    x = _MARGIN
-    for label, value in (
-        ("Universes", str(len(summary.get("universes") or []))),
-        ("News", str(summary.get("ticker_count", 0))),
-        ("Charts", _count_charts(summary)),
-    ):
-        w = _draw_stat_chip(draw, x, y, label, value)
-        x += w + 12
-    y += 68
-
-    draw.rounded_rectangle(
-        (_MARGIN, y, _PAGE_W - _MARGIN, y + 72),
-        radius=12,
-        fill=PANEL,
-        outline=BORDER,
-        width=1,
-    )
-    draw.text((_MARGIN + 18, y + 12), "Inside", font=_load_font(12), fill=MUTED)
-    draw.text(
-        (_MARGIN + 18, y + 36),
-        "Rankings+News → Markets (Heatmap/Macro/Crypto) → AI brief",
-        font=_load_font(14),
-        fill=TEXT,
-    )
-    y += 88
-
-    thumbs: list[tuple[bytes, str]] = []
-    for ukey, pack in (summary.get("leader_charts") or {}).items():
-        if not isinstance(pack, dict):
-            continue
-        raw = chart_to_png_bytes(_leader_chart(pack))
-        if raw:
-            thumbs.append((raw, str(pack.get("ticker") or ukey)))
-    heat = chart_to_png_bytes((summary.get("heatmap_sp") or {}).get("chart"))
-    if heat:
-        thumbs.append((heat, "Heatmap"))
-    macro = chart_to_png_bytes((summary.get("macro") or {}).get("chart"))
-    if macro:
-        thumbs.append((macro, "Macro"))
-    thumbs = thumbs[:3]
-
-    if thumbs:
-        gap = 12
-        col_w = (_PAGE_W - 2 * _MARGIN - gap * (len(thumbs) - 1)) // len(thumbs)
-        max_h = _CONTENT_BOTTOM - y
-        for i, (raw, label) in enumerate(thumbs):
-            tx = _MARGIN + i * (col_w + gap)
-            chart = _open_chart(raw)
-            _paste_chart_in_frame(img, draw, chart, tx, y, col_w, max_h, title=label, fill=True)
-            try:
-                chart.close()
-            except Exception:
-                pass
-
-    _draw_footer(draw, "cover")
-    return _image_to_png_bytes(img)
-
-
-def _count_charts(summary: dict) -> str:
-    n = 0
-    if chart_to_png_bytes((summary.get("heatmap_sp") or {}).get("chart")):
-        n += 1
-    n += sum(
-        1
-        for pack in (summary.get("leader_charts") or {}).values()
-        if isinstance(pack, dict) and chart_to_png_bytes(pack.get("chart_png") or pack.get("chart"))
-    )
-    if chart_to_png_bytes((summary.get("macro") or {}).get("chart")):
-        n += 1
-    for symbol in ("BTC", "ETH"):
-        if chart_to_png_bytes(((summary.get("crypto") or {}).get(symbol) or {}).get("chart")):
-            n += 1
-    return str(n)
-
-
 def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     """One dense page: rankings + compact headlines + leader chart filling the rest."""
     img, draw = _new_page()
     ukey = str(universe.get("key", ""))
     accent = UNIVERSE_COLORS.get(ukey, ACCENT)
     name = _safe(universe.get("name", ukey or "Universe"))
+    is_pre = summary.get("kind") == "summary_pre"
+    notes_reserve = 52 if is_pre else 0
+    content_limit = _CONTENT_BOTTOM - notes_reserve
 
     y = _MARGIN
-    _draw_section_chip(draw, _MARGIN, y, ukey.upper() or "UNI", accent)
+    chip = "PRE" if is_pre else (ukey.upper() or "UNI")
+    _draw_section_chip(draw, _MARGIN, y, chip, accent if not is_pre else WARN)
     draw.text((_MARGIN + 86, y + 2), name, font=_load_font(24), fill=TEXT)
     y += 34
-    draw.text(
-        (_MARGIN, y),
-        "Price: last day return  ·  Volume: latest / 21d avg",
-        font=_load_font(12),
-        fill=MUTED,
+    when = _safe(summary.get("generated_at_display", ""))
+    metric_line = (
+        "Pre-market % vs previous close  ·  Finnhub extended-hours"
+        if is_pre
+        else "Price: last day return  ·  Volume: latest / 21d avg"
     )
+    if when:
+        metric_line = f"{when}  ·  {metric_line}"
+    draw.text((_MARGIN, y), metric_line[:110], font=_load_font(12), fill=MUTED)
     y += 22
 
     leader_pack = (summary.get("leader_charts") or {}).get(ukey) or {}
@@ -534,8 +424,18 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     col_gap = 12
     col_w = (_PAGE_W - 2 * _MARGIN - col_gap) // 2
     boards = [
-        ("surge", "▲ Surge (price↑ + vol)", True, ACCENT2),
-        ("dropvol", "▼ Drop + volume", False, DANGER),
+        (
+            "surge",
+            "▲ Premarket gainers" if is_pre else "▲ Surge (price↑ + vol)",
+            True,
+            ACCENT2,
+        ),
+        (
+            "dropvol",
+            "▼ Premarket losers" if is_pre else "▼ Drop + volume",
+            False,
+            DANGER,
+        ),
     ]
 
     content_bottom = y
@@ -574,14 +474,14 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     # Compact headlines packed above the chart so leftover space goes to the chart.
     if news_blocks:
         y = _draw_compact_news(
-            draw, news_blocks, _MARGIN, y, page_w, accent, max_y=_CONTENT_BOTTOM - 280
+            draw, news_blocks, _MARGIN, y, page_w, accent, max_y=content_limit - 280
         )
         y += 8
 
     if leader_png:
         note = ((summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}).get(ukey, "")
         ticker = (leader_pack or {}).get("ticker") or universe.get("leader_ticker") or ukey
-        chart_budget = max(240, _CONTENT_BOTTOM - y)
+        chart_budget = max(240, content_limit - y)
         chart = _open_chart(leader_png)
         _paste_chart_in_frame(
             img,
@@ -591,7 +491,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             y,
             page_w,
             chart_budget,
-            title=f"Leader — {_safe(ticker)}",
+            title=f"{'Premarket leader' if is_pre else 'Leader'} — {_safe(ticker)}",
             subtitle=_safe(note),
             fill=True,
         )
@@ -603,7 +503,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
         leader = universe.get("leader_ticker")
         if leader:
             draw.rounded_rectangle(
-                (_MARGIN, y, _PAGE_W - _MARGIN, y + 56),
+                (_MARGIN, y, _PAGE_W - _MARGIN, min(y + 56, content_limit)),
                 radius=12,
                 fill=PANEL,
                 outline=accent,
@@ -612,7 +512,29 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             draw.text((_MARGIN + 16, y + 8), "Top surge leader", font=_load_font(12), fill=MUTED)
             draw.text((_MARGIN + 16, y + 26), _safe(leader), font=_load_font(22), fill=TEXT)
 
-    _draw_footer(draw, f"{ukey} rankings")
+    if is_pre:
+        notes_y = _CONTENT_BOTTOM - notes_reserve
+        draw.rounded_rectangle(
+            (_MARGIN, notes_y, _PAGE_W - _MARGIN, notes_y + notes_reserve - 4),
+            radius=10,
+            fill=PANEL2,
+            outline=BORDER,
+            width=1,
+        )
+        draw.text(
+            (_MARGIN + 14, notes_y + 8),
+            "Not financial advice · Finnhub pre/extended · PDF: /summary_pre.pdf",
+            font=_load_font(12),
+            fill=MUTED,
+        )
+        draw.text(
+            (_MARGIN + 14, notes_y + 26),
+            "SavvyETF premarket brief · ETF excluded",
+            font=_load_font(12),
+            fill=MUTED,
+        )
+
+    _draw_footer(draw, "premarket" if is_pre else f"{ukey} rankings")
     return _image_to_png_bytes(img)
 
 
@@ -1011,18 +933,18 @@ def _leader_chart(pack: dict):
 
 
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
-    out = output_path or SUMMARY_PDF_PATH
+    is_pre = summary.get("kind") == "summary_pre"
+    out = output_path or (SUMMARY_PRE_PDF_PATH if is_pre else SUMMARY_PDF_PATH)
     png_pages: list[bytes] = []
-
-    png_pages.append(_render_cover_page(summary))
 
     for universe in summary.get("universes") or []:
         # Rankings + headlines + leader chart share one dense page.
         png_pages.append(_render_universe_rankings_page(universe, summary))
 
-    markets = _render_markets_page(summary)
-    if markets:
-        png_pages.append(markets)
+    if not is_pre:
+        markets = _render_markets_page(summary)
+        if markets:
+            png_pages.append(markets)
 
     # Orphan leader charts (no matching universe page)
     rendered_keys = {str(u.get("key", "")) for u in (summary.get("universes") or [])}
@@ -1045,57 +967,66 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
             print(f"PDF leader page skipped: {exc}")
 
     crypto_charts: list[tuple[bytes, str]] = []
-    for symbol in ("BTC", "ETH"):
-        entry = (summary.get("crypto") or {}).get(symbol) or {}
-        raw = chart_to_png_bytes(entry.get("chart"))
-        if raw:
-            crypto_charts.append((raw, str(entry.get("label") or symbol)))
+    if not is_pre:
+        for symbol in ("BTC", "ETH"):
+            entry = (summary.get("crypto") or {}).get(symbol) or {}
+            raw = chart_to_png_bytes(entry.get("chart"))
+            if raw:
+                crypto_charts.append((raw, str(entry.get("label") or symbol)))
 
-    closing = _render_ai_closing_page(summary, crypto_charts=crypto_charts)
-    if closing:
-        png_pages.append(closing)
-    elif crypto_charts:
-        if len(crypto_charts) == 2:
-            png_pages.append(
-                _render_dual_chart_page(
-                    crypto_charts[0],
-                    crypto_charts[1],
-                    "CRYPTO",
-                    "Bitcoin & Ethereum",
-                )
-            )
-        else:
-            for raw, label in crypto_charts:
+    brief = _strip_disclaimer(
+        ((summary.get("ai_analysis") or {}).get("market_brief_ko") or "").strip()
+    )
+    if brief or crypto_charts:
+        closing = _render_ai_closing_page(summary, crypto_charts=crypto_charts)
+        if closing:
+            png_pages.append(closing)
+        elif crypto_charts:
+            if len(crypto_charts) == 2:
                 png_pages.append(
-                    _render_chart_showcase(
-                        raw, "CRYPTO", f"{label} technical chart", accent=ACCENT
+                    _render_dual_chart_page(
+                        crypto_charts[0],
+                        crypto_charts[1],
+                        "CRYPTO",
+                        "Bitcoin & Ethereum",
                     )
                 )
-        png_pages.append(_render_notes_page())
-    else:
+            else:
+                for raw, label in crypto_charts:
+                    png_pages.append(
+                        _render_chart_showcase(
+                            raw, "CRYPTO", f"{label} technical chart", accent=ACCENT
+                        )
+                    )
+            png_pages.append(_render_notes_page())
+    elif not is_pre:
+        # Close brief always ends with a notes page; premarket keeps notes on the rankings page.
         png_pages.append(_render_notes_page())
 
     if not png_pages:
         raise RuntimeError("No PDF pages rendered")
 
     _png_pages_to_pdf(png_pages, out)
+    label = "Premarket" if is_pre else "Summary"
     print(
-        f"Summary PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
+        f"{label} PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
     )
     return out
 
 
 def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Path:
+    is_pre = summary.get("kind") == "summary_pre"
     try:
         return build_summary_pdf(summary, output_path=output_path)
     except Exception as first_exc:
         traceback.print_exc()
         print(f"Full PDF failed ({first_exc}); retrying text-only PDF")
-        out = output_path or SUMMARY_PDF_PATH
+        out = output_path or (SUMMARY_PRE_PDF_PATH if is_pre else SUMMARY_PDF_PATH)
         try:
+            title = "SavvyETF Premarket Brief" if is_pre else "SavvyETF Market Brief"
             png_pages = [
                 _render_text_page_png(
-                    "SavvyETF Market Brief",
+                    title,
                     [
                         _safe(summary.get("generated_at_display", "")),
                         "Chart pages skipped due to PDF render error.",
@@ -1117,9 +1048,10 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
                     for idx, (ticker, value) in enumerate(board.get("top") or [], start=1):
                         paragraphs.append(f"  {idx}. {ticker}  {value}")
                 png_pages.append(_render_text_page_png(name, paragraphs))
-            png_pages.append(
-                _render_text_page_png("Notes", ["Not financial advice.", "Web brief: /summary"])
-            )
+            if not is_pre:
+                png_pages.append(
+                    _render_text_page_png("Notes", ["Not financial advice.", "Web brief: /summary"])
+                )
             _png_pages_to_pdf(png_pages, out)
             print(f"Text-only PDF written: {out} ({out.stat().st_size} bytes)")
             return out
@@ -1132,3 +1064,9 @@ def load_summary_pdf_bytes() -> bytes | None:
     if not SUMMARY_PDF_PATH.exists():
         return None
     return SUMMARY_PDF_PATH.read_bytes()
+
+
+def load_summary_pre_pdf_bytes() -> bytes | None:
+    if not SUMMARY_PRE_PDF_PATH.exists():
+        return None
+    return SUMMARY_PRE_PDF_PATH.read_bytes()

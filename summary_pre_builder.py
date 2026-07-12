@@ -14,6 +14,8 @@ from summary_builder import (
     UNIVERSE_STYLE,
     _as_photo_buffer,
     _esc,
+    _freeze_summary_charts,
+    format_summary_pdf_message,
     resolve_summary_public_url,
 )
 
@@ -199,6 +201,18 @@ def generate_summary_pre(public_url: str = "") -> dict:
         "source": "rules",
         "article_count": 0,
     }
+    # Freeze charts before PDF/Telegram consumers touch buffers.
+    _freeze_summary_charts(summary)
+
+    try:
+        from summary_pdf import SUMMARY_PRE_PDF_PATH, build_summary_pdf_safe
+
+        pdf_path = build_summary_pdf_safe(summary, output_path=SUMMARY_PRE_PDF_PATH)
+        summary["pdf_path"] = str(pdf_path)
+    except Exception as exc:
+        summary["pdf_path"] = None
+        summary["pdf_error"] = str(exc)
+        print(f"Premarket PDF export skipped: {exc}")
 
     messages = render_summary_pre_telegram(summary)
     web = public_url.strip() if public_url else resolve_summary_public_url()
@@ -207,9 +221,15 @@ def generate_summary_pre(public_url: str = "") -> dict:
             "text": (
                 "🌐 Regular close brief (web)\n"
                 f"{web}\n\n"
-                "Premarket brief is Telegram-only; full /summary page updates after the US close."
+                "Premarket PDF: /summary_pre.pdf · full /summary page updates after the US close."
             )
         }
     )
+    pdf_message = format_summary_pdf_message(summary, web)
+    if pdf_message:
+        messages.append(pdf_message)
+    elif summary.get("pdf_error"):
+        messages.append({"text": f"PDF export unavailable: {summary['pdf_error']}"})
+
     summary["telegram_messages"] = messages
     return summary
