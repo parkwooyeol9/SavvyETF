@@ -33,6 +33,8 @@ def run_dart_analysis(query: str) -> dict:
 
 
 def run_dart_etf_memb(query: str) -> dict:
+    from dart_etf_disclosures import format_etf_disclosures_telegram
+
     profile = build_etf_memb_profile(query)
     chart = plot_etf_memb_dashboard(profile)
     text = format_etf_memb_telegram(profile)
@@ -47,6 +49,9 @@ def run_dart_etf_memb(query: str) -> dict:
             "parse_mode": "HTML",
         },
     ]
+    disclosures_text = format_etf_disclosures_telegram(profile.get("disclosures"))
+    if disclosures_text:
+        telegram_messages.append({"text": disclosures_text, "parse_mode": "HTML"})
 
     return {
         "profile": profile,

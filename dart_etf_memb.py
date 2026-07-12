@@ -303,12 +303,27 @@ def build_etf_memb_profile(query: str) -> dict[str, Any]:
         "holdings": holdings,
         "changes": changes,
         "generated_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
-        "source": "Naver Finance (ETF PDF / CU holdings)",
+        "source": "Naver Finance (CU holdings) + Open DART fund disclosures",
         "dart_note": (
-            "Open DART에는 ETF 편입종목·구성비 전용 JSON API가 없습니다. "
-            "네이버 증권(거래소 PDF 기반)으로 조회합니다."
+            "편입종목·구성비는 네이버(거래소 CU). "
+            "리밸런싱·투자설명서 변경은 Open DART 펀드공시에서 검색·파싱합니다."
         ),
     }
+    try:
+        from dart_etf_disclosures import fetch_etf_disclosures
+
+        print(
+            f"DART ETF disclosures: {profile['name']} / issuer={profile.get('issuer') or '?'}"
+        )
+        profile["disclosures"] = fetch_etf_disclosures(
+            etf_name=str(profile["name"]),
+            ticker=ticker,
+            issuer=str(profile.get("issuer") or ""),
+        )
+    except Exception as exc:
+        profile["disclosures"] = {"error": str(exc), "filings": [], "parsed": []}
+        print(f"DART ETF disclosures attach failed: {exc}")
+
     save_snapshot(profile)
     return profile
 

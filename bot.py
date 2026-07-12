@@ -109,7 +109,7 @@ What each command returns:
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
 
 /dart etf memb 0167A0
-→ 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
+→ 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
 Auto schedule (KST):
   /summary 06:30 · /summary_pre 21:50
@@ -221,10 +221,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Requires DART_API_KEY in .env (https://opendart.fss.or.kr/)
 
 /dart etf memb TICKER|NAME
-  Korean ETF holdings (구성종목) and weights (편입비), plus change vs last snapshot.
-  Open DART has no ETF PDF API — uses Naver Finance (KRX PDF-based).
+  Korean ETF holdings (구성종목) and weights (편입비) via Naver Finance,
+  change vs last snapshot, plus Open DART fund disclosures (투자설명서/
+  기재정정 등) filtered to the ETF — parsed rebalance/change bullets + links.
   Example: /dart etf memb 0167A0
   Example: /dart etf memb SOL AI반도체TOP2플러스
+  Requires DART_API_KEY for the disclosure section.
 
 ℹ️ /help
   Show this guide again.
