@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from etf_compare import parse_comp_tickers
 from news_crawler import format_news_messages
+from naver_news import format_naver_news_messages
 from stock_crawler import (
     ensure_universe_caches,
     format_rankings_message,
@@ -72,6 +73,9 @@ What each command returns:
 /news
 → Headlines for the 6 tickers from your last /etf, /sp, or /nas result
 
+/news_naver
+→ Naver News headlines for last ranking (or /news_naver 삼성전자)
+
 /summary
 → ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:00 KST)
 
@@ -79,7 +83,7 @@ What each command returns:
 → Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
 
 /summary_kor
-→ KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + PDF
+→ KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -137,6 +141,11 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Headlines for the 6 tickers from your last ranking.
   Run /etf, /sp, or /nas first, then /news.
 
+/news_naver [query]
+  Naver News crawl for Korean headlines.
+  Without args: uses tickers from your last ranking (/kospi, /kosdaq, …).
+  With query: /news_naver 삼성전자
+
 /summary
   Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
   S&P 500 heatmap, then AI briefing from trending news at the end.
@@ -150,10 +159,11 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Example: /summary_pre
 
 /summary_kor
-  Korea market brief: KOSPI 200 + KOSDAQ 100 rankings, leader charts, news, PDF.
-  Data: Yahoo Finance (.KS / .KQ). Constituent lists in data/universes/.
+  Korea market brief: KOSPI 200 + KOSDAQ 100 rankings, leader charts,
+  Naver Korean headlines, DART financials for top leaders, PDF + web.
+  Prices: Yahoo Finance (.KS / .KQ). News: Naver crawl. Financials: Open DART.
+  Web: /summary_kor · PDF: /summary_kor.pdf (separate from US /summary)
   Example: /summary_kor | /kospi | /kosdaq
-  PDF: /summary_kor.pdf
 
 /aibriefing
   Search 5-10 trending US market articles, read them, and return a
@@ -524,7 +534,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /reddit /summary /summary_pre /summary_kor /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -752,6 +762,34 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"Error building Reddit brief: {exc}"}]
+
+    if lower.startswith("/news_naver"):
+        try:
+            parts = normalized.split(maxsplit=1)
+            query = parts[1].strip() if len(parts) > 1 else ""
+            if query:
+                messages = format_naver_news_messages(query=query)
+                return [{"text": text} for text in messages]
+
+            context = _last_ranking_by_chat.get(chat_id)
+            if not context:
+                return [
+                    {
+                        "text": (
+                            "No recent ranking found.\n"
+                            "Run /kospi or /kosdaq first, then /news_naver.\n"
+                            "Or search directly: /news_naver 삼성전자"
+                        )
+                    }
+                ]
+            messages = format_naver_news_messages(
+                context["tickers"],
+                context_label=context["label"],
+                universe=context.get("universe"),
+            )
+            return [{"text": text} for text in messages]
+        except Exception as exc:
+            return [{"text": f"Error fetching Naver news: {exc}"}]
 
     if lower.startswith("/news"):
         try:
@@ -1321,6 +1359,18 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
+            if path == "/summary_kor":
+                from summary_kor_builder import load_summary_kor_html
+
+                body_text = load_summary_kor_html()
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>Korea summary not generated yet. "
+                        "Use /summary_kor in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
             if path == "/summary.pdf":
                 from summary_pdf import SUMMARY_PDF_PATH
 
@@ -1523,7 +1573,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /kakao , /kakao/skill , /health )"
     )
 
 

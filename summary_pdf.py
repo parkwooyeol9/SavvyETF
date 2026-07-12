@@ -366,17 +366,21 @@ def _draw_compact_news(
     width: int,
     accent: tuple[int, int, int],
     max_y: int,
+    *,
+    heading: str = "Headlines",
+    label_fn=None,
 ) -> int:
     if not blocks or y >= max_y - 40:
         return y
-    draw.text((x, y), "Headlines", font=_load_font(13), fill=MUTED)
+    draw.text((x, y), heading, font=_load_font(13), fill=MUTED)
     y += 20
     for ticker, headlines in blocks:
         if y > max_y - 24:
             break
         title = _safe((headlines[0] or {}).get("title", ""))[:78]
         source = _safe((headlines[0] or {}).get("source", ""))
-        line = f"{ticker}  {title}"
+        ticker_label = label_fn(ticker) if callable(label_fn) else ticker
+        line = f"{ticker_label}  {title}"
         if source:
             line = f"{line}  · {source}"
         draw.rounded_rectangle((x, y, x + width, y + 28), radius=7, fill=PANEL2, outline=BORDER, width=1)
@@ -495,8 +499,23 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
 
     # Compact headlines packed above the chart so leftover space goes to the chart.
     if news_blocks:
+        news_kwargs = {}
+        if is_kor:
+            from kr_names import format_kr_ticker_label
+
+            news_kwargs = {
+                "heading": "Naver News",
+                "label_fn": format_kr_ticker_label,
+            }
         y = _draw_compact_news(
-            draw, news_blocks, _MARGIN, y, page_w, accent, max_y=content_limit - 280
+            draw,
+            news_blocks,
+            _MARGIN,
+            y,
+            page_w,
+            accent,
+            max_y=content_limit - 280,
+            **news_kwargs,
         )
         y += 8
 
@@ -552,7 +571,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             line2 = "SavvyETF premarket brief · ETF excluded"
             footer = "premarket"
         else:
-            line1 = "투자 권유 아님 · Yahoo Finance(.KS/.KQ) · PDF: /summary_kor.pdf"
+            line1 = "투자 권유 아님 · Yahoo(.KS/.KQ) · Naver News · PDF: /summary_kor.pdf"
             line2 = "SavvyETF Korea brief · KOSPI200 + KOSDAQ100"
             footer = "korea"
         draw.text((_MARGIN + 14, notes_y + 8), line1, font=_load_font(12), fill=MUTED)
@@ -975,6 +994,26 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     for universe in summary.get("universes") or []:
         # Rankings + headlines + leader chart share one dense page.
         png_pages.append(_render_universe_rankings_page(universe, summary))
+
+    if is_kor:
+        for ukey in ("kospi", "kosdaq"):
+            pack = (summary.get("dart_by_universe") or {}).get(ukey) or {}
+            if not isinstance(pack, dict) or pack.get("error"):
+                continue
+            raw = chart_to_png_bytes(pack.get("chart"))
+            if not raw:
+                continue
+            try:
+                png_pages.append(
+                    _render_chart_showcase(
+                        raw,
+                        "DART",
+                        str(pack.get("corp_name") or pack.get("leader_ticker") or ukey),
+                        subtitle=_safe(pack.get("caption", "")),
+                    )
+                )
+            except Exception as exc:
+                print(f"PDF DART page skipped ({ukey}): {exc}")
 
     if not is_pre and not is_kor:
         markets = _render_markets_page(summary)

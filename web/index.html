@@ -73,8 +73,13 @@
               </tr>
               <tr>
                 <td><span class="cmd">/summary</span></td>
-                <td>ETF + S&amp;P 500 brief, news, S&amp;P heatmap, AI Korean market briefing. Also saved as web page.</td>
+                <td>ETF + S&amp;P 500 brief, news, S&amp;P heatmap, AI Korean market briefing. Saved as <a href="/summary">/summary</a>.</td>
                 <td><span class="tag auto">Auto</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/summary_kor</span></td>
+                <td>KOSPI 200 + KOSDAQ 100 brief, Naver Korean news, DART for top leaders. Saved as <a href="/summary_kor">/summary_kor</a>.</td>
+                <td><span class="tag manual">Manual</span></td>
               </tr>
               <tr>
                 <td><span class="cmd">/macro</span></td>
@@ -89,6 +94,11 @@
               <tr>
                 <td><span class="cmd">/news</span></td>
                 <td>Headlines for tickers from your last <span class="cmd">/etf</span>, <span class="cmd">/sp</span>, or <span class="cmd">/nas</span>.</td>
+                <td><span class="tag manual">Manual</span></td>
+              </tr>
+              <tr>
+                <td><span class="cmd">/news_naver</span></td>
+                <td>Naver News crawl for last ranking tickers, or <span class="cmd">/news_naver 삼성전자</span>.</td>
                 <td><span class="tag manual">Manual</span></td>
               </tr>
               <tr>
@@ -195,6 +205,7 @@
             <span class="cmd">python bot.py</span> serves this page at
             <span class="cmd">http://localhost:8080</span> and the latest brief at
             <a href="/summary">/summary</a>
+            · <a href="/summary_kor">/summary_kor</a>
             · <a href="/summary.pdf">/summary.pdf</a>.
           </p>
         </article>
@@ -205,7 +216,7 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <span>SavvyETF · parkwooyeol9/SavvyETF</span>
-      <span><a href="/summary">Latest market brief</a> · <a href="/health">Health</a></span>
+      <span><a href="/summary">US brief</a> · <a href="/summary_kor">Korea brief</a> · <a href="/health">Health</a></span>
     </div>
   </footer>
 </body>
