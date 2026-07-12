@@ -1249,7 +1249,18 @@ def start_web_server():
             path = urlparse(self.path).path
 
             if path == "/health":
-                self._send(b"ok", "text/plain; charset=utf-8")
+                import importlib.util
+
+                kor_spec = importlib.util.find_spec("summary_kor_builder")
+                payload = {
+                    "ok": True,
+                    "summary_kor_builder": kor_spec is not None,
+                    "py_modules": sorted(p.name for p in PROJECT_DIR.glob("*.py")),
+                }
+                self._send(
+                    json.dumps(payload).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
                 return
 
             if path in {"/", "/index.html"}:
