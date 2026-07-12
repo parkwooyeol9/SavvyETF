@@ -400,7 +400,7 @@ def select_major_countries(packs: dict[str, dict[str, Any]]) -> list[str]:
 def _last_session_return(symbol: str) -> dict[str, Any]:
     """Latest available daily close-to-close return for a Yahoo symbol."""
     try:
-        frame = fetch_daily_candles(symbol, range_="5d", interval="1d")
+        frame = fetch_daily_candles(symbol, range_="1mo", interval="1d")
     except Exception as exc:
         return {"symbol": symbol, "error": str(exc)}
     if frame is None or frame.empty or "close" not in frame.columns:
