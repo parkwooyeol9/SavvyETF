@@ -116,6 +116,9 @@ def _plot_growth(ax, history: pd.DataFrame, corp_name: str) -> None:
 
 
 def plot_dart_dashboard(profile: dict[str, Any]) -> io.BytesIO:
+    from cjk_font import configure_matplotlib_cjk
+
+    configure_matplotlib_cjk()
     history = profile["history"]
     corp_name = profile["corp_name"]
 

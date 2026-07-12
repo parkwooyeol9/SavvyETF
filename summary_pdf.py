@@ -19,11 +19,6 @@ DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 SUMMARY_PRE_PDF_PATH = DATA_DIR / "summary_pre.pdf"
 SUMMARY_KOR_PDF_PATH = DATA_DIR / "summary_kor.pdf"
-_RUNTIME_FONT = DATA_DIR / "fonts" / "NanumGothic.ttf"
-_FONT_URL = (
-    "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/"
-    "NanumGothic-Regular.ttf"
-)
 
 # A4 @ 144 DPI — sharper charts without blowing Render memory
 _PAGE_W = 1191
@@ -53,9 +48,8 @@ UNIVERSE_COLORS = {
     "kosdaq": ACCENT2,
 }
 
-_font_bytes: bytes | None = None
-_font_tried = False
 _font_path: Path | None = None
+_font_tried = False
 _font_cache: dict[int, object] = {}
 
 
@@ -67,37 +61,16 @@ def _safe(text: object) -> str:
 
 
 def _ensure_font_file() -> Path | None:
-    global _font_bytes, _font_tried, _font_path
+    global _font_tried, _font_path
     if _font_tried:
         return _font_path
     _font_tried = True
+    from cjk_font import resolve_cjk_font_path
 
-    font_path = _RUNTIME_FONT
-    if font_path.is_file() and font_path.stat().st_size >= 1000:
-        try:
-            _font_bytes = font_path.read_bytes()
-            _font_path = font_path
-            return _font_path
-        except Exception as exc:
-            print(f"PDF font read failed: {exc}")
-
-    try:
-        import requests
-
-        font_path.parent.mkdir(parents=True, exist_ok=True)
-        response = requests.get(_FONT_URL, timeout=60)
-        response.raise_for_status()
-        data = response.content
-        font_path.write_bytes(data)
-        _font_bytes = data
-        _font_path = font_path
-        print(f"Downloaded PDF font ({len(data)} bytes)")
-        return _font_path
-    except Exception as exc:
-        print(f"PDF CJK font download skipped: {exc}")
-        _font_bytes = None
-        _font_path = None
-        return None
+    _font_path = resolve_cjk_font_path(allow_download=True)
+    if _font_path is None:
+        print("PDF CJK font unavailable — Hangul may render as boxes")
+    return _font_path
 
 
 def _load_font(size: int):
@@ -118,6 +91,66 @@ def _load_font(size: int):
         font = ImageFont.load_default()
     _font_cache[size] = font
     return font
+
+
+def _fit_text(draw, text: str, font, max_width: int) -> str:
+    """Truncate text to fit pixel width (CJK-safe; avoids mid-line overflow)."""
+    text = _safe(text)
+    if not text:
+        return text
+    if _text_width(draw, text, font) <= max_width:
+        return text
+    ellipsis = "…"
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        candidate = text[:mid].rstrip() + ellipsis
+        if _text_width(draw, candidate, font) <= max_width:
+            lo = mid
+        else:
+            hi = mid - 1
+    return (text[:lo].rstrip() + ellipsis) if lo else ellipsis
+
+
+def _draw_wrapped(
+    draw,
+    text: str,
+    x: int,
+    y: int,
+    max_width_chars: int,
+    font,
+    fill,
+    line_h: int,
+    max_y: int,
+    *,
+    max_pixel_width: int | None = None,
+) -> int:
+    """Wrap text. Prefer pixel width for CJK so Hangul does not overflow."""
+    content = _safe(text)
+    if not content:
+        return y
+
+    if max_pixel_width and max_pixel_width > 0:
+        lines: list[str] = []
+        current = ""
+        for ch in content:
+            trial = current + ch
+            if current and _text_width(draw, trial, font) > max_pixel_width:
+                lines.append(current)
+                current = ch
+            else:
+                current = trial
+        if current:
+            lines.append(current)
+    else:
+        lines = textwrap.wrap(content, width=max_width_chars) or [""]
+
+    for line in lines:
+        if y > max_y:
+            return y
+        draw.text((x, y), line, font=font, fill=fill)
+        y += line_h
+    return y
 
 
 def chart_to_png_bytes(chart) -> bytes | None:
@@ -252,25 +285,6 @@ def _draw_rank_row(
     return h
 
 
-def _draw_wrapped(
-    draw,
-    text: str,
-    x: int,
-    y: int,
-    max_width_chars: int,
-    font,
-    fill,
-    line_h: int,
-    max_y: int,
-) -> int:
-    for line in textwrap.wrap(_safe(text), width=max_width_chars) or [""]:
-        if y > max_y:
-            return y
-        draw.text((x, y), line, font=font, fill=fill)
-        y += line_h
-    return y
-
-
 def _open_chart(png_bytes: bytes):
     from PIL import Image
 
@@ -377,14 +391,15 @@ def _draw_compact_news(
     for ticker, headlines in blocks:
         if y > max_y - 24:
             break
-        title = _safe((headlines[0] or {}).get("title", ""))[:78]
+        title = _safe((headlines[0] or {}).get("title", ""))
         source = _safe((headlines[0] or {}).get("source", ""))
         ticker_label = label_fn(ticker) if callable(label_fn) else ticker
         line = f"{ticker_label}  {title}"
         if source:
             line = f"{line}  · {source}"
         draw.rounded_rectangle((x, y, x + width, y + 28), radius=7, fill=PANEL2, outline=BORDER, width=1)
-        draw.text((x + 10, y + 6), line[:95], font=_load_font(12), fill=TEXT)
+        font = _load_font(12)
+        draw.text((x + 10, y + 6), _fit_text(draw, line, font, width - 24), font=font, fill=TEXT)
         # Color ticker prefix hint via small accent bar
         draw.rectangle((x, y, x + 4, y + 28), fill=accent)
         y += 32
@@ -660,7 +675,16 @@ def _render_ai_closing_page(
         ty = y + 12
         for para in paras:
             ty = _draw_wrapped(
-                draw, para, _MARGIN + 16, ty, 62, _load_font(14), TEXT, 20, max_y - 10
+                draw,
+                para,
+                _MARGIN + 16,
+                ty,
+                62,
+                _load_font(14),
+                TEXT,
+                20,
+                max_y - 10,
+                max_pixel_width=_PAGE_W - 2 * _MARGIN - 32,
             )
             ty += 8
             if ty > max_y - 10:
@@ -679,6 +703,7 @@ def _render_ai_closing_page(
                     MUTED,
                     17,
                     max_y - 8,
+                    max_pixel_width=_PAGE_W - 2 * _MARGIN - 32,
                 )
         y = max_y + 8
 
@@ -740,10 +765,21 @@ def _render_chart_showcase(
     img, draw = _new_page()
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, eyebrow, accent)
-    draw.text((_MARGIN + 96, y + 2), _safe(title)[:52], font=_load_font(22), fill=TEXT)
+    draw.text((_MARGIN + 96, y + 2), _fit_text(draw, _safe(title), _load_font(22), _PAGE_W - _MARGIN - 120), font=_load_font(22), fill=TEXT)
     y += 34
     if subtitle:
-        y = _draw_wrapped(draw, subtitle, _MARGIN, y, 78, _load_font(11), MUTED, 16, y + 40)
+        y = _draw_wrapped(
+            draw,
+            subtitle,
+            _MARGIN,
+            y,
+            78,
+            _load_font(11),
+            MUTED,
+            16,
+            y + 48,
+            max_pixel_width=_PAGE_W - 2 * _MARGIN,
+        )
         y += 6
 
     chart = _open_chart(png_bytes)
@@ -891,7 +927,18 @@ def _render_text_page_png(title: str, paragraphs: list[str]) -> bytes:
     draw.text((_MARGIN, y), _safe(title), font=_load_font(26), fill=TEXT)
     y += 44
     for para in paragraphs:
-        y = _draw_wrapped(draw, para, _MARGIN, y, 68, _load_font(14), MUTED, 22, _PAGE_H - 60)
+        y = _draw_wrapped(
+            draw,
+            para,
+            _MARGIN,
+            y,
+            68,
+            _load_font(14),
+            MUTED,
+            22,
+            _PAGE_H - 60,
+            max_pixel_width=_PAGE_W - 2 * _MARGIN,
+        )
         y += 10
     _draw_footer(draw)
     return _image_to_png_bytes(img)
@@ -981,6 +1028,12 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     kind = str(summary.get("kind") or "summary")
     is_pre = kind == "summary_pre"
     is_kor = kind == "summary_kor"
+    # Warm CJK font early so Hangul never falls back to the default bitmap font.
+    _ensure_font_file()
+    if is_kor:
+        from cjk_font import configure_matplotlib_cjk
+
+        configure_matplotlib_cjk()
     if output_path is not None:
         out = output_path
     elif is_pre:

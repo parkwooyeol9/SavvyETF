@@ -36,6 +36,9 @@ BAR_COLORS = [
 
 
 def plot_etf_memb_dashboard(profile: dict[str, Any]) -> io.BytesIO:
+    from cjk_font import configure_matplotlib_cjk
+
+    configure_matplotlib_cjk()
     holdings = profile.get("holdings") or []
     changes = profile.get("changes") or {}
     top = holdings[:12]
