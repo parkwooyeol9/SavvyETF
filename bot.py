@@ -619,7 +619,13 @@ def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
 
 
 def _ranking_loading_reply(universe: str) -> list[dict]:
-    label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+    label = {
+        "etf": "ETF",
+        "sp": "S&P 500",
+        "nas": "NASDAQ 100",
+        "kospi": "KOSPI 200",
+        "kosdaq": "KOSDAQ 100",
+    }.get(universe, universe.upper())
     status = get_warmup_status(universe)
     if status.get("phase") == "failed" and status.get("error"):
         start_universe_cache_warmup(universe, force=True)
@@ -633,11 +639,16 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
         ]
     if is_cache_warmup_running(universe) or status.get("running"):
         detail = status.get("message") or "still building"
+        hint = (
+            "KOSPI/KOSDAQ first build can take a few minutes."
+            if universe in {"kospi", "kosdaq"}
+            else "S&P/NASDAQ usually finish within ~1 minute."
+        )
         return [
             {
                 "text": (
                     f"{label} rankings are still loading ({detail}).\n"
-                    f"S&P/NASDAQ usually finish within ~1 minute. Try /{universe} again shortly."
+                    f"{hint} Try /{universe} again shortly."
                 )
             }
         ]

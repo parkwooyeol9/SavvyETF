@@ -936,6 +936,12 @@ def get_mode_rankings(
     return df, label, meta["scanned"], meta["skipped"]
 
 
+def _board_title(universe: str, mode: str) -> str:
+    if universe in {"kospi", "kosdaq"}:
+        return "▲ 상승+거래대금 급증" if mode == "surge" else "▼ 하락+거래대금 급증"
+    return "Price up + volume surge" if mode == "surge" else "Price down + volume surge"
+
+
 def _ranking_slice(
     universe: str,
     mode: str,
@@ -948,7 +954,7 @@ def _ranking_slice(
     bottom_rows = [(row["Ticker"], _row_label(row)) for _, row in bottom_df.iterrows()]
     return {
         "mode": mode,
-        "title": "Price up + volume surge" if mode == "surge" else "Price down + volume surge",
+        "title": _board_title(universe, mode),
         "label": label,
         "top": top_rows,
         "bottom": bottom_rows,

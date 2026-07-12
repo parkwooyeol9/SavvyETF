@@ -57,9 +57,11 @@ def ensure_kor_caches() -> list[str]:
 
 
 def _summary_boards(universe: str) -> dict:
+    # Same shape as summary_builder: each mode is the full _ranking_slice dict
+    # (with a list under "top"), not {"top": <slice dict>}.
     return {
-        "surge": {"top": _ranking_slice(universe, "surge", DEFAULT_TOP_N, 0)},
-        "dropvol": {"top": _ranking_slice(universe, "dropvol", DEFAULT_TOP_N, 0)},
+        mode: _ranking_slice(universe, mode, DEFAULT_TOP_N, 0)
+        for mode in ("surge", "dropvol")
     }
 
 
