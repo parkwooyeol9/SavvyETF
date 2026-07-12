@@ -18,6 +18,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 SUMMARY_PRE_PDF_PATH = DATA_DIR / "summary_pre.pdf"
+SUMMARY_KOR_PDF_PATH = DATA_DIR / "summary_kor.pdf"
 _RUNTIME_FONT = DATA_DIR / "fonts" / "NanumGothic.ttf"
 _FONT_URL = (
     "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/"
@@ -48,6 +49,8 @@ UNIVERSE_COLORS = {
     "etf": ACCENT,
     "sp": ACCENT2,
     "nas": (167, 139, 250),
+    "kospi": ACCENT,
+    "kosdaq": ACCENT2,
 }
 
 _font_bytes: bytes | None = None
@@ -394,20 +397,30 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     accent = UNIVERSE_COLORS.get(ukey, ACCENT)
     name = _safe(universe.get("name", ukey or "Universe"))
     is_pre = summary.get("kind") == "summary_pre"
-    notes_reserve = 52 if is_pre else 0
+    is_kor = summary.get("kind") == "summary_kor"
+    notes_reserve = 52 if (is_pre or is_kor) else 0
     content_limit = _CONTENT_BOTTOM - notes_reserve
 
     y = _MARGIN
-    chip = "PRE" if is_pre else (ukey.upper() or "UNI")
-    _draw_section_chip(draw, _MARGIN, y, chip, accent if not is_pre else WARN)
+    if is_pre:
+        chip = "PRE"
+        chip_color = WARN
+    elif is_kor:
+        chip = ukey.upper() or "KR"
+        chip_color = accent
+    else:
+        chip = ukey.upper() or "UNI"
+        chip_color = accent
+    _draw_section_chip(draw, _MARGIN, y, chip, chip_color)
     draw.text((_MARGIN + 86, y + 2), name, font=_load_font(24), fill=TEXT)
     y += 34
     when = _safe(summary.get("generated_at_display", ""))
-    metric_line = (
-        "Pre-market % vs previous close  ·  Finnhub extended-hours"
-        if is_pre
-        else "Price: last day return  ·  Volume: latest / 21d avg"
-    )
+    if is_pre:
+        metric_line = "Pre-market % vs previous close  ·  Finnhub extended-hours"
+    elif is_kor:
+        metric_line = "Price: last day return  ·  Volume: latest / 21d avg  ·  Yahoo .KS/.KQ"
+    else:
+        metric_line = "Price: last day return  ·  Volume: latest / 21d avg"
     if when:
         metric_line = f"{when}  ·  {metric_line}"
     draw.text((_MARGIN, y), metric_line[:110], font=_load_font(12), fill=MUTED)
@@ -423,20 +436,21 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
 
     col_gap = 12
     col_w = (_PAGE_W - 2 * _MARGIN - col_gap) // 2
-    boards = [
-        (
-            "surge",
-            "▲ Premarket gainers" if is_pre else "▲ Surge (price↑ + vol)",
-            True,
-            ACCENT2,
-        ),
-        (
-            "dropvol",
-            "▼ Premarket losers" if is_pre else "▼ Drop + volume",
-            False,
-            DANGER,
-        ),
-    ]
+    if is_pre:
+        boards = [
+            ("surge", "▲ Premarket gainers", True, ACCENT2),
+            ("dropvol", "▼ Premarket losers", False, DANGER),
+        ]
+    elif is_kor:
+        boards = [
+            ("surge", "▲ 상승+거래 급증", True, ACCENT2),
+            ("dropvol", "▼ 하락+거래 급증", False, DANGER),
+        ]
+    else:
+        boards = [
+            ("surge", "▲ Surge (price↑ + vol)", True, ACCENT2),
+            ("dropvol", "▼ Drop + volume", False, DANGER),
+        ]
 
     content_bottom = y
     for col, (mode, title, bullish, mode_color) in enumerate(boards):
@@ -462,8 +476,16 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
                 ticker, metric = row[0], row[1]
             else:
                 ticker, metric = row, ""
+            display = str(ticker)
+            if is_kor:
+                try:
+                    from kr_names import format_kr_ticker_label
+
+                    display = format_kr_ticker_label(str(ticker))
+                except Exception:
+                    display = str(ticker)
             h = _draw_rank_row(
-                draw, x, cy, col_w, idx, str(ticker), str(metric), accent, bullish
+                draw, x, cy, col_w, idx, display, str(metric), accent, bullish
             )
             cy += h + 4
         content_bottom = max(content_bottom, cy)
@@ -491,7 +513,11 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             y,
             page_w,
             chart_budget,
-            title=f"{'Premarket leader' if is_pre else 'Leader'} — {_safe(ticker)}",
+            title=(
+                f"{'Premarket leader' if is_pre else 'Leader'} — {_safe(ticker)}"
+                if not is_kor
+                else f"리더 — {_safe(ticker)}"
+            ),
             subtitle=_safe(note),
             fill=True,
         )
@@ -512,7 +538,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             draw.text((_MARGIN + 16, y + 8), "Top surge leader", font=_load_font(12), fill=MUTED)
             draw.text((_MARGIN + 16, y + 26), _safe(leader), font=_load_font(22), fill=TEXT)
 
-    if is_pre:
+    if is_pre or is_kor:
         notes_y = _CONTENT_BOTTOM - notes_reserve
         draw.rounded_rectangle(
             (_MARGIN, notes_y, _PAGE_W - _MARGIN, notes_y + notes_reserve - 4),
@@ -521,20 +547,20 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             outline=BORDER,
             width=1,
         )
-        draw.text(
-            (_MARGIN + 14, notes_y + 8),
-            "Not financial advice · Finnhub pre/extended · PDF: /summary_pre.pdf",
-            font=_load_font(12),
-            fill=MUTED,
-        )
-        draw.text(
-            (_MARGIN + 14, notes_y + 26),
-            "SavvyETF premarket brief · ETF excluded",
-            font=_load_font(12),
-            fill=MUTED,
-        )
+        if is_pre:
+            line1 = "Not financial advice · Finnhub pre/extended · PDF: /summary_pre.pdf"
+            line2 = "SavvyETF premarket brief · ETF excluded"
+            footer = "premarket"
+        else:
+            line1 = "투자 권유 아님 · Yahoo Finance(.KS/.KQ) · PDF: /summary_kor.pdf"
+            line2 = "SavvyETF Korea brief · KOSPI200 + KOSDAQ100"
+            footer = "korea"
+        draw.text((_MARGIN + 14, notes_y + 8), line1, font=_load_font(12), fill=MUTED)
+        draw.text((_MARGIN + 14, notes_y + 26), line2, font=_load_font(12), fill=MUTED)
+        _draw_footer(draw, footer)
+        return _image_to_png_bytes(img)
 
-    _draw_footer(draw, "premarket" if is_pre else f"{ukey} rankings")
+    _draw_footer(draw, f"{ukey} rankings")
     return _image_to_png_bytes(img)
 
 
@@ -933,15 +959,24 @@ def _leader_chart(pack: dict):
 
 
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
-    is_pre = summary.get("kind") == "summary_pre"
-    out = output_path or (SUMMARY_PRE_PDF_PATH if is_pre else SUMMARY_PDF_PATH)
+    kind = str(summary.get("kind") or "summary")
+    is_pre = kind == "summary_pre"
+    is_kor = kind == "summary_kor"
+    if output_path is not None:
+        out = output_path
+    elif is_pre:
+        out = SUMMARY_PRE_PDF_PATH
+    elif is_kor:
+        out = SUMMARY_KOR_PDF_PATH
+    else:
+        out = SUMMARY_PDF_PATH
     png_pages: list[bytes] = []
 
     for universe in summary.get("universes") or []:
         # Rankings + headlines + leader chart share one dense page.
         png_pages.append(_render_universe_rankings_page(universe, summary))
 
-    if not is_pre:
+    if not is_pre and not is_kor:
         markets = _render_markets_page(summary)
         if markets:
             png_pages.append(markets)
@@ -967,7 +1002,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
             print(f"PDF leader page skipped: {exc}")
 
     crypto_charts: list[tuple[bytes, str]] = []
-    if not is_pre:
+    if not is_pre and not is_kor:
         for symbol in ("BTC", "ETH"):
             entry = (summary.get("crypto") or {}).get(symbol) or {}
             raw = chart_to_png_bytes(entry.get("chart"))
@@ -999,15 +1034,15 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
                         )
                     )
             png_pages.append(_render_notes_page())
-    elif not is_pre:
-        # Close brief always ends with a notes page; premarket keeps notes on the rankings page.
+    elif not is_pre and not is_kor:
+        # Close brief always ends with a notes page; pre/kor keep notes on rankings pages.
         png_pages.append(_render_notes_page())
 
     if not png_pages:
         raise RuntimeError("No PDF pages rendered")
 
     _png_pages_to_pdf(png_pages, out)
-    label = "Premarket" if is_pre else "Summary"
+    label = {"summary_pre": "Premarket", "summary_kor": "Korea"}.get(kind, "Summary")
     print(
         f"{label} PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
     )
@@ -1015,15 +1050,27 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
 
 
 def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Path:
-    is_pre = summary.get("kind") == "summary_pre"
+    kind = str(summary.get("kind") or "summary")
+    is_pre = kind == "summary_pre"
+    is_kor = kind == "summary_kor"
     try:
         return build_summary_pdf(summary, output_path=output_path)
     except Exception as first_exc:
         traceback.print_exc()
         print(f"Full PDF failed ({first_exc}); retrying text-only PDF")
-        out = output_path or (SUMMARY_PRE_PDF_PATH if is_pre else SUMMARY_PDF_PATH)
+        if output_path is not None:
+            out = output_path
+        elif is_pre:
+            out = SUMMARY_PRE_PDF_PATH
+        elif is_kor:
+            out = SUMMARY_KOR_PDF_PATH
+        else:
+            out = SUMMARY_PDF_PATH
         try:
-            title = "SavvyETF Premarket Brief" if is_pre else "SavvyETF Market Brief"
+            title = {
+                "summary_pre": "SavvyETF Premarket Brief",
+                "summary_kor": "SavvyETF Korea Brief",
+            }.get(kind, "SavvyETF Market Brief")
             png_pages = [
                 _render_text_page_png(
                     title,
@@ -1048,7 +1095,7 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
                     for idx, (ticker, value) in enumerate(board.get("top") or [], start=1):
                         paragraphs.append(f"  {idx}. {ticker}  {value}")
                 png_pages.append(_render_text_page_png(name, paragraphs))
-            if not is_pre:
+            if not is_pre and not is_kor:
                 png_pages.append(
                     _render_text_page_png("Notes", ["Not financial advice.", "Web brief: /summary"])
                 )
@@ -1070,3 +1117,9 @@ def load_summary_pre_pdf_bytes() -> bytes | None:
     if not SUMMARY_PRE_PDF_PATH.exists():
         return None
     return SUMMARY_PRE_PDF_PATH.read_bytes()
+
+
+def load_summary_kor_pdf_bytes() -> bytes | None:
+    if not SUMMARY_KOR_PDF_PATH.exists():
+        return None
+    return SUMMARY_KOR_PDF_PATH.read_bytes()

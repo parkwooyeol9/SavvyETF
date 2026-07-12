@@ -171,6 +171,10 @@ def _display_ticker_label(ticker: str, universe: str | None) -> str:
         from etf_names import format_etf_ticker_label
 
         return format_etf_ticker_label(ticker)
+    if universe in {"kospi", "kosdaq"} or str(ticker).upper().endswith((".KS", ".KQ")):
+        from kr_names import format_kr_ticker_label
+
+        return format_kr_ticker_label(ticker)
     return ticker
 
 

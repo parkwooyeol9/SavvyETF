@@ -12,6 +12,7 @@ data/summary.html
 data/summary_meta.json
 data/summary.pdf
 data/summary_pre.pdf
+data/summary_kor.pdf
 data/adr_output/
 data/etf_compare/
 data/scheduler_state.json

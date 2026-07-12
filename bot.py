@@ -57,6 +57,9 @@ What each command returns:
 /sp   (or /nas)
 → Same rankings for S&P 500 / NASDAQ 100
 
+/kospi  (or /kosdaq)
+→ Same rankings for KOSPI 200 / KOSDAQ 100
+
 /etf_pre  /sp_pre  /nas_pre
 → Pre-market % vs previous close
 
@@ -74,6 +77,9 @@ What each command returns:
 
 /summary_pre
 → Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
+
+/summary_kor
+→ KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + PDF
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -139,6 +145,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Includes premarket rankings, news, leader TA chart, and PDF (/summary_pre.pdf).
   Requires FINNHUB_API_KEY.
   Example: /summary_pre
+
+/summary_kor
+  Korea market brief: KOSPI 200 + KOSDAQ 100 rankings, leader charts, news, PDF.
+  Data: Yahoo Finance (.KS / .KQ). Constituent lists in data/universes/.
+  Example: /summary_kor | /kospi | /kosdaq
+  PDF: /summary_kor.pdf
 
 /aibriefing
   Search 5-10 trending US market articles, read them, and return a
@@ -502,7 +514,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /summary_pre /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /summary_pre /summary_kor /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -660,6 +672,19 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"Error building premarket summary: {exc}"}]
+
+    if lower.startswith("/summary_kor"):
+        try:
+            from summary_kor_builder import generate_summary_kor
+
+            replies: list[dict] = [
+                {"text": "🇰🇷 Building Korea brief (KOSPI200 + KOSDAQ100)…"}
+            ]
+            summary = generate_summary_kor(public_url=summary_public_url())
+            replies.extend(summary["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error building Korea summary: {exc}"}]
 
     if lower.startswith("/summary"):
         try:
@@ -982,12 +1007,12 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Pre-market ranking failed: {exc}"}]
 
-    if lower.startswith(("/etf", "/sp", "/nas")) and not lower.startswith(
+    if lower.startswith(("/etf", "/sp", "/nas", "/kospi", "/kosdaq")) and not lower.startswith(
         ("/etf_pre", "/sp_pre", "/nas_pre", "/etfcheck")
     ):
-        # Avoid matching /etf_pre etc.; require command token exactly /etf|/sp|/nas
+        # Avoid matching /etf_pre etc.; require command token exactly
         first = lower.split()[0]
-        if first not in {"/etf", "/sp", "/nas"}:
+        if first not in {"/etf", "/sp", "/nas", "/kospi", "/kosdaq"}:
             return [{"text": HELP_TEXT}]
         try:
             universe, mode = parse_rank_command(normalized)
@@ -1006,12 +1031,22 @@ def handle_telegram_message(message, chat_id: int):
             responses = [{"text": text}]
             leader = get_top_leader_ticker(universe, mode)
             if leader:
-                label = {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}[universe]
+                label = {
+                    "etf": "ETF",
+                    "sp": "S&P 500",
+                    "nas": "NASDAQ 100",
+                    "kospi": "KOSPI 200",
+                    "kosdaq": "KOSDAQ 100",
+                }[universe]
                 leader_label = leader.upper()
                 if universe == "etf":
                     from etf_names import format_etf_ticker_label
 
                     leader_label = format_etf_ticker_label(leader)
+                elif universe in {"kospi", "kosdaq"}:
+                    from kr_names import format_kr_ticker_label
+
+                    leader_label = format_kr_ticker_label(leader)
                 responses.append(
                     {
                         "text": f"📈 {label} top leader: {leader_label}",
@@ -1285,6 +1320,28 @@ def start_web_server():
                 )
                 return
 
+            if path == "/summary_kor.pdf":
+                from summary_pdf import SUMMARY_KOR_PDF_PATH
+
+                if SUMMARY_KOR_PDF_PATH.is_file():
+                    data = SUMMARY_KOR_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-summary-kor.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"Korea PDF not generated yet. Run /summary_kor in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
             if path in {"/kakao", "/kakao/"}:
                 from kakao_notify import status_payload
 
@@ -1421,7 +1478,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary.pdf , /summary_pre.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /kakao , /kakao/skill , /health )"
     )
 
 

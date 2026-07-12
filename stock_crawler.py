@@ -22,6 +22,8 @@ ETF_MASTER_PATH = PROJECT_DIR / "colab" / "ETF_Master.xlsx"
 ETF_TICKERS_PATH = PROJECT_DIR / "colab" / "etf_tickers.txt"
 SP500_TICKERS_PATH = PROJECT_DIR / "colab" / "sp500_tickers.txt"
 NASDAQ100_TICKERS_PATH = PROJECT_DIR / "colab" / "nasdaq100_tickers.txt"
+KOSPI200_TICKERS_PATH = PROJECT_DIR / "colab" / "kospi200_tickers.txt"
+KOSDAQ100_TICKERS_PATH = PROJECT_DIR / "colab" / "kosdaq100_tickers.txt"
 CACHE_VERSION = 8
 
 DAILY_RETURN_COL = "Daily Return"
@@ -42,29 +44,45 @@ RANK_MODES = {
 
 VOL_LOOKBACK_DAYS = 21
 
-# Daily bars only change once per session — keep cache fresh for the US trading day.
+# Daily bars only change once per session — keep cache fresh for the trading day.
 CACHE_TTL_SECONDS = 20 * 3600
 DEFAULT_STALE_MAX_AGE_SECONDS = 7 * 24 * 3600
 DEFAULT_TOP_N = 3
 DEFAULT_BOTTOM_N = 3
 WIKI_USER_AGENT = "SavvyETF/1.0 (telegram-bot)"
 ET = ZoneInfo("America/New_York")
+KST = ZoneInfo("Asia/Seoul")
 
 UNIVERSES: dict[str, dict] = {
     "etf": {
         "label": "US Equity ETF",
         "cache_file": DATA_DIR / "etf_cache.pkl",
         "chunk_size": 25,
+        "tz": "America/New_York",
     },
     "sp": {
         "label": "S&P 500",
         "cache_file": DATA_DIR / "sp_cache.pkl",
         "chunk_size": 50,
+        "tz": "America/New_York",
     },
     "nas": {
         "label": "NASDAQ 100",
         "cache_file": DATA_DIR / "nas_cache.pkl",
         "chunk_size": 50,
+        "tz": "America/New_York",
+    },
+    "kospi": {
+        "label": "KOSPI 200",
+        "cache_file": DATA_DIR / "kospi_cache.pkl",
+        "chunk_size": 50,
+        "tz": "Asia/Seoul",
+    },
+    "kosdaq": {
+        "label": "KOSDAQ 100",
+        "cache_file": DATA_DIR / "kosdaq_cache.pkl",
+        "chunk_size": 50,
+        "tz": "Asia/Seoul",
     },
 }
 
@@ -72,6 +90,8 @@ RANK_COMMANDS = {
     "/etf": "etf",
     "/sp": "sp",
     "/nas": "nas",
+    "/kospi": "kospi",
+    "/kosdaq": "kosdaq",
 }
 
 _states: dict[str, dict] = {
@@ -102,35 +122,46 @@ def _quiet_yfinance():
             sys.stderr = old_stderr
 
 
+def _clean_symbol(ticker: str) -> str:
+    symbol = str(ticker).strip().upper().replace(" ", "")
+    if not symbol:
+        return ""
+    if symbol.endswith((".KS", ".KQ")):
+        return symbol
+    return symbol.replace(".", "-")
+
+
 def _clean_symbols(values: pd.Series) -> list[str]:
-    return (
-        values.dropna()
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        .str.replace(".", "-", regex=False)
-        .tolist()
-    )
+    out: list[str] = []
+    for value in values.dropna().astype(str).tolist():
+        cleaned = _clean_symbol(value)
+        if cleaned:
+            out.append(cleaned)
+    return out
 
 
-def _fetch_wikipedia_html(url: str) -> str:
-    response = requests.get(url, headers={"User-Agent": WIKI_USER_AGENT}, timeout=30)
-    response.raise_for_status()
-    return response.text
+def _universe_tz(universe: str | None = None):
+    if universe and universe in UNIVERSES:
+        name = UNIVERSES[universe].get("tz") or "America/New_York"
+        return ZoneInfo(name)
+    return ET
 
 
-def _market_as_of_date() -> str:
-    """US/Eastern calendar date used as the daily rankings cache key."""
-    return datetime.now(ET).strftime("%Y-%m-%d")
+def _market_as_of_date(universe: str | None = None) -> str:
+    """Exchange-local calendar date used as the daily rankings cache key."""
+    return datetime.now(_universe_tz(universe)).strftime("%Y-%m-%d")
 
 
-def _is_same_market_day(loaded_at: float, as_of_date: str | None = None) -> bool:
-    today = _market_as_of_date()
+def _is_same_market_day(
+    loaded_at: float, as_of_date: str | None = None, universe: str | None = None
+) -> bool:
+    tz = _universe_tz(universe)
+    today = _market_as_of_date(universe)
     if as_of_date:
         return str(as_of_date) == today
     if loaded_at <= 0:
         return False
-    return datetime.fromtimestamp(loaded_at, ET).strftime("%Y-%m-%d") == today
+    return datetime.fromtimestamp(loaded_at, tz).strftime("%Y-%m-%d") == today
 
 
 def _read_ticker_file(path: Path) -> list[str]:
@@ -138,11 +169,17 @@ def _read_ticker_file(path: Path) -> list[str]:
         return []
     tickers: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        ticker = line.strip().upper().replace(" ", "").replace(".", "-")
+        ticker = _clean_symbol(line)
         if not ticker or ticker.startswith("#") or ticker.startswith("@") or ticker.startswith("U:"):
             continue
         tickers.append(ticker)
     return tickers
+
+
+def _fetch_wikipedia_html(url: str) -> str:
+    response = requests.get(url, headers={"User-Agent": WIKI_USER_AGENT}, timeout=30)
+    response.raise_for_status()
+    return response.text
 
 
 def _set_warmup_status(universe: str, *, phase: str, message: str = "", error: str = "") -> None:
@@ -214,6 +251,24 @@ def load_nasdaq100_tickers() -> list[str]:
     )
 
 
+def load_kospi200_tickers() -> list[str]:
+    tickers = _read_ticker_file(KOSPI200_TICKERS_PATH)
+    if tickers:
+        return tickers
+    raise FileNotFoundError(
+        f"KOSPI 200 ticker list not found. Expected {KOSPI200_TICKERS_PATH}"
+    )
+
+
+def load_kosdaq100_tickers() -> list[str]:
+    tickers = _read_ticker_file(KOSDAQ100_TICKERS_PATH)
+    if tickers:
+        return tickers
+    raise FileNotFoundError(
+        f"KOSDAQ 100 ticker list not found. Expected {KOSDAQ100_TICKERS_PATH}"
+    )
+
+
 def _load_universe_tickers(universe: str) -> list[str]:
     if universe == "etf":
         return load_etf_tickers()
@@ -221,6 +276,10 @@ def _load_universe_tickers(universe: str) -> list[str]:
         return load_sp500_tickers()
     if universe == "nas":
         return load_nasdaq100_tickers()
+    if universe == "kospi":
+        return load_kospi200_tickers()
+    if universe == "kosdaq":
+        return load_kosdaq100_tickers()
     raise ValueError(f"Unknown universe: {universe}")
 
 
@@ -244,7 +303,9 @@ def cache_age_seconds(universe: str) -> float | None:
 def cache_is_stale(universe: str) -> bool:
     state = _states[universe]
     meta = state.get("meta") or {}
-    if _is_same_market_day(float(meta.get("loaded_at", 0)), meta.get("as_of_date")):
+    if _is_same_market_day(
+        float(meta.get("loaded_at", 0)), meta.get("as_of_date"), universe=universe
+    ):
         return False
     age = cache_age_seconds(universe)
     return age is not None and age > CACHE_TTL_SECONDS
@@ -481,7 +542,7 @@ def _save_disk_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: int
     payload = {
         "version": CACHE_VERSION,
         "loaded_at": loaded_at,
-        "as_of_date": _market_as_of_date(),
+        "as_of_date": _market_as_of_date(universe),
         "scanned": scanned,
         "skipped": skipped,
         "dataframe": df,
@@ -509,9 +570,9 @@ def _load_disk_cache(universe: str, max_age: int = CACHE_TTL_SECONDS) -> bool:
     loaded_at = float(payload.get("loaded_at", 0))
     as_of_date = payload.get("as_of_date")
     age = time.time() - loaded_at
-    same_day = _is_same_market_day(loaded_at, as_of_date)
+    same_day = _is_same_market_day(loaded_at, as_of_date, universe=universe)
 
-    # Same US calendar day: reuse even if older than the short TTL window.
+    # Same exchange calendar day: reuse even if older than the short TTL window.
     if same_day:
         if age > DEFAULT_STALE_MAX_AGE_SECONDS:
             return False
@@ -527,7 +588,7 @@ def _load_disk_cache(universe: str, max_age: int = CACHE_TTL_SECONDS) -> bool:
         "scanned": int(payload.get("scanned", len(df))),
         "skipped": int(payload.get("skipped", 0)),
         "loaded_at": loaded_at,
-        "as_of_date": as_of_date or _market_as_of_date(),
+        "as_of_date": as_of_date or _market_as_of_date(universe),
     }
     state["ready"] = True
     return True
@@ -544,7 +605,7 @@ def _set_memory_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: in
         "scanned": scanned,
         "skipped": skipped,
         "loaded_at": loaded_at,
-        "as_of_date": _market_as_of_date(),
+        "as_of_date": _market_as_of_date(universe),
     }
     state["ready"] = True
     _save_disk_cache(universe, df, scanned, skipped)
@@ -936,6 +997,10 @@ def _format_ticker_display(ticker: str, universe: str) -> str:
         from etf_names import format_etf_ticker_label
 
         return format_etf_ticker_label(ticker)
+    if universe in {"kospi", "kosdaq"}:
+        from kr_names import format_kr_ticker_label
+
+        return format_kr_ticker_label(ticker)
     return ticker
 
 
@@ -1041,7 +1106,7 @@ def parse_rank_command(message: str) -> tuple[str, str]:
             universe = key
             break
     if universe is None:
-        raise ValueError("Use /etf, /sp, or /nas.")
+        raise ValueError("Use /etf, /sp, /nas, /kospi, or /kosdaq.")
 
     mode = "all"
     if len(parts) > 1:

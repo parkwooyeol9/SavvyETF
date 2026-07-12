@@ -19,7 +19,14 @@ _session_local = threading.local()
 
 
 def to_yahoo_symbol(ticker: str) -> str:
-    return ticker.strip().upper().replace(".", "-")
+    """Normalize ticker for Yahoo chart API.
+
+    Keep KRX suffixes (.KS / .KQ). Only rewrite US class-share dots (BRK.B → BRK-B).
+    """
+    symbol = ticker.strip().upper()
+    if symbol.endswith((".KS", ".KQ")):
+        return symbol
+    return symbol.replace(".", "-")
 
 
 def _session() -> requests.Session:

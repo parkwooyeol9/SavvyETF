@@ -36,6 +36,8 @@ UNIVERSE_STYLE = {
     "etf": {"emoji": "📦", "label": "ETF", "color": "#4da3ff"},
     "sp": {"emoji": "🇺🇸", "label": "S&P 500", "color": "#3dd68c"},
     "nas": {"emoji": "💻", "label": "NASDAQ 100", "color": "#a78bfa"},
+    "kospi": {"emoji": "🇰🇷", "label": "KOSPI 200", "color": "#4da3ff"},
+    "kosdaq": {"emoji": "📈", "label": "KOSDAQ 100", "color": "#3dd68c"},
 }
 
 BOARD_TITLES = {
@@ -732,6 +734,13 @@ def resolve_summary_pre_pdf_public_url(public_url: str = "") -> str:
     return f"{web.rstrip('/')}/summary_pre.pdf"
 
 
+def resolve_summary_kor_pdf_public_url(public_url: str = "") -> str:
+    web = public_url.strip() if public_url else resolve_summary_public_url()
+    if web.endswith("/summary"):
+        return f"{web.rsplit('/summary', 1)[0]}/summary_kor.pdf"
+    return f"{web.rstrip('/')}/summary_kor.pdf"
+
+
 def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | None:
     pdf_path = summary.get("pdf_path")
     if not pdf_path:
@@ -739,13 +748,16 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     path = Path(pdf_path)
     if not path.exists():
         return None
-    is_pre = summary.get("kind") == "summary_pre"
-    url = (
-        resolve_summary_pre_pdf_public_url(public_url)
-        if is_pre
-        else resolve_summary_pdf_public_url(public_url)
-    )
-    title = "Premarket brief PDF" if is_pre else "Market brief PDF"
+    kind = summary.get("kind")
+    if kind == "summary_pre":
+        url = resolve_summary_pre_pdf_public_url(public_url)
+        title = "Premarket brief PDF"
+    elif kind == "summary_kor":
+        url = resolve_summary_kor_pdf_public_url(public_url)
+        title = "Korea brief PDF"
+    else:
+        url = resolve_summary_pdf_public_url(public_url)
+        title = "Market brief PDF"
     return {
         "text": (
             f"📄 {title}\n"
