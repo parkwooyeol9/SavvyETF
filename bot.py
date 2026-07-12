@@ -126,133 +126,57 @@ Auto schedule (KST):
 Type /help for the full command list.
 """
 
-HELP_TEXT = """SavvyETF Bot — Commands
+# Telegram sendMessage limit is 4096 chars — keep help split and concise.
+HELP_TEXT_SHORT = "전체 명령어는 /help 를 입력하세요."
 
-⏱ Auto schedule (KST)
-  /summary           06:30  — post-close market brief (skip weekend/US holiday)
-  /summary_pre       21:50  — premarket brief (/sp_pre only)
-  /summary_kor_intra 11:00, 15:00 — Korea intraday rankings (weekdays)
-  /summary_kor       15:40  — Korea EOD brief after close (weekdays)
-  /reddit            17:00, 19:00, 21:00 — WSB + Gemini KR + financial top-2
 
-/port TICKER1 TICKER2 ...
-  Portfolio backtest + TA chart per ticker.
-  Example: /port AAPL MSFT GOOGL
+def build_help_messages() -> list[dict]:
+    """Korean help guide split to stay under Telegram's 4096-char limit."""
+    msg1 = """<b>SavvyETF Bot — 명령어 안내</b>
 
-/coin SYMBOL
-  Crypto technical analysis chart.
-  Example: /coin BTC
+<b>📊 시장 · 랭킹</b>
+<code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
+<code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100
+<code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
+<code>/heatmap sp</code> — 시가총액 트리맵 (색=일간 수익률)
 
-/heatmap [etf|sp|nas] [N]
-  Finviz-style treemap: tile size = market cap (or ETF AUM),
-  color = last trading day return. Default: top 30 names.
-  Example: /heatmap sp | /heatmap nas 20 | /heatmap etf 30
+<b>🌍 글로벌 · 매크로 · 이벤트</b>
+<code>/idx</code> — MSCI 국가비중 → 주요국 지수·선물·FX
+<code>/macro</code> — 매크로 리스크 대시보드
+<code>/event</code> — 과거 유사 이벤트 스터디 (미·일·한·중, PDF)
+<code>/adr TSM</code> — ADR 상장 영향 분석
 
-/macro
-  Macro risk monitor: chart dashboard, yield/credit/vol metrics,
-  Finnhub/EDGAR pulse, and AI Korean macro risk comment.
-  Manual only (no auto schedule).
-  Example: /macro | /macro refresh
+<b>📰 뉴스</b>
+<code>/news</code> — 직전 랭킹 6종목 헤드라인
+<code>/news_naver</code> — 네이버 뉴스 (키워드 선택 가능)"""
 
-/news
-  Headlines for the 6 tickers from your last ranking.
-  Run /etf, /sp, or /nas first, then /news.
+    msg2 = """<b>📋 브리핑 · 자동 스케줄 (KST)</b>
+<code>/summary</code> 06:30 — 미국 마감 브리핑
+<code>/summary_pre</code> 21:50 — 프리마켓
+<code>/summary_kor</code> 15:40 — 한국 마감
+<code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중
+<code>/reddit</code> 17·19·21 — WSB 핫토픽 + 재무
+<code>/aibriefing</code> — 트렌딩 뉴스 요약
 
-/news_naver [query]
-  Naver News crawl for Korean headlines.
-  Without args: uses tickers from your last ranking (/kospi, /kosdaq, …).
-  With query: /news_naver 삼성전자
+<b>🔬 종목 · ETF 분석</b>
+<code>/financial AAPL</code> — S&P500 펀더멘털
+<code>/dart 삼성전자</code> — DART 재무
+<code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
+<code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
+<code>/port AAPL MSFT</code> — 포트 백테스트
+<code>/coin BTC</code> — 코인 차트
 
-/summary
-  Full market brief: ETF + S&P 500 (top 3 per board, charts, news),
-  S&P 500 heatmap, then AI briefing from trending news at the end.
-  Web page: SUMMARY_PUBLIC_URL/summary · PDF: /summary.pdf
-  Requires GEMINI_API_KEY for full AI briefing (headline fallback if unset).
+<b>ℹ️ 기타</b>
+<code>/help</code> — 이 안내 다시 보기"""
 
-/summary_pre
-  Premarket brief: S&P 500 via /sp_pre only (ETF excluded).
-  Includes premarket rankings, news, leader TA chart, and PDF (/summary_pre.pdf).
-  Requires FINNHUB_API_KEY.
-  Example: /summary_pre
+    return [
+        {"text": msg1.strip(), "parse_mode": "HTML"},
+        {"text": msg2.strip(), "parse_mode": "HTML"},
+    ]
 
-/summary_kor
-  Korea market brief: KOSPI 200 + KOSDAQ 100 rankings, leader charts,
-  Naver Korean headlines, DART financials for top leaders, PDF + web.
-  Prices: Yahoo Finance (.KS / .KQ). News: Naver crawl. Financials: Open DART.
-  Auto weekdays 15:40 KST (after market close).
-  Web: /summary_kor · PDF: /summary_kor.pdf (separate from US /summary)
-  Example: /summary_kor | /kospi | /kosdaq
 
-/summary_kor_intra
-  Same as /summary_kor but force-refreshes Yahoo for mid-session returns
-  (vs previous close). Auto weekdays 11:00 and 15:00 KST.
-  Web: /summary_kor_intra · PDF: /summary_kor_intra.pdf
-  Example: /summary_kor_intra
-
-/aibriefing
-  Search 5-10 trending US market articles, read them, and return a
-  3-4 line Korean AI market brief. Aliases: /ai_briefing, /ai briefing
-  Example: /aibriefing
-  Requires GEMINI_API_KEY for full analysis.
-
-/reddit
-  Crawl r/wallstreetbets hot posts, Gemini Korean summary, then /financial
-  analysis (charts + metrics) for the top 2 mentioned equity tickers.
-  Web: /reddit · PDF: /reddit.pdf
-  Auto: 17:00, 19:00, 21:00 KST.
-  Example: /reddit
-  Requires GEMINI_API_KEY for AI summary (rule-based fallback if unset).
-  Optional: REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET for OAuth JSON feed.
-
-/adr ADR1 ADR2 ...
-  Analyze whether US ADR listing impacted underlying home-market shares.
-  Returns charts + an Excel workbook.
-  Underlying history is merged across FinMind/EODHD/Finnhub/Stooq/Yahoo
-  (±3y around listing) so pre-listing series is less Yahoo-limited.
-  Example: /adr TSM ASML ARM
-
-/idx
-  MSCI ACWI / World / EM country weight top 5 (via iShares geographic breakdown),
-  treat the union as major countries, map each to a representative cash index,
-  then show latest daily index return, futures return (when available), and FX.
-  Example: /idx
-
-/event [keyword]
-  Ask which event to study (or pass a keyword). Discovers past similar event dates,
-  then compares US / Japan / Korea / China indices with each event as t=0.
-  Includes 30/60/90-day average return bars, per-country impact judgment
-  (negative / neutral / positive), HTML page + PDF (Pillow, no Selenium).
-  Web: /event · PDF: /event.pdf
-  Example: /event → then 일본 지진 | /event 리먼 | /event covid
-
-/comp ETF1 ETF2 ...
-  Compare US ETFs with charts (performance, returns, cost, overlap),
-  price history (index proxy if short history), AI Korean pick, Excel export.
-  Example: /comp QQQ IVV QNDX | /comp SPY, VOO, IVV
-
-/financial TICKER
-  Fundamental analysis for S&P 500 stocks: PER, PBR, ROE, margins,
-  EPS/revenue growth, and historical trend charts.
-  Primary data: Finnhub (FINNHUB_API_KEY). Fallback: Yahoo Finance.
-  Example: /financial AAPL | /financial MSFT
-
-/dart COMPANY
-  Korean listed company fundamentals from Open DART: revenue, operating/net income,
-  assets, equity, EPS, margins, ROE, YoY growth, and trend charts.
-  Example: /dart 삼성전자 | /dart SK하이닉스 | /dart 005930
-  Requires DART_API_KEY in .env (https://opendart.fss.or.kr/)
-
-/dart etf memb TICKER|NAME
-  Korean ETF holdings (구성종목) and weights (편입비) via Naver Finance,
-  change vs last snapshot, plus Open DART fund disclosures (투자설명서/
-  기재정정 등) filtered to the ETF — parsed rebalance/change bullets + links.
-  Example: /dart etf memb 0167A0
-  Example: /dart etf memb SOL AI반도체TOP2플러스
-  Requires DART_API_KEY for the disclosure section.
-
-ℹ️ /help
-  Show this guide again.
-"""
+# Backward-compatible single string (first page only; do not send as one Telegram message).
+HELP_TEXT = build_help_messages()[0]["text"]
 
 
 def summary_public_url() -> str:
@@ -825,8 +749,8 @@ def handle_telegram_message(message, chat_id: int):
     if lower.startswith("/") and not lower.startswith("/event"):
         _pending_event_by_chat.pop(chat_id, None)
 
-    if lower in {"/help", "/start", "help"}:
-        return [{"text": HELP_TEXT}]
+    if lower.split()[0] in {"/help", "/start"} or lower == "help":
+        return build_help_messages()
 
     if lower.startswith("/summary_pre"):
         try:
@@ -1063,7 +987,7 @@ def handle_telegram_message(message, chat_id: int):
         parts = normalized.split()
         symbols = [p.upper() for p in parts[1:] if p.strip()]
         if not symbols:
-            return [{"text": "Usage: /adr TSM ASML ARM\n\n" + HELP_TEXT}]
+            return [{"text": "Usage: /adr TSM ASML ARM\n\n" + HELP_TEXT_SHORT}]
         try:
             from adr_pipeline import run_adr_analysis
 
@@ -1260,7 +1184,7 @@ def handle_telegram_message(message, chat_id: int):
         # Avoid matching /etf_pre etc.; require command token exactly
         first = lower.split()[0]
         if first not in {"/etf", "/sp", "/nas", "/kospi", "/kosdaq"}:
-            return [{"text": HELP_TEXT}]
+            return [{"text": HELP_TEXT_SHORT}]
         try:
             universe, mode = parse_rank_command(normalized)
             if not is_cache_ready(universe):
@@ -1302,11 +1226,11 @@ def handle_telegram_message(message, chat_id: int):
                 )
             return responses
         except ValueError as exc:
-            return [{"text": f"Invalid command: {exc}\n\n{HELP_TEXT}"}]
+            return [{"text": f"Invalid command: {exc}\n\n{HELP_TEXT_SHORT}"}]
         except Exception as exc:
             return [{"text": f"Error ranking stocks: {exc}"}]
 
-    return [{"text": HELP_TEXT}]
+    return build_help_messages()
 
 
 def _handle_telegram_send_response(
