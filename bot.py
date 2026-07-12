@@ -94,7 +94,7 @@ What each command returns:
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
 /reddit
-→ r/wallstreetbets hot topics + Gemini Korean investor summary
+→ WSB hot topics + Gemini KR + /financial for top 2 tickers (web + PDF)
 
 /adr TSM ASML ARM
 → ADR listing impact analysis (charts + Excel) for underlying shares
@@ -127,7 +127,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
   /summary_pre       21:50  — premarket brief (/sp_pre only)
   /summary_kor_intra 11:00, 15:00 — Korea intraday rankings (weekdays)
   /summary_kor       15:40  — Korea EOD brief after close (weekdays)
-  /reddit            17:00, 19:00, 21:00 — r/wallstreetbets hot + Gemini KR
+  /reddit            17:00, 19:00, 21:00 — WSB + Gemini KR + financial top-2
 
 /port TICKER1 TICKER2 ...
   Portfolio backtest + TA chart per ticker.
@@ -190,8 +190,9 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Requires GEMINI_API_KEY for full analysis.
 
 /reddit
-  Crawl r/wallstreetbets hot posts, list themes/tickers investors are
-  watching, and attach a Gemini Korean summary.
+  Crawl r/wallstreetbets hot posts, Gemini Korean summary, then /financial
+  analysis (charts + metrics) for the top 2 mentioned equity tickers.
+  Web: /reddit · PDF: /reddit.pdf
   Auto: 17:00, 19:00, 21:00 KST.
   Example: /reddit
   Requires GEMINI_API_KEY for AI summary (rule-based fallback if unset).
@@ -789,13 +790,17 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower in {"/reddit", "/wsb"} or lower.startswith("/reddit "):
         try:
-            from reddit_wsb import format_reddit_telegram, generate_reddit_brief
+            from reddit_builder import generate_and_save_reddit_brief
 
             replies: list[dict] = [
-                {"text": "🟠 Crawling r/wallstreetbets hot topics…"}
+                {
+                    "text": (
+                        "🟠 Crawling r/wallstreetbets + /financial for top tickers…"
+                    )
+                }
             ]
-            brief = generate_reddit_brief()
-            replies.extend(format_reddit_telegram(brief))
+            brief = generate_and_save_reddit_brief(public_url=summary_public_url())
+            replies.extend(brief.get("telegram_messages") or [])
             return replies
         except Exception as exc:
             return [{"text": f"Error building Reddit brief: {exc}"}]
@@ -1420,6 +1425,18 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
+            if path == "/reddit":
+                from reddit_builder import load_reddit_html
+
+                body_text = load_reddit_html()
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>Reddit / WSB brief not generated yet. "
+                        "Use /reddit in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
             if path == "/summary.pdf":
                 from summary_pdf import SUMMARY_PDF_PATH
 
@@ -1504,6 +1521,28 @@ def start_web_server():
                 self._send(
                     b"Korea intraday PDF not generated yet. "
                     b"Run /summary_kor_intra in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
+            if path == "/reddit.pdf":
+                from summary_pdf import REDDIT_PDF_PATH
+
+                if REDDIT_PDF_PATH.is_file():
+                    data = REDDIT_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-reddit.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"Reddit PDF not generated yet. Run /reddit in Telegram first.",
                     "text/plain; charset=utf-8",
                     status=404,
                 )
@@ -1645,7 +1684,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /reddit , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /kakao , /kakao/skill , /health )"
     )
 
 

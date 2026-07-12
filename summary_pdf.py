@@ -20,6 +20,7 @@ SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 SUMMARY_PRE_PDF_PATH = DATA_DIR / "summary_pre.pdf"
 SUMMARY_KOR_PDF_PATH = DATA_DIR / "summary_kor.pdf"
 SUMMARY_KOR_INTRA_PDF_PATH = DATA_DIR / "summary_kor_intra.pdf"
+REDDIT_PDF_PATH = DATA_DIR / "reddit.pdf"
 
 # A4 @ 144 DPI — sharper charts without blowing Render memory
 _PAGE_W = 1191
@@ -1035,14 +1036,110 @@ def _leader_chart(pack: dict):
     return pack.get("chart_png") or pack.get("chart")
 
 
+def _build_reddit_pdf_pages(summary: dict) -> list[bytes]:
+    """Overview + /financial chart pages for kind=reddit."""
+    from cjk_font import configure_matplotlib_cjk
+
+    configure_matplotlib_cjk()
+    ai = summary.get("ai") or {}
+    tickers = summary.get("tickers") or []
+    posts = summary.get("posts") or []
+
+    overview: list[str] = [
+        _safe(summary.get("generated_at_display", "")),
+        f"source={_safe(summary.get('crawl_source', '?'))}",
+        "",
+        "Investor interest tickers:",
+    ]
+    if tickers:
+        overview.append(" · ".join(f"${t}×{n}" for t, n in tickers[:12]))
+    else:
+        overview.append("(no clear ticker cluster)")
+
+    themes = ai.get("themes_ko") or []
+    if themes:
+        overview.extend(["", "Themes: " + " · ".join(str(t) for t in themes)])
+    focus = str(ai.get("investor_focus_ko") or "").strip()
+    if focus:
+        overview.extend(["", focus])
+
+    brief_ko = _strip_disclaimer(str(ai.get("ai_summary_ko") or "").strip())
+    if brief_ko:
+        overview.extend(["", "Gemini summary:", brief_ko])
+
+    overview.extend(["", "Hot posts:"])
+    for idx, post in enumerate(posts[:12], start=1):
+        title = str(post.get("title") or "").strip()
+        if len(title) > 100:
+            title = title[:97] + "..."
+        score = post.get("score")
+        score_bit = f" ▲{score}" if score is not None else ""
+        overview.append(f"{idx}. {title}{score_bit}")
+
+    overview.extend(
+        [
+            "",
+            "Not financial advice · r/wallstreetbets · Gemini · /financial",
+            "Web: /reddit  ·  PDF: /reddit.pdf",
+        ]
+    )
+    pages = [_render_text_page_png("SavvyETF Reddit / WSB", overview)]
+
+    for pack in summary.get("financials") or []:
+        if not isinstance(pack, dict):
+            continue
+        symbol = str(pack.get("symbol") or "?")
+        if pack.get("error"):
+            pages.append(
+                _render_text_page_png(
+                    f"Financial — ${symbol}",
+                    [f"Unavailable: {pack['error']}"],
+                )
+            )
+            continue
+        raw = chart_to_png_bytes(pack.get("chart"))
+        profile = pack.get("profile") or {}
+        subtitle = " · ".join(
+            bit
+            for bit in (
+                str(profile.get("company_name") or ""),
+                str(profile.get("sector") or ""),
+                f"WSB ×{pack['mention_count']}" if pack.get("mention_count") else "",
+            )
+            if bit
+        )
+        if raw:
+            try:
+                pages.append(
+                    _render_chart_showcase(
+                        raw,
+                        "FINANCIAL",
+                        f"${symbol}",
+                        subtitle=_safe(subtitle),
+                        accent=WARN,
+                    )
+                )
+            except Exception as exc:
+                print(f"Reddit PDF financial page skipped (${symbol}): {exc}")
+                pages.append(
+                    _render_text_page_png(f"Financial — ${symbol}", [_safe(subtitle)])
+                )
+        else:
+            pages.append(
+                _render_text_page_png(f"Financial — ${symbol}", [_safe(subtitle) or "Chart unavailable"])
+            )
+    return pages
+
+
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     kind = str(summary.get("kind") or "summary")
     is_pre = kind == "summary_pre"
     is_kor = kind in {"summary_kor", "summary_kor_intra"}
     is_kor_intra = kind == "summary_kor_intra"
+    is_reddit = kind == "reddit"
     # Warm CJK font early so Hangul never falls back to the default bitmap font.
     _ensure_font_file()
-    if is_kor:
+    if is_kor or is_reddit:
         from cjk_font import configure_matplotlib_cjk
 
         configure_matplotlib_cjk()
@@ -1054,8 +1151,21 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         out = SUMMARY_KOR_INTRA_PDF_PATH
     elif is_kor:
         out = SUMMARY_KOR_PDF_PATH
+    elif is_reddit:
+        out = REDDIT_PDF_PATH
     else:
         out = SUMMARY_PDF_PATH
+
+    if is_reddit:
+        png_pages = _build_reddit_pdf_pages(summary)
+        if not png_pages:
+            raise RuntimeError("No Reddit PDF pages rendered")
+        _png_pages_to_pdf(png_pages, out)
+        print(
+            f"Reddit PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
+        )
+        return out
+
     png_pages: list[bytes] = []
 
     for universe in summary.get("universes") or []:
@@ -1152,6 +1262,7 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         "summary_pre": "Premarket",
         "summary_kor": "Korea",
         "summary_kor_intra": "Korea Intraday",
+        "reddit": "Reddit",
     }.get(kind, "Summary")
     print(
         f"{label} PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
@@ -1164,6 +1275,7 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
     is_pre = kind == "summary_pre"
     is_kor = kind in {"summary_kor", "summary_kor_intra"}
     is_kor_intra = kind == "summary_kor_intra"
+    is_reddit = kind == "reddit"
     try:
         return build_summary_pdf(summary, output_path=output_path)
     except Exception as first_exc:
@@ -1177,6 +1289,8 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
             out = SUMMARY_KOR_INTRA_PDF_PATH
         elif is_kor:
             out = SUMMARY_KOR_PDF_PATH
+        elif is_reddit:
+            out = REDDIT_PDF_PATH
         else:
             out = SUMMARY_PDF_PATH
         try:
@@ -1184,6 +1298,7 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
                 "summary_pre": "SavvyETF Premarket Brief",
                 "summary_kor": "SavvyETF Korea Brief",
                 "summary_kor_intra": "SavvyETF Korea Intraday Brief",
+                "reddit": "SavvyETF Reddit / WSB",
             }.get(kind, "SavvyETF Market Brief")
             png_pages = [
                 _render_text_page_png(
@@ -1195,24 +1310,46 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
                     ],
                 )
             ]
-            ai = summary.get("ai_analysis") or {}
-            brief = _strip_disclaimer((ai.get("market_brief_ko") or "").strip())
-            if brief:
-                paras = [p for p in re.split(r"\n+", brief) if p.strip()]
-                png_pages.append(_render_text_page_png("AI market briefing", paras))
-            for universe in summary.get("universes") or []:
-                name = str(universe.get("name", universe.get("key", "Universe")))
-                paragraphs: list[str] = []
-                for mode in ("surge", "dropvol"):
-                    board = (universe.get("boards") or {}).get(mode) or {}
-                    paragraphs.append(mode)
-                    for idx, (ticker, value) in enumerate(board.get("top") or [], start=1):
-                        paragraphs.append(f"  {idx}. {ticker}  {value}")
-                png_pages.append(_render_text_page_png(name, paragraphs))
-            if not is_pre and not is_kor:
+            if is_reddit:
+                ai = summary.get("ai") or {}
+                brief = _strip_disclaimer(str(ai.get("ai_summary_ko") or "").strip())
+                if brief:
+                    paras = [p for p in re.split(r"\n+", brief) if p.strip()]
+                    png_pages.append(_render_text_page_png("Gemini WSB summary", paras))
+                for pack in summary.get("financials") or []:
+                    if not isinstance(pack, dict):
+                        continue
+                    sym = pack.get("symbol") or "?"
+                    err = pack.get("error") or "chart skipped"
+                    png_pages.append(
+                        _render_text_page_png(f"Financial — ${sym}", [str(err)])
+                    )
                 png_pages.append(
-                    _render_text_page_png("Notes", ["Not financial advice.", "Web brief: /summary"])
+                    _render_text_page_png(
+                        "Notes", ["Not financial advice.", "Web brief: /reddit"]
+                    )
                 )
+            else:
+                ai = summary.get("ai_analysis") or {}
+                brief = _strip_disclaimer((ai.get("market_brief_ko") or "").strip())
+                if brief:
+                    paras = [p for p in re.split(r"\n+", brief) if p.strip()]
+                    png_pages.append(_render_text_page_png("AI market briefing", paras))
+                for universe in summary.get("universes") or []:
+                    name = str(universe.get("name", universe.get("key", "Universe")))
+                    paragraphs: list[str] = []
+                    for mode in ("surge", "dropvol"):
+                        board = (universe.get("boards") or {}).get(mode) or {}
+                        paragraphs.append(mode)
+                        for idx, (ticker, value) in enumerate(board.get("top") or [], start=1):
+                            paragraphs.append(f"  {idx}. {ticker}  {value}")
+                    png_pages.append(_render_text_page_png(name, paragraphs))
+                if not is_pre and not is_kor:
+                    png_pages.append(
+                        _render_text_page_png(
+                            "Notes", ["Not financial advice.", "Web brief: /summary"]
+                        )
+                    )
             _png_pages_to_pdf(png_pages, out)
             print(f"Text-only PDF written: {out} ({out.stat().st_size} bytes)")
             return out

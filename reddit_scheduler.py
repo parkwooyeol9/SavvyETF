@@ -41,15 +41,16 @@ def _poll_seconds() -> int:
 
 def run_scheduled_reddit(token: str, broadcast_fn) -> bool:
     from heavy_work import end_heavy_work, try_begin_heavy_work
-    from reddit_wsb import format_reddit_telegram, generate_reddit_brief
+    from reddit_builder import generate_and_save_reddit_brief
+    from summary_builder import resolve_summary_public_url
 
     if not try_begin_heavy_work("scheduled-reddit"):
         print("Scheduled reddit skipped: another heavy task is running.")
         return False
 
     try:
-        brief = generate_reddit_brief()
-        messages = format_reddit_telegram(brief)
+        brief = generate_and_save_reddit_brief(public_url=resolve_summary_public_url())
+        messages = brief.get("telegram_messages") or []
         if not messages:
             print("Scheduled reddit skipped: no telegram messages.")
             return False

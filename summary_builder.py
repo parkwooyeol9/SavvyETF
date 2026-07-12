@@ -756,6 +756,17 @@ def resolve_summary_kor_intra_pdf_public_url(public_url: str = "") -> str:
     return f"{web.rstrip('/')}/summary_kor_intra.pdf"
 
 
+def resolve_reddit_pdf_public_url(public_url: str = "") -> str:
+    web = public_url.strip() if public_url else resolve_summary_public_url()
+    if web.endswith("/summary"):
+        return f"{web.rsplit('/summary', 1)[0]}/reddit.pdf"
+    if web.endswith("/reddit"):
+        return f"{web}.pdf"
+    if web.endswith("/reddit.pdf"):
+        return web
+    return f"{web.rstrip('/')}/reddit.pdf"
+
+
 def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | None:
     pdf_path = summary.get("pdf_path")
     if not pdf_path:
@@ -773,6 +784,9 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     elif kind == "summary_kor":
         url = resolve_summary_kor_pdf_public_url(public_url)
         title = "Korea brief PDF"
+    elif kind == "reddit":
+        url = resolve_reddit_pdf_public_url(public_url)
+        title = "Reddit / WSB brief PDF"
     else:
         url = resolve_summary_pdf_public_url(public_url)
         title = "Market brief PDF"
