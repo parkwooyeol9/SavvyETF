@@ -102,6 +102,9 @@ What each command returns:
 /idx
 → MSCI ACWI/World/EM country top5 → major markets index/futures/FX returns
 
+/event [keyword]
+→ Historical event study on /idx country indices (t=0 = event date)
+
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
 
@@ -213,6 +216,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   treat the union as major countries, map each to a representative cash index,
   then show latest daily index return, futures return (when available), and FX.
   Example: /idx
+
+/event [keyword]
+  Ask which event to study (or pass a keyword). Discovers past similar event dates,
+  saves them, then compares /idx representative country indices with each event as t=0
+  (cumulative return charts, ±60 calendar days). No stock tickers — indices only.
+  Example: /event → then 일본 지진 | /event 리먼 | /event covid
 
 /comp ETF1 ETF2 ...
   Compare US ETFs with charts (performance, returns, cost, overlap),
@@ -421,6 +430,9 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
 
 _greeted_this_session: set[int] = set()
 _last_ranking_by_chat: dict[int, dict] = {}
+# chat_id -> unix time when /event prompted for a keyword
+_pending_event_by_chat: dict[int, float] = {}
+_PENDING_EVENT_TTL_SEC = 30 * 60
 _bot_username: str | None = None
 
 
@@ -567,7 +579,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -717,9 +729,64 @@ def _ranking_loading_reply(universe: str) -> list[dict]:
     ]
 
 
+def _is_pending_event_reply(chat_id: int, text: str) -> bool:
+    """True when chat is waiting for an /event keyword and text is not a slash command."""
+    if not text or text.lstrip().startswith("/"):
+        return False
+    started = _pending_event_by_chat.get(chat_id)
+    if started is None:
+        return False
+    if time.time() - started > _PENDING_EVENT_TTL_SEC:
+        _pending_event_by_chat.pop(chat_id, None)
+        return False
+    return True
+
+
+def _handle_event_command(normalized: str, chat_id: int) -> list[dict]:
+    lower = normalized.lower().strip()
+    query = ""
+
+    if lower.startswith("/event"):
+        # /event | /event@Bot | /event 일본 지진
+        parts = normalized.split(maxsplit=1)
+        if len(parts) >= 2:
+            query = parts[1].strip()
+        if not query:
+            _pending_event_by_chat[chat_id] = time.time()
+            return [{"text": "어떤 이벤트 스터디를 원하십니까?"}]
+    else:
+        # Follow-up keyword after the prompt
+        query = normalized.strip()
+
+    _pending_event_by_chat.pop(chat_id, None)
+    if not query:
+        return [{"text": "어떤 이벤트 스터디를 원하십니까?"}]
+
+    try:
+        from event_pipeline import run_event_pipeline
+
+        replies: list[dict] = [
+            {
+                "text": (
+                    f"🔎 Event study: 「{query}」\n"
+                    "과거 유사 사례 일자 조사 → /idx 국가 지수 t=0 비교 중…"
+                )
+            }
+        ]
+        result = run_event_pipeline(query)
+        replies.extend(result.get("telegram_messages") or [])
+        return replies
+    except Exception as exc:
+        return [{"text": f"/event failed: {exc}"}]
+
+
 def handle_telegram_message(message, chat_id: int):
     normalized = message.strip()
     lower = normalized.lower()
+
+    # Any slash command clears a pending /event keyword prompt (except /event itself).
+    if lower.startswith("/") and not lower.startswith("/event"):
+        _pending_event_by_chat.pop(chat_id, None)
 
     if lower in {"/help", "/start", "help"}:
         return [{"text": HELP_TEXT}]
@@ -997,6 +1064,9 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"/idx failed: {exc}"}]
+
+    if lower.startswith("/event") or _is_pending_event_reply(chat_id, normalized):
+        return _handle_event_command(normalized, chat_id)
 
     if lower.startswith("/heatmap"):
         try:
