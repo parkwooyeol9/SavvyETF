@@ -19,6 +19,7 @@ DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_PDF_PATH = DATA_DIR / "summary.pdf"
 SUMMARY_PRE_PDF_PATH = DATA_DIR / "summary_pre.pdf"
 SUMMARY_KOR_PDF_PATH = DATA_DIR / "summary_kor.pdf"
+SUMMARY_KOR_INTRA_PDF_PATH = DATA_DIR / "summary_kor_intra.pdf"
 
 # A4 @ 144 DPI — sharper charts without blowing Render memory
 _PAGE_W = 1191
@@ -416,13 +417,17 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     accent = UNIVERSE_COLORS.get(ukey, ACCENT)
     name = _safe(universe.get("name", ukey or "Universe"))
     is_pre = summary.get("kind") == "summary_pre"
-    is_kor = summary.get("kind") == "summary_kor"
+    is_kor = summary.get("kind") in {"summary_kor", "summary_kor_intra"}
+    is_kor_intra = summary.get("kind") == "summary_kor_intra"
     notes_reserve = 52 if (is_pre or is_kor) else 0
     content_limit = _CONTENT_BOTTOM - notes_reserve
 
     y = _MARGIN
     if is_pre:
         chip = "PRE"
+        chip_color = WARN
+    elif is_kor_intra:
+        chip = "INTRA"
         chip_color = WARN
     elif is_kor:
         chip = ukey.upper() or "KR"
@@ -436,6 +441,8 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     when = _safe(summary.get("generated_at_display", ""))
     if is_pre:
         metric_line = "Pre-market % vs previous close  ·  Finnhub extended-hours"
+    elif is_kor_intra:
+        metric_line = "Intraday % vs prev close  ·  Volume / 21d avg  ·  Yahoo .KS/.KQ"
     elif is_kor:
         metric_line = "Price: last day return  ·  Volume: latest / 21d avg  ·  Yahoo .KS/.KQ"
     else:
@@ -585,6 +592,10 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             line1 = "Not financial advice · Finnhub pre/extended · PDF: /summary_pre.pdf"
             line2 = "SavvyETF premarket brief · ETF excluded"
             footer = "premarket"
+        elif is_kor_intra:
+            line1 = "투자 권유 아님 · 장중 Yahoo · Naver News · PDF: /summary_kor_intra.pdf"
+            line2 = "SavvyETF Korea intraday · KOSPI200 + KOSDAQ100"
+            footer = "korea-intra"
         else:
             line1 = "투자 권유 아님 · Yahoo(.KS/.KQ) · Naver News · PDF: /summary_kor.pdf"
             line2 = "SavvyETF Korea brief · KOSPI200 + KOSDAQ100"
@@ -1027,7 +1038,8 @@ def _leader_chart(pack: dict):
 def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
     kind = str(summary.get("kind") or "summary")
     is_pre = kind == "summary_pre"
-    is_kor = kind == "summary_kor"
+    is_kor = kind in {"summary_kor", "summary_kor_intra"}
+    is_kor_intra = kind == "summary_kor_intra"
     # Warm CJK font early so Hangul never falls back to the default bitmap font.
     _ensure_font_file()
     if is_kor:
@@ -1038,6 +1050,8 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         out = output_path
     elif is_pre:
         out = SUMMARY_PRE_PDF_PATH
+    elif is_kor_intra:
+        out = SUMMARY_KOR_INTRA_PDF_PATH
     elif is_kor:
         out = SUMMARY_KOR_PDF_PATH
     else:
@@ -1134,7 +1148,11 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
         raise RuntimeError("No PDF pages rendered")
 
     _png_pages_to_pdf(png_pages, out)
-    label = {"summary_pre": "Premarket", "summary_kor": "Korea"}.get(kind, "Summary")
+    label = {
+        "summary_pre": "Premarket",
+        "summary_kor": "Korea",
+        "summary_kor_intra": "Korea Intraday",
+    }.get(kind, "Summary")
     print(
         f"{label} PDF written: {out} ({out.stat().st_size} bytes, pages={len(png_pages)})"
     )
@@ -1144,7 +1162,8 @@ def build_summary_pdf(summary: dict, output_path: Path | None = None) -> Path:
 def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Path:
     kind = str(summary.get("kind") or "summary")
     is_pre = kind == "summary_pre"
-    is_kor = kind == "summary_kor"
+    is_kor = kind in {"summary_kor", "summary_kor_intra"}
+    is_kor_intra = kind == "summary_kor_intra"
     try:
         return build_summary_pdf(summary, output_path=output_path)
     except Exception as first_exc:
@@ -1154,6 +1173,8 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
             out = output_path
         elif is_pre:
             out = SUMMARY_PRE_PDF_PATH
+        elif is_kor_intra:
+            out = SUMMARY_KOR_INTRA_PDF_PATH
         elif is_kor:
             out = SUMMARY_KOR_PDF_PATH
         else:
@@ -1162,6 +1183,7 @@ def build_summary_pdf_safe(summary: dict, output_path: Path | None = None) -> Pa
             title = {
                 "summary_pre": "SavvyETF Premarket Brief",
                 "summary_kor": "SavvyETF Korea Brief",
+                "summary_kor_intra": "SavvyETF Korea Intraday Brief",
             }.get(kind, "SavvyETF Market Brief")
             png_pages = [
                 _render_text_page_png(

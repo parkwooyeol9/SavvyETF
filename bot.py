@@ -31,8 +31,9 @@ from stock_crawler import (
     warmup_deferred_caches,
     warmup_startup_caches,
 )
-from summary_scheduler import start_summary_scheduler
 from reddit_scheduler import start_reddit_scheduler
+from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
+from summary_scheduler import start_summary_scheduler
 from scheduler_grace import mark_service_started
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -85,6 +86,9 @@ What each command returns:
 /summary_kor
 → KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
 
+/summary_kor_intra
+→ Same as /summary_kor using mid-session Yahoo returns (auto 11:00 & 15:00 KST)
+
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
@@ -107,7 +111,9 @@ What each command returns:
 → 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
 Auto schedule (KST):
-  /summary 06:00 · /summary_pre 21:50 · /reddit 17:00 / 19:00 / 21:00
+  /summary 06:00 · /summary_pre 21:50
+  /summary_kor_intra 11:00 / 15:00 (weekdays)
+  /reddit 17:00 / 19:00 / 21:00
 
 Type /help for the full command list.
 """
@@ -115,9 +121,10 @@ Type /help for the full command list.
 HELP_TEXT = """SavvyETF Bot — Commands
 
 ⏱ Auto schedule (KST)
-  /summary      06:00  — post-close market brief (skip weekend/US holiday)
-  /summary_pre  21:50  — premarket brief (/sp_pre only)
-  /reddit       17:00, 19:00, 21:00 — r/wallstreetbets hot + Gemini KR
+  /summary           06:00  — post-close market brief (skip weekend/US holiday)
+  /summary_pre       21:50  — premarket brief (/sp_pre only)
+  /summary_kor_intra 11:00, 15:00 — Korea intraday rankings (weekdays)
+  /reddit            17:00, 19:00, 21:00 — r/wallstreetbets hot + Gemini KR
 
 /port TICKER1 TICKER2 ...
   Portfolio backtest + TA chart per ticker.
@@ -165,6 +172,12 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Prices: Yahoo Finance (.KS / .KQ). News: Naver crawl. Financials: Open DART.
   Web: /summary_kor · PDF: /summary_kor.pdf (separate from US /summary)
   Example: /summary_kor | /kospi | /kosdaq
+
+/summary_kor_intra
+  Same as /summary_kor but force-refreshes Yahoo for mid-session returns
+  (vs previous close). Auto weekdays 11:00 and 15:00 KST.
+  Web: /summary_kor_intra · PDF: /summary_kor_intra.pdf
+  Example: /summary_kor_intra
 
 /aibriefing
   Search 5-10 trending US market articles, read them, and return a
@@ -536,7 +549,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -705,6 +718,24 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"Error building premarket summary: {exc}"}]
+
+    if lower.startswith("/summary_kor_intra"):
+        try:
+            from summary_kor_builder import generate_summary_kor_intra
+
+            replies: list[dict] = [
+                {
+                    "text": (
+                        "🇰🇷 Building Korea intraday brief "
+                        "(force-refresh Yahoo · KOSPI200 + KOSDAQ100)…"
+                    )
+                }
+            ]
+            summary = generate_summary_kor_intra(public_url=summary_public_url())
+            replies.extend(summary["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error building Korea intraday summary: {exc}"}]
 
     if lower.startswith("/summary_kor"):
         try:
@@ -1373,6 +1404,18 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
+            if path == "/summary_kor_intra":
+                from summary_kor_builder import load_summary_kor_intra_html
+
+                body_text = load_summary_kor_intra_html()
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>Korea intraday summary not generated yet. "
+                        "Use /summary_kor_intra in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
             if path == "/summary.pdf":
                 from summary_pdf import SUMMARY_PDF_PATH
 
@@ -1434,6 +1477,29 @@ def start_web_server():
                     return
                 self._send(
                     b"Korea PDF not generated yet. Run /summary_kor in Telegram first.",
+                    "text/plain; charset=utf-8",
+                    status=404,
+                )
+                return
+
+            if path == "/summary_kor_intra.pdf":
+                from summary_pdf import SUMMARY_KOR_INTRA_PDF_PATH
+
+                if SUMMARY_KOR_INTRA_PDF_PATH.is_file():
+                    data = SUMMARY_KOR_INTRA_PDF_PATH.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header(
+                        "Content-Disposition",
+                        'attachment; filename="savvyetf-summary-kor-intra.pdf"',
+                    )
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self._send(
+                    b"Korea intraday PDF not generated yet. "
+                    b"Run /summary_kor_intra in Telegram first.",
                     "text/plain; charset=utf-8",
                     status=404,
                 )
@@ -1575,7 +1641,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /kakao , /kakao/skill , /health )"
     )
 
 
@@ -1694,4 +1760,9 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)
+    start_summary_kor_intra_scheduler(
+        token=token,
+        broadcast_fn=broadcast_messages,
+        public_url=summary_public_url(),
+    )
     start_telegram_bot(token)

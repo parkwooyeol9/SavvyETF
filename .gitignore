@@ -13,6 +13,11 @@ data/summary_meta.json
 data/summary.pdf
 data/summary_pre.pdf
 data/summary_kor.pdf
+data/summary_kor_intra.pdf
+data/summary_kor.html
+data/summary_kor_intra.html
+data/summary_kor_meta.json
+data/summary_kor_intra_meta.json
 data/adr_output/
 data/etf_compare/
 data/scheduler_state.json

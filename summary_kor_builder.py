@@ -39,6 +39,8 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data"
 SUMMARY_KOR_HTML_PATH = DATA_DIR / "summary_kor.html"
 SUMMARY_KOR_META_PATH = DATA_DIR / "summary_kor_meta.json"
+SUMMARY_KOR_INTRA_HTML_PATH = DATA_DIR / "summary_kor_intra.html"
+SUMMARY_KOR_INTRA_META_PATH = DATA_DIR / "summary_kor_intra_meta.json"
 
 UNIVERSE_STYLE = {
     "kospi": {"emoji": "🇰🇷", "label": "KOSPI 200", "color": "#4da3ff"},
@@ -55,18 +57,37 @@ def caches_ready_kor() -> bool:
     return all(is_cache_ready(u) for u in SUMMARY_KOR_UNIVERSES)
 
 
-def ensure_kor_caches() -> list[str]:
+def ensure_kor_caches(*, force: bool = False) -> list[str]:
+    """Ensure KOSPI/KOSDAQ ranking caches exist.
+
+    ``force=True`` rebuilds from Yahoo so mid-session (intraday) briefs
+    are not stuck on a morning same-day disk cache.
+    """
     missing: list[str] = []
     for universe in SUMMARY_KOR_UNIVERSES:
-        if is_cache_ready(universe):
+        if not force and is_cache_ready(universe):
             continue
         try:
-            warmup_cache(universe)
+            warmup_cache(universe, force=force)
         except Exception as exc:
             print(f"KOSPI/KOSDAQ cache warmup failed ({universe}): {exc}")
         if not is_cache_ready(universe):
             missing.append(universe)
     return missing
+
+
+def _is_intraday(summary: dict | None = None, *, intraday: bool = False) -> bool:
+    if intraday:
+        return True
+    if not summary:
+        return False
+    return summary.get("kind") == "summary_kor_intra" or bool(summary.get("intraday"))
+
+
+def _price_metric_line(*, intraday: bool) -> str:
+    if intraday:
+        return "장중 수익률(전일 종가 대비) · 누적 거래량 / 21일 평균 · Yahoo .KS/.KQ"
+    return "Price: last day return · Volume: latest / 21d avg"
 
 
 def _summary_boards(universe: str) -> dict:
@@ -78,7 +99,11 @@ def _summary_boards(universe: str) -> dict:
     }
 
 
-def build_kor_market_summary(news_limit: int = SUMMARY_KOR_NEWS_PER_TICKER) -> dict:
+def build_kor_market_summary(
+    news_limit: int = SUMMARY_KOR_NEWS_PER_TICKER,
+    *,
+    intraday: bool = False,
+) -> dict:
     generated_at = datetime.now(KST)
     universes: list[dict] = []
     all_tickers: list[str] = []
@@ -118,7 +143,8 @@ def build_kor_market_summary(news_limit: int = SUMMARY_KOR_NEWS_PER_TICKER) -> d
         )
 
     return {
-        "kind": "summary_kor",
+        "kind": "summary_kor_intra" if intraday else "summary_kor",
+        "intraday": bool(intraday),
         "generated_at": generated_at.isoformat(),
         "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
         "universes": universes,
@@ -201,12 +227,13 @@ def _freeze_dart_charts(summary: dict) -> None:
             pack["chart"] = _freeze_chart_buffer(pack.get("chart"))
 
 
-def _format_boards_telegram(universe: dict) -> str:
+def _format_boards_telegram(universe: dict, summary: dict | None = None) -> str:
     ukey = universe["key"]
     style = UNIVERSE_STYLE.get(ukey, {"emoji": "🇰🇷", "label": universe["name"]})
+    intraday = _is_intraday(summary)
     lines = [
         f"<b>{style['emoji']} {_esc(universe['name'])}</b>",
-        "Price: last day return · Volume: latest / 21d avg",
+        _price_metric_line(intraday=intraday),
         "",
     ]
     for mode, title in BOARD_TITLES_KO.items():
@@ -253,7 +280,9 @@ def _format_dart_telegram_block(universe: dict, summary: dict) -> list[dict]:
 
 
 def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
-    messages: list[dict] = [{"text": _format_boards_telegram(universe), "parse_mode": "HTML"}]
+    messages: list[dict] = [
+        {"text": _format_boards_telegram(universe, summary), "parse_mode": "HTML"}
+    ]
 
     leader = universe.get("leader_ticker")
     leaders = summary.get("leader_charts") or {}
@@ -322,12 +351,19 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
 
 
 def render_summary_kor_telegram(summary: dict) -> list[dict]:
+    intraday = _is_intraday(summary)
+    title = "🇰🇷 SavvyETF Korea Intraday Brief" if intraday else "🇰🇷 SavvyETF Korea Brief"
+    source_line = (
+        "KOSPI 200 + KOSDAQ 100 · 장중 Yahoo · Naver News · DART"
+        if intraday
+        else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
+    )
     messages: list[dict] = [
         {
             "text": (
-                "<b>🇰🇷 SavvyETF Korea Brief</b>\n"
+                f"<b>{title}</b>\n"
                 f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
-                "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART\n"
+                f"{source_line}\n"
                 "<i>Not financial advice.</i>"
             ),
             "parse_mode": "HTML",
@@ -338,18 +374,22 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
     return messages
 
 
-def resolve_summary_kor_public_url(public_url: str = "") -> str:
+def resolve_summary_kor_public_url(public_url: str = "", *, intraday: bool = False) -> str:
     """Public HTML URL for Korea brief — separate from US /summary."""
-    explicit = os.environ.get("SUMMARY_KOR_PUBLIC_URL", "").strip().rstrip("/")
+    suffix = "/summary_kor_intra" if intraday else "/summary_kor"
+    env_key = "SUMMARY_KOR_INTRA_PUBLIC_URL" if intraday else "SUMMARY_KOR_PUBLIC_URL"
+    explicit = os.environ.get(env_key, "").strip().rstrip("/")
     if explicit:
-        return explicit if explicit.endswith("/summary_kor") else f"{explicit}/summary_kor"
+        return explicit if explicit.endswith(suffix) else f"{explicit}{suffix}"
 
     web = public_url.strip() if public_url else resolve_summary_public_url()
     if web.endswith("/summary"):
-        return f"{web.rsplit('/summary', 1)[0]}/summary_kor"
-    if web.endswith("/summary_kor"):
+        return f"{web.rsplit('/summary', 1)[0]}{suffix}"
+    if web.endswith(suffix):
         return web
-    return f"{web.rstrip('/')}/summary_kor"
+    if web.endswith("/summary_kor") and intraday:
+        return f"{web.rsplit('/summary_kor', 1)[0]}{suffix}"
+    return f"{web.rstrip('/')}{suffix}"
 
 
 def _buffer_to_data_uri(buffer, mime: str) -> str:
@@ -469,14 +509,18 @@ def _render_kor_leaders_html(summary: dict) -> str:
 
 
 def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
-    title = f"SavvyETF Korea Brief — {summary.get('generated_at_display', '')}"
-    kor_url = resolve_summary_kor_public_url(public_url)
+    intraday = _is_intraday(summary)
+    title_prefix = "SavvyETF Korea Intraday Brief" if intraday else "SavvyETF Korea Brief"
+    title = f"{title_prefix} — {summary.get('generated_at_display', '')}"
+    kor_url = resolve_summary_kor_public_url(public_url, intraday=intraday)
+    path_suffix = "/summary_kor_intra" if intraday else "/summary_kor"
     pdf_url = (
         f"{kor_url}.pdf"
-        if kor_url.rstrip("/").endswith("/summary_kor")
-        else f"{kor_url.rstrip('/')}/summary_kor.pdf"
+        if kor_url.rstrip("/").endswith(path_suffix)
+        else f"{kor_url.rstrip('/')}{path_suffix}.pdf"
     )
-    base_url = kor_url.rstrip("/").removesuffix("/summary_kor")
+    base_url = kor_url.rstrip("/").removesuffix(path_suffix)
+    metric_meta = _price_metric_line(intraday=intraday)
 
     sections_html: list[str] = []
     for index, universe in enumerate(summary.get("universes") or []):
@@ -517,7 +561,7 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
                 <span class="section-emoji">{style['emoji']}</span>
                 <h2>{_esc(universe['name'])}</h2>
               </div>
-              <p class="meta">Price: last trading day return | Volume: latest day / 21d avg</p>
+              <p class="meta">{html.escape(metric_meta)}</p>
               <div class="grid">{cards}</div>
               <h3 class="news-heading">Naver News (한국어)</h3>
               <div class="news-grid">{''.join(news_html)}</div>
@@ -609,13 +653,14 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
     <div class="brand"><span class="brand-dot"></span> SavvyETF</div>
     <section class="summary-hero">
       <h1>{html.escape(title)}</h1>
-      <p class="meta">KOSPI 200 + KOSDAQ 100 · {summary.get('ticker_count', 0)} tickers · Naver News · DART</p>
+      <p class="meta">KOSPI 200 + KOSDAQ 100 · {summary.get('ticker_count', 0)} tickers · {"장중" if intraday else "종가"} · Naver News · DART</p>
       <p class="meta">Live: <a href="{html.escape(kor_url)}">{html.escape(kor_url)}</a>
          · <a href="{html.escape(pdf_url)}">PDF</a>
          · US brief: <a href="{html.escape(base_url + '/summary') if base_url else '/summary'}">/summary</a></p>
       <div class="pill-row">
         <span class="pill">KOSPI 200</span>
         <span class="pill">KOSDAQ 100</span>
+        <span class="pill">{"Intraday" if intraday else "EOD"}</span>
         <span class="pill">Naver News</span>
         <span class="pill">DART financials</span>
       </div>
@@ -624,7 +669,7 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
     {_render_kor_leaders_html(summary)}
     {_render_kor_dart_html(summary)}
     <footer class="summary-footer">
-      SavvyETF Korea · Generated {html.escape(str(summary.get('generated_at_display', '')))} · Not financial advice
+      SavvyETF Korea{" Intraday" if intraday else ""} · Generated {html.escape(str(summary.get('generated_at_display', '')))} · Not financial advice
     </footer>
   </div>
 </body>
@@ -633,15 +678,20 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
 
 def save_summary_kor(summary: dict, html_content: str) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SUMMARY_KOR_HTML_PATH.write_text(html_content, encoding="utf-8")
+    intraday = _is_intraday(summary)
+    html_path = SUMMARY_KOR_INTRA_HTML_PATH if intraday else SUMMARY_KOR_HTML_PATH
+    meta_path = SUMMARY_KOR_INTRA_META_PATH if intraday else SUMMARY_KOR_META_PATH
+    html_path.write_text(html_content, encoding="utf-8")
     meta = {
         "generated_at": summary.get("generated_at"),
         "generated_at_display": summary.get("generated_at_display"),
         "ticker_count": summary.get("ticker_count"),
         "has_pdf": bool(summary.get("pdf_path")),
         "news_source": summary.get("news_source", "naver"),
+        "intraday": intraday,
+        "kind": summary.get("kind"),
     }
-    SUMMARY_KOR_META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 def load_summary_kor_html() -> str | None:
@@ -650,35 +700,50 @@ def load_summary_kor_html() -> str | None:
     return None
 
 
+def load_summary_kor_intra_html() -> str | None:
+    if SUMMARY_KOR_INTRA_HTML_PATH.exists():
+        return SUMMARY_KOR_INTRA_HTML_PATH.read_text(encoding="utf-8")
+    return None
+
+
 def _minimal_summary_kor_html(summary: dict, public_url: str = "", *, error: str = "") -> str:
     when = html.escape(str(summary.get("generated_at_display", "")))
     err = html.escape(error) if error else ""
-    kor_url = resolve_summary_kor_public_url(public_url)
-    pdf_url = f"{kor_url}.pdf" if kor_url.endswith("/summary_kor") else f"{kor_url}/summary_kor.pdf"
+    intraday = _is_intraday(summary)
+    kor_url = resolve_summary_kor_public_url(public_url, intraday=intraday)
+    path_suffix = "/summary_kor_intra" if intraday else "/summary_kor"
+    pdf_url = (
+        f"{kor_url}.pdf"
+        if kor_url.endswith(path_suffix)
+        else f"{kor_url}{path_suffix}.pdf"
+    )
+    label = "SavvyETF Korea Intraday Brief" if intraday else "SavvyETF Korea Brief"
+    cmd = "/summary_kor_intra" if intraday else "/summary_kor"
     detail = f"<p class='meta'>HTML render note: {err}</p>" if err else ""
     return f"""<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><title>SavvyETF Korea Brief</title>
+<html lang="ko"><head><meta charset="UTF-8"><title>{label}</title>
 <style>body{{font-family:system-ui,sans-serif;background:#0b1018;color:#e8eef5;padding:2rem}}
 a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
 <body>
-  <h1>SavvyETF Korea Brief</h1>
+  <h1>{label}</h1>
   <p class="meta">{when}</p>
   <p>Full web layout was unavailable, but the brief was generated.</p>
   <p><a href="{html.escape(pdf_url)}">Download PDF</a></p>
   {detail}
-  <p class="meta">Re-run /summary_kor if this page looks incomplete.</p>
+  <p class="meta">Re-run {cmd} if this page looks incomplete.</p>
 </body></html>"""
 
 
-def generate_summary_kor(public_url: str = "") -> dict:
-    missing = ensure_kor_caches()
+def generate_summary_kor(public_url: str = "", *, intraday: bool = False) -> dict:
+    missing = ensure_kor_caches(force=intraday)
     if missing:
         labels = ", ".join(UNIVERSES[u]["label"] for u in missing)
+        cmd = "/summary_kor_intra" if intraday else "/summary_kor"
         raise RuntimeError(
-            f"Korea summary caches are not ready ({labels}). Try /summary_kor again shortly."
+            f"Korea summary caches are not ready ({labels}). Try {cmd} again shortly."
         )
 
-    summary = build_kor_market_summary()
+    summary = build_kor_market_summary(intraday=intraday)
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
     summary["ai_analysis"] = {
@@ -691,7 +756,8 @@ def generate_summary_kor(public_url: str = "") -> dict:
     _freeze_summary_charts(summary)
     _freeze_dart_charts(summary)
 
-    kor_web = resolve_summary_kor_public_url(public_url)
+    kor_web = resolve_summary_kor_public_url(public_url, intraday=intraday)
+    path_suffix = "/summary_kor_intra" if intraday else "/summary_kor"
 
     try:
         html_content = render_summary_kor_html(summary, public_url=public_url or kor_web)
@@ -708,9 +774,14 @@ def generate_summary_kor(public_url: str = "") -> dict:
             print(f"Korea HTML stub also failed: {stub_exc}")
 
     try:
-        from summary_pdf import SUMMARY_KOR_PDF_PATH, build_summary_pdf_safe
+        from summary_pdf import (
+            SUMMARY_KOR_INTRA_PDF_PATH,
+            SUMMARY_KOR_PDF_PATH,
+            build_summary_pdf_safe,
+        )
 
-        pdf_path = build_summary_pdf_safe(summary, output_path=SUMMARY_KOR_PDF_PATH)
+        pdf_out = SUMMARY_KOR_INTRA_PDF_PATH if intraday else SUMMARY_KOR_PDF_PATH
+        pdf_path = build_summary_pdf_safe(summary, output_path=pdf_out)
         summary["pdf_path"] = str(pdf_path)
     except Exception as exc:
         summary["pdf_path"] = None
@@ -718,13 +789,14 @@ def generate_summary_kor(public_url: str = "") -> dict:
         print(f"Korea PDF export skipped: {exc}")
 
     messages = render_summary_kor_telegram(summary)
+    label = "Korea intraday brief" if intraday else "Korea brief"
     messages.append(
         {
             "text": (
-                f"🇰🇷 Korea brief (web): {kor_web}\n"
+                f"🇰🇷 {label} (web): {kor_web}\n"
                 f"📄 PDF: {kor_web}.pdf"
-                if kor_web.endswith("/summary_kor")
-                else f"🇰🇷 Korea brief (web): {kor_web}\n📄 PDF: /summary_kor.pdf"
+                if kor_web.endswith(path_suffix)
+                else f"🇰🇷 {label} (web): {kor_web}\n📄 PDF: {path_suffix}.pdf"
             )
         }
     )
@@ -736,3 +808,8 @@ def generate_summary_kor(public_url: str = "") -> dict:
 
     summary["telegram_messages"] = messages
     return summary
+
+
+def generate_summary_kor_intra(public_url: str = "") -> dict:
+    """Intraday Korea brief: force-refresh Yahoo session bars, then same pipeline as /summary_kor."""
+    return generate_summary_kor(public_url=public_url, intraday=True)

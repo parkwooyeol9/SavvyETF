@@ -738,7 +738,22 @@ def resolve_summary_kor_pdf_public_url(public_url: str = "") -> str:
     web = public_url.strip() if public_url else resolve_summary_public_url()
     if web.endswith("/summary"):
         return f"{web.rsplit('/summary', 1)[0]}/summary_kor.pdf"
+    if web.endswith("/summary_kor"):
+        return f"{web}.pdf"
+    if web.endswith("/summary_kor_intra"):
+        return f"{web.rsplit('/summary_kor_intra', 1)[0]}/summary_kor.pdf"
     return f"{web.rstrip('/')}/summary_kor.pdf"
+
+
+def resolve_summary_kor_intra_pdf_public_url(public_url: str = "") -> str:
+    web = public_url.strip() if public_url else resolve_summary_public_url()
+    if web.endswith("/summary"):
+        return f"{web.rsplit('/summary', 1)[0]}/summary_kor_intra.pdf"
+    if web.endswith("/summary_kor_intra"):
+        return f"{web}.pdf"
+    if web.endswith("/summary_kor"):
+        return f"{web.rsplit('/summary_kor', 1)[0]}/summary_kor_intra.pdf"
+    return f"{web.rstrip('/')}/summary_kor_intra.pdf"
 
 
 def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | None:
@@ -752,6 +767,9 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     if kind == "summary_pre":
         url = resolve_summary_pre_pdf_public_url(public_url)
         title = "Premarket brief PDF"
+    elif kind == "summary_kor_intra":
+        url = resolve_summary_kor_intra_pdf_public_url(public_url)
+        title = "Korea intraday brief PDF"
     elif kind == "summary_kor":
         url = resolve_summary_kor_pdf_public_url(public_url)
         title = "Korea brief PDF"

@@ -28,6 +28,10 @@ services:
         value: "true"
       - key: REDDIT_SCHEDULE_HOURS_KST
         value: "17,19,21"
+      - key: SUMMARY_KOR_INTRA_SCHEDULE_ENABLED
+        value: "true"
+      - key: SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST
+        value: "11,15"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

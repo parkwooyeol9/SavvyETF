@@ -82,6 +82,11 @@
                 <td><span class="tag manual">Manual</span></td>
               </tr>
               <tr>
+                <td><span class="cmd">/summary_kor_intra</span></td>
+                <td>Same Korea brief using mid-session Yahoo returns. Auto weekdays 11:00 &amp; 15:00 KST. <a href="/summary_kor_intra">/summary_kor_intra</a>.</td>
+                <td><span class="tag auto">Auto 11:00/15:00</span></td>
+              </tr>
+              <tr>
                 <td><span class="cmd">/macro</span></td>
                 <td>Macro risk dashboard — yields, credit, vol metrics, Finnhub/EDGAR pulse, AI comment.</td>
                 <td><span class="tag manual">Manual</span></td>
@@ -134,6 +139,12 @@
           <div class="time-badge">Boot + 3 min</div>
           <h3>Cache warmup</h3>
           <p>ETF rankings load first, then S&amp;P 500 and NASDAQ 100 in the background. A watchdog refreshes stale caches every 10 minutes.</p>
+        </article>
+
+        <article class="timeline-item card">
+          <div class="time-badge">Weekdays 11:00 / 15:00</div>
+          <h3>Korea intraday brief</h3>
+          <p>Same as <span class="cmd">/summary_kor_intra</span> — force-refreshed Yahoo mid-session rankings for KOSPI/KOSDAQ.</p>
         </article>
 
         <article class="timeline-item card">
@@ -206,6 +217,7 @@
             <span class="cmd">http://localhost:8080</span> and the latest brief at
             <a href="/summary">/summary</a>
             · <a href="/summary_kor">/summary_kor</a>
+            · <a href="/summary_kor_intra">/summary_kor_intra</a>
             · <a href="/summary.pdf">/summary.pdf</a>.
           </p>
         </article>
@@ -216,7 +228,7 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <span>SavvyETF · parkwooyeol9/SavvyETF</span>
-      <span><a href="/summary">US brief</a> · <a href="/summary_kor">Korea brief</a> · <a href="/health">Health</a></span>
+      <span><a href="/summary">US brief</a> · <a href="/summary_kor">Korea</a> · <a href="/summary_kor_intra">Korea intra</a> · <a href="/health">Health</a></span>
     </div>
   </footer>
 </body>
