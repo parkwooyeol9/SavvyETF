@@ -81,6 +81,77 @@ def sp500_membership(symbol: str) -> tuple[bool, str | None]:
     return False, f"{symbol} is not in the current S&P 500 list (analysis will still run)."
 
 
+def _finnhub_company_card(symbol: str) -> dict[str, Any]:
+    """Lightweight name/sector from Finnhub — avoids Yahoo .info for single-ticker runs."""
+    payload = _finnhub_get("/stock/profile2", {"symbol": symbol})
+    if not isinstance(payload, dict) or not payload:
+        return {}
+    return {
+        "company_name": payload.get("name") or symbol,
+        "sector": payload.get("finnhubIndustry") or payload.get("gicsSector") or "n/a",
+        "currency": payload.get("currency") or "USD",
+        "market_cap": _safe_float(payload.get("marketCapitalization")),
+    }
+
+
+def _finnhub_has_chart_series(finnhub: dict[str, Any]) -> bool:
+    series = finnhub.get("series") or {}
+    for freq in ("annual", "quarterly"):
+        bucket = series.get(freq) or {}
+        if not isinstance(bucket, dict):
+            continue
+        for aliases in SERIES_ALIASES.values():
+            for alias in aliases:
+                if bucket.get(alias):
+                    return True
+    return False
+
+
+def _fetch_yfinance_profile(symbol: str, *, light: bool = False) -> dict[str, Any]:
+    profile: dict[str, Any] = {"symbol": symbol, "sources": [], "errors": []}
+    try:
+        with _quiet_yfinance():
+            ticker = yf.Ticker(symbol)
+            if light:
+                # Income statement only — enough to fill chart gaps without .info.
+                annual_income = getattr(ticker, "income_stmt", None)
+                if annual_income is not None and not annual_income.empty:
+                    profile["sources"].append("Yahoo Finance")
+                    profile["annual_income"] = annual_income
+                    profile["info"] = {"shortName": symbol}
+                else:
+                    profile["errors"].append("Yahoo Finance income statement unavailable")
+                return profile
+
+            info = ticker.info or {}
+            if not info or (
+                info.get("regularMarketPrice") is None and info.get("currentPrice") is None
+            ):
+                profile["errors"].append("Yahoo Finance info unavailable")
+                return profile
+
+            profile["sources"].append("Yahoo Finance")
+            profile["info"] = info
+
+            annual_income = getattr(ticker, "income_stmt", None)
+            quarterly_income = getattr(ticker, "quarterly_income_stmt", None)
+            if annual_income is not None and not annual_income.empty:
+                profile["annual_income"] = annual_income
+            if quarterly_income is not None and not quarterly_income.empty:
+                profile["quarterly_income"] = quarterly_income
+
+            try:
+                earnings = ticker.get_earnings_history()
+                if earnings is not None and not earnings.empty:
+                    profile["earnings_history_df"] = earnings
+            except Exception:
+                pass
+    except Exception as exc:
+        profile["errors"].append(f"Yahoo Finance error: {exc}")
+
+    return profile
+
+
 def _finnhub_api_key() -> str:
     return os.environ.get("FINNHUB_API_KEY", "").strip()
 
@@ -121,7 +192,7 @@ def _series_from_finnhub(payload: dict | None, key: str, freq: str = "annual") -
     return pd.Series(dtype=float)
 
 
-def _fetch_finnhub_profile(symbol: str) -> dict[str, Any]:
+def _fetch_finnhub_profile(symbol: str, *, light: bool = False) -> dict[str, Any]:
     profile: dict[str, Any] = {"symbol": symbol, "sources": [], "errors": []}
     metrics = _finnhub_get("/stock/metric", {"symbol": symbol, "metric": "all"})
     if not metrics:
@@ -134,6 +205,10 @@ def _fetch_finnhub_profile(symbol: str) -> dict[str, Any]:
         "annual": metrics.get("series", {}).get("annual") or {},
         "quarterly": metrics.get("series", {}).get("quarterly") or {},
     }
+
+    if light:
+        # Metric endpoint already carries annual/quarterly series for charts.
+        return profile
 
     earnings = _finnhub_get("/stock/earnings", {"symbol": symbol, "limit": 12})
     if isinstance(earnings, list):
@@ -159,40 +234,6 @@ def _pick_metric(snapshot: dict[str, Any], keys: list[str]) -> float | None:
         except (TypeError, ValueError):
             continue
     return None
-
-
-def _fetch_yfinance_profile(symbol: str) -> dict[str, Any]:
-    profile: dict[str, Any] = {"symbol": symbol, "sources": [], "errors": []}
-    try:
-        with _quiet_yfinance():
-            ticker = yf.Ticker(symbol)
-            info = ticker.info or {}
-            if not info or (
-                info.get("regularMarketPrice") is None and info.get("currentPrice") is None
-            ):
-                profile["errors"].append("Yahoo Finance info unavailable")
-                return profile
-
-            profile["sources"].append("Yahoo Finance")
-            profile["info"] = info
-
-            annual_income = getattr(ticker, "income_stmt", None)
-            quarterly_income = getattr(ticker, "quarterly_income_stmt", None)
-            if annual_income is not None and not annual_income.empty:
-                profile["annual_income"] = annual_income
-            if quarterly_income is not None and not quarterly_income.empty:
-                profile["quarterly_income"] = quarterly_income
-
-            try:
-                earnings = ticker.get_earnings_history()
-                if earnings is not None and not earnings.empty:
-                    profile["earnings_history_df"] = earnings
-            except Exception:
-                pass
-    except Exception as exc:
-        profile["errors"].append(f"Yahoo Finance error: {exc}")
-
-    return profile
 
 
 def _income_row(frame: pd.DataFrame, labels: list[str]) -> pd.Series | None:
@@ -272,12 +313,38 @@ def _format_large_number(value: float | None) -> str:
     return f"${value:,.0f}"
 
 
-def build_financial_profile(symbol: str) -> dict[str, Any]:
-    symbol = symbol.upper()
-    in_sp500, sp_note = sp500_membership(symbol)
+def build_financial_profile(
+    symbol: str,
+    *,
+    check_sp500: bool = True,
+    light: bool = False,
+) -> dict[str, Any]:
+    """Build fundamentals for one ticker.
 
-    finnhub = _fetch_finnhub_profile(symbol)
-    yfinance_profile = _fetch_yfinance_profile(symbol)
+    ``light=True`` (used by /reddit): skip S&P 500 universe load, prefer Finnhub,
+    and only hit Yahoo for the same ticker when chart series are missing.
+    """
+    symbol = symbol.upper()
+    if check_sp500 and not light:
+        in_sp500, sp_note = sp500_membership(symbol)
+    else:
+        in_sp500, sp_note = True, None
+
+    finnhub = _fetch_finnhub_profile(symbol, light=light)
+    company = _finnhub_company_card(symbol) if light else {}
+
+    need_yahoo = True
+    if light and finnhub.get("metric_snapshot") and _finnhub_has_chart_series(finnhub):
+        need_yahoo = False
+    elif light and finnhub.get("metric_snapshot") and company:
+        # Metrics ok; Yahoo only if we still want chart series.
+        need_yahoo = not _finnhub_has_chart_series(finnhub)
+
+    if need_yahoo:
+        yfinance_profile = _fetch_yfinance_profile(symbol, light=light)
+    else:
+        yfinance_profile = {"symbol": symbol, "sources": [], "errors": [], "info": {}}
+        print(f"Financial {symbol}: Finnhub-only light path (skip Yahoo)")
 
     if not finnhub.get("metric_snapshot") and not yfinance_profile.get("info"):
         raise RuntimeError(
@@ -289,12 +356,13 @@ def build_financial_profile(symbol: str) -> dict[str, Any]:
     yf_info = yfinance_profile.get("info") or {}
 
     company_name = (
-        yf_info.get("longName")
+        company.get("company_name")
+        or yf_info.get("longName")
         or yf_info.get("shortName")
         or symbol
     )
-    sector = yf_info.get("sector") or yf_info.get("industry") or "n/a"
-    currency = yf_info.get("currency") or "USD"
+    sector = company.get("sector") or yf_info.get("sector") or yf_info.get("industry") or "n/a"
+    currency = company.get("currency") or yf_info.get("currency") or "USD"
 
     metrics = {
         "per": _pick_metric(finnhub_snap, ["peTTM", "peBasicExclExtraTTM"])
@@ -320,6 +388,7 @@ def build_financial_profile(symbol: str) -> dict[str, Any]:
         "eps_ttm": _pick_metric(finnhub_snap, ["epsTTM"])
         or _safe_float(yf_info.get("trailingEps")),
         "market_cap": _pick_metric(finnhub_snap, ["marketCapitalization"])
+        or company.get("market_cap")
         or _safe_float(yf_info.get("marketCap")),
         "dividend_yield": _pick_metric(finnhub_snap, ["dividendYieldIndicatedAnnual"])
         or _safe_float(yf_info.get("dividendYield")),
@@ -328,6 +397,8 @@ def build_financial_profile(symbol: str) -> dict[str, Any]:
 
     timeseries = _build_timeseries(finnhub, yfinance_profile)
     sources = sorted(set(finnhub.get("sources", []) + yfinance_profile.get("sources", [])))
+    if company and "Finnhub" not in sources and (finnhub.get("sources") or company.get("company_name")):
+        sources = sorted(set(sources + ["Finnhub"]))
 
     latest_revenue = None
     if "revenue" in timeseries and not timeseries["revenue"].empty:
@@ -343,10 +414,11 @@ def build_financial_profile(symbol: str) -> dict[str, Any]:
         "generated_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
         "metrics": metrics,
         "timeseries": timeseries,
-        "finnhub_snapshot": finnhub_snap,
+        "finnhub_snapshot": finnhub_snap if not light else {},
         "sources": sources,
         "latest_revenue": latest_revenue,
         "errors": finnhub.get("errors", []) + yfinance_profile.get("errors", []),
+        "light": light,
     }
 
 

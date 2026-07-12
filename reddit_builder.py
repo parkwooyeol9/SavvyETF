@@ -69,9 +69,11 @@ def _top_financial_symbols(tickers: list[tuple[str, int]], limit: int = TOP_FINA
 def _attach_top_financials(brief: dict[str, Any]) -> list[dict[str, Any]]:
     symbols = _top_financial_symbols(list(brief.get("tickers") or []))
     packs: list[dict[str, Any]] = []
+    print(f"Reddit financials: analyzing {symbols} only (light=/financial, no S&P universe)")
     for symbol in symbols:
         try:
-            result = run_financial_analysis(symbol)
+            # light=True: this ticker only — skip S&P 500 list + Yahoo .info when Finnhub suffices
+            result = run_financial_analysis(symbol, light=True)
             packs.append(
                 {
                     "symbol": symbol,

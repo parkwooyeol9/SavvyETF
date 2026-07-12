@@ -6,10 +6,23 @@ from financial_charts import format_financial_chart_caption, plot_financial_dash
 from financial_data import build_financial_profile, format_financial_telegram
 
 
-def run_financial_analysis(symbol: str) -> dict:
-    profile = build_financial_profile(symbol)
+def _slim_profile(profile: dict) -> dict:
+    """Drop heavy series after the chart is drawn (Render memory)."""
+    slim = dict(profile)
+    slim.pop("timeseries", None)
+    slim.pop("finnhub_snapshot", None)
+    return slim
+
+
+def run_financial_analysis(symbol: str, *, light: bool = False) -> dict:
+    profile = build_financial_profile(
+        symbol,
+        check_sp500=not light,
+        light=light,
+    )
     chart = plot_financial_dashboard(profile)
     text = format_financial_telegram(profile)
+    stored = _slim_profile(profile)
 
     telegram_messages: list[dict] = [
         {
@@ -23,7 +36,7 @@ def run_financial_analysis(symbol: str) -> dict:
     ]
 
     return {
-        "profile": profile,
+        "profile": stored,
         "chart": chart,
         "text_summary": text,
         "telegram_messages": telegram_messages,
