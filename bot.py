@@ -84,6 +84,9 @@ What each command returns:
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
+/reddit
+→ r/wallstreetbets hot topics + Gemini Korean investor summary
+
 /adr TSM ASML ARM
 → ADR listing impact analysis (charts + Excel) for underlying shares
 
@@ -157,6 +160,13 @@ HELP_TEXT = """SavvyETF Bot — Commands
   3-4 line Korean AI market brief. Aliases: /ai_briefing, /ai briefing
   Example: /aibriefing
   Requires GEMINI_API_KEY for full analysis.
+
+/reddit
+  Crawl r/wallstreetbets hot posts, list themes/tickers investors are
+  watching, and attach a Gemini Korean summary.
+  Example: /reddit
+  Requires GEMINI_API_KEY for AI summary (rule-based fallback if unset).
+  Optional: REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET for OAuth JSON feed.
 
 /adr ADR1 ADR2 ...
   Analyze whether US ADR listing impacted underlying home-market shares.
@@ -514,7 +524,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /summary /summary_pre /summary_kor /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /comp /financial /dart /news /aibriefing /reddit /summary /summary_pre /summary_kor /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -729,6 +739,19 @@ def handle_telegram_message(message, chat_id: int):
             return format_ai_briefing_telegram(briefing, include_sources=True)
         except Exception as exc:
             return [{"text": f"Error generating AI briefing: {exc}"}]
+
+    if lower in {"/reddit", "/wsb"} or lower.startswith("/reddit "):
+        try:
+            from reddit_wsb import format_reddit_telegram, generate_reddit_brief
+
+            replies: list[dict] = [
+                {"text": "🟠 Crawling r/wallstreetbets hot topics…"}
+            ]
+            brief = generate_reddit_brief()
+            replies.extend(format_reddit_telegram(brief))
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error building Reddit brief: {exc}"}]
 
     if lower.startswith("/news"):
         try:
