@@ -734,8 +734,14 @@ a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
 </body></html>"""
 
 
-def generate_summary_kor(public_url: str = "", *, intraday: bool = False) -> dict:
-    missing = ensure_kor_caches(force=intraday)
+def generate_summary_kor(
+    public_url: str = "",
+    *,
+    intraday: bool = False,
+    force_refresh: bool | None = None,
+) -> dict:
+    force = bool(intraday) if force_refresh is None else bool(force_refresh)
+    missing = ensure_kor_caches(force=force)
     if missing:
         labels = ", ".join(UNIVERSES[u]["label"] for u in missing)
         cmd = "/summary_kor_intra" if intraday else "/summary_kor"

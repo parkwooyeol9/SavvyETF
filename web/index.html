@@ -74,12 +74,12 @@
               <tr>
                 <td><span class="cmd">/summary</span></td>
                 <td>ETF + S&amp;P 500 brief, news, S&amp;P heatmap, AI Korean market briefing. Saved as <a href="/summary">/summary</a>.</td>
-                <td><span class="tag auto">Auto</span></td>
+                <td><span class="tag auto">Auto 06:30</span></td>
               </tr>
               <tr>
                 <td><span class="cmd">/summary_kor</span></td>
-                <td>KOSPI 200 + KOSDAQ 100 brief, Naver Korean news, DART for top leaders. Saved as <a href="/summary_kor">/summary_kor</a>.</td>
-                <td><span class="tag manual">Manual</span></td>
+                <td>KOSPI 200 + KOSDAQ 100 brief, Naver Korean news, DART for top leaders. Auto weekdays 15:40. <a href="/summary_kor">/summary_kor</a>.</td>
+                <td><span class="tag auto">Auto 15:40</span></td>
               </tr>
               <tr>
                 <td><span class="cmd">/summary_kor_intra</span></td>
@@ -148,21 +148,21 @@
         </article>
 
         <article class="timeline-item card">
+          <div class="time-badge">Weekdays 15:40</div>
+          <h3>Korea EOD brief</h3>
+          <p>Same as <span class="cmd">/summary_kor</span> — post-close Korea rankings, Naver news, DART leaders.</p>
+        </article>
+
+        <article class="timeline-item card">
           <div class="time-badge">Daily 17:00 / 19:00 / 21:00</div>
           <h3>Reddit / WSB brief</h3>
           <p>Same as <span class="cmd">/reddit</span> — hot topics from r/wallstreetbets plus Gemini Korean summary.</p>
         </article>
 
         <article class="timeline-item card">
-          <div class="time-badge">After US close + ~5 min</div>
-          <h3>Post-close market brief</h3>
-          <p>Waits for SPY daily bar on Yahoo Finance, then sends <span class="cmd">/summary</span>. Roughly 05:05–06:05 KST depending on US daylight saving.</p>
-        </article>
-
-        <article class="timeline-item card">
-          <div class="time-badge">Daily 22:00</div>
-          <h3>Fixed evening brief</h3>
-          <p>Second <span class="cmd">/summary</span> run with refreshed rankings, heatmap, and AI briefing. Saved to <a href="/summary">/summary</a>.</p>
+          <div class="time-badge">Daily 06:30</div>
+          <h3>US post-close market brief</h3>
+          <p>Scheduled <span class="cmd">/summary</span> (ETF + S&amp;P 500). Skips weekend and US holidays.</p>
         </article>
       </div>
     </section>

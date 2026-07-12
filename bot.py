@@ -33,6 +33,7 @@ from stock_crawler import (
 )
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
+from summary_kor_scheduler import start_summary_kor_scheduler
 from summary_scheduler import start_summary_scheduler
 from scheduler_grace import mark_service_started
 
@@ -78,7 +79,7 @@ What each command returns:
 → Naver News headlines for last ranking (or /news_naver 삼성전자)
 
 /summary
-→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:00 KST)
+→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:30 KST)
 
 /summary_pre
 → Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
@@ -111,8 +112,9 @@ What each command returns:
 → 국내 ETF 편입종목·구성비 + 변경 내역 (Naver/KRX PDF)
 
 Auto schedule (KST):
-  /summary 06:00 · /summary_pre 21:50
+  /summary 06:30 · /summary_pre 21:50
   /summary_kor_intra 11:00 / 15:00 (weekdays)
+  /summary_kor 15:40 (weekdays)
   /reddit 17:00 / 19:00 / 21:00
 
 Type /help for the full command list.
@@ -121,9 +123,10 @@ Type /help for the full command list.
 HELP_TEXT = """SavvyETF Bot — Commands
 
 ⏱ Auto schedule (KST)
-  /summary           06:00  — post-close market brief (skip weekend/US holiday)
+  /summary           06:30  — post-close market brief (skip weekend/US holiday)
   /summary_pre       21:50  — premarket brief (/sp_pre only)
   /summary_kor_intra 11:00, 15:00 — Korea intraday rankings (weekdays)
+  /summary_kor       15:40  — Korea EOD brief after close (weekdays)
   /reddit            17:00, 19:00, 21:00 — r/wallstreetbets hot + Gemini KR
 
 /port TICKER1 TICKER2 ...
@@ -170,6 +173,7 @@ HELP_TEXT = """SavvyETF Bot — Commands
   Korea market brief: KOSPI 200 + KOSDAQ 100 rankings, leader charts,
   Naver Korean headlines, DART financials for top leaders, PDF + web.
   Prices: Yahoo Finance (.KS / .KQ). News: Naver crawl. Financials: Open DART.
+  Auto weekdays 15:40 KST (after market close).
   Web: /summary_kor · PDF: /summary_kor.pdf (separate from US /summary)
   Example: /summary_kor | /kospi | /kosdaq
 
@@ -1761,6 +1765,11 @@ if __name__ == "__main__":
     )
     start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_summary_kor_intra_scheduler(
+        token=token,
+        broadcast_fn=broadcast_messages,
+        public_url=summary_public_url(),
+    )
+    start_summary_kor_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,
         public_url=summary_public_url(),

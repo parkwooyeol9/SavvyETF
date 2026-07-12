@@ -21,17 +21,40 @@ from us_calendar import is_us_equity_trading_day
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
-DEFAULT_FIXED_HOURS = (6,)
+DEFAULT_FIXED_TIMES = ((6, 30),)
 DEFAULT_POLL_SECONDS = 60
 DEFAULT_SUMMARY_PRE_HOUR = 21
 DEFAULT_SUMMARY_PRE_MINUTE = 50
 
 
-def _fixed_schedule_hours() -> tuple[int, ...]:
-    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "6").strip()
+def _parse_hhmm(part: str) -> tuple[int, int] | None:
+    text = part.strip()
+    if not text:
+        return None
+    try:
+        if ":" in text:
+            hour_s, minute_s = text.split(":", 1)
+            hour, minute = int(hour_s), int(minute_s)
+        else:
+            hour, minute = int(text), 0
+    except ValueError:
+        return None
+    if 0 <= hour <= 23 and 0 <= minute <= 59:
+        return hour, minute
+    return None
+
+
+def _fixed_schedule_times() -> tuple[tuple[int, int], ...]:
+    """Parse SUMMARY_SCHEDULE_HOURS_KST as '6:30' or legacy '6' (=06:00)."""
+    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "6:30").strip()
     if not raw:
         return ()
-    return tuple(int(part.strip()) for part in raw.split(",") if part.strip())
+    times: list[tuple[int, int]] = []
+    for part in raw.split(","):
+        parsed = _parse_hhmm(part)
+        if parsed and parsed not in times:
+            times.append(parsed)
+    return tuple(times) or DEFAULT_FIXED_TIMES
 
 
 def _poll_seconds() -> int:
@@ -43,7 +66,7 @@ def _poll_seconds() -> int:
 
 
 def _post_close_enabled() -> bool:
-    # Default off: fixed 06:00 KST summary is the primary close brief.
+    # Default off: fixed 06:30 KST summary is the primary close brief.
     return os.environ.get("SUMMARY_POST_CLOSE_ENABLED", "false").lower() not in {
         "0",
         "false",
@@ -87,7 +110,7 @@ def _save_state(state: dict) -> None:
 
 
 def _current_fixed_slot(now: datetime) -> str:
-    return now.strftime("%Y-%m-%d-%H")
+    return now.strftime("%Y-%m-%d-%H-%M")
 
 
 def _current_minute_slot(now: datetime) -> str:
@@ -277,7 +300,7 @@ def start_summary_scheduler(
         print("Summary scheduler disabled.")
         return
 
-    fixed_hours = _fixed_schedule_hours()
+    fixed_times = _fixed_schedule_times()
     poll_seconds = _poll_seconds()
     post_close = _post_close_enabled()
     pre_enabled = _summary_pre_enabled()
@@ -297,8 +320,9 @@ def start_summary_scheduler(
         data_ready_at: datetime | None = None
 
         parts = []
-        if fixed_hours:
-            parts.append(f"/summary fixed KST hours: {fixed_hours} (skip weekend/US holiday)")
+        if fixed_times:
+            labels = ", ".join(f"{h:02d}:{m:02d}" for h, m in fixed_times)
+            parts.append(f"/summary fixed KST {labels} (skip weekend/US holiday)")
         if pre_enabled:
             parts.append(
                 f"/summary_pre daily {pre_hour:02d}:{pre_minute:02d} KST "
@@ -318,7 +342,7 @@ def start_summary_scheduler(
 
             now = datetime.now(KST)
 
-            if fixed_hours and now.hour in fixed_hours and now.minute == 0:
+            if fixed_times and (now.hour, now.minute) in fixed_times:
                 slot = _current_fixed_slot(now)
                 if slot != last_fixed_slot:
                     if _should_skip_non_trading(now):
