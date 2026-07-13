@@ -136,7 +136,8 @@ def build_help_messages() -> list[dict]:
 
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
-<code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100
+<code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
+<code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Yahoo 강제 갱신)
 <code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
 <code>/heatmap sp</code> — 시가총액 트리맵 (색=일간 수익률)
 
@@ -505,7 +506,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -1178,8 +1179,54 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Pre-market ranking failed: {exc}"}]
 
+    if lower.startswith(("/kospi_intra", "/kosdaq_intra")):
+        try:
+            from kr_intra_rankings import parse_kr_intraday_command, run_kr_intraday_rankings
+            from stock_crawler import UNIVERSES
+
+            universe, mode = parse_kr_intraday_command(normalized)
+            label = UNIVERSES[universe]["label"]
+            replies: list[dict] = [
+                {
+                    "text": (
+                        f"🇰🇷 {label} 장중 랭킹 조회 중…\n"
+                        "Yahoo 일봉 최신 봉 vs 전일 종가 (캐시 강제 갱신)"
+                    )
+                }
+            ]
+            result = run_kr_intraday_rankings(universe, mode)
+            _last_ranking_by_chat[chat_id] = {
+                "tickers": result["tickers"],
+                "label": result["context_label"],
+                "universe": universe,
+            }
+            responses = [{"text": result["text"]}]
+            leader = result.get("leader_ticker")
+            if leader:
+                from kr_names import format_kr_ticker_label
+
+                responses.append(
+                    {
+                        "text": f"📈 {label} 장중 1위: {format_kr_ticker_label(leader)}",
+                        "chart_ticker": leader,
+                    }
+                )
+            replies.extend(responses)
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /kospi_intra | /kosdaq_intra [surge|dropvol]\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"Korea intraday ranking failed: {exc}"}]
+
     if lower.startswith(("/etf", "/sp", "/nas", "/kospi", "/kosdaq")) and not lower.startswith(
-        ("/etf_pre", "/sp_pre", "/nas_pre", "/etfcheck")
+        ("/etf_pre", "/sp_pre", "/nas_pre", "/etfcheck", "/kospi_intra", "/kosdaq_intra")
     ):
         # Avoid matching /etf_pre etc.; require command token exactly
         first = lower.split()[0]
