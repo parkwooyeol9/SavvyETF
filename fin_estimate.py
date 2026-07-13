@@ -827,16 +827,17 @@ def _esc(text: Any) -> str:
     return html.escape(str(text or ""), quote=False)
 
 
-def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
+def format_fin_estimate_telegram(profiles: list[dict[str, Any]], *, excel_name: str = "") -> str:
     if not profiles:
         return "No tickers."
 
     when = profiles[0].get("generated_at_display") or ""
     lines = [
-        "<b>📈 Fin Estimates — 컨센서스 전망</b>",
+        "<b>📈 Fin Estimates — 컨센서스 + 분기 재무</b>",
         f"<i>{_esc(when)}</i>",
-        "대상: 2026 · 2027 · 2028 매출 / 영업이익 / 순이익",
-        "<i>Primary: FMP analyst-estimates · KR fallback: Naver</i>",
+        "전망: 2026 · 2027 · 2028 매출 / 영업이익(EBIT) / 순이익",
+        "이력: 2000년~ 분기 재무 (가능한 구간) → Excel 첨부",
+        "<i>Primary estimates: FMP · KR fallback: Naver · History: FMP/Finnhub/SEC/DART</i>",
         "",
     ]
 
@@ -849,14 +850,16 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
         sources = ", ".join(profile.get("sources") or []) or "n/a"
         fy_month = profile.get("fy_end_month")
         fy_note = f" · FY ends M{fy_month}" if fy_month and fy_month != 12 else ""
-        period_map = profile.get("yahoo_period_map") or {}
-        map_bits = []
-        for period, year in sorted(period_map.items(), key=lambda item: item[1]):
-            map_bits.append(f"{period}→{year}")
-        map_note = f" · Yahoo {', '.join(map_bits)}" if map_bits else ""
+        hist = profile.get("history") or {}
+        hist_note = ""
+        if hist.get("row_count"):
+            hist_note = (
+                f" · 분기이력 {hist.get('row_count')}행 "
+                f"({hist.get('min_period')}→{hist.get('max_period')})"
+            )
 
-        lines.append(f"<b>{_esc(display)}</b> (<code>{_esc(yahoo)}</code>){fy_note}")
-        lines.append(f"출처: {_esc(sources)}{map_note}")
+        lines.append(f"<b>{_esc(display)}</b> (<code>{_esc(yahoo)}</code>){fy_note}{hist_note}")
+        lines.append(f"출처: {_esc(sources)}")
         lines.append("<pre>")
         lines.append(f"{'Year':<6}{'Rev':>10}{'OpInc':>10}{'NetInc':>10}{'EPS':>9}")
         for year in TARGET_YEARS:
@@ -865,10 +868,7 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
             opi = _fmt_money(bucket.get("operating_income"), currency, market=market)
             ni = _fmt_money(bucket.get("net_income"), currency, market=market)
             eps = _fmt_eps(bucket.get("eps"), currency)
-            # Keep columns tight for Telegram monospace.
-            lines.append(
-                f"{year:<6}{rev:>10}{opi:>10}{ni:>10}{eps:>9}"
-            )
+            lines.append(f"{year:<6}{rev:>10}{opi:>10}{ni:>10}{eps:>9}")
         lines.append("</pre>")
 
         notes: list[str] = []
@@ -878,7 +878,7 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
         notes.extend(profile.get("notes") or [])
         notes = list(dict.fromkeys(notes))
         if notes:
-            lines.append("<i>" + _esc(" · ".join(notes)) + "</i>")
+            lines.append("<i>" + _esc(" · ".join(notes[:4])) + "</i>")
         if profile.get("errors"):
             lines.append(
                 "<i>⚠ "
@@ -887,9 +887,11 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
             )
         lines.append("")
 
+    if excel_name:
+        lines.append(f"📎 Excel: <code>{_esc(excel_name)}</code>")
     lines.append(
-        "<i>투자 권유 아님. FY 종료연도 기준. FMP 영업이익 열은 EBIT 컨센서스. "
-        "한국 종목은 FMP 유료 미포함 시 Naver 추정으로 대체.</i>"
+        "<i>투자 권유 아님. 2000년 이전/벤더 미제공 구간은 공란. "
+        "미국 XBRL·한국 DART 구조화 데이터는 보통 2000년대 후반~2015년 전후부터입니다.</i>"
     )
     message = "\n".join(lines).rstrip()
     if len(message) > 4000:
@@ -900,11 +902,22 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
 def run_fin_estimate(command: str) -> dict[str, Any]:
     tokens = parse_fin_estimate_tickers(command)
     profiles = build_fin_estimate_profiles(tokens)
-    text = format_fin_estimate_telegram(profiles)
+
+    from fin_estimate_excel import export_fin_estimate_excel
+    from fin_estimate_history import attach_histories
+
+    profiles = attach_histories(profiles)
+    excel_path = export_fin_estimate_excel(profiles)
+    text = format_fin_estimate_telegram(profiles, excel_name=excel_path.name)
     return {
         "tokens": tokens,
         "profiles": profiles,
+        "excel_path": str(excel_path),
         "telegram_messages": [
             {"text": text, "parse_mode": "HTML"},
+            {
+                "text": f"Fin Estimate workbook — {excel_path.name}",
+                "document_path": str(excel_path),
+            },
         ],
     }

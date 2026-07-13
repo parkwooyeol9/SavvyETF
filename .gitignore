@@ -28,6 +28,7 @@ data/adr_output/
 data/event_output/
 data/event_studies/
 data/etf_compare/
+data/fin_estimate/
 data/scheduler_state.json
 data/dart_corp_codes.json
 data/kakao_tokens.json

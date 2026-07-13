@@ -112,7 +112,7 @@ What each command returns:
 → S&P 500 fundamental analysis: PER, PBR, ROE, margins, EPS growth + charts
 
 /fin_estimate NVDA 삼성전자
-→ 미·한 컨센서스 전망 (2026–2028 매출·EBIT/영업이익·순이익; FMP + Naver)
+→ 미·한 컨센서스(2026–2028) + 2000년~분기 재무 Excel 업로드
 
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
@@ -164,7 +164,7 @@ def build_help_messages() -> list[dict]:
 
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
-<code>/fin_estimate NVDA 삼성전자</code> — 미·한 컨센서스(FMP 26–28 · KR는 Naver 보조)
+<code>/fin_estimate NVDA 삼성전자</code> — 컨센서스+분기재무 Excel
 <code>/dart 삼성전자</code> — DART 재무
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
@@ -967,7 +967,8 @@ def handle_telegram_message(message, chat_id: int):
             replies: list[dict] = [
                 {
                     "text": (
-                        "📈 Fetching consensus estimates (FMP + Naver fallback)…"
+                        "📈 Building estimates + quarterly history Excel "
+                        "(FMP / SEC / DART)…"
                     )
                 }
             ]
