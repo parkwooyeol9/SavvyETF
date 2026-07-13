@@ -1,14 +1,14 @@
 """KOSPI/KOSDAQ live intraday rankings (/kospi_intra, /kosdaq_intra).
 
-Yahoo daily bars for .KS/.KQ often omit today's incomplete session early
-(and can lag), so (last_daily − prev_daily) / prev_daily is frequently the
-*previous trading day's* return. These commands use Naver Finance realtime
-quotes instead:
+Data source review (2026-07-13):
+  - Yahoo .KS/.KQ: **no usable 1m/5m bars** during KR session; daily bars lag
+    and often still show the prior session → wrong "intraday" returns.
+  - Finnhub: **403** for KR equities on this key → cannot use.
+  - Naver: minute chart + previous close available → correct source.
 
-  intraday_return = fluctuationsRatio / 100
-                  = (current − previous_close) / previous_close
-
-  vol_ratio = today_accumulated_volume / 21d_avg_daily_volume (Yahoo history)
+Formula (as requested):
+  intraday_return = (latest_1m_bar.close − previous_close) / previous_close
+  where latest_1m_bar is the Naver minute candle at poll time.
 """
 
 from __future__ import annotations
@@ -44,17 +44,27 @@ KR_INTRA_COMMANDS = {
 KRX_OPEN = time(9, 0)
 KRX_CLOSE = time(15, 30)
 
-NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime/domestic/stock/{codes}"
 NAVER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Referer": "https://finance.naver.com/",
+    "Referer": "https://m.stock.naver.com/",
     "Accept": "application/json,text/plain,*/*",
 }
+
+# Batch realtime for previous close + session status.
+NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime/domestic/stock/{codes}"
+# Per-ticker 1-minute bars for the current session.
+NAVER_MINUTE_URL = (
+    "https://api.stock.naver.com/chart/domestic/item/{code}/minute?periodType=day"
+)
+# Daily history fallback for previous close.
+NAVER_DAILY_URL = "https://m.stock.naver.com/api/stock/{code}/price?page=1&pageSize=5"
+
 NAVER_BATCH_SIZE = 40
-NAVER_MAX_WORKERS = 6
+NAVER_REALTIME_WORKERS = 6
+NAVER_MINUTE_WORKERS = 16
 YAHOO_VOL_WORKERS = 10
 
 _session_local = threading.local()
@@ -77,8 +87,8 @@ def krx_session_status(now: datetime | None = None) -> str:
     if t < KRX_OPEN:
         return "장 시작 전"
     if t <= KRX_CLOSE:
-        return "정규장 (Naver 실시간)"
-    return "장 마감 후 (당일 종가 대비)"
+        return "정규장 — Naver 1분봉 vs 전일 종가"
+    return "장 마감 후 — 당일 종가 vs 전일 종가"
 
 
 def parse_kr_intraday_command(message: str) -> tuple[str, str]:
@@ -111,18 +121,12 @@ def _to_kr_code(ticker: str) -> str:
     return symbol
 
 
-def _to_yahoo_ticker(code: str, universe: str) -> str:
-    code = _to_kr_code(code)
-    suffix = ".KQ" if universe == "kosdaq" else ".KS"
-    # Prefer original suffix from universe lists when present.
-    return f"{code}{suffix}"
-
-
 def _parse_number(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value) if math.isfinite(float(value)) else None
+        num = float(value)
+        return num if math.isfinite(num) else None
     text = str(value).strip().replace(",", "").replace("%", "")
     if not text:
         return None
@@ -134,7 +138,6 @@ def _parse_number(value: Any) -> float | None:
 
 
 def fetch_naver_realtime_batch(codes: list[str]) -> dict[str, dict[str, Any]]:
-    """Return map code -> quote fields from Naver polling API."""
     if not codes:
         return {}
     url = NAVER_REALTIME_URL.format(codes=",".join(codes))
@@ -156,8 +159,8 @@ def fetch_naver_realtime_batch(codes: list[str]) -> dict[str, dict[str, Any]]:
         code = str(item.get("itemCode") or "").strip()
         if not code:
             continue
-        ratio = _parse_number(item.get("fluctuationsRatioRaw") or item.get("fluctuationsRatio"))
         price = _parse_number(item.get("closePriceRaw") or item.get("closePrice"))
+        ratio = _parse_number(item.get("fluctuationsRatioRaw") or item.get("fluctuationsRatio"))
         diff = _parse_number(
             item.get("compareToPreviousClosePriceRaw") or item.get("compareToPreviousClosePrice")
         )
@@ -169,14 +172,12 @@ def fetch_naver_realtime_batch(codes: list[str]) -> dict[str, dict[str, Any]]:
             prev_close = price / (1.0 + ratio / 100.0)
         elif price is not None and diff is not None:
             prev_close = price - diff
-
         out[code] = {
             "code": code,
             "name": item.get("stockName") or "",
             "price": price,
             "prev_close": prev_close,
-            "change": diff,
-            "change_pct": (ratio / 100.0) if ratio is not None else None,
+            "change_pct_quote": (ratio / 100.0) if ratio is not None else None,
             "volume": volume,
             "market_status": item.get("marketStatus") or "",
             "traded_at": item.get("localTradedAt") or "",
@@ -185,35 +186,108 @@ def fetch_naver_realtime_batch(codes: list[str]) -> dict[str, dict[str, Any]]:
 
 
 def fetch_naver_realtime_quotes(tickers: list[str]) -> dict[str, dict[str, Any]]:
-    codes = [_to_kr_code(t) for t in tickers]
-    codes = [c for c in codes if c]
-    # preserve yahoo ticker mapping
+    codes = [_to_kr_code(t) for t in tickers if _to_kr_code(t)]
     code_to_ticker = {_to_kr_code(t): t for t in tickers}
-
     batches = [codes[i : i + NAVER_BATCH_SIZE] for i in range(0, len(codes), NAVER_BATCH_SIZE)]
     merged: dict[str, dict[str, Any]] = {}
 
-    def worker(batch: list[str]) -> dict[str, dict[str, Any]]:
-        return fetch_naver_realtime_batch(batch)
-
-    with ThreadPoolExecutor(max_workers=NAVER_MAX_WORKERS) as pool:
-        futures = [pool.submit(worker, batch) for batch in batches]
+    with ThreadPoolExecutor(max_workers=NAVER_REALTIME_WORKERS) as pool:
+        futures = [pool.submit(fetch_naver_realtime_batch, batch) for batch in batches]
         for future in as_completed(futures):
             try:
                 merged.update(future.result())
             except Exception as exc:
                 print(f"Naver realtime batch failed: {exc}")
 
-    # Remap to yahoo-style tickers
     by_ticker: dict[str, dict[str, Any]] = {}
     for code, row in merged.items():
         ticker = code_to_ticker.get(code)
         if not ticker:
             continue
-        row = dict(row)
-        row["ticker"] = ticker
-        by_ticker[ticker] = row
+        packed = dict(row)
+        packed["ticker"] = ticker
+        by_ticker[ticker] = packed
     return by_ticker
+
+
+def fetch_naver_latest_minute_bar(code: str) -> dict[str, Any] | None:
+    """Return the latest 1-minute bar for today, or None."""
+    code = _to_kr_code(code)
+    try:
+        response = _session().get(NAVER_MINUTE_URL.format(code=code), timeout=20)
+    except requests.RequestException:
+        return None
+    if not response.ok:
+        return None
+    try:
+        bars = response.json()
+    except ValueError:
+        return None
+    if not isinstance(bars, list) or not bars:
+        return None
+    last = bars[-1]
+    if not isinstance(last, dict):
+        return None
+    price = _parse_number(last.get("currentPrice"))
+    if price is None or price <= 0:
+        return None
+    return {
+        "local_datetime": str(last.get("localDateTime") or ""),
+        "price": price,
+        "open": _parse_number(last.get("openPrice")),
+        "high": _parse_number(last.get("highPrice")),
+        "low": _parse_number(last.get("lowPrice")),
+        "volume": _parse_number(last.get("accumulatedTradingVolume")),
+        "bar_count": len(bars),
+    }
+
+
+def fetch_naver_previous_close(code: str) -> float | None:
+    """Previous trading-day close from Naver daily price history."""
+    code = _to_kr_code(code)
+    try:
+        response = _session().get(NAVER_DAILY_URL.format(code=code), timeout=20)
+    except requests.RequestException:
+        return None
+    if not response.ok:
+        return None
+    try:
+        rows = response.json()
+    except ValueError:
+        return None
+    if not isinstance(rows, list) or len(rows) < 2:
+        return None
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        traded = str(row.get("localTradedAt") or "")[:10]
+        if traded and traded != today:
+            px = _parse_number(row.get("closePrice"))
+            if px and px > 0:
+                return px
+    # Fallback: second row is usually previous session.
+    px = _parse_number(rows[1].get("closePrice"))
+    return px if px and px > 0 else None
+
+
+def fetch_minute_bars_for_tickers(tickers: list[str]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+
+    def worker(ticker: str) -> tuple[str, dict[str, Any] | None]:
+        return ticker, fetch_naver_latest_minute_bar(ticker)
+
+    with ThreadPoolExecutor(max_workers=NAVER_MINUTE_WORKERS) as pool:
+        futures = [pool.submit(worker, ticker) for ticker in tickers]
+        for future in as_completed(futures):
+            try:
+                ticker, bar = future.result()
+            except Exception as exc:
+                print(f"Naver minute fetch failed: {exc}")
+                continue
+            if bar:
+                out[ticker] = bar
+    return out
 
 
 def _yahoo_avg_volume(ticker: str) -> float | None:
@@ -223,7 +297,6 @@ def _yahoo_avg_volume(ticker: str) -> float | None:
     vol = frame["volume"].dropna()
     if len(vol) < VOL_LOOKBACK_DAYS:
         return None
-    # Exclude today if Yahoo already appended a sparse today bar with tiny volume.
     avg = float(vol.iloc[-VOL_LOOKBACK_DAYS:].mean())
     return avg if avg > 0 else None
 
@@ -239,33 +312,78 @@ def build_kr_intraday_metrics_table(universe: str) -> tuple[pd.DataFrame, dict[s
 
     tickers = _load_universe_tickers(universe)
     quotes = fetch_naver_realtime_quotes(tickers)
-    avg_vols = fetch_yahoo_avg_volumes(list(quotes.keys()))
+    minute_bars = fetch_minute_bars_for_tickers(list(quotes.keys()) or tickers)
+
+    missing_prev = [
+        ticker
+        for ticker in tickers
+        if (quotes.get(ticker) or {}).get("prev_close") in (None, 0)
+    ]
+
+    def _prev_worker(ticker: str) -> tuple[str, float | None]:
+        return ticker, fetch_naver_previous_close(ticker)
+
+    prev_overrides: dict[str, float] = {}
+    if missing_prev:
+        with ThreadPoolExecutor(max_workers=NAVER_MINUTE_WORKERS) as pool:
+            futures = [pool.submit(_prev_worker, t) for t in missing_prev]
+            for future in as_completed(futures):
+                try:
+                    ticker, px = future.result()
+                except Exception:
+                    continue
+                if px:
+                    prev_overrides[ticker] = px
+
+    avg_vols = fetch_yahoo_avg_volumes(list(minute_bars.keys()) or list(quotes.keys()))
 
     rows: list[dict[str, Any]] = []
-    for ticker, quote in quotes.items():
-        ret = quote.get("change_pct")
-        if ret is None:
+    used_minute = 0
+    used_quote_fallback = 0
+    prev_close_fallback = len(prev_overrides)
+
+    for ticker in tickers:
+        quote = quotes.get(ticker) or {}
+        bar = minute_bars.get(ticker)
+        prev_close = quote.get("prev_close") or prev_overrides.get(ticker)
+        if prev_close is None or prev_close <= 0:
             continue
+
+        if bar and bar.get("price"):
+            price = float(bar["price"])
+            bar_time = bar.get("local_datetime") or ""
+            # Minute payload's volume is per-bar, not day cumulative — use realtime aq.
+            today_vol = quote.get("volume")
+            used_minute += 1
+            source = "naver_1m"
+        elif quote.get("price"):
+            price = float(quote["price"])
+            bar_time = quote.get("traded_at") or ""
+            today_vol = quote.get("volume")
+            used_quote_fallback += 1
+            source = "naver_quote_fallback"
+        else:
+            continue
+
+        ret = (price / float(prev_close)) - 1.0
         row: dict[str, Any] = {
             "Ticker": ticker,
             "Daily Return": float(ret),
-            "Price": quote.get("price"),
-            "Prev Close": quote.get("prev_close"),
+            "Price": price,
+            "Prev Close": float(prev_close),
             "Name": quote.get("name") or "",
             "Market Status": quote.get("market_status") or "",
-            "Traded At": quote.get("traded_at") or "",
+            "Bar Time": bar_time,
+            "Source": source,
         }
-        today_vol = quote.get("volume")
-        avg_vol = avg_vols.get(ticker)
-        if today_vol and avg_vol and avg_vol > 0:
-            vol_ratio = float(today_vol) / float(avg_vol)
+        if today_vol and avg_vols.get(ticker):
+            vol_ratio = float(today_vol) / float(avg_vols[ticker])
             row["Vol Ratio"] = vol_ratio
             if ret > 0:
                 row["Surge Score"] = float(ret) * vol_ratio
             elif ret < 0:
                 row["Drop Vol Score"] = abs(float(ret)) * vol_ratio
         else:
-            # Fallback: rank by |return| alone when volume avg missing.
             if ret > 0:
                 row["Surge Score"] = float(ret)
             elif ret < 0:
@@ -273,17 +391,25 @@ def build_kr_intraday_metrics_table(universe: str) -> tuple[pd.DataFrame, dict[s
         rows.append(row)
 
     df = pd.DataFrame(rows)
+    sample_bar_time = ""
+    if not df.empty and "Bar Time" in df.columns:
+        sample_bar_time = str(df["Bar Time"].iloc[0] or "")
     meta = {
         "scanned": len(tickers),
         "skipped": len(tickers) - len(df),
         "quoted": len(quotes),
+        "minute_bars": len(minute_bars),
+        "used_minute": used_minute,
+        "used_quote_fallback": used_quote_fallback,
+        "prev_close_fallback": prev_close_fallback,
         "loaded_at": datetime.now(KST),
-        "source": "Naver realtime + Yahoo 21d volume avg",
+        "source": "Naver 1m bar vs previous close",
         "session": krx_session_status(),
         "sample_status": next(
             (q.get("market_status") for q in quotes.values() if q.get("market_status")),
             "",
         ),
+        "sample_bar_time": sample_bar_time,
     }
     return df, meta
 
@@ -299,6 +425,9 @@ def _row_label(row: pd.Series) -> str:
     price = row.get("Price")
     if pd.notna(price):
         parts.append(f"₩{float(price):,.0f}")
+    bar_time = str(row.get("Bar Time") or "")
+    if len(bar_time) >= 12 and bar_time.isdigit():
+        parts.append(f"{bar_time[8:10]}:{bar_time[10:12]}")
     return " | ".join(parts) if parts else "n/a"
 
 
@@ -342,12 +471,14 @@ def format_kr_intraday_rankings_message(
 
     lines = [
         f"🇰🇷 {label_name} 장중 랭킹",
-        "장중 수익률 = Naver 실시간 현재가 vs 전일 종가",
-        "거래량 = 당일 누적(Naver) / 21일 평균(Yahoo)",
+        "장중 수익률 = (Naver 1분봉 종가 − 전일 종가) / 전일 종가",
+        "거래량 = 당일 누적 / 21일 평균(Yahoo)",
         f"상태: {meta.get('session')} · market={meta.get('sample_status') or 'n/a'}",
-        f"Active: {len(df)} | Scanned: {meta.get('scanned')} | Skipped: {meta.get('skipped')}",
-        f"Data as of: {loaded_at}",
-        f"Source: {meta.get('source')}",
+        (
+            f"분봉사용 {meta.get('used_minute')}/{meta.get('scanned')} "
+            f"(quote fallback {meta.get('used_quote_fallback')})"
+        ),
+        f"Active: {len(df)} | Skipped: {meta.get('skipped')} | as of {loaded_at}",
         "",
     ]
 
@@ -390,8 +521,13 @@ def run_kr_intraday_rankings(
     df, meta = build_kr_intraday_metrics_table(universe)
     if df.empty:
         raise RuntimeError(
-            f"{UNIVERSES[universe]['label']} 장중 시세를 가져오지 못했습니다. "
-            "Naver realtime을 잠시 후 다시 시도하세요."
+            f"{UNIVERSES[universe]['label']} 장중 분봉을 가져오지 못했습니다. "
+            "Naver minute API를 잠시 후 다시 시도하세요."
+        )
+    if meta.get("used_minute", 0) == 0:
+        raise RuntimeError(
+            f"{UNIVERSES[universe]['label']}: Naver 1분봉이 비어 있습니다. "
+            "Yahoo로는 한국 분봉을 받을 수 없어 장중 수익률을 계산하지 않습니다."
         )
 
     text = format_kr_intraday_rankings_message(
@@ -418,7 +554,7 @@ def run_kr_intraday_rankings(
         "mode": mode,
         "text": text,
         "tickers": tickers,
-        "context_label": f"{UNIVERSES[universe]['label']} — intraday (Naver)",
+        "context_label": f"{UNIVERSES[universe]['label']} — intraday 1m (Naver)",
         "leader_ticker": leader,
         "meta": meta,
         "dataframe": df,

@@ -137,7 +137,7 @@ def build_help_messages() -> list[dict]:
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
-<code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Yahoo 강제 갱신)
+<code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
 <code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
 <code>/heatmap sp</code> — 시가총액 트리맵 (색=일간 수익률)
 
@@ -1190,7 +1190,7 @@ def handle_telegram_message(message, chat_id: int):
                 {
                     "text": (
                         f"🇰🇷 {label} 장중 랭킹 조회 중…\n"
-                        "Naver 실시간 현재가 vs 전일 종가 (Yahoo 일봉 전일 수익률 아님)"
+                        "Naver 1분봉 종가 vs 전일 종가"
                     )
                 }
             ]
