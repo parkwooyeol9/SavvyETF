@@ -1,10 +1,12 @@
 """Consensus financial estimates for /fin_estimate (US + Korea).
 
-Vendor reality (free / currently connected):
-  - Finnhub /stock/*-estimate → paid only (403 on current key)
-  - Yahoo (yfinance): revenue + EPS for current FY (0y) and next FY (+1y);
-    no operating-income consensus; net income ≈ EPS × shares
-  - Naver/WiseReport (KR): 매출·영업이익·당기순이익 for ~2 estimate years (E)
+Primary: Financial Modeling Prep ``/stable/analyst-estimates``
+  - revenueAvg / ebitAvg / netIncomeAvg / epsAvg by fiscal year-end date
+  - Free plan covers US; Korea symbols often require a paid FMP plan
+
+Fallback:
+  - Korea: Naver/WiseReport (매출·영업이익·당기순이익, ~2 estimate years)
+  - US (if FMP fails): Yahoo revenue/EPS only
 
 Target display years: 2026 / 2027 / 2028 (blank when vendor has no row).
 """
@@ -12,8 +14,10 @@ Target display years: 2026 / 2027 / 2028 (blank when vendor has no row).
 from __future__ import annotations
 
 import html
+import os
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -25,11 +29,24 @@ from stock_crawler import _quiet_yfinance
 
 KST = timezone(timedelta(hours=9))
 TARGET_YEARS = (2026, 2027, 2028)
+PROJECT_DIR = Path(__file__).resolve().parent
+FMP_STABLE = "https://financialmodelingprep.com/stable"
 NAVER_COMP_ROOT = "https://navercomp.wisereport.co.kr"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
+
+
+def _ensure_dotenv() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_DIR / ".env", override=False)
+
+
+def _fmp_api_key() -> str:
+    _ensure_dotenv()
+    return os.environ.get("FMP_API_KEY", "").strip()
 
 
 def parse_fin_estimate_tickers(command: str) -> list[str]:
@@ -72,7 +89,7 @@ def _yahoo_suffix_for_code(code: str) -> str:
 
 
 def resolve_fin_estimate_symbol(token: str) -> dict[str, Any]:
-    """Resolve a user token to a Yahoo symbol + market metadata."""
+    """Resolve a user token to a Yahoo/FMP symbol + market metadata."""
     raw = token.strip()
     if not raw:
         raise ValueError("empty ticker")
@@ -89,6 +106,7 @@ def resolve_fin_estimate_symbol(token: str) -> dict[str, Any]:
             "market": "KR",
             "code": code,
             "yahoo": upper,
+            "fmp": upper,
             "display": format_kr_ticker_label(upper),
             "currency": "KRW",
         }
@@ -103,6 +121,7 @@ def resolve_fin_estimate_symbol(token: str) -> dict[str, Any]:
             "market": "KR",
             "code": upper,
             "yahoo": yahoo,
+            "fmp": yahoo,
             "display": format_kr_ticker_label(yahoo),
             "currency": "KRW",
         }
@@ -122,6 +141,7 @@ def resolve_fin_estimate_symbol(token: str) -> dict[str, Any]:
             "market": "KR",
             "code": code,
             "yahoo": yahoo,
+            "fmp": yahoo,
             "display": corp.get("corp_name") or format_kr_ticker_label(yahoo),
             "currency": "KRW",
             "corp_name": corp.get("corp_name"),
@@ -134,6 +154,7 @@ def resolve_fin_estimate_symbol(token: str) -> dict[str, Any]:
         "market": "US",
         "code": None,
         "yahoo": upper,
+        "fmp": upper,
         "display": upper,
         "currency": "USD",
     }
@@ -183,6 +204,144 @@ def _empty_year_bucket() -> dict[str, Any]:
         "sources": [],
         "notes": [],
     }
+
+
+def _merge_year_bucket(dst: dict[str, Any], src: dict[str, Any], *, overwrite: bool = False) -> None:
+    for key in (
+        "revenue",
+        "operating_income",
+        "net_income",
+        "eps",
+        "revenue_analysts",
+        "eps_analysts",
+        "revenue_low",
+        "revenue_high",
+        "eps_low",
+        "eps_high",
+    ):
+        if src.get(key) is None:
+            continue
+        if overwrite or dst.get(key) is None:
+            dst[key] = src[key]
+    dst["sources"] = list(dict.fromkeys((dst.get("sources") or []) + (src.get("sources") or [])))
+    dst["notes"] = list(dict.fromkeys((dst.get("notes") or []) + (src.get("notes") or [])))
+
+
+def _fmp_get(path: str, params: dict[str, Any]) -> Any:
+    key = _fmp_api_key()
+    if not key:
+        raise RuntimeError("FMP_API_KEY not set in .env")
+    response = requests.get(
+        f"{FMP_STABLE}{path}",
+        params={**params, "apikey": key},
+        headers={"User-Agent": USER_AGENT},
+        timeout=30,
+    )
+    text = (response.text or "").strip()
+    # Free plan blocks some non-US symbols with HTTP 402 + plain-text premium notice.
+    if response.status_code == 402:
+        raise RuntimeError(
+            "FMP plan does not include this symbol/endpoint "
+            "(KR tickers often need a paid plan)"
+        )
+    if response.status_code == 403:
+        raise RuntimeError(f"FMP forbidden: {text[:180]}")
+    if response.status_code != 200:
+        raise RuntimeError(f"FMP HTTP {response.status_code}: {text[:180]}")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        if "Premium Query Parameter" in text or "upgrade your plan" in text.lower():
+            raise RuntimeError(
+                "FMP plan does not include this symbol/endpoint "
+                "(KR tickers often need a paid plan)"
+            ) from exc
+        raise RuntimeError(f"FMP non-JSON response: {text[:180]}") from exc
+    if isinstance(payload, dict) and payload.get("Error Message"):
+        raise RuntimeError(str(payload["Error Message"])[:240])
+    return payload
+
+
+def fetch_fmp_estimates(fmp_symbol: str) -> dict[str, Any]:
+    """FMP annual analyst estimates → TARGET_YEARS buckets."""
+    out: dict[str, Any] = {
+        "ok": False,
+        "years": {year: _empty_year_bucket() for year in TARGET_YEARS},
+        "company_name": fmp_symbol,
+        "currency": None,
+        "fy_end_month": None,
+        "errors": [],
+        "source": "Financial Modeling Prep",
+        "raw_count": 0,
+    }
+    try:
+        rows = _fmp_get(
+            "/analyst-estimates",
+            # Free plan rejects limit>10 with a premium notice.
+            {"symbol": fmp_symbol, "period": "annual", "limit": 10},
+        )
+    except Exception as exc:
+        out["errors"].append(f"FMP estimates: {exc}")
+        return out
+
+    if not isinstance(rows, list) or not rows:
+        out["errors"].append("FMP estimates empty")
+        return out
+
+    try:
+        profiles = _fmp_get("/profile", {"symbol": fmp_symbol})
+        if isinstance(profiles, list) and profiles:
+            profile = profiles[0]
+            out["company_name"] = profile.get("companyName") or fmp_symbol
+            out["currency"] = profile.get("currency")
+    except Exception:
+        pass
+
+    filled = 0
+    for row in rows:
+        date_raw = str(row.get("date") or "")
+        match = re.match(r"^(20\d{2})-(\d{2})-(\d{2})", date_raw)
+        if not match:
+            continue
+        year = int(match.group(1))
+        month = int(match.group(2))
+        if out.get("fy_end_month") is None:
+            out["fy_end_month"] = month
+        if year not in out["years"]:
+            continue
+        bucket = out["years"][year]
+        revenue = _safe_float(row.get("revenueAvg"))
+        ebit = _safe_float(row.get("ebitAvg"))
+        net_income = _safe_float(row.get("netIncomeAvg"))
+        eps = _safe_float(row.get("epsAvg"))
+        if revenue is not None:
+            bucket["revenue"] = revenue
+            bucket["revenue_low"] = _safe_float(row.get("revenueLow"))
+            bucket["revenue_high"] = _safe_float(row.get("revenueHigh"))
+            bucket["revenue_analysts"] = _safe_float(row.get("numAnalystsRevenue"))
+            bucket["sources"].append("FMP revenue")
+        if ebit is not None:
+            # FMP exposes EBIT consensus (closest free proxy for operating income).
+            bucket["operating_income"] = ebit
+            bucket["sources"].append("FMP EBIT")
+            bucket["notes"].append("영업이익 열=EBIT(FMP)")
+        if net_income is not None:
+            bucket["net_income"] = net_income
+            bucket["sources"].append("FMP net income")
+        if eps is not None:
+            bucket["eps"] = eps
+            bucket["eps_low"] = _safe_float(row.get("epsLow"))
+            bucket["eps_high"] = _safe_float(row.get("epsHigh"))
+            bucket["eps_analysts"] = _safe_float(row.get("numAnalystsEps"))
+            bucket["sources"].append("FMP EPS")
+        filled += 1
+
+    out["raw_count"] = filled
+    if filled == 0:
+        out["errors"].append("FMP returned rows but none matched 2026–2028")
+        return out
+    out["ok"] = True
+    return out
 
 
 def _yahoo_raw(node: Any) -> float | None:
@@ -558,72 +717,62 @@ def build_fin_estimate_profile(token: str) -> dict[str, Any]:
         "sources": [],
         "notes": [],
         "errors": [],
-        "finnhub_estimates": "unavailable (paid plan required)",
     }
 
-    yahoo = fetch_yahoo_estimates(resolved["yahoo"])
-    if yahoo.get("company_name") and resolved["market"] == "US":
-        resolved["display"] = yahoo["company_name"]
-    if yahoo.get("currency"):
-        resolved["currency"] = yahoo["currency"]
-    if yahoo.get("fy_end_month"):
-        profile["fy_end_month"] = yahoo["fy_end_month"]
-    if yahoo.get("period_map"):
-        profile["yahoo_period_map"] = yahoo["period_map"]
-    profile["errors"].extend(yahoo.get("errors") or [])
+    fmp_symbol = resolved.get("fmp") or resolved["yahoo"]
+    fmp = fetch_fmp_estimates(fmp_symbol)
+    profile["errors"].extend(fmp.get("errors") or [])
+    if fmp.get("company_name") and resolved["market"] == "US":
+        resolved["display"] = fmp["company_name"]
+    if fmp.get("currency"):
+        resolved["currency"] = fmp["currency"]
+    if fmp.get("fy_end_month"):
+        profile["fy_end_month"] = fmp["fy_end_month"]
 
-    if yahoo.get("ok"):
-        profile["sources"].append("Yahoo Finance")
+    if fmp.get("ok"):
+        profile["sources"].append("Financial Modeling Prep")
         for year in TARGET_YEARS:
-            src = yahoo["years"][year]
-            dst = profile["years"][year]
-            for key in (
-                "revenue",
-                "operating_income",
-                "net_income",
-                "eps",
-                "revenue_analysts",
-                "eps_analysts",
-                "revenue_low",
-                "revenue_high",
-                "eps_low",
-                "eps_high",
-            ):
-                if dst.get(key) is None and src.get(key) is not None:
-                    dst[key] = src[key]
-            dst["sources"].extend(src.get("sources") or [])
-            dst["notes"].extend(src.get("notes") or [])
+            _merge_year_bucket(profile["years"][year], fmp["years"][year], overwrite=True)
 
+    # Korea: Naver fills gaps / replaces when FMP plan blocks KR symbols.
     if resolved["market"] == "KR" and resolved.get("code"):
         naver = fetch_naver_consensus(resolved["code"])
         profile["errors"].extend(naver.get("errors") or [])
         if naver.get("ok"):
             profile["sources"].append("Naver/WiseReport")
             profile["naver_unit"] = "억원"
-            # Naver already covers KR P&L — drop noisy Yahoo rate-limit noise.
             profile["errors"] = [
                 err
                 for err in profile["errors"]
-                if "Yahoo" not in err and "yfinance" not in err
+                if "FMP plan does not include" not in err
             ]
             for year in TARGET_YEARS:
                 src = naver["years"][year]
                 dst = profile["years"][year]
-                # Prefer Naver absolute P&L consensus for Korea.
-                for key in ("revenue", "operating_income", "net_income", "eps"):
-                    if src.get(key) is not None:
-                        dst[key] = src[key]
-                # Drop Yahoo NI approximation note when Naver NI exists.
-                if src.get("net_income") is not None:
-                    dst["notes"] = [
-                        note
-                        for note in dst.get("notes") or []
-                        if "EPS×" not in note
-                    ]
-                dst["sources"] = list(
-                    dict.fromkeys((src.get("sources") or []) + (dst.get("sources") or []))
-                )
-                dst["notes"].extend(src.get("notes") or [])
+                # Prefer Naver absolute OP/NI for Korea when present.
+                _merge_year_bucket(dst, src, overwrite=True)
+                dst["notes"] = [
+                    note
+                    for note in (dst.get("notes") or [])
+                    if "EBIT" not in note and "EPS×" not in note
+                ]
+
+    # US fallback only if FMP failed entirely.
+    if resolved["market"] == "US" and not fmp.get("ok"):
+        yahoo = fetch_yahoo_estimates(resolved["yahoo"])
+        profile["errors"].extend(yahoo.get("errors") or [])
+        if yahoo.get("company_name"):
+            resolved["display"] = yahoo["company_name"]
+        if yahoo.get("currency"):
+            resolved["currency"] = yahoo["currency"]
+        if yahoo.get("fy_end_month") and not profile.get("fy_end_month"):
+            profile["fy_end_month"] = yahoo["fy_end_month"]
+        if yahoo.get("period_map"):
+            profile["yahoo_period_map"] = yahoo["period_map"]
+        if yahoo.get("ok"):
+            profile["sources"].append("Yahoo Finance")
+            for year in TARGET_YEARS:
+                _merge_year_bucket(profile["years"][year], yahoo["years"][year])
 
     if not any(
         profile["years"][year].get(metric) is not None
@@ -632,7 +781,6 @@ def build_fin_estimate_profile(token: str) -> dict[str, Any]:
     ):
         profile["errors"].append("No consensus estimates found for target years")
 
-    # De-dupe sources / notes
     profile["sources"] = list(dict.fromkeys(profile["sources"]))
     for year in TARGET_YEARS:
         bucket = profile["years"][year]
@@ -688,7 +836,7 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
         "<b>📈 Fin Estimates — 컨센서스 전망</b>",
         f"<i>{_esc(when)}</i>",
         "대상: 2026 · 2027 · 2028 매출 / 영업이익 / 순이익",
-        "<i>Finnhub estimate API는 현재 플랜에서 403 · Yahoo+Naver 사용</i>",
+        "<i>Primary: FMP analyst-estimates · KR fallback: Naver</i>",
         "",
     ]
 
@@ -740,8 +888,8 @@ def format_fin_estimate_telegram(profiles: list[dict[str, Any]]) -> str:
         lines.append("")
 
     lines.append(
-        "<i>투자 권유 아님. 컨센서스는 벤더·회계연도(FY) 기준이며 "
-        "캘린더 연도와 다를 수 있습니다. 영업이익은 한국(Naver)만 제공.</i>"
+        "<i>투자 권유 아님. FY 종료연도 기준. FMP 영업이익 열은 EBIT 컨센서스. "
+        "한국 종목은 FMP 유료 미포함 시 Naver 추정으로 대체.</i>"
     )
     message = "\n".join(lines).rstrip()
     if len(message) > 4000:
