@@ -114,6 +114,9 @@ What each command returns:
 /fin_estimate NVDA 삼성전자
 → 미·한 컨센서스(2026–2028) + 2000년~분기 재무 Excel 업로드
 
+/nxt
+→ 삼성전자·SK하이닉스 KRX vs NXT(넥스트레이드) 거래량 (optional tickers)
+
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
 

@@ -124,13 +124,11 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def fetch_naver_realtime_rows(codes: list[str]) -> dict[str, dict[str, Any]]:
-    if not codes:
-        return {}
-    query = "|".join(f"SERVICE_ITEM:{code}" for code in codes)
+def _fetch_one_naver_realtime(code: str) -> dict[str, Any] | None:
+    """Fetch one code at a time — batch queries sometimes omit rows."""
     response = requests.get(
         NAVER_REALTIME,
-        params={"query": query},
+        params={"query": f"SERVICE_ITEM:{code}"},
         headers={
             "User-Agent": USER_AGENT,
             "Referer": "https://m.stock.naver.com/",
@@ -141,12 +139,20 @@ def fetch_naver_realtime_rows(codes: list[str]) -> dict[str, dict[str, Any]]:
     response.raise_for_status()
     payload = response.json()
     areas = ((payload.get("result") or {}).get("areas")) or []
-    out: dict[str, dict[str, Any]] = {}
     for area in areas:
         for row in area.get("datas") or []:
-            code = str(row.get("cd") or "").strip()
-            if code:
-                out[code] = row
+            row_code = str(row.get("cd") or "").strip()
+            if row_code == code:
+                return row
+    return None
+
+
+def fetch_naver_realtime_rows(codes: list[str]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for code in codes:
+        row = _fetch_one_naver_realtime(code)
+        if row:
+            out[code] = row
     return out
 
 
