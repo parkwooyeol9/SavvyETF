@@ -345,22 +345,35 @@ def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None
         send_text(token, chat_id, message)
 
 
-def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
+def broadcast_messages(token: str, messages: list[str] | list[dict]) -> int:
+    """Send messages to all startup chats. Returns number of chats delivered to."""
     chat_ids = startup_chat_ids()
     if not chat_ids:
         print(
             "Broadcast skipped: no chat IDs configured. "
             "Set TELEGRAM_CHAT_ID on Render, or message the bot once so known_chats.json is saved."
         )
-        return
+        return 0
+    if not messages:
+        print("Broadcast skipped: empty message list.")
+        return 0
     print(f"Broadcasting {len(messages)} message(s) to {len(chat_ids)} chat(s).")
+    delivered = 0
     for chat_id in chat_ids:
+        ok = True
         for message in messages:
             try:
                 _send_message_payload(token, chat_id, message)
                 time.sleep(0.35)
             except requests.RequestException as exc:
+                ok = False
                 print(f"Broadcast failed for chat {chat_id}: {exc}")
+                break
+        if ok:
+            delivered += 1
+    if delivered == 0:
+        print("Broadcast failed: no chats received messages.")
+    return delivered
 
 
 _greeted_this_session: set[int] = set()
@@ -1507,11 +1520,51 @@ def start_web_server():
             if path == "/health":
                 import importlib.util
 
+                from scheduler_grace import past_startup_grace, startup_grace_status
+                from summary_scheduler import _load_state
+
                 kor_spec = importlib.util.find_spec("summary_kor_builder")
+                state = _load_state()
+                env_chat = bool(os.environ.get("TELEGRAM_CHAT_ID", "").strip())
+                chat_count = len(startup_chat_ids())
                 payload = {
                     "ok": True,
                     "summary_kor_builder": kor_spec is not None,
-                    "py_modules": sorted(p.name for p in PROJECT_DIR.glob("*.py")),
+                    "scheduler": {
+                        "past_startup_grace": past_startup_grace(),
+                        "startup_grace": startup_grace_status(),
+                        "telegram_chat_id_env": env_chat,
+                        "broadcast_chat_count": chat_count,
+                        "last_fixed_slot": state.get("last_fixed_slot"),
+                        "last_summary_pre_slot": state.get("last_summary_pre_slot"),
+                        "last_reddit_slot": state.get("last_reddit_slot"),
+                        "last_summary_kor_intra_slot": state.get(
+                            "last_summary_kor_intra_slot"
+                        ),
+                        "last_summary_kor_slot": state.get("last_summary_kor_slot"),
+                    },
+                    "schedule": {
+                        "summary_kst": os.environ.get(
+                            "SUMMARY_SCHEDULE_HOURS_KST", "6:30"
+                        ),
+                        "summary_pre_kst": os.environ.get(
+                            "SUMMARY_PRE_SCHEDULE_KST", "21:50"
+                        ),
+                        "reddit_kst": os.environ.get(
+                            "REDDIT_SCHEDULE_HOURS_KST", "17,19,21"
+                        ),
+                        "summary_kor_intra_kst": os.environ.get(
+                            "SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11,15"
+                        ),
+                        "summary_kor_kst": os.environ.get(
+                            "SUMMARY_KOR_SCHEDULE_KST", "15:40"
+                        ),
+                        "note": (
+                            "US regular open ~22:30 KST (EDT). "
+                            "Nearest auto job is /summary_pre at 21:50 KST "
+                            "(60m catch-up toward open)."
+                        ),
+                    },
                 }
                 self._send(
                     json.dumps(payload).encode("utf-8"),

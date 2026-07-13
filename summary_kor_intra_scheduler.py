@@ -64,8 +64,14 @@ def run_scheduled_summary_kor_intra(token: str, broadcast_fn, public_url: str = 
         if not messages:
             print("Scheduled summary_kor_intra skipped: no telegram messages.")
             return False
-        broadcast_fn(token, messages)
-        print(f"Scheduled summary_kor_intra sent ({len(messages)} message(s)).")
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled summary_kor_intra not delivered: 0 chats.")
+            return False
+        print(
+            f"Scheduled summary_kor_intra sent ({len(messages)} message(s) "
+            f"→ {delivered} chat(s))."
+        )
         return True
     except Exception as exc:
         print(f"Scheduled summary_kor_intra failed: {exc}")

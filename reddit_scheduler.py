@@ -58,8 +58,14 @@ def run_scheduled_reddit(token: str, broadcast_fn) -> bool:
         if not messages:
             print("Scheduled reddit skipped: no telegram messages.")
             return False
-        broadcast_fn(token, messages)
-        print(f"Scheduled reddit brief sent ({len(messages)} message(s)).")
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled reddit not delivered: 0 chats.")
+            return False
+        print(
+            f"Scheduled reddit brief sent ({len(messages)} message(s) "
+            f"→ {delivered} chat(s))."
+        )
         return True
     except Exception as exc:
         print(f"Scheduled reddit brief failed: {exc}")

@@ -178,14 +178,20 @@ def run_scheduled_summary(
         refresh_cache_fn()
         summary = generate_and_save_summary(public_url=public_url)
         messages = summary["telegram_messages"]
-        broadcast_fn(token, messages)
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print(f"Scheduled summary not delivered ({trigger}): 0 chats.")
+            return False
         try:
             from kakao_notify import send_scheduled_summary_to_kakao
 
             send_scheduled_summary_to_kakao(summary, public_url=public_url)
         except Exception as kakao_exc:
             print(f"Kakao notify after summary failed: {kakao_exc}")
-        print(f"Scheduled summary sent ({trigger}, {len(messages)} message(s)).")
+        print(
+            f"Scheduled summary sent ({trigger}, {len(messages)} message(s) "
+            f"→ {delivered} chat(s))."
+        )
         return True
     except Exception as exc:
         print(f"Scheduled summary failed ({trigger}): {exc}")
@@ -219,16 +225,24 @@ def run_scheduled_summary_pre(
 
         summary = generate_summary_pre(public_url=public_url)
         messages = summary["telegram_messages"]
-        broadcast_fn(token, messages)
-        print(f"Scheduled summary_pre sent ({trigger}, {len(messages)} message(s)).")
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print(f"Scheduled summary_pre not delivered ({trigger}): 0 chats.")
+            return False
+        print(
+            f"Scheduled summary_pre sent ({trigger}, {len(messages)} message(s) "
+            f"→ {delivered} chat(s))."
+        )
         return True
     except Exception as exc:
         print(f"Scheduled summary_pre failed ({trigger}): {exc}")
         try:
-            broadcast_fn(
+            delivered = broadcast_fn(
                 token,
                 [{"text": f"🌅 Premarket brief failed: {exc}"}],
             )
+            if not delivered:
+                print("Premarket failure notice also undelivered (0 chats).")
         except Exception:
             pass
         return False
@@ -327,7 +341,7 @@ def start_summary_scheduler(
         if pre_enabled:
             parts.append(
                 f"/summary_pre daily {pre_hour:02d}:{pre_minute:02d} KST "
-                "(skip weekend/US holiday, SP pre only)"
+                "(skip weekend/US holiday, SP pre only, 60m catch-up)"
             )
         if post_close:
             parts.append(
@@ -370,8 +384,21 @@ def start_summary_scheduler(
                     _save_state(state)
 
             if pre_enabled:
+                # Long window so 21:50 premarket can still catch US open (~22:30 KST EDT).
+                pre_window = 60
+                try:
+                    pre_window = max(
+                        15,
+                        int(os.environ.get("SUMMARY_PRE_CATCHUP_MINUTES", "60")),
+                    )
+                except ValueError:
+                    pre_window = 60
                 pre_slot = due_slot_id(
-                    now, pre_hour, pre_minute, last_slot=last_pre_slot
+                    now,
+                    pre_hour,
+                    pre_minute,
+                    last_slot=last_pre_slot,
+                    window_minutes=pre_window,
                 )
                 if pre_slot:
                     if _should_skip_non_trading(now):
