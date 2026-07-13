@@ -9,19 +9,21 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
+from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, _save_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 15
 DEFAULT_MINUTE_KST = 40
-DEFAULT_POLL_SECONDS = 60
+DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
     raw = os.environ.get("SUMMARY_KOR_SCHEDULE_KST", "15:40").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
-        hour, minute = int(hour_s), int(minute_s)
+        hour = int(hour_s)
+        minute = int(minute_s)
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             return hour, minute
     except ValueError:
@@ -42,11 +44,14 @@ def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
 
 
 def run_scheduled_summary_kor(token: str, broadcast_fn, public_url: str = "") -> bool:
-    from heavy_work import end_heavy_work, try_begin_heavy_work
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
     from summary_kor_builder import generate_summary_kor
 
-    if not try_begin_heavy_work("scheduled-summary-kor"):
-        print("Scheduled summary_kor skipped: another heavy task is running.")
+    if not begin_heavy_work_blocking("scheduled-summary-kor", timeout=180):
+        print(
+            "Scheduled summary_kor skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
         return False
 
     try:
@@ -82,7 +87,8 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
         state = _load_state()
         last_slot = state.get("last_summary_kor_slot")
         print(
-            f"summary_kor scheduler active — weekdays at {hour:02d}:{minute:02d} KST"
+            f"summary_kor scheduler active — weekdays at {hour:02d}:{minute:02d} KST "
+            "(15m catch-up window)"
         )
 
         while True:
@@ -91,20 +97,19 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
                 continue
 
             now = datetime.now(KST)
-            if now.hour == hour and now.minute == minute:
-                slot = now.strftime("%Y-%m-%d-%H-%M")
-                if slot != last_slot:
-                    if _should_skip_kr_non_trading(now):
-                        print(f"Scheduled summary_kor skipped ({slot}): weekend")
-                        last_slot = slot
-                        state["last_summary_kor_slot"] = slot
-                        _save_state(state)
-                    elif run_scheduled_summary_kor(
-                        token, broadcast_fn, public_url=public_url
-                    ):
-                        last_slot = slot
-                        state["last_summary_kor_slot"] = slot
-                        _save_state(state)
+            slot = due_slot_id(now, hour, minute, last_slot=last_slot)
+            if slot:
+                if _should_skip_kr_non_trading(now):
+                    print(f"Scheduled summary_kor skipped ({slot}): weekend")
+                    last_slot = slot
+                    state["last_summary_kor_slot"] = slot
+                    _save_state(state)
+                elif run_scheduled_summary_kor(
+                    token, broadcast_fn, public_url=public_url
+                ):
+                    last_slot = slot
+                    state["last_summary_kor_slot"] = slot
+                    _save_state(state)
 
             time.sleep(poll_seconds)
 

@@ -348,8 +348,12 @@ def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None
 def broadcast_messages(token: str, messages: list[str] | list[dict]) -> None:
     chat_ids = startup_chat_ids()
     if not chat_ids:
-        print("Broadcast skipped: no chat IDs configured.")
+        print(
+            "Broadcast skipped: no chat IDs configured. "
+            "Set TELEGRAM_CHAT_ID on Render, or message the bot once so known_chats.json is saved."
+        )
         return
+    print(f"Broadcasting {len(messages)} message(s) to {len(chat_ids)} chat(s).")
     for chat_id in chat_ids:
         for message in messages:
             try:

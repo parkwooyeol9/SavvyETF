@@ -16,13 +16,14 @@ from market_data_freshness import (
     reference_ticker,
 )
 from scheduler_grace import past_startup_grace
+from scheduler_slots import due_slot_id
 from us_calendar import is_us_equity_trading_day
 
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
 DEFAULT_FIXED_TIMES = ((6, 30),)
-DEFAULT_POLL_SECONDS = 60
+DEFAULT_POLL_SECONDS = 30
 DEFAULT_SUMMARY_PRE_HOUR = 21
 DEFAULT_SUMMARY_PRE_MINUTE = 50
 
@@ -333,7 +334,11 @@ def start_summary_scheduler(
                 f"post-close after {reference_ticker()} daily bar + {buffer_minutes}m "
                 f"(~{approx_kst} on regular days)"
             )
-        print("Summary scheduler active — " + "; ".join(parts))
+        print(
+            "Summary scheduler active — "
+            + "; ".join(parts)
+            + " (15m catch-up window)"
+        )
 
         while True:
             if not past_startup_grace():
@@ -342,32 +347,33 @@ def start_summary_scheduler(
 
             now = datetime.now(KST)
 
-            if fixed_times and (now.hour, now.minute) in fixed_times:
-                slot = _current_fixed_slot(now)
-                if slot != last_fixed_slot:
-                    if _should_skip_non_trading(now):
-                        print(f"Scheduled summary skipped ({slot}): weekend or US holiday")
-                        last_fixed_slot = slot
-                        state["last_fixed_slot"] = slot
-                        _save_state(state)
-                    elif run_scheduled_summary(
-                        token,
-                        broadcast_fn,
-                        refresh_cache_fn,
-                        public_url,
-                        trigger=f"fixed {slot}",
-                    ):
-                        last_fixed_slot = slot
-                        state["last_fixed_slot"] = slot
-                        _save_state(state)
+            for hour, minute in fixed_times:
+                slot = due_slot_id(
+                    now, hour, minute, last_slot=last_fixed_slot
+                )
+                if not slot:
+                    continue
+                if _should_skip_non_trading(now):
+                    print(f"Scheduled summary skipped ({slot}): weekend or US holiday")
+                    last_fixed_slot = slot
+                    state["last_fixed_slot"] = slot
+                    _save_state(state)
+                elif run_scheduled_summary(
+                    token,
+                    broadcast_fn,
+                    refresh_cache_fn,
+                    public_url,
+                    trigger=f"fixed {slot}",
+                ):
+                    last_fixed_slot = slot
+                    state["last_fixed_slot"] = slot
+                    _save_state(state)
 
-            if (
-                pre_enabled
-                and now.hour == pre_hour
-                and now.minute == pre_minute
-            ):
-                pre_slot = _current_minute_slot(now)
-                if pre_slot != last_pre_slot:
+            if pre_enabled:
+                pre_slot = due_slot_id(
+                    now, pre_hour, pre_minute, last_slot=last_pre_slot
+                )
+                if pre_slot:
                     if _should_skip_non_trading(now):
                         print(
                             f"Scheduled summary_pre skipped ({pre_slot}): "

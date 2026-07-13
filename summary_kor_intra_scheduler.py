@@ -9,11 +9,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
+from scheduler_slots import due_hourly_slot_id
 from summary_scheduler import _load_state, _save_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOURS_KST = (11, 15)
-DEFAULT_POLL_SECONDS = 60
+DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_hours() -> list[int]:
@@ -47,11 +48,14 @@ def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
 
 
 def run_scheduled_summary_kor_intra(token: str, broadcast_fn, public_url: str = "") -> bool:
-    from heavy_work import end_heavy_work, try_begin_heavy_work
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
     from summary_kor_builder import generate_summary_kor_intra
 
-    if not try_begin_heavy_work("scheduled-summary-kor-intra"):
-        print("Scheduled summary_kor_intra skipped: another heavy task is running.")
+    if not begin_heavy_work_blocking("scheduled-summary-kor-intra", timeout=120):
+        print(
+            "Scheduled summary_kor_intra skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
         return False
 
     try:
@@ -86,7 +90,10 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
     def loop() -> None:
         state = _load_state()
         last_slot = state.get("last_summary_kor_intra_slot")
-        print(f"summary_kor_intra scheduler active — weekdays at {hours_label} KST")
+        print(
+            f"summary_kor_intra scheduler active — weekdays at {hours_label} KST "
+            "(15m catch-up window)"
+        )
 
         while True:
             if not past_startup_grace():
@@ -94,20 +101,19 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
                 continue
 
             now = datetime.now(KST)
-            if now.hour in hours and now.minute == 0:
-                slot = now.strftime("%Y-%m-%d-%H")
-                if slot != last_slot:
-                    if _should_skip_kr_non_trading(now):
-                        print(f"Scheduled summary_kor_intra skipped ({slot}): weekend")
-                        last_slot = slot
-                        state["last_summary_kor_intra_slot"] = slot
-                        _save_state(state)
-                    elif run_scheduled_summary_kor_intra(
-                        token, broadcast_fn, public_url=public_url
-                    ):
-                        last_slot = slot
-                        state["last_summary_kor_intra_slot"] = slot
-                        _save_state(state)
+            slot = due_hourly_slot_id(now, hours, last_slot=last_slot)
+            if slot:
+                if _should_skip_kr_non_trading(now):
+                    print(f"Scheduled summary_kor_intra skipped ({slot}): weekend")
+                    last_slot = slot
+                    state["last_summary_kor_intra_slot"] = slot
+                    _save_state(state)
+                elif run_scheduled_summary_kor_intra(
+                    token, broadcast_fn, public_url=public_url
+                ):
+                    last_slot = slot
+                    state["last_summary_kor_intra_slot"] = slot
+                    _save_state(state)
 
             time.sleep(poll_seconds)
 

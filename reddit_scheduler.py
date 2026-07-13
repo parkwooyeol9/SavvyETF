@@ -9,11 +9,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
+from scheduler_slots import due_hourly_slot_id
 from summary_scheduler import _load_state, _save_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOURS_KST = (17, 19, 21)
-DEFAULT_POLL_SECONDS = 60
+DEFAULT_POLL_SECONDS = 30
 
 
 def _reddit_schedule_hours() -> list[int]:
@@ -40,12 +41,15 @@ def _poll_seconds() -> int:
 
 
 def run_scheduled_reddit(token: str, broadcast_fn) -> bool:
-    from heavy_work import end_heavy_work, try_begin_heavy_work
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
     from reddit_builder import generate_and_save_reddit_brief
     from summary_builder import resolve_summary_public_url
 
-    if not try_begin_heavy_work("scheduled-reddit"):
-        print("Scheduled reddit skipped: another heavy task is running.")
+    if not begin_heavy_work_blocking("scheduled-reddit", timeout=120):
+        print(
+            "Scheduled reddit skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
         return False
 
     try:
@@ -76,7 +80,10 @@ def start_reddit_scheduler(token: str, broadcast_fn) -> None:
     def loop() -> None:
         state = _load_state()
         last_reddit_slot = state.get("last_reddit_slot")
-        print(f"Reddit scheduler active — daily at {hours_label} KST")
+        print(
+            f"Reddit scheduler active — daily at {hours_label} KST "
+            "(15m catch-up window)"
+        )
 
         while True:
             if not past_startup_grace():
@@ -84,13 +91,11 @@ def start_reddit_scheduler(token: str, broadcast_fn) -> None:
                 continue
 
             now = datetime.now(KST)
-            if now.hour in hours and now.minute == 0:
-                slot = now.strftime("%Y-%m-%d-%H")
-                if slot != last_reddit_slot:
-                    if run_scheduled_reddit(token, broadcast_fn):
-                        last_reddit_slot = slot
-                        state["last_reddit_slot"] = slot
-                        _save_state(state)
+            slot = due_hourly_slot_id(now, hours, last_slot=last_reddit_slot)
+            if slot and run_scheduled_reddit(token, broadcast_fn):
+                last_reddit_slot = slot
+                state["last_reddit_slot"] = slot
+                _save_state(state)
 
             time.sleep(poll_seconds)
 
