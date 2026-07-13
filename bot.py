@@ -1190,7 +1190,7 @@ def handle_telegram_message(message, chat_id: int):
                 {
                     "text": (
                         f"🇰🇷 {label} 장중 랭킹 조회 중…\n"
-                        "Yahoo 일봉 최신 봉 vs 전일 종가 (캐시 강제 갱신)"
+                        "Naver 실시간 현재가 vs 전일 종가 (Yahoo 일봉 전일 수익률 아님)"
                     )
                 }
             ]
