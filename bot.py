@@ -111,6 +111,9 @@ What each command returns:
 /financial AAPL
 → S&P 500 fundamental analysis: PER, PBR, ROE, margins, EPS growth + charts
 
+/fin_estimate NVDA 삼성전자
+→ 미·한 컨센서스 전망 (2026–2028 매출·영업이익·순이익; Yahoo + Naver)
+
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
 
@@ -161,6 +164,7 @@ def build_help_messages() -> list[dict]:
 
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
+<code>/fin_estimate NVDA 삼성전자</code> — 미·한 컨센서스(26–28 매출·영업이익·순이익)
 <code>/dart 삼성전자</code> — DART 재무
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
@@ -506,7 +510,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -955,6 +959,36 @@ def handle_telegram_message(message, chat_id: int):
             ]
         except Exception as exc:
             return [{"text": f"Financial analysis failed: {exc}"}]
+
+    if lower.startswith("/fin_estimate"):
+        try:
+            from fin_estimate import run_fin_estimate
+
+            replies: list[dict] = [
+                {
+                    "text": (
+                        "📈 Fetching consensus estimates "
+                        "(Yahoo + Naver/WiseReport)…"
+                    )
+                }
+            ]
+            result = run_fin_estimate(normalized)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /fin_estimate TICKER [TICKER…]\n"
+                        "Example: /fin_estimate NVDA\n"
+                        "Example: /fin_estimate NVDA 삼성전자\n"
+                        "Example: /fin_estimate NVDA 005930 AAPL\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"Fin estimate failed: {exc}"}]
 
     if lower.startswith("/comp"):
         tickers = parse_comp_tickers(normalized)
