@@ -165,6 +165,7 @@ def build_help_messages() -> list[dict]:
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
 <code>/fin_estimate NVDA 삼성전자</code> — 컨센서스+분기재무 Excel
+<code>/nxt</code> — 삼성·하이닉스 KRX vs NXT 거래량
 <code>/dart 삼성전자</code> — DART 재무
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
@@ -527,7 +528,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /nxt /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -976,6 +977,31 @@ def handle_telegram_message(message, chat_id: int):
             ]
         except Exception as exc:
             return [{"text": f"Financial analysis failed: {exc}"}]
+
+    if lower.startswith("/nxt"):
+        try:
+            from nxt_data import run_nxt
+
+            replies: list[dict] = [
+                {"text": "📡 Fetching KRX vs NXT (Nextrade) volume…"}
+            ]
+            result = run_nxt(normalized)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /nxt [TICKER…]\n"
+                        "Example: /nxt\n"
+                        "Example: /nxt 005930 000660\n"
+                        "Example: /nxt 삼성전자 SK하이닉스\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"NXT lookup failed: {exc}"}]
 
     if lower.startswith("/fin_estimate"):
         try:
