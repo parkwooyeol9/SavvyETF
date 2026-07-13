@@ -88,7 +88,7 @@ What each command returns:
 → KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
 
 /summary_kor_intra
-→ Same as /summary_kor using mid-session Yahoo returns (auto 11:00 & 15:00 KST)
+→ Same as /summary_kor using Naver 1m vs previous close (auto 11:00 & 15:00 KST)
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -155,7 +155,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary</code> 06:30 — 미국 마감 브리핑
 <code>/summary_pre</code> 21:50 — 프리마켓
 <code>/summary_kor</code> 15:40 — 한국 마감
-<code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중
+<code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중 (Naver 1분봉)
 <code>/reddit</code> 17·19·21 — WSB 핫토픽 + 재무
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 
@@ -774,7 +774,7 @@ def handle_telegram_message(message, chat_id: int):
                 {
                     "text": (
                         "🇰🇷 Building Korea intraday brief "
-                        "(force-refresh Yahoo · KOSPI200 + KOSDAQ100)…"
+                        "(Naver 1분봉 vs 전일 종가 · KOSPI200 + KOSDAQ100)…"
                     )
                 }
             ]

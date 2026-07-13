@@ -86,7 +86,7 @@ def _is_intraday(summary: dict | None = None, *, intraday: bool = False) -> bool
 
 def _price_metric_line(*, intraday: bool) -> str:
     if intraday:
-        return "장중 수익률(전일 종가 대비) · 누적 거래량 / 21일 평균 · Yahoo .KS/.KQ"
+        return "장중 수익률 = (Naver 1분봉 종가 − 전일 종가) / 전일 종가 · 거래량=당일누적/21일평균"
     return "Price: last day return · Volume: latest / 21d avg"
 
 
@@ -108,11 +108,26 @@ def build_kor_market_summary(
     universes: list[dict] = []
     all_tickers: list[str] = []
     ticker_universe: dict[str, str] = {}
+    intraday_meta: dict[str, dict] = {}
 
     for universe in SUMMARY_KOR_UNIVERSES:
-        boards = _summary_boards(universe)
+        if intraday:
+            from kr_intra_rankings import build_kr_intraday_summary_boards
+
+            boards, meta, leader = build_kr_intraday_summary_boards(
+                universe, top_n=DEFAULT_TOP_N
+            )
+            intraday_meta[universe] = {
+                "source": meta.get("source"),
+                "used_minute": meta.get("used_minute"),
+                "scanned": meta.get("scanned"),
+                "sample_bar_time": meta.get("sample_bar_time"),
+                "session": meta.get("session"),
+            }
+        else:
+            boards = _summary_boards(universe)
+            leader = get_top_leader_ticker(universe, "surge")
         tickers = get_ranking_tickers_for_boards(boards)
-        leader = get_top_leader_ticker(universe, "surge")
         for ticker in tickers:
             if ticker not in all_tickers:
                 all_tickers.append(ticker)
@@ -152,6 +167,12 @@ def build_kor_market_summary(
         "ticker_universe": ticker_universe,
         "ticker_count": len(all_tickers),
         "news_source": "naver",
+        "intraday_meta": intraday_meta,
+        "price_source": (
+            "Naver 1m vs previous close"
+            if intraday
+            else "Yahoo daily cache"
+        ),
     }
 
 
@@ -354,7 +375,7 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
     intraday = _is_intraday(summary)
     title = "🇰🇷 SavvyETF Korea Intraday Brief" if intraday else "🇰🇷 SavvyETF Korea Brief"
     source_line = (
-        "KOSPI 200 + KOSDAQ 100 · 장중 Yahoo · Naver News · DART"
+        "KOSPI 200 + KOSDAQ 100 · Naver 1분봉 vs 전일 종가 · Naver News · DART"
         if intraday
         else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
     )
@@ -740,16 +761,18 @@ def generate_summary_kor(
     intraday: bool = False,
     force_refresh: bool | None = None,
 ) -> dict:
-    force = bool(intraday) if force_refresh is None else bool(force_refresh)
-    missing = ensure_kor_caches(force=force)
-    if missing:
-        labels = ", ".join(UNIVERSES[u]["label"] for u in missing)
-        cmd = "/summary_kor_intra" if intraday else "/summary_kor"
-        raise RuntimeError(
-            f"Korea summary caches are not ready ({labels}). Try {cmd} again shortly."
-        )
-
-    summary = build_kor_market_summary(intraday=intraday)
+    if intraday:
+        # Live Naver 1m rankings — do not use Yahoo same-day disk cache.
+        summary = build_kor_market_summary(intraday=True)
+    else:
+        force = False if force_refresh is None else bool(force_refresh)
+        missing = ensure_kor_caches(force=force)
+        if missing:
+            labels = ", ".join(UNIVERSES[u]["label"] for u in missing)
+            raise RuntimeError(
+                f"Korea summary caches are not ready ({labels}). Try /summary_kor again shortly."
+            )
+        summary = build_kor_market_summary(intraday=False)
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
     summary["ai_analysis"] = {
@@ -817,5 +840,5 @@ def generate_summary_kor(
 
 
 def generate_summary_kor_intra(public_url: str = "") -> dict:
-    """Intraday Korea brief: force-refresh Yahoo session bars, then same pipeline as /summary_kor."""
+    """Intraday Korea brief: Naver 1m vs previous close (same as /kospi_intra)."""
     return generate_summary_kor(public_url=public_url, intraday=True)

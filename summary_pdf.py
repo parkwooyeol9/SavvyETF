@@ -448,7 +448,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
     if is_pre:
         metric_line = "Pre-market % vs previous close  ·  Finnhub extended-hours"
     elif is_kor_intra:
-        metric_line = "Intraday % vs prev close  ·  Volume / 21d avg  ·  Yahoo .KS/.KQ"
+        metric_line = "Intraday % vs prev close  ·  Volume / 21d avg  ·  Naver 1m"
     elif is_kor:
         metric_line = "Price: last day return  ·  Volume: latest / 21d avg  ·  Yahoo .KS/.KQ"
     else:
@@ -599,7 +599,7 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
             line2 = "SavvyETF premarket brief · ETF excluded"
             footer = "premarket"
         elif is_kor_intra:
-            line1 = "투자 권유 아님 · 장중 Yahoo · Naver News · PDF: /summary_kor_intra.pdf"
+            line1 = "투자 권유 아님 · Naver 1분봉 · Naver News · PDF: /summary_kor_intra.pdf"
             line2 = "SavvyETF Korea intraday · KOSPI200 + KOSDAQ100"
             footer = "korea-intra"
         else:

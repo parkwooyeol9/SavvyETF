@@ -511,6 +511,38 @@ def format_kr_intraday_rankings_message(
     return message
 
 
+def ranking_boards_from_df(
+    df: pd.DataFrame,
+    meta: dict[str, Any],
+    *,
+    top_n: int = DEFAULT_TOP_N,
+) -> dict[str, Any]:
+    """Board dicts shaped like stock_crawler._ranking_slice for /summary_kor_intra."""
+    boards: dict[str, Any] = {}
+    for mode in ("surge", "dropvol"):
+        board = _board(df, mode, top_n=top_n, bottom_n=0)
+        board["scanned"] = meta.get("scanned", len(df))
+        board["skipped"] = meta.get("skipped", 0)
+        boards[mode] = board
+    return boards
+
+
+def build_kr_intraday_summary_boards(
+    universe: str,
+    *,
+    top_n: int = DEFAULT_TOP_N,
+) -> tuple[dict[str, Any], dict[str, Any], str | None]:
+    """Return (boards, meta, surge_leader) using Naver 1m vs previous close."""
+    df, meta = build_kr_intraday_metrics_table(universe)
+    if df.empty or meta.get("used_minute", 0) == 0:
+        raise RuntimeError(
+            f"{UNIVERSES[universe]['label']}: Naver 1분봉 장중 데이터가 없습니다."
+        )
+    boards = ranking_boards_from_df(df, meta, top_n=top_n)
+    leader = boards["surge"]["top"][0][0] if boards["surge"]["top"] else None
+    return boards, meta, leader
+
+
 def run_kr_intraday_rankings(
     universe: str,
     mode: str = "all",
