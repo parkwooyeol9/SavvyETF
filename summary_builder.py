@@ -803,14 +803,14 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     }
 
 
-def _build_macro_appendix() -> dict:
+def _build_macro_appendix(*, force: bool = False) -> dict:
     try:
         from macro_analyst import format_macro_ai_telegram, generate_macro_ai_brief
         from macro_charts import format_macro_chart_caption, format_macro_text, plot_macro_dashboard
         from macro_data import build_macro_bundle
         from macro_scores import compute_macro_stress
 
-        bundle = build_macro_bundle(force=False)
+        bundle = build_macro_bundle(force=force)
         stress = compute_macro_stress(
             bundle["snapshot"],
             edgar=bundle.get("edgar"),
@@ -898,7 +898,7 @@ a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
 </body></html>"""
 
 
-def generate_and_save_summary(public_url: str = "") -> dict:
+def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False) -> dict:
     summary = build_market_summary()
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
@@ -911,7 +911,7 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     except Exception as exc:
         summary["heatmap_sp"] = {"error": str(exc)}
 
-    summary["macro"] = _build_macro_appendix()
+    summary["macro"] = _build_macro_appendix(force=force_macro)
     summary["crypto"] = _build_crypto_appendix()
     # Freeze to raw bytes BEFORE any consumer (PDF/HTML/Telegram) touches charts.
     _freeze_summary_charts(summary)

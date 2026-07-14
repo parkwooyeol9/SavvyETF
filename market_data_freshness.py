@@ -8,8 +8,6 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-import yfinance as yf
-
 ET = ZoneInfo("America/New_York")
 MARKET_CLOSE_TIME = time(16, 0)
 DEFAULT_REFERENCE_TICKER = "SPY"
@@ -17,6 +15,8 @@ DEFAULT_REFERENCE_TICKER = "SPY"
 
 @contextmanager
 def _quiet_yfinance():
+    import yfinance as yf  # noqa: F401 — keep import local to avoid hard dep at import time
+
     with open(os.devnull, "w", encoding="utf-8") as devnull:
         old_stderr = sys.stderr
         sys.stderr = devnull
@@ -79,7 +79,25 @@ def is_after_us_market_close(now_et: datetime | None = None) -> bool:
 
 
 def latest_yf_daily_bar(ticker: str | None = None) -> tuple[date | None, float | None]:
+    """
+    Latest daily bar date + volume for the reference ticker.
+
+    Prefer the Yahoo chart API (same provider as /sp rankings). Fall back to yfinance.
+    """
     symbol = ticker or reference_ticker()
+
+    try:
+        from yahoo_market import latest_daily_bar
+
+        ts, volume = latest_daily_bar(symbol)
+        if ts is not None:
+            bar_date = ts.date() if hasattr(ts, "date") else date.fromisoformat(str(ts)[:10])
+            return bar_date, volume
+    except Exception:
+        pass
+
+    import yfinance as yf
+
     with _quiet_yfinance():
         try:
             df = yf.Ticker(symbol).history(period="10d", interval="1d", auto_adjust=True)
@@ -90,22 +108,29 @@ def latest_yf_daily_bar(ticker: str | None = None) -> tuple[date | None, float |
         return None, None
 
     row = df.iloc[-1]
-    bar_date = df.index[-1].date()
+    idx = df.index[-1]
+    if getattr(idx, "tzinfo", None) is not None:
+        bar_date = idx.tz_convert(ET).date()
+    else:
+        bar_date = idx.date()
     volume = float(row.get("Volume", 0) or 0)
     return bar_date, volume
 
 
 def is_yf_daily_data_ready(now_et: datetime | None = None) -> tuple[bool, str]:
     """
-    True when YF's latest daily bar matches the session we expect after US close.
-    """
-    if not is_after_us_market_close(now_et):
-        return False, "before US market close"
+    True when Yahoo's latest daily bar matches the session we expect for scheduled US briefs.
 
+    Used both after the US close and for the fixed 07:00 KST brief (which fires while ET
+    may already be the next calendar day / weekend).
+    """
+    now_et = now_et or datetime.now(ET)
     expected = expected_latest_daily_date(now_et)
     if expected is None:
         return False, "no expected session date"
 
+    # Before today's close on a weekday, the "expected" bar is the prior session — that
+    # bar should already exist. Still require that Yahoo has at least that session.
     latest_date, latest_volume = latest_yf_daily_bar()
     if latest_date is None:
         return False, f"no {reference_ticker()} daily data from Yahoo Finance"
@@ -118,6 +143,10 @@ def is_yf_daily_data_ready(now_et: datetime | None = None) -> tuple[bool, str]:
 
     if latest_volume is not None and latest_volume <= 0:
         return False, f"latest bar volume is zero ({latest_date.isoformat()})"
+
+    # After today's close, only then require "after close" semantics for *today's* bar.
+    if expected == now_et.date() and now_et.weekday() < 5 and not is_after_us_market_close(now_et):
+        return False, "before US market close"
 
     return True, f"latest bar {latest_date.isoformat()} ready (expected {expected.isoformat()})"
 

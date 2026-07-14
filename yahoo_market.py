@@ -45,7 +45,7 @@ def fetch_daily_candles(
     interval: str = DEFAULT_INTERVAL,
     timeout: float = 20,
 ) -> pd.DataFrame:
-    """Return daily close/volume indexed by date (naive)."""
+    """Return daily close/volume indexed by US/Eastern session calendar date (naive midnight)."""
     symbol = to_yahoo_symbol(ticker)
     try:
         response = _session().get(
@@ -76,16 +76,30 @@ def fetch_daily_candles(
     if not timestamps or not closes:
         return pd.DataFrame()
 
+    # Yahoo daily bars are session opens in UTC. Convert to the listing exchange
+    # calendar date so as_of / session checks match the right trading day.
+    session_tz = "Asia/Seoul" if symbol.endswith((".KS", ".KQ")) else "America/New_York"
+    idx = pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(session_tz)
     frame = pd.DataFrame(
         {
             "close": pd.to_numeric(closes, errors="coerce"),
             "volume": pd.to_numeric(volumes, errors="coerce"),
         },
-        index=pd.to_datetime(timestamps, unit="s", utc=True).tz_localize(None),
+        index=idx.normalize().tz_localize(None),
     )
     frame = frame.dropna(subset=["close"]).sort_index()
     frame = frame[~frame.index.duplicated(keep="last")]
     return frame
+
+
+def latest_daily_bar(ticker: str) -> tuple[pd.Timestamp | None, float | None]:
+    """Return (session date, volume) for the latest daily bar, or (None, None)."""
+    frame = fetch_daily_candles(ticker, range_="10d")
+    if frame.empty:
+        return None, None
+    last = frame.iloc[-1]
+    volume = float(last.get("volume", 0) or 0)
+    return frame.index[-1], volume
 
 
 def map_tickers(

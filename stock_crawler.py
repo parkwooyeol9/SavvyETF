@@ -24,7 +24,7 @@ SP500_TICKERS_PATH = PROJECT_DIR / "colab" / "sp500_tickers.txt"
 NASDAQ100_TICKERS_PATH = PROJECT_DIR / "colab" / "nasdaq100_tickers.txt"
 KOSPI200_TICKERS_PATH = PROJECT_DIR / "colab" / "kospi200_tickers.txt"
 KOSDAQ100_TICKERS_PATH = PROJECT_DIR / "colab" / "kosdaq100_tickers.txt"
-CACHE_VERSION = 8
+CACHE_VERSION = 9
 
 DAILY_RETURN_COL = "Daily Return"
 VOL_RATIO_COL = "Vol Ratio"
@@ -311,19 +311,42 @@ def cache_is_stale(universe: str) -> bool:
     return age is not None and age > CACHE_TTL_SECONDS
 
 
+def _session_bar_as_of_date(universe: str) -> str:
+    """Stamp rankings cache with the verified Yahoo session bar date (not wall clock)."""
+    if universe in {"kospi", "kosdaq"}:
+        try:
+            from yahoo_market import latest_daily_bar
+
+            probe = "005930.KS" if universe == "kospi" else "247540.KQ"
+            ts, _ = latest_daily_bar(probe)
+            if ts is not None:
+                return ts.date().isoformat() if hasattr(ts, "date") else str(ts)[:10]
+        except Exception:
+            pass
+        return _market_as_of_date(universe)
+
+    from market_data_freshness import latest_yf_daily_bar
+
+    bar_date, _ = latest_yf_daily_bar()
+    if bar_date is not None:
+        return bar_date.isoformat()
+    return _market_as_of_date(universe)
+
+
 def rankings_cache_is_fresh_for_session(universe: str) -> bool:
     """
-    True when in-memory/disk rankings match the latest US regular session we should show.
+    True when in-memory/disk rankings match the latest session bar we should show.
 
-    After the US close, a cache built earlier the same calendar day (e.g. Korea morning /
-    US premarket) is treated as stale so /sp, /heatmap, and scheduled summaries rebuild.
+    US: as_of_date must equal Yahoo's expected session date (verified bar date stamp).
+    After the US close, the cache must also have been loaded after close+buffer so a
+    morning rebuild stamped with a premature calendar date cannot stick.
     """
     if universe not in UNIVERSES:
         return False
     if not is_cache_ready(universe):
         return False
 
-    # Korea universes: keep same-day TTL logic only.
+    # Korea universes: keep same-day TTL logic only (force=True at 15:40 EOD schedule).
     if universe in {"kospi", "kosdaq"}:
         return not cache_is_stale(universe)
 
@@ -348,24 +371,22 @@ def rankings_cache_is_fresh_for_session(universe: str) -> bool:
     except ValueError:
         as_of_date = None
 
-    if is_after_us_market_close(now_et):
-        if as_of_date != expected:
-            return False
+    if as_of_date is None or as_of_date < expected:
+        return False
+
+    if is_after_us_market_close(now_et) and as_of_date == expected == now_et.date():
         ready_after = datetime.combine(expected, MARKET_CLOSE_TIME, tzinfo=ET) + timedelta(
             minutes=data_ready_buffer_minutes()
         )
         return loaded_at >= ready_after.timestamp()
 
-    # Before the close: accept cache that still covers the previous session bar.
-    if as_of_date is not None and as_of_date < expected:
-        return False
-    return True
+    return as_of_date == expected
 
 
 def ensure_fresh_rankings_cache(universe: str, *, blocking: bool = True) -> bool:
     """
-    Ensure rankings cache reflects the latest complete US session.
-    Returns True when a fresh cache is ready.
+    Ensure rankings cache reflects the latest complete session bar.
+    Returns True only when session-fresh (does not fall back to stale ready caches).
     """
     if universe not in UNIVERSES:
         return False
@@ -376,7 +397,7 @@ def ensure_fresh_rankings_cache(universe: str, *, blocking: bool = True) -> bool
     print(f"{label}: rankings cache stale for session — forcing rebuild.")
     if blocking:
         warmup_cache(universe, force=True)
-        return rankings_cache_is_fresh_for_session(universe) or is_cache_ready(universe)
+        return rankings_cache_is_fresh_for_session(universe)
 
     start_universe_cache_warmup(universe, force=True)
     return False
@@ -391,7 +412,8 @@ def get_cache_session_label(universe: str) -> str:
     loaded_at = float(meta.get("loaded_at", 0))
     age_min = int(max(0.0, time.time() - loaded_at) // 60) if loaded_at else -1
     fresh = "fresh" if rankings_cache_is_fresh_for_session(universe) else "stale"
-    return f"as_of {as_of} ET · {age_min}m old · {fresh}"
+    tz_label = "KST" if universe in {"kospi", "kosdaq"} else "ET"
+    return f"as_of {as_of} {tz_label} · {age_min}m old · {fresh}"
 
 
 def is_cache_ready(universe: str = "etf") -> bool:
@@ -618,14 +640,22 @@ def build_etf_return_table(
     return build_metrics_table(tickers, chunk_size, pause_seconds, on_progress)
 
 
-def _save_disk_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: int) -> None:
+def _save_disk_cache(
+    universe: str,
+    df: pd.DataFrame,
+    scanned: int,
+    skipped: int,
+    *,
+    as_of_date: str | None = None,
+    loaded_at: float | None = None,
+) -> None:
     cache_file = UNIVERSES[universe]["cache_file"]
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    loaded_at = time.time()
+    stamped_at = time.time() if loaded_at is None else loaded_at
     payload = {
         "version": CACHE_VERSION,
-        "loaded_at": loaded_at,
-        "as_of_date": _market_as_of_date(universe),
+        "loaded_at": stamped_at,
+        "as_of_date": as_of_date or _session_bar_as_of_date(universe),
         "scanned": scanned,
         "skipped": skipped,
         "dataframe": df,
@@ -683,18 +713,27 @@ def _set_memory_cache(universe: str, df: pd.DataFrame, scanned: int, skipped: in
         return
     state = _states[universe]
     loaded_at = time.time()
+    as_of = _session_bar_as_of_date(universe)
     state["df"] = df
     state["meta"] = {
         "scanned": scanned,
         "skipped": skipped,
         "loaded_at": loaded_at,
-        "as_of_date": _market_as_of_date(universe),
+        "as_of_date": as_of,
     }
     state["ready"] = True
-    _save_disk_cache(universe, df, scanned, skipped)
+    _save_disk_cache(
+        universe,
+        df,
+        scanned,
+        skipped,
+        as_of_date=as_of,
+        loaded_at=loaded_at,
+    )
+    tz_label = "KST" if universe in {"kospi", "kosdaq"} else "ET"
     print(
         f"{UNIVERSES[universe]['label']} cache saved to disk "
-        f"({len(df)} tickers, as_of={state['meta']['as_of_date']} ET)."
+        f"({len(df)} tickers, as_of={as_of} {tz_label})."
     )
 
 
@@ -704,14 +743,20 @@ def warmup_cache(universe: str = "etf", force: bool = False) -> None:
 
     if not force and is_cache_ready(universe):
         return
+    if force and rankings_cache_is_fresh_for_session(universe):
+        return
 
     with _warmup_lock:
         if not force and is_cache_ready(universe):
             return
+        if force and rankings_cache_is_fresh_for_session(universe):
+            return
         if universe in _warmup_running:
             while universe in _warmup_running:
                 time.sleep(0.5)
-            return
+            # Another builder finished; only skip if session is actually fresh now.
+            if not force or rankings_cache_is_fresh_for_session(universe):
+                return
         _warmup_running.add(universe)
         label = UNIVERSES[universe]["label"]
         _set_warmup_status(universe, phase="running", message=f"Building {label} cache…")

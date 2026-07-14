@@ -903,6 +903,7 @@ def handle_telegram_message(message, chat_id: int):
     if lower.startswith("/summary"):
         try:
             from summary_builder import SUMMARY_UNIVERSES, caches_ready, generate_and_save_summary
+            from stock_crawler import ensure_fresh_rankings_cache
 
             if not caches_ready():
                 missing = ensure_universe_caches(SUMMARY_UNIVERSES)
@@ -919,7 +920,29 @@ def handle_telegram_message(message, chat_id: int):
                             )
                         }
                     ]
-            summary = generate_and_save_summary(public_url=summary_public_url())
+            stale = [
+                universe
+                for universe in SUMMARY_UNIVERSES
+                if not ensure_fresh_rankings_cache(universe, blocking=True)
+            ]
+            if stale:
+                labels = ", ".join(
+                    {"etf": "ETF", "sp": "S&P 500", "nas": "NASDAQ 100"}.get(u, u)
+                    for u in stale
+                )
+                return [
+                    {
+                        "text": (
+                            f"Waiting for latest session bars ({labels}). "
+                            "Yahoo has not published the expected daily data yet — "
+                            "try /summary again shortly."
+                        )
+                    }
+                ]
+            summary = generate_and_save_summary(
+                public_url=summary_public_url(),
+                force_macro=True,
+            )
             return summary["telegram_messages"]
         except Exception as exc:
             return [{"text": f"Error building summary: {exc}"}]
@@ -1737,6 +1760,36 @@ def start_web_server():
                         ),
                     },
                 }
+                try:
+                    from market_data_freshness import (
+                        expected_latest_daily_date,
+                        is_yf_daily_data_ready,
+                        latest_yf_daily_bar,
+                    )
+                    from stock_crawler import get_cache_session_label, rankings_cache_is_fresh_for_session
+
+                    yf_ready, yf_detail = is_yf_daily_data_ready()
+                    bar_date, bar_vol = latest_yf_daily_bar()
+                    payload["market_data"] = {
+                        "expected_session": (
+                            expected_latest_daily_date().isoformat()
+                            if expected_latest_daily_date()
+                            else None
+                        ),
+                        "yahoo_ready": yf_ready,
+                        "yahoo_detail": yf_detail,
+                        "yahoo_bar_date": bar_date.isoformat() if bar_date else None,
+                        "yahoo_bar_volume": bar_vol,
+                        "caches": {
+                            u: {
+                                "label": get_cache_session_label(u),
+                                "fresh": rankings_cache_is_fresh_for_session(u),
+                            }
+                            for u in ("etf", "sp", "nas")
+                        },
+                    }
+                except Exception as exc:
+                    payload["market_data"] = {"error": str(exc)[:240]}
                 self._send(
                     json.dumps(payload).encode("utf-8"),
                     "application/json; charset=utf-8",
@@ -2200,13 +2253,17 @@ def start_telegram_bot(token: str):
             time.sleep(5)
 
 
-def _refresh_summary_caches_for_schedule() -> None:
-    """Force-refresh /summary universes so heatmap/rankings use post-close bars."""
+def _refresh_summary_caches_for_schedule() -> bool:
+    """Force-refresh /summary universes so heatmap/rankings use the verified session bar."""
     from summary_builder import SUMMARY_UNIVERSES
     from stock_crawler import ensure_fresh_rankings_cache
 
+    ok = True
     for universe in SUMMARY_UNIVERSES:
-        ensure_fresh_rankings_cache(universe, blocking=True)
+        if not ensure_fresh_rankings_cache(universe, blocking=True):
+            print(f"Schedule refresh: {universe} still session-stale after force rebuild.")
+            ok = False
+    return ok
 
 
 if __name__ == "__main__":

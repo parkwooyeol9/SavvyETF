@@ -131,11 +131,18 @@ def _current_minute_slot(now: datetime) -> str:
 
 
 def _should_skip_non_trading(now_kst: datetime) -> bool:
-    """Skip Sat/Sun (KST) and US full-day holidays (ET date at fire time)."""
+    """Skip Sat/Sun (KST) and US holidays for the *session* the brief covers.
+
+    Monday 07:00 KST is still Sunday evening ET — use expected_latest_daily_date
+    (Friday) so we do not skip the Friday close brief.
+    """
     if now_kst.weekday() >= 5:
         return True
     now_et = datetime.now(ET)
-    return not is_us_equity_trading_day(now_et.date())
+    session = expected_latest_daily_date(now_et)
+    if session is None:
+        return True
+    return not is_us_equity_trading_day(session)
 
 
 def _summary_heavy_wait_seconds() -> int:
@@ -152,6 +159,23 @@ def _summary_cache_wait_seconds() -> int:
         return max(60, int(raw))
     except ValueError:
         return 900
+
+
+def _wait_for_yf_session_data(trigger: str) -> bool:
+    """Block until Yahoo has the expected US session bar (or timeout)."""
+    deadline = time.monotonic() + _summary_cache_wait_seconds()
+    while time.monotonic() < deadline:
+        ready, detail = is_yf_daily_data_ready()
+        if ready:
+            print(f"Scheduled summary Yahoo ready ({trigger}): {detail}")
+            return True
+        print(f"Scheduled summary waiting for Yahoo ({trigger}): {detail}")
+        time.sleep(_poll_seconds())
+    print(
+        f"Scheduled summary skipped ({trigger}): Yahoo session bar not ready after "
+        f"{_summary_cache_wait_seconds()}s."
+    )
+    return False
 
 
 def _wait_for_summary_caches(trigger: str) -> bool:
@@ -181,12 +205,16 @@ def _wait_for_summary_caches(trigger: str) -> bool:
     return False
 
 
-def _refresh_summary_caches() -> None:
+def _refresh_summary_caches() -> bool:
     from summary_builder import SUMMARY_UNIVERSES
     from stock_crawler import ensure_fresh_rankings_cache
 
+    ok = True
     for universe in SUMMARY_UNIVERSES:
-        ensure_fresh_rankings_cache(universe, blocking=True)
+        if not ensure_fresh_rankings_cache(universe, blocking=True):
+            print(f"Scheduled summary: {universe} still session-stale after force rebuild.")
+            ok = False
+    return ok
 
 
 def run_scheduled_summary(
@@ -197,6 +225,14 @@ def run_scheduled_summary(
     trigger: str = "scheduled",
 ) -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    # Yahoo must have the latest complete US session bar before we rebuild rankings.
+    if not _wait_for_yf_session_data(trigger):
+        update_scheduler_state(
+            last_summary_error=f"{trigger}: Yahoo session bar not ready",
+            last_summary_attempt_at=datetime.now(KST).isoformat(),
+        )
+        return False
 
     # Wait for caches without holding the heavy-work lock (warmup threads need to finish).
     if not _wait_for_summary_caches(trigger):
@@ -231,13 +267,23 @@ def run_scheduled_summary(
     from summary_builder import generate_and_save_summary
 
     try:
-        # Only refresh universes needed for /summary (etf+sp), not all markets.
+        # Force-refresh universes needed for /summary (etf+sp) from the verified session.
         if callable(refresh_cache_fn):
-            refresh_cache_fn()
-        else:
-            _refresh_summary_caches()
+            refreshed = refresh_cache_fn()
+            if refreshed is False:
+                update_scheduler_state(
+                    last_summary_error=f"{trigger}: rankings still session-stale",
+                    last_summary_attempt_at=datetime.now(KST).isoformat(),
+                )
+                return False
+        elif not _refresh_summary_caches():
+            update_scheduler_state(
+                last_summary_error=f"{trigger}: rankings still session-stale",
+                last_summary_attempt_at=datetime.now(KST).isoformat(),
+            )
+            return False
 
-        summary = generate_and_save_summary(public_url=public_url)
+        summary = generate_and_save_summary(public_url=public_url, force_macro=True)
         messages = summary["telegram_messages"]
         delivered = broadcast_fn(token, messages)
         if not delivered:
