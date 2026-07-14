@@ -4,8 +4,9 @@ Exact ``minute == N`` checks miss jobs when:
   - startup grace overlaps the target minute
   - heavy-work lock is busy for >1 minute
   - poll drift wakes the loop at minute+1
+  - Render redeploy finishes after the target minute
 
-Use a short catch-up window so due jobs still fire once per slot.
+Use a catch-up window so due jobs still fire once per slot.
 """
 
 from __future__ import annotations
@@ -44,14 +45,22 @@ def due_hourly_slot_id(
     last_slot: str | None,
     window_minutes: int = DEFAULT_CATCHUP_MINUTES,
 ) -> str | None:
-    """Hourly jobs historically keyed as ``%Y-%m-%d-%H`` (minute forced to 00)."""
-    if now.hour not in hours:
-        return None
-    return due_slot_id(
-        now,
-        now.hour,
-        0,
-        last_slot=last_slot,
-        window_minutes=window_minutes,
-        slot_fmt="%Y-%m-%d-%H",
-    )
+    """Return the earliest due hourly slot still inside its catch-up window.
+
+    Important: do **not** require ``now.hour in hours``. Otherwise a 11:00 job
+    with a multi-hour catch-up cannot fire at 11:40 / 12:10 after a redeploy.
+    """
+    for hour in sorted({int(h) for h in hours}):
+        if not 0 <= hour <= 23:
+            continue
+        slot = due_slot_id(
+            now,
+            hour,
+            0,
+            last_slot=last_slot,
+            window_minutes=window_minutes,
+            slot_fmt="%Y-%m-%d-%H",
+        )
+        if slot:
+            return slot
+    return None

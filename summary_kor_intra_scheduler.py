@@ -92,13 +92,21 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
     hours = _schedule_hours()
     poll_seconds = _poll_seconds()
     hours_label = ", ".join(f"{h:02d}:00" for h in hours)
+    catchup_minutes = 180
+    try:
+        catchup_minutes = max(
+            30,
+            int(os.environ.get("SUMMARY_KOR_INTRA_CATCHUP_MINUTES", "180")),
+        )
+    except ValueError:
+        catchup_minutes = 180
 
     def loop() -> None:
         state = _load_state()
         last_slot = state.get("last_summary_kor_intra_slot")
         print(
             f"summary_kor_intra scheduler active — weekdays at {hours_label} KST "
-            "(15m catch-up window)"
+            f"({catchup_minutes}m catch-up window)"
         )
 
         while True:
@@ -111,7 +119,12 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
                 update_scheduler_state(
                     summary_kor_intra_scheduler_heartbeat=now.isoformat()
                 )
-                slot = due_hourly_slot_id(now, hours, last_slot=last_slot)
+                slot = due_hourly_slot_id(
+                    now,
+                    hours,
+                    last_slot=last_slot,
+                    window_minutes=catchup_minutes,
+                )
                 if slot:
                     if _should_skip_kr_non_trading(now):
                         print(f"Scheduled summary_kor_intra skipped ({slot}): weekend")
@@ -122,8 +135,20 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
                     ):
                         last_slot = slot
                         update_scheduler_state(last_summary_kor_intra_slot=slot)
+                    else:
+                        update_scheduler_state(
+                            last_summary_kor_intra_error=f"{slot}: run returned false",
+                            last_summary_kor_intra_attempt_at=now.isoformat(),
+                        )
             except Exception as exc:
                 print(f"summary_kor_intra scheduler loop error: {exc}")
+                try:
+                    update_scheduler_state(
+                        last_summary_kor_intra_error=f"loop: {exc}",
+                        last_summary_kor_intra_attempt_at=datetime.now(KST).isoformat(),
+                    )
+                except Exception:
+                    pass
 
             time.sleep(poll_seconds)
 

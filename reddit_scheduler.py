@@ -82,13 +82,21 @@ def start_reddit_scheduler(token: str, broadcast_fn) -> None:
     hours = _reddit_schedule_hours()
     poll_seconds = _poll_seconds()
     hours_label = ", ".join(f"{h:02d}:00" for h in hours)
+    catchup_minutes = 120
+    try:
+        catchup_minutes = max(
+            15,
+            int(os.environ.get("REDDIT_CATCHUP_MINUTES", "120")),
+        )
+    except ValueError:
+        catchup_minutes = 120
 
     def loop() -> None:
         state = _load_state()
         last_reddit_slot = state.get("last_reddit_slot")
         print(
             f"Reddit scheduler active — daily at {hours_label} KST "
-            "(15m catch-up window)"
+            f"({catchup_minutes}m catch-up window)"
         )
 
         while True:
@@ -99,7 +107,12 @@ def start_reddit_scheduler(token: str, broadcast_fn) -> None:
 
                 now = datetime.now(KST)
                 update_scheduler_state(reddit_scheduler_heartbeat=now.isoformat())
-                slot = due_hourly_slot_id(now, hours, last_slot=last_reddit_slot)
+                slot = due_hourly_slot_id(
+                    now,
+                    hours,
+                    last_slot=last_reddit_slot,
+                    window_minutes=catchup_minutes,
+                )
                 if slot and run_scheduled_reddit(token, broadcast_fn):
                     last_reddit_slot = slot
                     update_scheduler_state(last_reddit_slot=slot)

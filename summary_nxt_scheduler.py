@@ -117,6 +117,14 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
 
     times = _schedule_times_kst()
     poll_seconds = _poll_seconds()
+    catchup_minutes = 360
+    try:
+        catchup_minutes = max(
+            30,
+            int(os.environ.get("SUMMARY_NXT_CATCHUP_MINUTES", "360")),
+        )
+    except ValueError:
+        catchup_minutes = 360
     labels = ", ".join(f"{h:02d}:{m:02d}" for h, m in times)
 
     def loop() -> None:
@@ -124,7 +132,7 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
         last_slot = state.get("last_summary_nxt_slot")
         print(
             f"summary_nxt scheduler active — weekdays at {labels} KST "
-            "(15m catch-up · NXT pre/after pulses)"
+            f"({catchup_minutes}m catch-up · NXT pre/after pulses)"
         )
 
         while True:
@@ -136,7 +144,13 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
                 now = datetime.now(KST)
                 update_scheduler_state(summary_nxt_scheduler_heartbeat=now.isoformat())
                 for hour, minute in times:
-                    slot = due_slot_id(now, hour, minute, last_slot=last_slot)
+                    slot = due_slot_id(
+                        now,
+                        hour,
+                        minute,
+                        last_slot=last_slot,
+                        window_minutes=catchup_minutes,
+                    )
                     if not slot:
                         continue
                     if _should_skip_kr_non_trading(now):
@@ -151,8 +165,20 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
                     ):
                         last_slot = slot
                         update_scheduler_state(last_summary_nxt_slot=slot)
+                    else:
+                        update_scheduler_state(
+                            last_summary_nxt_error=f"{slot}: run returned false",
+                            last_summary_nxt_attempt_at=now.isoformat(),
+                        )
             except Exception as exc:
                 print(f"summary_nxt scheduler loop error: {exc}")
+                try:
+                    update_scheduler_state(
+                        last_summary_nxt_error=f"loop: {exc}",
+                        last_summary_nxt_attempt_at=datetime.now(KST).isoformat(),
+                    )
+                except Exception:
+                    pass
 
             time.sleep(poll_seconds)
 

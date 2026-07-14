@@ -410,7 +410,7 @@ def start_summary_scheduler(
         try:
             catchup_minutes = max(
                 15,
-                int(os.environ.get("SUMMARY_CATCHUP_MINUTES", "45")),
+                int(os.environ.get("SUMMARY_CATCHUP_MINUTES", "240")),
             )
         except ValueError:
             catchup_minutes = 45

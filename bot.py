@@ -1625,6 +1625,10 @@ def start_web_server():
                         "last_summary_kor_slot": state.get("last_summary_kor_slot"),
                         "last_summary_nxt_slot": state.get("last_summary_nxt_slot"),
                         "last_summary_error": state.get("last_summary_error"),
+                        "last_summary_nxt_error": state.get("last_summary_nxt_error"),
+                        "last_summary_kor_intra_error": state.get(
+                            "last_summary_kor_intra_error"
+                        ),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
                         "summary_scheduler_heartbeat": state.get(
                             "summary_scheduler_heartbeat"

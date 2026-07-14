@@ -88,13 +88,21 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
+    catchup_minutes = 180
+    try:
+        catchup_minutes = max(
+            30,
+            int(os.environ.get("SUMMARY_KOR_CATCHUP_MINUTES", "180")),
+        )
+    except ValueError:
+        catchup_minutes = 180
 
     def loop() -> None:
         state = _load_state()
         last_slot = state.get("last_summary_kor_slot")
         print(
             f"summary_kor scheduler active — weekdays at {hour:02d}:{minute:02d} KST "
-            "(15m catch-up window)"
+            f"({catchup_minutes}m catch-up window)"
         )
 
         while True:
@@ -105,7 +113,13 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
 
                 now = datetime.now(KST)
                 update_scheduler_state(summary_kor_scheduler_heartbeat=now.isoformat())
-                slot = due_slot_id(now, hour, minute, last_slot=last_slot)
+                slot = due_slot_id(
+                    now,
+                    hour,
+                    minute,
+                    last_slot=last_slot,
+                    window_minutes=catchup_minutes,
+                )
                 if slot:
                     if _should_skip_kr_non_trading(now):
                         print(f"Scheduled summary_kor skipped ({slot}): weekend")
