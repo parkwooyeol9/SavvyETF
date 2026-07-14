@@ -1,17 +1,24 @@
-"""NXT (Nextrade ATS) vs KRX volume snapshot via Naver realtime.
+"""NXT (Nextrade ATS) volume / trading-value lookup.
 
-Naver ``polling.finance.naver.com`` exposes:
-  - ``aq`` / ``aa`` — day session accumulated volume / value (KRX tab)
-  - ``nxtOverMarketPriceInfo`` — NXT OHLC, status, accumulated volume/value
+Modes
+-----
+1. Live snapshot (default ``/nxt``)
+   Naver realtime: KRX aq/aa + nxtOverMarketPriceInfo
+
+2. Monthly cumulative (``/nxt 2026-06``)
+   Nextrade official daily per-stock rows (accTdQty / accTrval)
+   https://nextrade.co.kr/brdinfoTime/brdinfoTimeList.do
 
 Default universe: Samsung Electronics (005930) + SK hynix (000660).
 """
 
 from __future__ import annotations
 
+import calendar
 import html
 import re
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import requests
@@ -22,22 +29,51 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 NAVER_REALTIME = "https://polling.finance.naver.com/api/realtime"
+NEXTRADE_DAILY = "https://nextrade.co.kr/brdinfoTime/brdinfoTimeList.do"
 
 DEFAULT_NAMES = {
     "005930": "삼성전자",
     "000660": "SK하이닉스",
 }
 
+MONTH_RE = re.compile(r"^(\d{4})[-/.]?(\d{1,2})$")
 
-def parse_nxt_tickers(command: str) -> list[str]:
-    """Parse `/nxt [ticker…]`. Empty args → Samsung + SK hynix."""
+
+def parse_nxt_command(command: str) -> tuple[date | None, list[str]]:
+    """Parse `/nxt [yyyy-mm] [ticker…]`.
+
+    Returns ``(month_start_or_None, ticker_tokens)``.
+    Empty tickers → Samsung + SK hynix.
+    """
     parts = command.strip().split()
     tokens = [p.strip() for p in parts[1:] if p.strip()]
-    if not tokens:
-        return ["005930", "000660"]
-    if len(tokens) > 8:
+    month: date | None = None
+    ticker_tokens: list[str] = []
+    for token in tokens:
+        if month is None:
+            parsed = _parse_year_month(token)
+            if parsed is not None:
+                month = parsed
+                continue
+        ticker_tokens.append(token)
+    if not ticker_tokens:
+        ticker_tokens = ["005930", "000660"]
+    if len(ticker_tokens) > 8:
         raise ValueError("too many tickers (max 8)")
-    return tokens
+    return month, ticker_tokens
+
+
+def _parse_year_month(token: str) -> date | None:
+    match = MONTH_RE.fullmatch(token.strip())
+    if not match:
+        return None
+    year = int(match.group(1))
+    month = int(match.group(2))
+    if year < 2025 or year > 2100:
+        raise ValueError(f"unsupported year in '{token}' (NXT data from 2025+)")
+    if month < 1 or month > 12:
+        raise ValueError(f"invalid month in '{token}'")
+    return date(year, month, 1)
 
 
 def resolve_nxt_code(token: str) -> dict[str, str]:
@@ -63,7 +99,6 @@ def resolve_nxt_code(token: str) -> dict[str, str]:
             "display": DEFAULT_NAMES.get(upper) or upper,
         }
 
-    # Korean / English name aliases
     aliases = {
         "삼성전자": "005930",
         "삼성": "005930",
@@ -238,8 +273,123 @@ def build_nxt_snapshot(tokens: list[str] | None = None) -> dict[str, Any]:
         )
 
     return {
+        "mode": "live",
         "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M:%S KST"),
         "source": "Naver realtime (KRX aq/aa + nxtOverMarketPriceInfo)",
+        "items": items,
+        "errors": errors,
+    }
+
+
+def _weekday_candidates(year: int, month: int) -> list[date]:
+    """Weekdays in month (Sat/Sun skipped; holidays return empty from API)."""
+    last_day = calendar.monthrange(year, month)[1]
+    out: list[date] = []
+    for day in range(1, last_day + 1):
+        d = date(year, month, day)
+        if d.weekday() < 5:
+            out.append(d)
+    return out
+
+
+def fetch_nextrade_day(code: str, day: date, session: requests.Session) -> dict[str, Any] | None:
+    """One NXT trading day for a 6-digit code from nextrade.co.kr."""
+    day_key = day.strftime("%Y%m%d")
+    response = session.post(
+        NEXTRADE_DAILY,
+        data={
+            "pageIndex": 1,
+            "pageUnit": 20,
+            "scAggDd": day_key,
+            "scMktId": "",
+            "searchKeyword": code,
+            "sortKey": "",
+            "sortType": "",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    rows = (response.json().get("brdinfoTimeList") or [])
+    for row in rows:
+        isu = str(row.get("isuSrdCd") or "")
+        if isu.endswith(code) and str(row.get("aggDd") or "") == day_key:
+            return row
+    for row in rows:
+        if str(row.get("aggDd") or "") == day_key:
+            return row
+    return None
+
+
+def build_nxt_month_snapshot(
+    year: int,
+    month: int,
+    tokens: list[str] | None = None,
+) -> dict[str, Any]:
+    tokens = tokens or ["005930", "000660"]
+    resolved = [resolve_nxt_code(token) for token in tokens]
+    candidates = _weekday_candidates(year, month)
+    generated_at = datetime.now(KST)
+
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": USER_AGENT,
+            "Referer": "https://nextrade.co.kr/menu/transactionStatusMain/menuList.do",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+        }
+    )
+
+    items: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for meta in resolved:
+        code = meta["code"]
+        daily: list[dict[str, Any]] = []
+        for day in candidates:
+            try:
+                row = fetch_nextrade_day(code, day, session)
+            except Exception as exc:
+                errors.append(f"{code} {day.isoformat()}: {exc}")
+                continue
+            if not row:
+                continue
+            value = _safe_int(row.get("accTrval")) or 0
+            volume = _safe_int(row.get("accTdQty")) or 0
+            if value <= 0 and volume <= 0:
+                continue
+            daily.append(
+                {
+                    "date": day.isoformat(),
+                    "price": _safe_int(row.get("curPrc")),
+                    "volume": volume,
+                    "value": value,
+                }
+            )
+            time.sleep(0.04)
+
+        total_value = sum(int(d["value"]) for d in daily)
+        total_volume = sum(int(d["volume"]) for d in daily)
+        if not daily:
+            errors.append(f"{code}: no NXT days in {year}-{month:02d}")
+        items.append(
+            {
+                "query": meta["query"],
+                "code": code,
+                "display": meta["display"],
+                "session_days": len(daily),
+                "nxt_volume": total_volume or None,
+                "nxt_value": total_value or None,
+                "daily": daily,
+            }
+        )
+
+    return {
+        "mode": "month",
+        "year": year,
+        "month": month,
+        "month_label": f"{year}-{month:02d}",
+        "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M:%S KST"),
+        "source": "Nextrade brdinfoTimeList (NXT daily accTrval/accTdQty sum)",
         "items": items,
         "errors": errors,
     }
@@ -277,6 +427,9 @@ def _esc(text: Any) -> str:
 
 
 def format_nxt_telegram(snapshot: dict[str, Any]) -> str:
+    if snapshot.get("mode") == "month":
+        return _format_nxt_month_telegram(snapshot)
+
     lines = [
         "<b>📡 NXT vs KRX — 거래량</b>",
         f"<i>{_esc(snapshot.get('generated_at_display'))}</i>",
@@ -324,7 +477,54 @@ def format_nxt_telegram(snapshot: dict[str, Any]) -> str:
         )
     lines.append(
         "<i>투자 권유 아님. NXT=넥스트레이드(ATS). "
-        "KRX 수치는 Naver 정규장 누적, NXT는 over-market 누적입니다.</i>"
+        "KRX 수치는 Naver 정규장 누적, NXT는 over-market 누적입니다. "
+        "월 누적은 /nxt 2026-06</i>"
+    )
+    text = "\n".join(lines).rstrip()
+    if len(text) > 4000:
+        text = text[:3980] + "\n…(truncated)"
+    return text
+
+
+def _format_nxt_month_telegram(snapshot: dict[str, Any]) -> str:
+    label = snapshot.get("month_label") or ""
+    lines = [
+        f"<b>📡 NXT 월간 누적 — {_esc(label)}</b>",
+        f"<i>{_esc(snapshot.get('generated_at_display'))}</i>",
+        f"<i>{_esc(snapshot.get('source'))}</i>",
+        "",
+    ]
+    grand_value = 0
+    grand_volume = 0
+    for item in snapshot.get("items") or []:
+        value = item.get("nxt_value") or 0
+        volume = item.get("nxt_volume") or 0
+        grand_value += int(value)
+        grand_volume += int(volume)
+        lines.append(
+            f"<b>{_esc(item.get('display'))}</b> (<code>{_esc(item.get('code'))}</code>)"
+        )
+        lines.append(f"  거래일 {item.get('session_days') or 0}일")
+        lines.append(
+            f"  거래량 {_fmt_shares(item.get('nxt_volume'))}주  ·  "
+            f"대금 {_fmt_krw_value(item.get('nxt_value'))}"
+        )
+        lines.append("")
+
+    if len(snapshot.get("items") or []) > 1 and grand_value:
+        lines.append(
+            f"<b>합계</b>  거래량 {_fmt_shares(grand_volume)}주  ·  "
+            f"대금 {_fmt_krw_value(grand_value)}"
+        )
+        lines.append("")
+
+    if snapshot.get("errors"):
+        lines.append(
+            "<i>⚠ " + _esc(" · ".join(snapshot["errors"][:4])) + "</i>"
+        )
+    lines.append(
+        "<i>투자 권유 아님. NXT=넥스트레이드 정규시장 일별 누적 합산 "
+        "(KRX 제외). 출처: nextrade.co.kr</i>"
     )
     text = "\n".join(lines).rstrip()
     if len(text) > 4000:
@@ -333,8 +533,11 @@ def format_nxt_telegram(snapshot: dict[str, Any]) -> str:
 
 
 def run_nxt(command: str) -> dict[str, Any]:
-    tokens = parse_nxt_tickers(command)
-    snapshot = build_nxt_snapshot(tokens)
+    month, tokens = parse_nxt_command(command)
+    if month is not None:
+        snapshot = build_nxt_month_snapshot(month.year, month.month, tokens)
+    else:
+        snapshot = build_nxt_snapshot(tokens)
     return {
         "snapshot": snapshot,
         "telegram_messages": [
