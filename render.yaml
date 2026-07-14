@@ -17,7 +17,7 @@ services:
       - key: SUMMARY_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_SCHEDULE_HOURS_KST
-        value: "6:30"
+        value: "7:00"
       - key: SUMMARY_POST_CLOSE_ENABLED
         value: "false"
       - key: SUMMARY_PRE_SCHEDULE_ENABLED
@@ -31,7 +31,7 @@ services:
       - key: SUMMARY_KOR_INTRA_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST
-        value: "11,15"
+        value: "11"
       - key: SUMMARY_KOR_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_KOR_SCHEDULE_KST
@@ -39,7 +39,7 @@ services:
       - key: SUMMARY_NXT_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
-        value: "8:30,16:30,17:30"
+        value: "8:30,16:40"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

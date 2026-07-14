@@ -1,9 +1,9 @@
-"""Scheduled /summary_nxt broadcasts — default 08:30, 16:30, 17:30 KST weekdays.
+"""Scheduled /summary_nxt broadcasts — default 08:30, 16:40 KST weekdays.
 
 Nextrade sessions (KST):
   Premarket  08:00–08:50   → 08:30 mid-premarket pulse
   Main       09:00:30–15:20
-  After      15:40–20:00   → 16:30 / 17:30 after-main pulses
+  After      15:40–20:00   → 16:40 after-open pulse
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_TIMES = ((8, 30), (16, 30), (17, 30))
+DEFAULT_TIMES = ((8, 30), (16, 40))
 DEFAULT_POLL_SECONDS = 30
 
 
@@ -41,8 +41,8 @@ def _parse_hhmm(part: str) -> tuple[int, int] | None:
 
 
 def _schedule_times_kst() -> tuple[tuple[int, int], ...]:
-    """Parse SUMMARY_NXT_SCHEDULE_KST as '8:30,16:30,17:30' (or legacy single time)."""
-    raw = os.environ.get("SUMMARY_NXT_SCHEDULE_KST", "8:30,16:30,17:30").strip()
+    """Parse SUMMARY_NXT_SCHEDULE_KST as '8:30,16:40' (or legacy single time)."""
+    raw = os.environ.get("SUMMARY_NXT_SCHEDULE_KST", "8:30,16:40").strip()
     if not raw:
         return DEFAULT_TIMES
     times: list[tuple[int, int]] = []

@@ -1,4 +1,4 @@
-"""Scheduled /summary_kor_intra broadcasts at 11:00 and 15:00 KST."""
+"""Scheduled /summary_kor_intra broadcasts at 11:00 KST weekdays."""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from scheduler_slots import due_hourly_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOURS_KST = (11, 15)
+DEFAULT_HOURS_KST = (11,)
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_hours() -> list[int]:
-    raw = os.environ.get("SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11,15").strip()
+    raw = os.environ.get("SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11").strip()
     hours: list[int] = []
     for part in raw.replace(" ", "").split(","):
         if not part:

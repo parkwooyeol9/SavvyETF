@@ -22,7 +22,7 @@ from us_calendar import is_us_equity_trading_day
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
-DEFAULT_FIXED_TIMES = ((6, 30),)
+DEFAULT_FIXED_TIMES = ((7, 0),)
 DEFAULT_POLL_SECONDS = 30
 DEFAULT_SUMMARY_PRE_HOUR = 21
 DEFAULT_SUMMARY_PRE_MINUTE = 50
@@ -46,8 +46,8 @@ def _parse_hhmm(part: str) -> tuple[int, int] | None:
 
 
 def _fixed_schedule_times() -> tuple[tuple[int, int], ...]:
-    """Parse SUMMARY_SCHEDULE_HOURS_KST as '6:30' or legacy '6' (=06:00)."""
-    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "6:30").strip()
+    """Parse SUMMARY_SCHEDULE_HOURS_KST as '7:00' or legacy '7' (=07:00)."""
+    raw = os.environ.get("SUMMARY_SCHEDULE_HOURS_KST", "7:00").strip()
     if not raw:
         return ()
     times: list[tuple[int, int]] = []
@@ -67,7 +67,7 @@ def _poll_seconds() -> int:
 
 
 def _post_close_enabled() -> bool:
-    # Default off: fixed 06:30 KST summary is the primary close brief.
+    # Default off: fixed 07:00 KST summary is the primary close brief.
     return os.environ.get("SUMMARY_POST_CLOSE_ENABLED", "false").lower() not in {
         "0",
         "false",

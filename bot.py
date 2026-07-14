@@ -79,7 +79,7 @@ What each command returns:
 → Naver News headlines for last ranking (or /news_naver 삼성전자)
 
 /summary
-→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 06:30 KST)
+→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 07:00 KST)
 
 /summary_pre
 → Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
@@ -88,10 +88,10 @@ What each command returns:
 → KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
 
 /summary_kor_intra
-→ Same as /summary_kor using Naver 1m vs previous close (auto 11:00 & 15:00 KST)
+→ Same as /summary_kor using Naver 1m vs previous close (auto 11:00 KST)
 
 /summary_nxt
-→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 08:30·16:30·17:30 KST)
+→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 08:30·16:40 KST)
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -128,10 +128,10 @@ What each command returns:
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
 Auto schedule (KST):
-  /summary 06:30 · /summary_pre 21:50
-  /summary_kor_intra 11:00 / 15:00 (weekdays)
+  /summary 07:00 · /summary_pre 21:50
+  /summary_kor_intra 11:00 (weekdays)
   /summary_kor 15:40 (weekdays)
-  /summary_nxt 08:30 / 16:30 / 17:30 (weekdays)
+  /summary_nxt 08:30 / 16:40 (weekdays)
   /reddit 21:00
 
 Type /help for the full command list.
@@ -163,11 +163,11 @@ def build_help_messages() -> list[dict]:
 <code>/news_naver</code> — 네이버 뉴스 (키워드 선택 가능)"""
 
     msg2 = """<b>📋 브리핑 · 자동 스케줄 (KST)</b>
-<code>/summary</code> 06:30 — 미국 마감 브리핑
+<code>/summary</code> 07:00 — 미국 마감 브리핑
 <code>/summary_pre</code> 21:50 — 프리마켓
 <code>/summary_kor</code> 15:40 — 한국 마감
-<code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중 (Naver 1분봉)
-<code>/summary_nxt</code> 08:30·16:30·17:30 — NXT 브리핑
+<code>/summary_kor_intra</code> 11:00 — 한국 장중 (Naver 1분봉)
+<code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑
 <code>/nxt help</code> — NXT 하위 명령
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
@@ -1644,7 +1644,7 @@ def start_web_server():
                     },
                     "schedule": {
                         "summary_kst": os.environ.get(
-                            "SUMMARY_SCHEDULE_HOURS_KST", "6:30"
+                            "SUMMARY_SCHEDULE_HOURS_KST", "7:00"
                         ),
                         "summary_pre_kst": os.environ.get(
                             "SUMMARY_PRE_SCHEDULE_KST", "21:50"
@@ -1653,17 +1653,17 @@ def start_web_server():
                             "REDDIT_SCHEDULE_HOURS_KST", "21"
                         ),
                         "summary_kor_intra_kst": os.environ.get(
-                            "SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11,15"
+                            "SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11"
                         ),
                         "summary_kor_kst": os.environ.get(
                             "SUMMARY_KOR_SCHEDULE_KST", "15:40"
                         ),
                         "summary_nxt_kst": os.environ.get(
-                            "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:30,17:30"
+                            "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:40"
                         ),
                         "note": (
                             "NXT sessions KST: pre 08:00–08:50, main 09:00:30–15:20, "
-                            "after 15:40–20:00. /summary_nxt at 08:30/16:30/17:30; "
+                            "after 15:40–20:00. /summary_nxt at 08:30/16:40; "
                             "/reddit 21:00 only."
                         ),
                     },
