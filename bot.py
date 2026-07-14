@@ -232,7 +232,27 @@ def save_blocked_chats(chat_ids: set[int]) -> None:
         json.dump(sorted(chat_ids), handle)
 
 
+def env_chat_ids() -> set[int]:
+    """Pinned recipients from TELEGRAM_CHAT_ID (1:1 and/or channel, comma-separated)."""
+    ids: set[int] = set()
+    for raw_id in os.environ.get("TELEGRAM_CHAT_ID", "").split(","):
+        raw_id = raw_id.strip()
+        if not raw_id:
+            continue
+        try:
+            ids.add(int(raw_id))
+        except ValueError:
+            print(f"Ignoring invalid TELEGRAM_CHAT_ID entry: {raw_id!r}")
+    return ids
+
+
 def block_chat(chat_id: int, reason: str) -> None:
+    # Env-pinned chats must keep receiving schedules across redeploys / flaky errors.
+    if chat_id in env_chat_ids():
+        print(
+            f"Skip blocking pinned TELEGRAM_CHAT_ID={chat_id}: {reason}"
+        )
+        return
     blocked = load_blocked_chats()
     if chat_id in blocked:
         return
@@ -271,14 +291,17 @@ def save_known_chat(chat_id: int) -> None:
         json.dump(sorted(chats), handle)
 
 
-def startup_chat_ids() -> set[int]:
-    chats = load_known_chats()
-    for raw_id in os.environ.get("TELEGRAM_CHAT_ID", "").split(","):
-        raw_id = raw_id.strip()
-        if raw_id:
-            chats.add(int(raw_id))
-    return chats - load_blocked_chats()
+def register_delivery_chat(chat_id: int) -> None:
+    """Remember chat for broadcasts and clear any prior soft-block."""
+    unblock_chat(chat_id)
+    save_known_chat(chat_id)
 
+
+def startup_chat_ids() -> set[int]:
+    """All broadcast targets: known chats + env pins, minus non-pinned blocks."""
+    pinned = env_chat_ids()
+    blocked = load_blocked_chats() - pinned
+    return (load_known_chats() | pinned) - blocked
 
 def _telegram_error_description(response: requests.Response) -> str:
     try:
@@ -291,7 +314,24 @@ def _telegram_error_description(response: requests.Response) -> str:
 
 
 def _is_unreachable_chat_error(response: requests.Response) -> bool:
+    """True when the chat should be dropped from future broadcasts.
+
+    Rights / parse failures are retriable (esp. channels waiting for Post Messages)
+    and must not permanently blacklist a recipient.
+    """
     if response.status_code in {403, 404}:
+        description = _telegram_error_description(response).lower()
+        # Channel not yet granted Post Messages — keep trying after admin fixes it.
+        if any(
+            phrase in description
+            for phrase in (
+                "have no rights",
+                "need administrator",
+                "not enough rights",
+                "chat_write_forbidden",
+            )
+        ):
+            return False
         return True
     if response.status_code == 400:
         description = _telegram_error_description(response).lower()
@@ -306,8 +346,6 @@ def _is_unreachable_chat_error(response: requests.Response) -> bool:
                 "bot can't initiate conversation",
                 "can't initiate conversation",
                 "bot is not a member",
-                "have no rights",
-                "need administrator",
                 "group chat was deactivated",
                 "blocked by the user",
                 "user_is_blocked",
@@ -347,7 +385,9 @@ def send_text(
 
     description = _telegram_error_description(response)
     print(f"sendMessage failed for chat {chat_id}: {response.text}")
-    if response.status_code in {400, 403, 404} or _is_unreachable_chat_error(response):
+    # Only permanently drop truly unreachable chats. A bare HTTP 400 (e.g. HTML
+    # parse_mode / caption limits) must NOT blacklist a channel forever.
+    if _is_unreachable_chat_error(response):
         block_chat(chat_id, description)
     return False
 
@@ -534,17 +574,30 @@ def process_my_chat_member(token: str, update: dict) -> None:
 
     new_status = member_update.get("new_chat_member", {}).get("status")
     if new_status in {"administrator", "member"}:
-        unblock_chat(chat_id)
-        save_known_chat(chat_id)
+        register_delivery_chat(chat_id)
         chat_type = chat.get("type", "unknown")
         print(f"Bot added to {chat_type} {chat_id}")
         if chat_type == "channel":
-            send_text(
+            # Channels need Post Messages (admin). Pin ID in Render TELEGRAM_CHAT_ID
+            # so schedules survive ephemeral disk resets.
+            ok = send_text(
                 token,
                 chat_id,
-                "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /nxt /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /summary_nxt /help",
+                (
+                    "SavvyETF Bot is ready in this channel.\n"
+                    f"Channel chat_id: {chat_id}\n"
+                    "Tip: add this id to Render TELEGRAM_CHAT_ID "
+                    "(comma-separated with your 1:1 chat) so schedules "
+                    "keep working after redeploys.\n"
+                    "Bot must be channel admin with Post Messages.\n"
+                    "Try /help"
+                ),
             )
+            if not ok:
+                print(
+                    f"Channel {chat_id} registered but welcome post failed — "
+                    "grant Post Messages to the bot, then post /help in the channel."
+                )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
 
@@ -562,7 +615,7 @@ def process_telegram_update(token: str, update: dict) -> None:
     chat_type = message["chat"].get("type", "private")
     command_text = normalize_command_text(message["text"])
 
-    save_known_chat(chat_id)
+    register_delivery_chat(chat_id)
     if chat_type != "channel":
         maybe_send_deferred_startup_guide(token, chat_id)
 
@@ -1593,7 +1646,8 @@ def start_web_server():
 
                 kor_spec = importlib.util.find_spec("summary_kor_builder")
                 state = _load_state()
-                env_chat = bool(os.environ.get("TELEGRAM_CHAT_ID", "").strip())
+                env_ids = env_chat_ids()
+                env_chat = bool(env_ids)
                 chat_count = len(startup_chat_ids())
                 thread_names = {t.name for t in _threading.enumerate()}
                 payload = {
@@ -1605,6 +1659,17 @@ def start_web_server():
                         "heavy_work": heavy_work_status(),
                         "telegram_chat_id_env": env_chat,
                         "broadcast_chat_count": chat_count,
+                        "broadcast_env_count": len(env_ids),
+                        "broadcast_known_count": len(load_known_chats()),
+                        "broadcast_blocked_count": len(load_blocked_chats()),
+                        "broadcast_chat_kinds": {
+                            "private_or_group": sum(
+                                1 for c in startup_chat_ids() if c > 0
+                            ),
+                            "channel_or_supergroup": sum(
+                                1 for c in startup_chat_ids() if c < 0
+                            ),
+                        },
                         "threads_alive": {
                             "summary-scheduler": "summary-scheduler" in thread_names,
                             "reddit-scheduler": "reddit-scheduler" in thread_names,
@@ -2052,7 +2117,19 @@ def start_telegram_bot(token: str):
         print(f"Bot username: @{_bot_username}")
 
     print("Starting Telegram bot (async command workers)...")
+    # Pin env recipients so channels/1:1 survive blocked_chats leftovers + redeploys.
+    for chat_id in env_chat_ids():
+        register_delivery_chat(chat_id)
+    targets = startup_chat_ids()
+    print(
+        f"Broadcast targets: {len(targets)} "
+        f"(env={len(env_chat_ids())}, known={len(load_known_chats())}, "
+        f"blocked={len(load_blocked_chats())})"
+    )
+
     pending_updates, last_update_id = fetch_pending_updates(token)
+    for chat_id in chat_ids_from_updates(pending_updates):
+        register_delivery_chat(chat_id)
     broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
 
     # Never block the poll loop on command handlers — including backlog at boot.
