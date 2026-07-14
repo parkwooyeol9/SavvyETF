@@ -1197,9 +1197,10 @@ def handle_telegram_message(message, chat_id: int):
     if lower.startswith("/heatmap"):
         try:
             from heatmap import is_size_cache_ready, parse_heatmap_command, plot_market_heatmap
+            from stock_crawler import ensure_fresh_rankings_cache
 
             universe, top_n = parse_heatmap_command(normalized)
-            if not is_cache_ready(universe):
+            if not ensure_fresh_rankings_cache(universe, blocking=True):
                 return _ranking_loading_reply(universe)
             replies: list[dict] = []
             if not is_size_cache_ready(universe):
@@ -1398,7 +1399,9 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": HELP_TEXT_SHORT}]
         try:
             universe, mode = parse_rank_command(normalized)
-            if not is_cache_ready(universe):
+            from stock_crawler import ensure_fresh_rankings_cache, get_cache_session_label
+
+            if not ensure_fresh_rankings_cache(universe, blocking=True):
                 return _ranking_loading_reply(universe)
             tickers, context_label = get_ranking_tickers(
                 universe=universe,
@@ -1410,6 +1413,7 @@ def handle_telegram_message(message, chat_id: int):
                 "universe": universe,
             }
             text = format_rankings_message(universe=universe, mode=mode)
+            text = f"{text}\n\n({get_cache_session_label(universe)})"
             responses = [{"text": text}]
             leader = get_top_leader_ticker(universe, mode)
             if leader:
@@ -2197,12 +2201,12 @@ def start_telegram_bot(token: str):
 
 
 def _refresh_summary_caches_for_schedule() -> None:
-    """Warm only /summary universes (etf+sp), not every market universe."""
+    """Force-refresh /summary universes so heatmap/rankings use post-close bars."""
     from summary_builder import SUMMARY_UNIVERSES
-    from stock_crawler import warmup_cache
+    from stock_crawler import ensure_fresh_rankings_cache
 
     for universe in SUMMARY_UNIVERSES:
-        warmup_cache(universe, force=False)
+        ensure_fresh_rankings_cache(universe, blocking=True)
 
 
 if __name__ == "__main__":

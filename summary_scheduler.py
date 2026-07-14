@@ -183,10 +183,10 @@ def _wait_for_summary_caches(trigger: str) -> bool:
 
 def _refresh_summary_caches() -> None:
     from summary_builder import SUMMARY_UNIVERSES
-    from stock_crawler import warmup_cache
+    from stock_crawler import ensure_fresh_rankings_cache
 
     for universe in SUMMARY_UNIVERSES:
-        warmup_cache(universe, force=False)
+        ensure_fresh_rankings_cache(universe, blocking=True)
 
 
 def run_scheduled_summary(

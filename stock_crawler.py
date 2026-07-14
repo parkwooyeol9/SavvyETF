@@ -7,7 +7,7 @@ import threading
 import time
 import warnings
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -311,6 +311,89 @@ def cache_is_stale(universe: str) -> bool:
     return age is not None and age > CACHE_TTL_SECONDS
 
 
+def rankings_cache_is_fresh_for_session(universe: str) -> bool:
+    """
+    True when in-memory/disk rankings match the latest US regular session we should show.
+
+    After the US close, a cache built earlier the same calendar day (e.g. Korea morning /
+    US premarket) is treated as stale so /sp, /heatmap, and scheduled summaries rebuild.
+    """
+    if universe not in UNIVERSES:
+        return False
+    if not is_cache_ready(universe):
+        return False
+
+    # Korea universes: keep same-day TTL logic only.
+    if universe in {"kospi", "kosdaq"}:
+        return not cache_is_stale(universe)
+
+    from market_data_freshness import (
+        MARKET_CLOSE_TIME,
+        data_ready_buffer_minutes,
+        expected_latest_daily_date,
+        is_after_us_market_close,
+    )
+
+    meta = _states[universe].get("meta") or {}
+    as_of = str(meta.get("as_of_date") or "")
+    loaded_at = float(meta.get("loaded_at", 0))
+    now_et = datetime.now(ET)
+    expected = expected_latest_daily_date(now_et)
+
+    if expected is None:
+        return not cache_is_stale(universe)
+
+    try:
+        as_of_date = date.fromisoformat(as_of) if as_of else None
+    except ValueError:
+        as_of_date = None
+
+    if is_after_us_market_close(now_et):
+        if as_of_date != expected:
+            return False
+        ready_after = datetime.combine(expected, MARKET_CLOSE_TIME, tzinfo=ET) + timedelta(
+            minutes=data_ready_buffer_minutes()
+        )
+        return loaded_at >= ready_after.timestamp()
+
+    # Before the close: accept cache that still covers the previous session bar.
+    if as_of_date is not None and as_of_date < expected:
+        return False
+    return True
+
+
+def ensure_fresh_rankings_cache(universe: str, *, blocking: bool = True) -> bool:
+    """
+    Ensure rankings cache reflects the latest complete US session.
+    Returns True when a fresh cache is ready.
+    """
+    if universe not in UNIVERSES:
+        return False
+    if rankings_cache_is_fresh_for_session(universe):
+        return True
+
+    label = UNIVERSES[universe]["label"]
+    print(f"{label}: rankings cache stale for session — forcing rebuild.")
+    if blocking:
+        warmup_cache(universe, force=True)
+        return rankings_cache_is_fresh_for_session(universe) or is_cache_ready(universe)
+
+    start_universe_cache_warmup(universe, force=True)
+    return False
+
+
+def get_cache_session_label(universe: str) -> str:
+    """Short caption fragment: as-of date + age."""
+    if not is_cache_ready(universe):
+        return "cache not ready"
+    meta = _states[universe].get("meta") or {}
+    as_of = meta.get("as_of_date") or "?"
+    loaded_at = float(meta.get("loaded_at", 0))
+    age_min = int(max(0.0, time.time() - loaded_at) // 60) if loaded_at else -1
+    fresh = "fresh" if rankings_cache_is_fresh_for_session(universe) else "stale"
+    return f"as_of {as_of} ET · {age_min}m old · {fresh}"
+
+
 def is_cache_ready(universe: str = "etf") -> bool:
     state = _states[universe]
     if state["ready"] and state["df"] is not None and not state["df"].empty:
@@ -331,7 +414,7 @@ def _schedule_cache_refresh(universe: str) -> None:
         return
     if universe in _warmup_running or universe in _refresh_scheduled:
         return
-    if not cache_is_stale(universe):
+    if rankings_cache_is_fresh_for_session(universe):
         return
 
     def worker() -> None:

@@ -376,6 +376,12 @@ def plot_market_heatmap(universe: str, top_n: int = DEFAULT_HEATMAP_TOP_N) -> tu
         f"▼ {worst['Ticker']} {worst[DAILY_RETURN_COL] * 100:+.2f}%\n"
         f"Finviz-style map | Source: Yahoo Finance"
     )
+    try:
+        from stock_crawler import get_cache_session_label
+
+        caption = f"{caption}\n{get_cache_session_label(universe)}"
+    except Exception:
+        pass
     return buf, caption, not had_cache
 
 
