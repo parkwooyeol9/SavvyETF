@@ -27,7 +27,7 @@ services:
       - key: REDDIT_SCHEDULE_ENABLED
         value: "true"
       - key: REDDIT_SCHEDULE_HOURS_KST
-        value: "17,19,21"
+        value: "21"
       - key: SUMMARY_KOR_INTRA_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST
@@ -39,7 +39,7 @@ services:
       - key: SUMMARY_NXT_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
-        value: "20:10"
+        value: "8:30,16:30,17:30"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

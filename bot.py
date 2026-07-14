@@ -91,7 +91,7 @@ What each command returns:
 → Same as /summary_kor using Naver 1m vs previous close (auto 11:00 & 15:00 KST)
 
 /summary_nxt
-→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 20:10 KST)
+→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 08:30·16:30·17:30 KST)
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -131,8 +131,8 @@ Auto schedule (KST):
   /summary 06:30 · /summary_pre 21:50
   /summary_kor_intra 11:00 / 15:00 (weekdays)
   /summary_kor 15:40 (weekdays)
-  /summary_nxt 20:10 (weekdays, after NXT aftermarket)
-  /reddit 17:00 / 19:00 / 21:00
+  /summary_nxt 08:30 / 16:30 / 17:30 (weekdays)
+  /reddit 21:00
 
 Type /help for the full command list.
 """
@@ -167,9 +167,9 @@ def build_help_messages() -> list[dict]:
 <code>/summary_pre</code> 21:50 — 프리마켓
 <code>/summary_kor</code> 15:40 — 한국 마감
 <code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중 (Naver 1분봉)
-<code>/summary_nxt</code> 20:10 — NXT(넥스트레이드) 브리핑
+<code>/summary_nxt</code> 08:30·16:30·17:30 — NXT 브리핑
 <code>/nxt help</code> — NXT 하위 명령
-<code>/reddit</code> 17·19·21 — WSB 핫토픽 + 재무
+<code>/reddit</code> 21:00 — WSB 핫토픽 + 재무
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 
 <b>🔬 종목 · ETF 분석</b>
@@ -1644,7 +1644,7 @@ def start_web_server():
                             "SUMMARY_PRE_SCHEDULE_KST", "21:50"
                         ),
                         "reddit_kst": os.environ.get(
-                            "REDDIT_SCHEDULE_HOURS_KST", "17,19,21"
+                            "REDDIT_SCHEDULE_HOURS_KST", "21"
                         ),
                         "summary_kor_intra_kst": os.environ.get(
                             "SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST", "11,15"
@@ -1653,11 +1653,12 @@ def start_web_server():
                             "SUMMARY_KOR_SCHEDULE_KST", "15:40"
                         ),
                         "summary_nxt_kst": os.environ.get(
-                            "SUMMARY_NXT_SCHEDULE_KST", "20:10"
+                            "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:30,17:30"
                         ),
                         "note": (
                             "NXT sessions KST: pre 08:00–08:50, main 09:00:30–15:20, "
-                            "after 15:40–20:00. /summary_nxt defaults to 20:10 after close."
+                            "after 15:40–20:00. /summary_nxt at 08:30/16:30/17:30; "
+                            "/reddit 21:00 only."
                         ),
                     },
                 }

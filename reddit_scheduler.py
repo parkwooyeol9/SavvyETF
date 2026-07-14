@@ -13,12 +13,12 @@ from scheduler_slots import due_hourly_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOURS_KST = (17, 19, 21)
+DEFAULT_HOURS_KST = (21,)
 DEFAULT_POLL_SECONDS = 30
 
 
 def _reddit_schedule_hours() -> list[int]:
-    raw = os.environ.get("REDDIT_SCHEDULE_HOURS_KST", "17,19,21").strip()
+    raw = os.environ.get("REDDIT_SCHEDULE_HOURS_KST", "21").strip()
     hours: list[int] = []
     for part in raw.replace(" ", "").split(","):
         if not part:
