@@ -27,7 +27,6 @@ from stock_crawler import (
     parse_rank_command,
     start_cache_watchdog,
     start_universe_cache_warmup,
-    warmup_all_caches,
     warmup_deferred_caches,
     warmup_startup_caches,
 )
@@ -342,11 +341,10 @@ def send_text(
     return False
 
 
-def _send_message_payload(token: str, chat_id: int, message: str | dict) -> None:
+def _send_message_payload(token: str, chat_id: int, message: str | dict) -> bool:
     if isinstance(message, dict):
-        send_reply(token, chat_id, message)
-    else:
-        send_text(token, chat_id, message)
+        return bool(send_reply(token, chat_id, message))
+    return bool(send_text(token, chat_id, message))
 
 
 def broadcast_messages(token: str, messages: list[str] | list[dict]) -> int:
@@ -367,7 +365,10 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> int:
         ok = True
         for message in messages:
             try:
-                _send_message_payload(token, chat_id, message)
+                if not _send_message_payload(token, chat_id, message):
+                    ok = False
+                    print(f"Broadcast send failed for chat {chat_id}")
+                    break
                 time.sleep(0.35)
             except requests.RequestException as exc:
                 ok = False
@@ -1378,11 +1379,11 @@ def _handle_telegram_send_response(
         block_chat(chat_id, description)
         return False
     if fallback_text and token:
-        send_text(token, chat_id, fallback_text, parse_mode=parse_mode)
+        return send_text(token, chat_id, fallback_text, parse_mode=parse_mode)
     return False
 
 
-def send_reply(token, chat_id, reply):
+def send_reply(token, chat_id, reply) -> bool:
     photo = reply.get("photo")
     photo_path = reply.get("photo_path")
     chart_ticker = reply.get("chart_ticker")
@@ -1394,13 +1395,12 @@ def send_reply(token, chat_id, reply):
 
             photo = analyze_stock(chart_ticker)
         except Exception as exc:
-            send_text(
+            return send_text(
                 token,
                 chat_id,
                 f"{reply.get('text', chart_ticker)}\nChart error: {exc}",
                 parse_mode=reply.get("parse_mode"),
             )
-            return
 
     text = reply.get("text", "")
     parse_mode = reply.get("parse_mode")
@@ -1419,7 +1419,7 @@ def send_reply(token, chat_id, reply):
                 files={"photo": ("photo.jpg", handle, "image/jpeg")},
                 timeout=60,
             )
-        _handle_telegram_send_response(
+        return _handle_telegram_send_response(
             response,
             chat_id,
             method="sendPhoto",
@@ -1427,7 +1427,6 @@ def send_reply(token, chat_id, reply):
             token=token,
             parse_mode=parse_mode,
         )
-        return
 
     if photo is not None:
         from chart_buffers import photo_to_upload_bytes
@@ -1436,13 +1435,12 @@ def send_reply(token, chat_id, reply):
         try:
             png_bytes = photo_to_upload_bytes(photo)
         except Exception as exc:
-            send_text(
+            return send_text(
                 token,
                 chat_id,
                 f"{text}\nChart upload error: {exc}".strip(),
                 parse_mode=parse_mode,
             )
-            return
         payload: dict = {"chat_id": chat_id}
         if text:
             payload["caption"] = text[:1024]
@@ -1454,7 +1452,7 @@ def send_reply(token, chat_id, reply):
             files={"photo": ("chart.png", BytesIO(png_bytes), "image/png")},
             timeout=60,
         )
-        _handle_telegram_send_response(
+        return _handle_telegram_send_response(
             response,
             chat_id,
             method="sendPhoto",
@@ -1462,7 +1460,6 @@ def send_reply(token, chat_id, reply):
             token=token,
             parse_mode=parse_mode,
         )
-        return
 
     if document_path is not None:
         try:
@@ -1484,7 +1481,7 @@ def send_reply(token, chat_id, reply):
                     files={"document": (path.name, handle, mime)},
                     timeout=180,
                 )
-            _handle_telegram_send_response(
+            return _handle_telegram_send_response(
                 response,
                 chat_id,
                 method="sendDocument",
@@ -1492,12 +1489,11 @@ def send_reply(token, chat_id, reply):
                 token=token,
             )
         except Exception as exc:
-            send_text(token, chat_id, f"{text}\nDocument error: {exc}".strip())
-        return
+            return send_text(token, chat_id, f"{text}\nDocument error: {exc}".strip())
 
     button_url = reply.get("button_url")
     button_text = reply.get("button_text", "Open in browser")
-    send_text(
+    return send_text(
         token,
         chat_id,
         text,
@@ -1543,11 +1539,23 @@ def start_web_server():
             self.end_headers()
             self.wfile.write(body)
 
+        def do_HEAD(self):
+            # Render / proxies sometimes probe with HEAD; BaseHTTP 501 kills health.
+            path = urlparse(self.path).path
+            if path in {"/", "/index.html", "/health"}:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_error(404)
+
         def do_GET(self):
             path = urlparse(self.path).path
 
             if path == "/health":
                 import importlib.util
+                import threading as _threading
 
                 from scheduler_grace import past_startup_grace, startup_grace_status
                 from summary_scheduler import _load_state
@@ -1556,6 +1564,7 @@ def start_web_server():
                 state = _load_state()
                 env_chat = bool(os.environ.get("TELEGRAM_CHAT_ID", "").strip())
                 chat_count = len(startup_chat_ids())
+                thread_names = {t.name for t in _threading.enumerate()}
                 payload = {
                     "ok": True,
                     "summary_kor_builder": kor_spec is not None,
@@ -1564,6 +1573,16 @@ def start_web_server():
                         "startup_grace": startup_grace_status(),
                         "telegram_chat_id_env": env_chat,
                         "broadcast_chat_count": chat_count,
+                        "threads_alive": {
+                            "summary-scheduler": "summary-scheduler" in thread_names,
+                            "reddit-scheduler": "reddit-scheduler" in thread_names,
+                            "summary-kor-intra-scheduler": (
+                                "summary-kor-intra-scheduler" in thread_names
+                            ),
+                            "summary-kor-scheduler": (
+                                "summary-kor-scheduler" in thread_names
+                            ),
+                        },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
                         "last_reddit_slot": state.get("last_reddit_slot"),
@@ -1571,6 +1590,14 @@ def start_web_server():
                             "last_summary_kor_intra_slot"
                         ),
                         "last_summary_kor_slot": state.get("last_summary_kor_slot"),
+                        "last_summary_error": state.get("last_summary_error"),
+                        "last_summary_attempt_at": state.get("last_summary_attempt_at"),
+                        "summary_scheduler_heartbeat": state.get(
+                            "summary_scheduler_heartbeat"
+                        ),
+                        "reddit_scheduler_heartbeat": state.get(
+                            "reddit_scheduler_heartbeat"
+                        ),
                     },
                     "schedule": {
                         "summary_kst": os.environ.get(
@@ -2034,6 +2061,15 @@ def start_telegram_bot(token: str):
             time.sleep(5)
 
 
+def _refresh_summary_caches_for_schedule() -> None:
+    """Warm only /summary universes (etf+sp), not every market universe."""
+    from summary_builder import SUMMARY_UNIVERSES
+    from stock_crawler import warmup_cache
+
+    for universe in SUMMARY_UNIVERSES:
+        warmup_cache(universe, force=False)
+
+
 if __name__ == "__main__":
     token = get_bot_token()
     mark_service_started()
@@ -2057,7 +2093,7 @@ if __name__ == "__main__":
     start_summary_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,
-        refresh_cache_fn=warmup_all_caches,
+        refresh_cache_fn=_refresh_summary_caches_for_schedule,
         public_url=summary_public_url(),
     )
     start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)

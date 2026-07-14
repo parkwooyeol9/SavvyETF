@@ -53,9 +53,13 @@ services:
       - key: BOT_DEFER_CACHE_WARMUP
         value: "true"
       - key: BOT_STARTUP_CACHE_UNIVERSES
-        value: "sp,nas"
+        value: "etf,sp"
       - key: BOT_DEFERRED_CACHE_UNIVERSES
-        value: "etf"
+        value: "nas"
+      - key: SUMMARY_CATCHUP_MINUTES
+        value: "45"
+      - key: SUMMARY_CACHE_WAIT_SECONDS
+        value: "900"
       - key: MALLOC_ARENA_MAX
         value: "2"
       - key: MEMORY_DEBUG

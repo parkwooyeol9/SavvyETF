@@ -16,7 +16,7 @@ from market_data_freshness import (
     reference_ticker,
 )
 from scheduler_grace import past_startup_grace
-from scheduler_slots import due_slot_id
+from scheduler_slots import DEFAULT_CATCHUP_MINUTES, due_slot_id
 from us_calendar import is_us_equity_trading_day
 
 KST = ZoneInfo("Asia/Seoul")
@@ -96,6 +96,9 @@ def _summary_pre_time_kst() -> tuple[int, int]:
     return DEFAULT_SUMMARY_PRE_HOUR, DEFAULT_SUMMARY_PRE_MINUTE
 
 
+_STATE_LOCK = threading.Lock()
+
+
 def _load_state() -> dict:
     if not SCHEDULER_STATE_PATH.exists():
         return {}
@@ -108,6 +111,15 @@ def _load_state() -> dict:
 def _save_state(state: dict) -> None:
     SCHEDULER_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     SCHEDULER_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def update_scheduler_state(**updates) -> dict:
+    """Merge-update scheduler_state.json under a lock (multi-thread safe)."""
+    with _STATE_LOCK:
+        state = _load_state()
+        state.update(updates)
+        _save_state(state)
+        return dict(state)
 
 
 def _current_fixed_slot(now: datetime) -> str:
@@ -134,6 +146,49 @@ def _summary_heavy_wait_seconds() -> int:
         return 600
 
 
+def _summary_cache_wait_seconds() -> int:
+    raw = os.environ.get("SUMMARY_CACHE_WAIT_SECONDS", "900").strip()
+    try:
+        return max(60, int(raw))
+    except ValueError:
+        return 900
+
+
+def _wait_for_summary_caches(trigger: str) -> bool:
+    """Warm SUMMARY universes before taking the heavy-work lock."""
+    from summary_builder import SUMMARY_UNIVERSES, caches_ready
+    from stock_crawler import ensure_universe_caches, is_cache_ready
+
+    if caches_ready():
+        return True
+
+    deadline = time.monotonic() + _summary_cache_wait_seconds()
+    while time.monotonic() < deadline:
+        missing = [
+            universe
+            for universe in SUMMARY_UNIVERSES
+            if not is_cache_ready(universe)
+        ]
+        if not missing:
+            return True
+        ensure_universe_caches(missing)
+        print(f"Scheduled summary waiting ({trigger}): warming {missing}")
+        time.sleep(10)
+    print(
+        f"Scheduled summary skipped ({trigger}): caches not ready after "
+        f"{_summary_cache_wait_seconds()}s."
+    )
+    return False
+
+
+def _refresh_summary_caches() -> None:
+    from summary_builder import SUMMARY_UNIVERSES
+    from stock_crawler import warmup_cache
+
+    for universe in SUMMARY_UNIVERSES:
+        warmup_cache(universe, force=False)
+
+
 def run_scheduled_summary(
     token: str,
     broadcast_fn,
@@ -142,6 +197,14 @@ def run_scheduled_summary(
     trigger: str = "scheduled",
 ) -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    # Wait for caches without holding the heavy-work lock (warmup threads need to finish).
+    if not _wait_for_summary_caches(trigger):
+        update_scheduler_state(
+            last_summary_error=f"{trigger}: caches not ready",
+            last_summary_attempt_at=datetime.now(KST).isoformat(),
+        )
+        return False
 
     wait_seconds = _summary_heavy_wait_seconds()
     if wait_seconds == 0:
@@ -159,28 +222,30 @@ def run_scheduled_summary(
             f"Scheduled summary skipped ({trigger}): heavy work still busy "
             f"({heavy_work_status()})"
         )
+        update_scheduler_state(
+            last_summary_error=f"{trigger}: heavy work busy ({heavy_work_status()})",
+            last_summary_attempt_at=datetime.now(KST).isoformat(),
+        )
         return False
 
-    from summary_builder import SUMMARY_UNIVERSES, caches_ready, generate_and_save_summary
+    from summary_builder import generate_and_save_summary
 
     try:
-        if not caches_ready():
-            from stock_crawler import ensure_universe_caches, is_cache_ready
+        # Only refresh universes needed for /summary (etf+sp), not all markets.
+        if callable(refresh_cache_fn):
+            refresh_cache_fn()
+        else:
+            _refresh_summary_caches()
 
-            missing = [universe for universe in SUMMARY_UNIVERSES if not is_cache_ready(universe)]
-            if missing:
-                ensure_universe_caches(missing)
-                print(f"Scheduled summary waiting ({trigger}): warming {missing}")
-            else:
-                print(f"Scheduled summary skipped ({trigger}): caches not ready.")
-            return False
-
-        refresh_cache_fn()
         summary = generate_and_save_summary(public_url=public_url)
         messages = summary["telegram_messages"]
         delivered = broadcast_fn(token, messages)
         if not delivered:
             print(f"Scheduled summary not delivered ({trigger}): 0 chats.")
+            update_scheduler_state(
+                last_summary_error=f"{trigger}: delivered 0 chats",
+                last_summary_attempt_at=datetime.now(KST).isoformat(),
+            )
             return False
         try:
             from kakao_notify import send_scheduled_summary_to_kakao
@@ -192,13 +257,21 @@ def run_scheduled_summary(
             f"Scheduled summary sent ({trigger}, {len(messages)} message(s) "
             f"→ {delivered} chat(s))."
         )
+        update_scheduler_state(
+            last_summary_error="",
+            last_summary_attempt_at=datetime.now(KST).isoformat(),
+            last_summary_delivered=delivered,
+        )
         return True
     except Exception as exc:
         print(f"Scheduled summary failed ({trigger}): {exc}")
+        update_scheduler_state(
+            last_summary_error=f"{trigger}: {exc}",
+            last_summary_attempt_at=datetime.now(KST).isoformat(),
+        )
         return False
     finally:
         end_heavy_work("scheduled-summary")
-
 
 def run_scheduled_summary_pre(
     token: str,
@@ -298,8 +371,7 @@ def _maybe_run_post_close_summary(
         public_url,
         trigger=f"post-close {session_key}",
     ):
-        state["last_post_close_session"] = session_key
-        _save_state(state)
+        state = update_scheduler_state(last_post_close_session=session_key)
         return state, None
 
     return state, data_ready_at
@@ -334,10 +406,22 @@ def start_summary_scheduler(
         last_pre_slot = state.get("last_summary_pre_slot")
         data_ready_at: datetime | None = None
 
+        catchup_minutes = DEFAULT_CATCHUP_MINUTES
+        try:
+            catchup_minutes = max(
+                15,
+                int(os.environ.get("SUMMARY_CATCHUP_MINUTES", "45")),
+            )
+        except ValueError:
+            catchup_minutes = 45
+
         parts = []
         if fixed_times:
             labels = ", ".join(f"{h:02d}:{m:02d}" for h, m in fixed_times)
-            parts.append(f"/summary fixed KST {labels} (skip weekend/US holiday)")
+            parts.append(
+                f"/summary fixed KST {labels} "
+                f"(skip weekend/US holiday, {catchup_minutes}m catch-up)"
+            )
         if pre_enabled:
             parts.append(
                 f"/summary_pre daily {pre_hour:02d}:{pre_minute:02d} KST "
@@ -351,83 +435,95 @@ def start_summary_scheduler(
         print(
             "Summary scheduler active — "
             + "; ".join(parts)
-            + " (15m catch-up window)"
         )
 
         while True:
-            if not past_startup_grace():
-                time.sleep(poll_seconds)
-                continue
-
-            now = datetime.now(KST)
-
-            for hour, minute in fixed_times:
-                slot = due_slot_id(
-                    now, hour, minute, last_slot=last_fixed_slot
-                )
-                if not slot:
+            try:
+                if not past_startup_grace():
+                    time.sleep(poll_seconds)
                     continue
-                if _should_skip_non_trading(now):
-                    print(f"Scheduled summary skipped ({slot}): weekend or US holiday")
-                    last_fixed_slot = slot
-                    state["last_fixed_slot"] = slot
-                    _save_state(state)
-                elif run_scheduled_summary(
-                    token,
-                    broadcast_fn,
-                    refresh_cache_fn,
-                    public_url,
-                    trigger=f"fixed {slot}",
-                ):
-                    last_fixed_slot = slot
-                    state["last_fixed_slot"] = slot
-                    _save_state(state)
 
-            if pre_enabled:
-                # Long window so 21:50 premarket can still catch US open (~22:30 KST EDT).
-                pre_window = 60
-                try:
-                    pre_window = max(
-                        15,
-                        int(os.environ.get("SUMMARY_PRE_CATCHUP_MINUTES", "60")),
-                    )
-                except ValueError:
-                    pre_window = 60
-                pre_slot = due_slot_id(
-                    now,
-                    pre_hour,
-                    pre_minute,
-                    last_slot=last_pre_slot,
-                    window_minutes=pre_window,
+                now = datetime.now(KST)
+                update_scheduler_state(
+                    summary_scheduler_heartbeat=now.isoformat()
                 )
-                if pre_slot:
+
+                for hour, minute in fixed_times:
+                    slot = due_slot_id(
+                        now,
+                        hour,
+                        minute,
+                        last_slot=last_fixed_slot,
+                        window_minutes=catchup_minutes,
+                    )
+                    if not slot:
+                        continue
                     if _should_skip_non_trading(now):
-                        print(
-                            f"Scheduled summary_pre skipped ({pre_slot}): "
-                            "weekend or US holiday"
-                        )
-                        last_pre_slot = pre_slot
-                        state["last_summary_pre_slot"] = pre_slot
-                        _save_state(state)
-                    elif run_scheduled_summary_pre(
+                        print(f"Scheduled summary skipped ({slot}): weekend or US holiday")
+                        last_fixed_slot = slot
+                        update_scheduler_state(last_fixed_slot=slot)
+                    elif run_scheduled_summary(
                         token,
                         broadcast_fn,
+                        refresh_cache_fn,
                         public_url,
-                        trigger=f"pre {pre_slot}",
+                        trigger=f"fixed {slot}",
                     ):
-                        last_pre_slot = pre_slot
-                        state["last_summary_pre_slot"] = pre_slot
-                        _save_state(state)
+                        last_fixed_slot = slot
+                        update_scheduler_state(last_fixed_slot=slot)
 
-            if post_close:
-                state, data_ready_at = _maybe_run_post_close_summary(
-                    token,
-                    broadcast_fn,
-                    refresh_cache_fn,
-                    public_url,
-                    state,
-                    data_ready_at,
-                )
+                if pre_enabled:
+                    # Long window so 21:50 premarket can still catch US open (~22:30 KST EDT).
+                    pre_window = 60
+                    try:
+                        pre_window = max(
+                            15,
+                            int(os.environ.get("SUMMARY_PRE_CATCHUP_MINUTES", "60")),
+                        )
+                    except ValueError:
+                        pre_window = 60
+                    pre_slot = due_slot_id(
+                        now,
+                        pre_hour,
+                        pre_minute,
+                        last_slot=last_pre_slot,
+                        window_minutes=pre_window,
+                    )
+                    if pre_slot:
+                        if _should_skip_non_trading(now):
+                            print(
+                                f"Scheduled summary_pre skipped ({pre_slot}): "
+                                "weekend or US holiday"
+                            )
+                            last_pre_slot = pre_slot
+                            update_scheduler_state(last_summary_pre_slot=pre_slot)
+                        elif run_scheduled_summary_pre(
+                            token,
+                            broadcast_fn,
+                            public_url,
+                            trigger=f"pre {pre_slot}",
+                        ):
+                            last_pre_slot = pre_slot
+                            update_scheduler_state(last_summary_pre_slot=pre_slot)
+
+                if post_close:
+                    state, data_ready_at = _maybe_run_post_close_summary(
+                        token,
+                        broadcast_fn,
+                        refresh_cache_fn,
+                        public_url,
+                        _load_state(),
+                        data_ready_at,
+                    )
+            except Exception as exc:
+                print(f"Summary scheduler loop error: {exc}")
+                try:
+                    update_scheduler_state(
+                        last_summary_error=f"loop: {exc}",
+                        last_summary_attempt_at=datetime.now(KST).isoformat(),
+                    )
+                except Exception:
+                    pass
 
             time.sleep(poll_seconds)
 

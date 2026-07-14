@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
 from scheduler_slots import due_hourly_slot_id
-from summary_scheduler import _load_state, _save_state
+from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOURS_KST = (17, 19, 21)
@@ -92,16 +92,19 @@ def start_reddit_scheduler(token: str, broadcast_fn) -> None:
         )
 
         while True:
-            if not past_startup_grace():
-                time.sleep(poll_seconds)
-                continue
+            try:
+                if not past_startup_grace():
+                    time.sleep(poll_seconds)
+                    continue
 
-            now = datetime.now(KST)
-            slot = due_hourly_slot_id(now, hours, last_slot=last_reddit_slot)
-            if slot and run_scheduled_reddit(token, broadcast_fn):
-                last_reddit_slot = slot
-                state["last_reddit_slot"] = slot
-                _save_state(state)
+                now = datetime.now(KST)
+                update_scheduler_state(reddit_scheduler_heartbeat=now.isoformat())
+                slot = due_hourly_slot_id(now, hours, last_slot=last_reddit_slot)
+                if slot and run_scheduled_reddit(token, broadcast_fn):
+                    last_reddit_slot = slot
+                    update_scheduler_state(last_reddit_slot=slot)
+            except Exception as exc:
+                print(f"Reddit scheduler loop error: {exc}")
 
             time.sleep(poll_seconds)
 

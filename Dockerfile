@@ -4,7 +4,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6 \
-    && rm -rf /var/lib/apt/lists/*
+    tzdata \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
+    && echo Asia/Seoul > /etc/timezone
+
+ENV TZ=Asia/Seoul
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

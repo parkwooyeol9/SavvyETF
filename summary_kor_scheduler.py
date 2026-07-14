@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
 from scheduler_slots import due_slot_id
-from summary_scheduler import _load_state, _save_state
+from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 15
@@ -98,24 +98,26 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
         )
 
         while True:
-            if not past_startup_grace():
-                time.sleep(poll_seconds)
-                continue
+            try:
+                if not past_startup_grace():
+                    time.sleep(poll_seconds)
+                    continue
 
-            now = datetime.now(KST)
-            slot = due_slot_id(now, hour, minute, last_slot=last_slot)
-            if slot:
-                if _should_skip_kr_non_trading(now):
-                    print(f"Scheduled summary_kor skipped ({slot}): weekend")
-                    last_slot = slot
-                    state["last_summary_kor_slot"] = slot
-                    _save_state(state)
-                elif run_scheduled_summary_kor(
-                    token, broadcast_fn, public_url=public_url
-                ):
-                    last_slot = slot
-                    state["last_summary_kor_slot"] = slot
-                    _save_state(state)
+                now = datetime.now(KST)
+                update_scheduler_state(summary_kor_scheduler_heartbeat=now.isoformat())
+                slot = due_slot_id(now, hour, minute, last_slot=last_slot)
+                if slot:
+                    if _should_skip_kr_non_trading(now):
+                        print(f"Scheduled summary_kor skipped ({slot}): weekend")
+                        last_slot = slot
+                        update_scheduler_state(last_summary_kor_slot=slot)
+                    elif run_scheduled_summary_kor(
+                        token, broadcast_fn, public_url=public_url
+                    ):
+                        last_slot = slot
+                        update_scheduler_state(last_summary_kor_slot=slot)
+            except Exception as exc:
+                print(f"summary_kor scheduler loop error: {exc}")
 
             time.sleep(poll_seconds)
 
