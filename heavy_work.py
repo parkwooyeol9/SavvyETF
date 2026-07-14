@@ -9,7 +9,10 @@ import time
 from memory_debug import log_memory
 from scheduler_grace import past_startup_grace, startup_grace_status
 
+# Work exclusion lock — held for the full duration of heavy work.
+# Never re-acquire it from the owner thread for status reads (use _owner_lock).
 _heavy_lock = threading.Lock()
+_owner_lock = threading.Lock()
 _owner: str | None = None
 _yield_requested = threading.Event()
 
@@ -19,11 +22,16 @@ class HeavyWorkYield(Exception):
 
 
 def _heavy_work_enabled() -> bool:
-    return os.environ.get("HEAVY_WORK_SERIALIZE", "true").lower() not in {"0", "false", "no"}
+    return os.environ.get("HEAVY_WORK_SERIALIZE", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
 
 def heavy_work_owner() -> str | None:
-    with _heavy_lock:
+    """Return current owner without taking the work lock (avoids deadlock)."""
+    with _owner_lock:
         return _owner
 
 
@@ -53,7 +61,8 @@ def try_begin_heavy_work(label: str) -> bool:
         return False
 
     global _owner
-    _owner = label
+    with _owner_lock:
+        _owner = label
     log_memory(f"heavy work begin: {label}")
     return True
 
@@ -76,7 +85,9 @@ def end_heavy_work(label: str | None = None, *, force: bool = False) -> None:
         return
 
     global _owner
-    with _heavy_lock:
+    # Owner already holds _heavy_lock. Do NOT re-acquire it — threading.Lock is
+    # not reentrant and that deadlocks the scheduler threads permanently.
+    with _owner_lock:
         if not force and label and _owner not in {None, label}:
             return
         _owner = None

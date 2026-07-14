@@ -1587,6 +1587,7 @@ def start_web_server():
                 import importlib.util
                 import threading as _threading
 
+                from heavy_work import heavy_work_status
                 from scheduler_grace import past_startup_grace, startup_grace_status
                 from summary_scheduler import _load_state
 
@@ -1601,6 +1602,7 @@ def start_web_server():
                     "scheduler": {
                         "past_startup_grace": past_startup_grace(),
                         "startup_grace": startup_grace_status(),
+                        "heavy_work": heavy_work_status(),
                         "telegram_chat_id_env": env_chat,
                         "broadcast_chat_count": chat_count,
                         "threads_alive": {
