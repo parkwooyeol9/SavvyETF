@@ -36,6 +36,10 @@ services:
         value: "true"
       - key: SUMMARY_KOR_SCHEDULE_KST
         value: "15:40"
+      - key: SUMMARY_NXT_SCHEDULE_ENABLED
+        value: "true"
+      - key: SUMMARY_NXT_SCHEDULE_KST
+        value: "20:10"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

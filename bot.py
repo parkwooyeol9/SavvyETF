@@ -33,6 +33,7 @@ from stock_crawler import (
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
 from summary_kor_scheduler import start_summary_kor_scheduler
+from summary_nxt_scheduler import start_summary_nxt_scheduler
 from summary_scheduler import start_summary_scheduler
 from scheduler_grace import mark_service_started
 
@@ -89,6 +90,9 @@ What each command returns:
 /summary_kor_intra
 → Same as /summary_kor using Naver 1m vs previous close (auto 11:00 & 15:00 KST)
 
+/summary_nxt
+→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 20:10 KST)
+
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
@@ -127,6 +131,7 @@ Auto schedule (KST):
   /summary 06:30 · /summary_pre 21:50
   /summary_kor_intra 11:00 / 15:00 (weekdays)
   /summary_kor 15:40 (weekdays)
+  /summary_nxt 20:10 (weekdays, after NXT aftermarket)
   /reddit 17:00 / 19:00 / 21:00
 
 Type /help for the full command list.
@@ -162,6 +167,8 @@ def build_help_messages() -> list[dict]:
 <code>/summary_pre</code> 21:50 — 프리마켓
 <code>/summary_kor</code> 15:40 — 한국 마감
 <code>/summary_kor_intra</code> 11:00·15:00 — 한국 장중 (Naver 1분봉)
+<code>/summary_nxt</code> 20:10 — NXT(넥스트레이드) 브리핑
+<code>/nxt help</code> — NXT 하위 명령
 <code>/reddit</code> 17·19·21 — WSB 핫토픽 + 재무
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 
@@ -536,7 +543,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 token,
                 chat_id,
                 "SavvyETF Bot is ready in this channel.\n"
-                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /nxt /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /help",
+                "Commands: /etf /sp /nas /kospi /kosdaq /kospi_intra /kosdaq_intra /etf_pre /sp_pre /nas_pre /heatmap /macro /idx /event /comp /financial /fin_estimate /nxt /dart /news /news_naver /aibriefing /reddit /summary /summary_pre /summary_kor /summary_kor_intra /summary_nxt /help",
             )
     elif new_status in {"left", "kicked"}:
         block_chat(chat_id, f"bot status is {new_status}")
@@ -813,6 +820,19 @@ def handle_telegram_message(message, chat_id: int):
             return replies
         except Exception as exc:
             return [{"text": f"Error building Korea intraday summary: {exc}"}]
+
+    if lower.startswith("/summary_nxt"):
+        try:
+            from summary_nxt_builder import generate_summary_nxt
+
+            replies: list[dict] = [
+                {"text": "📡 Building NXT (Nextrade) brief…"}
+            ]
+            summary = generate_summary_nxt(public_url=summary_public_url())
+            replies.extend(summary["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error building NXT summary: {exc}"}]
 
     if lower.startswith("/summary_kor"):
         try:
@@ -1592,6 +1612,9 @@ def start_web_server():
                             "summary-kor-scheduler": (
                                 "summary-kor-scheduler" in thread_names
                             ),
+                            "summary-nxt-scheduler": (
+                                "summary-nxt-scheduler" in thread_names
+                            ),
                         },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
@@ -1600,6 +1623,7 @@ def start_web_server():
                             "last_summary_kor_intra_slot"
                         ),
                         "last_summary_kor_slot": state.get("last_summary_kor_slot"),
+                        "last_summary_nxt_slot": state.get("last_summary_nxt_slot"),
                         "last_summary_error": state.get("last_summary_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
                         "summary_scheduler_heartbeat": state.get(
@@ -1607,6 +1631,9 @@ def start_web_server():
                         ),
                         "reddit_scheduler_heartbeat": state.get(
                             "reddit_scheduler_heartbeat"
+                        ),
+                        "summary_nxt_scheduler_heartbeat": state.get(
+                            "summary_nxt_scheduler_heartbeat"
                         ),
                     },
                     "schedule": {
@@ -1625,10 +1652,12 @@ def start_web_server():
                         "summary_kor_kst": os.environ.get(
                             "SUMMARY_KOR_SCHEDULE_KST", "15:40"
                         ),
+                        "summary_nxt_kst": os.environ.get(
+                            "SUMMARY_NXT_SCHEDULE_KST", "20:10"
+                        ),
                         "note": (
-                            "US regular open ~22:30 KST (EDT). "
-                            "Nearest auto job is /summary_pre at 21:50 KST "
-                            "(60m catch-up toward open)."
+                            "NXT sessions KST: pre 08:00–08:50, main 09:00:30–15:20, "
+                            "after 15:40–20:00. /summary_nxt defaults to 20:10 after close."
                         ),
                     },
                 }
@@ -1670,6 +1699,18 @@ def start_web_server():
                     body_text = (
                         "<html><body><p>Korea summary not generated yet. "
                         "Use /summary_kor in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
+            if path == "/summary_nxt":
+                from summary_nxt_builder import load_summary_nxt_html
+
+                body_text = load_summary_nxt_html()
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>NXT summary not generated yet. "
+                        "Use /summary_nxt in Telegram first.</p></body></html>"
                     )
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
@@ -1979,7 +2020,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health )"
     )
 
 
@@ -2113,6 +2154,11 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_summary_kor_scheduler(
+        token=token,
+        broadcast_fn=broadcast_messages,
+        public_url=summary_public_url(),
+    )
+    start_summary_nxt_scheduler(
         token=token,
         broadcast_fn=broadcast_messages,
         public_url=summary_public_url(),
