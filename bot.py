@@ -114,8 +114,8 @@ What each command returns:
 → 미·한 컨센서스(2026–2028) + 2000년~분기 재무 Excel 업로드
 
 /nxt
-→ 삼성전자·SK하이닉스 KRX vs NXT(넥스트레이드) 거래량
-→ /nxt 2026-06 이면 해당 월 NXT 거래대금·거래량 누적
+→ NXT 데이터 허브: live / 월누적 / dailyvol / daily / movers / stock / compare …
+→ 예: /nxt 2026-06 · /nxt dailyvol 2026-06 · /nxt help
 
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
@@ -168,8 +168,10 @@ def build_help_messages() -> list[dict]:
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
 <code>/fin_estimate NVDA 삼성전자</code> — 컨센서스+분기재무 Excel
-<code>/nxt</code> — 삼성·하이닉스 KRX vs NXT 거래량
-<code>/nxt 2026-06</code> — 해당 월 NXT 거래대금 누적
+<code>/nxt</code> — NXT 허브 (live/월간/시장/TOP)
+<code>/nxt help</code> — 하위 명령 전체
+<code>/nxt 2026-06</code> — 월간 NXT 거래대금 누적
+<code>/nxt dailyvol 2026-06</code> — 시장 일별 대금·점유율
 <code>/dart 삼성전자</code> — DART 재무
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
@@ -998,11 +1000,16 @@ def handle_telegram_message(message, chat_id: int):
             return [
                 {
                     "text": (
-                        "Usage: /nxt [yyyy-mm] [TICKER…]\n"
-                        "Example: /nxt\n"
-                        "Example: /nxt 2026-06\n"
-                        "Example: /nxt 2026-06 005930\n"
-                        "Example: /nxt 삼성전자 SK하이닉스\n\n"
+                        "Usage: /nxt [subcommand|yyyy-mm|TICKER…]\n"
+                        "  /nxt help\n"
+                        "  /nxt · /nxt live [TICKER…]\n"
+                        "  /nxt 2026-06 [TICKER…]\n"
+                        "  /nxt dailyvol 2026-06\n"
+                        "  /nxt daily 2026-06-30 [N]\n"
+                        "  /nxt movers 2026-06-30\n"
+                        "  /nxt stock 005930 [2026-06]\n"
+                        "  /nxt compare 2026-05 2026-06\n"
+                        "  /nxt share 2026-06 · /nxt close 2026-07-13\n\n"
                         f"{exc}"
                     )
                 }
