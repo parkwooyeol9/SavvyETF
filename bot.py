@@ -60,6 +60,9 @@ What each command returns:
 /etf_sector
 → Sector rotation: 11 XL* SPDRs + theme ETFs vs SPY (1D/5D/20D RS)
 
+/etfcheck
+→ ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
+
 /sp   (or /nas)
 → Same rankings for S&P 500 / NASDAQ 100
 
@@ -151,6 +154,7 @@ def build_help_messages() -> list[dict]:
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/etf_sector</code> — 섹터 로테이션 (XL* 11 + 테마 ETF vs SPY)
+<code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
 <code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
@@ -1327,6 +1331,29 @@ def handle_telegram_message(message, chat_id: int):
             ]
         except Exception as exc:
             return [{"text": f"/etf_sector failed: {exc}"}]
+
+    from etfcheck import is_etfcheck_command
+
+    if is_etfcheck_command(normalized):
+        try:
+            from etfcheck import (
+                build_etfcheck_brief,
+                format_etfcheck_telegram,
+                parse_etfcheck_mode,
+            )
+
+            mode = parse_etfcheck_mode(normalized)
+            brief = build_etfcheck_brief(mode=mode)
+            return [
+                {
+                    "text": format_etfcheck_telegram(brief),
+                    "parse_mode": "HTML",
+                }
+            ]
+        except ValueError as exc:
+            return [{"text": str(exc)}]
+        except Exception as exc:
+            return [{"text": f"/etfcheck failed: {exc}"}]
 
     if lower.startswith("/macro"):
         try:
