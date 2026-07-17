@@ -211,4 +211,28 @@ def generate_summary_pre(public_url: str = "") -> dict:
         messages.append({"text": f"PDF export unavailable: {summary['pdf_error']}"})
 
     summary["telegram_messages"] = messages
+
+    try:
+        from web_publish import publish_brief, section_from_html
+
+        body_parts = []
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get("text"):
+                body_parts.append(str(msg["text"]))
+            elif isinstance(msg, str):
+                body_parts.append(msg)
+        publish_brief(
+            "us",
+            "summary_pre",
+            title="미국 시황 /summary_pre",
+            generated_at=summary.get("generated_at_display")
+            or summary.get("generated_at"),
+            sections=section_from_html(
+                "\n\n".join(body_parts), heading="Premarket brief"
+            ),
+            meta={"has_pdf": bool(summary.get("pdf_path"))},
+        )
+    except Exception as pub_exc:
+        print(f"web_publish summary_pre skipped: {pub_exc}")
+
     return summary

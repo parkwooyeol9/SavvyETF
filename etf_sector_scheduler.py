@@ -76,13 +76,28 @@ def run_scheduled_etf_sector(token: str, broadcast_fn) -> bool:
     try:
         board = build_etf_sector_board()
         chart = plot_etf_sector_board(board)
+        text = format_etf_sector_telegram(board)
         messages = [
             {
-                "text": format_etf_sector_telegram(board),
+                "text": text,
                 "parse_mode": "HTML",
                 "photo": chart,
             }
         ]
+        try:
+            from web_publish import publish_brief, section_from_html
+
+            publish_brief(
+                "etf",
+                "etf_sector",
+                title="ETF 시황 /etf_sector",
+                generated_at=board.get("generated_at_kst")
+                or board.get("generated_at_et"),
+                sections=section_from_html(text, heading="Sector rotation"),
+                meta={"session_as_of": board.get("session_as_of")},
+            )
+        except Exception as pub_exc:
+            print(f"web_publish etf_sector skipped: {pub_exc}")
         delivered = broadcast_fn(token, messages)
         if not delivered:
             print("Scheduled etf_sector not delivered: 0 chats.")

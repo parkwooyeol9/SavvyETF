@@ -464,4 +464,19 @@ def generate_and_save_reddit_brief(public_url: str = "") -> dict[str, Any]:
         print(f"Reddit PDF export skipped: {exc}")
 
     brief["telegram_messages"] = render_reddit_telegram_full(brief, public_url or reddit_web)
+
+    try:
+        from web_publish import publish_brief
+
+        publish_brief(
+            "us",
+            "reddit",
+            title="미국 시황 /reddit",
+            generated_at=brief.get("generated_at_display") or brief.get("generated_at"),
+            html=brief.get("html"),
+            meta={"has_pdf": bool(brief.get("pdf_path"))},
+        )
+    except Exception as pub_exc:
+        print(f"web_publish reddit skipped: {pub_exc}")
+
     return brief

@@ -747,4 +747,20 @@ def generate_summary_nxt(public_url: str = "", *, as_of: date | None = None) -> 
             }
         )
     summary["telegram_messages"] = messages
+
+    try:
+        from web_publish import publish_brief
+
+        publish_brief(
+            "kr",
+            "summary_nxt",
+            title="국내 시황 /summary_nxt",
+            generated_at=summary.get("generated_at_display")
+            or summary.get("generated_at"),
+            html=summary.get("html"),
+            meta={},
+        )
+    except Exception as pub_exc:
+        print(f"web_publish summary_nxt skipped: {pub_exc}")
+
     return summary

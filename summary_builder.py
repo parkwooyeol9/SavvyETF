@@ -962,6 +962,21 @@ def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False
             {"text": f"Web page note: HTML fell back to a simple page ({summary['html_error']})"}
         )
 
+    try:
+        from web_publish import publish_brief
+
+        publish_brief(
+            "us",
+            "summary",
+            title="미국 시황 /summary",
+            generated_at=summary.get("generated_at_display")
+            or summary.get("generated_at"),
+            html=summary.get("html"),
+            meta={"has_pdf": bool(summary.get("pdf_path"))},
+        )
+    except Exception as pub_exc:
+        print(f"web_publish summary skipped: {pub_exc}")
+
     return summary
 
 

@@ -5,6 +5,11 @@ __pycache__/
 venv/
 .DS_Store
 .ipynb_checkpoints/
+webapp/node_modules/
+webapp/.next/
+webapp/.vercel/
+webapp/.env.local
+webapp/.env*.local
 data/*.pkl
 data/known_chats.json
 data/blocked_chats.json

@@ -1421,12 +1421,26 @@ def handle_telegram_message(message, chat_id: int):
                 format_etf_sector_telegram,
                 plot_etf_sector_board,
             )
+            from web_publish import publish_brief, section_from_html
 
             board = build_etf_sector_board()
             chart = plot_etf_sector_board(board)
+            text = format_etf_sector_telegram(board)
+            try:
+                publish_brief(
+                    "etf",
+                    "etf_sector",
+                    title="ETF 시황 /etf_sector",
+                    generated_at=board.get("generated_at_kst")
+                    or board.get("generated_at_et"),
+                    sections=section_from_html(text, heading="Sector rotation"),
+                    meta={"session_as_of": board.get("session_as_of")},
+                )
+            except Exception as pub_exc:
+                print(f"web_publish etf_sector skipped: {pub_exc}")
             return [
                 {
-                    "text": format_etf_sector_telegram(board),
+                    "text": text,
                     "parse_mode": "HTML",
                     "photo": chart,
                 }
@@ -1443,12 +1457,26 @@ def handle_telegram_message(message, chat_id: int):
                 format_etfcheck_telegram,
                 parse_etfcheck_mode,
             )
+            from web_publish import publish_brief, section_from_html
 
             mode = parse_etfcheck_mode(normalized)
             brief = build_etfcheck_brief(mode=mode)
+            text = format_etfcheck_telegram(brief)
+            try:
+                publish_brief(
+                    "etf",
+                    "etfcheck",
+                    title="ETF 시황 /etfcheck",
+                    generated_at=brief.get("generated_at_display")
+                    or brief.get("generated_at"),
+                    sections=section_from_html(text, heading="ETF CHECK"),
+                    meta={"mode": mode},
+                )
+            except Exception as pub_exc:
+                print(f"web_publish etfcheck skipped: {pub_exc}")
             return [
                 {
-                    "text": format_etfcheck_telegram(brief),
+                    "text": text,
                     "parse_mode": "HTML",
                 }
             ]
