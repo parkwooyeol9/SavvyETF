@@ -246,8 +246,13 @@ def _parse_chat_id_env(var_name: str) -> set[int]:
 
 
 def env_chat_ids() -> set[int]:
-    """Pinned recipients from TELEGRAM_CHAT_ID (1:1 and/or channel, comma-separated)."""
+    """Legacy / fallback pins from TELEGRAM_CHAT_ID (comma-separated)."""
     return _parse_chat_id_env("TELEGRAM_CHAT_ID")
+
+
+def env_chat_ids_us() -> set[int]:
+    """US schedule recipients (/summary, /summary_pre, /reddit) from TELEGRAM_CHAT_ID_US."""
+    return _parse_chat_id_env("TELEGRAM_CHAT_ID_US")
 
 
 def env_chat_ids_kor() -> set[int]:
@@ -255,9 +260,13 @@ def env_chat_ids_kor() -> set[int]:
     return _parse_chat_id_env("TELEGRAM_CHAT_ID_KOR")
 
 
+def _all_pinned_chat_ids() -> set[int]:
+    return env_chat_ids() | env_chat_ids_us() | env_chat_ids_kor()
+
+
 def block_chat(chat_id: int, reason: str) -> None:
     # Env-pinned chats must keep receiving schedules across redeploys / flaky errors.
-    if chat_id in env_chat_ids() | env_chat_ids_kor():
+    if chat_id in _all_pinned_chat_ids():
         print(
             f"Skip blocking pinned chat_id={chat_id}: {reason}"
         )
@@ -308,7 +317,7 @@ def register_delivery_chat(chat_id: int) -> None:
 
 def startup_chat_ids() -> set[int]:
     """All broadcast targets: known chats + env pins, minus non-pinned blocks."""
-    pinned = env_chat_ids() | env_chat_ids_kor()
+    pinned = _all_pinned_chat_ids()
     blocked = load_blocked_chats() - pinned
     return (load_known_chats() | pinned) - blocked
 
@@ -317,9 +326,11 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
     """
     Resolve scheduled-delivery recipients.
 
-    - default: US briefs / reddit → TELEGRAM_CHAT_ID + known chats, excluding Korea channel(s)
-    - kor: Korea / NXT briefs → TELEGRAM_CHAT_ID_KOR only
+    - us / default: /summary, /summary_pre, /reddit → TELEGRAM_CHAT_ID_US
+      (falls back to TELEGRAM_CHAT_ID + known chats, excluding Korea/US-dedicated channels)
+    - kor: /summary_kor*, /summary_nxt → TELEGRAM_CHAT_ID_KOR only
     """
+    us = env_chat_ids_us()
     kor = env_chat_ids_kor()
     if audience == "kor":
         if not kor:
@@ -329,7 +340,15 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
             return set()
         blocked = load_blocked_chats() - kor
         return kor - blocked
-    return startup_chat_ids() - kor
+
+    # US / general schedules
+    if us:
+        blocked = load_blocked_chats() - us
+        return us - blocked
+    if audience in {"us", "default"}:
+        # Legacy fallback when TELEGRAM_CHAT_ID_US is unset.
+        return startup_chat_ids() - kor
+    return set()
 
 
 def _telegram_error_description(response: requests.Response) -> str:
@@ -438,7 +457,7 @@ def broadcast_messages(
     if not chat_ids:
         print(
             f"Broadcast skipped (audience={audience}): no chat IDs configured. "
-            "Set TELEGRAM_CHAT_ID / TELEGRAM_CHAT_ID_KOR on Render, or message the bot once."
+            "Set TELEGRAM_CHAT_ID_US / TELEGRAM_CHAT_ID_KOR on Render."
         )
         return 0
     if not messages:
@@ -467,6 +486,11 @@ def broadcast_messages(
     if delivered == 0:
         print("Broadcast failed: no chats received messages.")
     return delivered
+
+
+def broadcast_messages_us(token: str, messages: list[str] | list[dict]) -> int:
+    """US scheduled briefs (/summary, /summary_pre, /reddit) → TELEGRAM_CHAT_ID_US."""
+    return broadcast_messages(token, messages, audience="us")
 
 
 def broadcast_messages_kor(token: str, messages: list[str] | list[dict]) -> int:
@@ -628,8 +652,7 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 (
                     "SavvyETF Bot is ready in this channel.\n"
                     f"Channel chat_id: {chat_id}\n"
-                    "Tip: US/general → Render TELEGRAM_CHAT_ID; "
-                    "Korea/NXT → TELEGRAM_CHAT_ID_KOR "
+                    "Tip: US → TELEGRAM_CHAT_ID_US; Korea/NXT → TELEGRAM_CHAT_ID_KOR "
                     "(comma-separated ids OK).\n"
                     "Bot must be channel admin with Post Messages.\n"
                     "Try /help"
@@ -1729,10 +1752,11 @@ def start_web_server():
                         "telegram_chat_id_env": env_chat,
                         "broadcast_chat_count": chat_count,
                         "broadcast_env_count": len(env_ids),
+                        "broadcast_env_us_count": len(env_chat_ids_us()),
                         "broadcast_env_kor_count": len(env_chat_ids_kor()),
                         "broadcast_known_count": len(load_known_chats()),
                         "broadcast_blocked_count": len(load_blocked_chats()),
-                        "broadcast_targets_default": sorted(broadcast_targets(audience="default")),
+                        "broadcast_targets_us": sorted(broadcast_targets(audience="us")),
                         "broadcast_targets_kor": sorted(broadcast_targets(audience="kor")),
                         "broadcast_chat_kinds": {
                             "private_or_group": sum(
@@ -2220,13 +2244,14 @@ def start_telegram_bot(token: str):
 
     print("Starting Telegram bot (async command workers)...")
     # Pin env recipients so channels/1:1 survive blocked_chats leftovers + redeploys.
-    for chat_id in env_chat_ids() | env_chat_ids_kor():
+    for chat_id in _all_pinned_chat_ids():
         register_delivery_chat(chat_id)
     targets = startup_chat_ids()
     print(
         f"Broadcast targets: {len(targets)} "
-        f"(env={len(env_chat_ids())}, kor={len(env_chat_ids_kor())}, "
-        f"known={len(load_known_chats())}, blocked={len(load_blocked_chats())})"
+        f"(legacy={len(env_chat_ids())}, us={len(env_chat_ids_us())}, "
+        f"kor={len(env_chat_ids_kor())}, known={len(load_known_chats())}, "
+        f"blocked={len(load_blocked_chats())})"
     )
 
     pending_updates, last_update_id = fetch_pending_updates(token)
@@ -2333,11 +2358,11 @@ if __name__ == "__main__":
         start_cache_watchdog()
     start_summary_scheduler(
         token=token,
-        broadcast_fn=broadcast_messages,
+        broadcast_fn=broadcast_messages_us,
         refresh_cache_fn=_refresh_summary_caches_for_schedule,
         public_url=summary_public_url(),
     )
-    start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)
+    start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages_us)
     start_summary_kor_intra_scheduler(
         token=token,
         broadcast_fn=broadcast_messages_kor,
