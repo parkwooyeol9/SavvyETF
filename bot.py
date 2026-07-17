@@ -30,6 +30,8 @@ from stock_crawler import (
     warmup_deferred_caches,
     warmup_startup_caches,
 )
+from etf_sector_scheduler import start_etf_sector_scheduler
+from etfcheck_scheduler import start_etfcheck_scheduler
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
 from summary_kor_scheduler import start_summary_kor_scheduler
@@ -58,7 +60,7 @@ What each command returns:
 → Top 3 price-up+volume surge & top 3 price-down+volume surge ETFs
 
 /etf_sector
-→ Sector rotation: 11 XL* SPDRs + theme ETFs vs SPY (1D/5D/20D RS)
+→ Sector rotation by last completed daily return + chart (XL* + themes vs SPY)
 
 /etfcheck
 → ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
@@ -134,11 +136,9 @@ What each command returns:
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
 Auto schedule (KST):
-  /summary 07:00 · /summary_pre 21:50
-  /summary_kor_intra 11:00 (weekdays)
-  /summary_kor 15:40 (weekdays)
-  /summary_nxt 08:30 / 16:40 (weekdays)
-  /reddit 21:00
+  /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
+  /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
+  /etf_sector 08:50 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
 
 Type /help for the full command list.
 """
@@ -153,7 +153,7 @@ def build_help_messages() -> list[dict]:
 
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
-<code>/etf_sector</code> — 섹터 로테이션 (XL* 11 + 테마 ETF vs SPY)
+<code>/etf_sector</code> — 섹터 로테이션 (전일 수익률 + 차트, XL*/테마 vs SPY)
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
@@ -171,13 +171,14 @@ def build_help_messages() -> list[dict]:
 <code>/news_naver</code> — 네이버 뉴스 (키워드 선택 가능)"""
 
     msg2 = """<b>📋 브리핑 · 자동 스케줄 (KST)</b>
-<code>/summary</code> 07:00 — 미국 마감 브리핑
-<code>/summary_pre</code> 21:50 — 프리마켓
-<code>/summary_kor</code> 15:40 — 한국 마감
-<code>/summary_kor_intra</code> 11:00 — 한국 장중 (Naver 1분봉)
-<code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑
-<code>/nxt help</code> — NXT 하위 명령
-<code>/reddit</code> 21:00 — WSB 핫토픽 + 재무
+<code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
+<code>/summary_pre</code> 21:50 — 프리마켓 (US 채널)
+<code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
+<code>/summary_kor</code> 15:40 — 한국 마감 (Korea 채널)
+<code>/summary_kor_intra</code> 11:00 — 한국 장중 (Korea 채널)
+<code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
+<code>/etf_sector</code> 08:50 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
+<code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 
 <b>🔬 종목 · ETF 분석</b>
@@ -337,6 +338,8 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
     - us / default: /summary, /summary_pre, /reddit → TELEGRAM_CHAT_ID_US
       (falls back to TELEGRAM_CHAT_ID + known chats, excluding Korea/US-dedicated channels)
     - kor: /summary_kor*, /summary_nxt → TELEGRAM_CHAT_ID_KOR only
+    - legacy / etf: /etfcheck, /etf_sector → TELEGRAM_CHAT_ID only
+      (excludes US/Korea dedicated channel ids even if they appear in legacy env)
     """
     us = env_chat_ids_us()
     kor = env_chat_ids_kor()
@@ -348,6 +351,17 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
             return set()
         blocked = load_blocked_chats() - kor
         return kor - blocked
+
+    if audience in {"legacy", "etf"}:
+        legacy = env_chat_ids() - us - kor
+        if not legacy:
+            print(
+                "Legacy ETF broadcast skipped: set TELEGRAM_CHAT_ID to the ETF channel id "
+                "(distinct from TELEGRAM_CHAT_ID_US / TELEGRAM_CHAT_ID_KOR)."
+            )
+            return set()
+        blocked = load_blocked_chats() - legacy
+        return legacy - blocked
 
     # US / general schedules
     if us:
@@ -465,7 +479,7 @@ def broadcast_messages(
     if not chat_ids:
         print(
             f"Broadcast skipped (audience={audience}): no chat IDs configured. "
-            "Set TELEGRAM_CHAT_ID_US / TELEGRAM_CHAT_ID_KOR on Render."
+            "Set TELEGRAM_CHAT_ID_US / TELEGRAM_CHAT_ID_KOR / TELEGRAM_CHAT_ID on Render."
         )
         return 0
     if not messages:
@@ -504,6 +518,11 @@ def broadcast_messages_us(token: str, messages: list[str] | list[dict]) -> int:
 def broadcast_messages_kor(token: str, messages: list[str] | list[dict]) -> int:
     """Korea / NXT scheduled briefs → TELEGRAM_CHAT_ID_KOR only."""
     return broadcast_messages(token, messages, audience="kor")
+
+
+def broadcast_messages_legacy(token: str, messages: list[str] | list[dict]) -> int:
+    """ETF channel schedules (/etfcheck, /etf_sector) → TELEGRAM_CHAT_ID only."""
+    return broadcast_messages(token, messages, audience="legacy")
 
 
 _greeted_this_session: set[int] = set()
@@ -660,7 +679,8 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 (
                     "SavvyETF Bot is ready in this channel.\n"
                     f"Channel chat_id: {chat_id}\n"
-                    "Tip: US → TELEGRAM_CHAT_ID_US; Korea/NXT → TELEGRAM_CHAT_ID_KOR "
+                    "Tip: US → TELEGRAM_CHAT_ID_US; Korea/NXT → TELEGRAM_CHAT_ID_KOR; "
+                    "ETF schedules → TELEGRAM_CHAT_ID "
                     "(comma-separated ids OK).\n"
                     "Bot must be channel admin with Post Messages.\n"
                     "Try /help"
@@ -1320,13 +1340,19 @@ def handle_telegram_message(message, chat_id: int):
 
     if is_etf_sector_command(normalized):
         try:
-            from etf_sector import build_etf_sector_board, format_etf_sector_telegram
+            from etf_sector import (
+                build_etf_sector_board,
+                format_etf_sector_telegram,
+                plot_etf_sector_board,
+            )
 
             board = build_etf_sector_board()
+            chart = plot_etf_sector_board(board)
             return [
                 {
                     "text": format_etf_sector_telegram(board),
                     "parse_mode": "HTML",
+                    "photo": chart,
                 }
             ]
         except Exception as exc:
@@ -1805,6 +1831,9 @@ def start_web_server():
                         "broadcast_blocked_count": len(load_blocked_chats()),
                         "broadcast_targets_us": sorted(broadcast_targets(audience="us")),
                         "broadcast_targets_kor": sorted(broadcast_targets(audience="kor")),
+                        "broadcast_targets_legacy": sorted(
+                            broadcast_targets(audience="legacy")
+                        ),
                         "broadcast_chat_kinds": {
                             "private_or_group": sum(
                                 1 for c in startup_chat_ids() if c > 0
@@ -1825,6 +1854,10 @@ def start_web_server():
                             "summary-nxt-scheduler": (
                                 "summary-nxt-scheduler" in thread_names
                             ),
+                            "etfcheck-scheduler": "etfcheck-scheduler" in thread_names,
+                            "etf-sector-scheduler": (
+                                "etf-sector-scheduler" in thread_names
+                            ),
                         },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
@@ -1834,11 +1867,15 @@ def start_web_server():
                         ),
                         "last_summary_kor_slot": state.get("last_summary_kor_slot"),
                         "last_summary_nxt_slot": state.get("last_summary_nxt_slot"),
+                        "last_etfcheck_slot": state.get("last_etfcheck_slot"),
+                        "last_etf_sector_slot": state.get("last_etf_sector_slot"),
                         "last_summary_error": state.get("last_summary_error"),
                         "last_summary_nxt_error": state.get("last_summary_nxt_error"),
                         "last_summary_kor_intra_error": state.get(
                             "last_summary_kor_intra_error"
                         ),
+                        "last_etfcheck_error": state.get("last_etfcheck_error"),
+                        "last_etf_sector_error": state.get("last_etf_sector_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
                         "summary_scheduler_heartbeat": state.get(
                             "summary_scheduler_heartbeat"
@@ -1848,6 +1885,12 @@ def start_web_server():
                         ),
                         "summary_nxt_scheduler_heartbeat": state.get(
                             "summary_nxt_scheduler_heartbeat"
+                        ),
+                        "etfcheck_scheduler_heartbeat": state.get(
+                            "etfcheck_scheduler_heartbeat"
+                        ),
+                        "etf_sector_scheduler_heartbeat": state.get(
+                            "etf_sector_scheduler_heartbeat"
                         ),
                     },
                     "schedule": {
@@ -1869,10 +1912,17 @@ def start_web_server():
                         "summary_nxt_kst": os.environ.get(
                             "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:40"
                         ),
+                        "etf_sector_kst": os.environ.get(
+                            "ETF_SECTOR_SCHEDULE_KST", "8:50"
+                        ),
+                        "etfcheck_kst": os.environ.get(
+                            "ETFCHECK_SCHEDULE_KST", "15:40"
+                        ),
                         "note": (
-                            "NXT sessions KST: pre 08:00–08:50, main 09:00:30–15:20, "
-                            "after 15:40–20:00. /summary_nxt at 08:30/16:40; "
-                            "/reddit 21:00 only."
+                            "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
+                            "ETF legacy→TELEGRAM_CHAT_ID. "
+                            "/etf_sector skips US holiday sessions; "
+                            "/etfcheck skips KRX holidays."
                         ),
                     },
                 }
@@ -2425,4 +2475,6 @@ if __name__ == "__main__":
         broadcast_fn=broadcast_messages_kor,
         public_url=summary_public_url(),
     )
+    start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_telegram_bot(token)

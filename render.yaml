@@ -44,6 +44,14 @@ services:
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
         value: "8:30,16:40"
+      - key: ETF_SECTOR_SCHEDULE_ENABLED
+        value: "true"
+      - key: ETF_SECTOR_SCHEDULE_KST
+        value: "8:50"
+      - key: ETFCHECK_SCHEDULE_ENABLED
+        value: "true"
+      - key: ETFCHECK_SCHEDULE_KST
+        value: "15:40"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY
