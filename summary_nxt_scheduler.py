@@ -64,7 +64,10 @@ def _poll_seconds() -> int:
 
 
 def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
-    return now_kst.weekday() >= 5
+    """Skip Sat/Sun and KRX/Nextrade full-day holidays (e.g. 제헌절)."""
+    from kr_calendar import is_kr_equity_trading_day
+
+    return not is_kr_equity_trading_day(now_kst.date())
 
 
 def run_scheduled_summary_nxt(
@@ -154,7 +157,10 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
                     if not slot:
                         continue
                     if _should_skip_kr_non_trading(now):
-                        print(f"Scheduled summary_nxt skipped ({slot}): weekend")
+                        print(
+                            f"Scheduled summary_nxt skipped ({slot}): "
+                            "weekend or KRX/NXT holiday"
+                        )
                         last_slot = slot
                         update_scheduler_state(last_summary_nxt_slot=slot)
                     elif run_scheduled_summary_nxt(

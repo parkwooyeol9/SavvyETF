@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+# Jul–Dec 2026 full closes (for reference; computed via nyse_holidays()):
+#   2026-07-03 Independence Day (observed)
+#   2026-09-07 Labor Day
+#   2026-11-26 Thanksgiving
+#   2026-12-25 Christmas
+# Early closes (market still trades — schedules still run):
+#   2026-11-27 day after Thanksgiving 1pm ET
+#   2026-12-24 Christmas Eve 1pm ET
+
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
     """Return the n-th weekday in month (weekday: Mon=0 … Sun=6)."""

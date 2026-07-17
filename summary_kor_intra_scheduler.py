@@ -43,8 +43,10 @@ def _poll_seconds() -> int:
 
 
 def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
-    """Skip Sat/Sun KST (KRX closed)."""
-    return now_kst.weekday() >= 5
+    """Skip Sat/Sun and KRX full-day holidays (e.g. 제헌절)."""
+    from kr_calendar import is_kr_equity_trading_day
+
+    return not is_kr_equity_trading_day(now_kst.date())
 
 
 def run_scheduled_summary_kor_intra(token: str, broadcast_fn, public_url: str = "") -> bool:
@@ -127,7 +129,10 @@ def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str 
                 )
                 if slot:
                     if _should_skip_kr_non_trading(now):
-                        print(f"Scheduled summary_kor_intra skipped ({slot}): weekend")
+                        print(
+                            f"Scheduled summary_kor_intra skipped ({slot}): "
+                            "weekend or KRX holiday"
+                        )
                         last_slot = slot
                         update_scheduler_state(last_summary_kor_intra_slot=slot)
                     elif run_scheduled_summary_kor_intra(
