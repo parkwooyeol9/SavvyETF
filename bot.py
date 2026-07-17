@@ -57,6 +57,9 @@ What each command returns:
 /etf
 → Top 3 price-up+volume surge & top 3 price-down+volume surge ETFs
 
+/etf_sector
+→ Sector rotation: 11 XL* SPDRs + theme ETFs vs SPY (1D/5D/20D RS)
+
 /sp   (or /nas)
 → Same rankings for S&P 500 / NASDAQ 100
 
@@ -147,6 +150,7 @@ def build_help_messages() -> list[dict]:
 
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
+<code>/etf_sector</code> — 섹터 로테이션 (XL* 11 + 테마 ETF vs SPY)
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
 <code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
@@ -1307,6 +1311,22 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": f"Invalid heatmap command: {exc}\n\nUsage: /heatmap sp | /heatmap nas 20 | /heatmap etf 30"}]
         except Exception as exc:
             return [{"text": f"Heatmap failed: {exc}"}]
+
+    from etf_sector import is_etf_sector_command
+
+    if is_etf_sector_command(normalized):
+        try:
+            from etf_sector import build_etf_sector_board, format_etf_sector_telegram
+
+            board = build_etf_sector_board()
+            return [
+                {
+                    "text": format_etf_sector_telegram(board),
+                    "parse_mode": "HTML",
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"/etf_sector failed: {exc}"}]
 
     if lower.startswith("/macro"):
         try:
