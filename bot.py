@@ -232,25 +232,34 @@ def save_blocked_chats(chat_ids: set[int]) -> None:
         json.dump(sorted(chat_ids), handle)
 
 
-def env_chat_ids() -> set[int]:
-    """Pinned recipients from TELEGRAM_CHAT_ID (1:1 and/or channel, comma-separated)."""
+def _parse_chat_id_env(var_name: str) -> set[int]:
     ids: set[int] = set()
-    for raw_id in os.environ.get("TELEGRAM_CHAT_ID", "").split(","):
+    for raw_id in os.environ.get(var_name, "").split(","):
         raw_id = raw_id.strip()
         if not raw_id:
             continue
         try:
             ids.add(int(raw_id))
         except ValueError:
-            print(f"Ignoring invalid TELEGRAM_CHAT_ID entry: {raw_id!r}")
+            print(f"Ignoring invalid {var_name} entry: {raw_id!r}")
     return ids
+
+
+def env_chat_ids() -> set[int]:
+    """Pinned recipients from TELEGRAM_CHAT_ID (1:1 and/or channel, comma-separated)."""
+    return _parse_chat_id_env("TELEGRAM_CHAT_ID")
+
+
+def env_chat_ids_kor() -> set[int]:
+    """Korea / NXT schedule recipients from TELEGRAM_CHAT_ID_KOR."""
+    return _parse_chat_id_env("TELEGRAM_CHAT_ID_KOR")
 
 
 def block_chat(chat_id: int, reason: str) -> None:
     # Env-pinned chats must keep receiving schedules across redeploys / flaky errors.
-    if chat_id in env_chat_ids():
+    if chat_id in env_chat_ids() | env_chat_ids_kor():
         print(
-            f"Skip blocking pinned TELEGRAM_CHAT_ID={chat_id}: {reason}"
+            f"Skip blocking pinned chat_id={chat_id}: {reason}"
         )
         return
     blocked = load_blocked_chats()
@@ -299,9 +308,29 @@ def register_delivery_chat(chat_id: int) -> None:
 
 def startup_chat_ids() -> set[int]:
     """All broadcast targets: known chats + env pins, minus non-pinned blocks."""
-    pinned = env_chat_ids()
+    pinned = env_chat_ids() | env_chat_ids_kor()
     blocked = load_blocked_chats() - pinned
     return (load_known_chats() | pinned) - blocked
+
+
+def broadcast_targets(*, audience: str = "default") -> set[int]:
+    """
+    Resolve scheduled-delivery recipients.
+
+    - default: US briefs / reddit → TELEGRAM_CHAT_ID + known chats, excluding Korea channel(s)
+    - kor: Korea / NXT briefs → TELEGRAM_CHAT_ID_KOR only
+    """
+    kor = env_chat_ids_kor()
+    if audience == "kor":
+        if not kor:
+            print(
+                "Korea broadcast skipped: set TELEGRAM_CHAT_ID_KOR to the Korea channel id."
+            )
+            return set()
+        blocked = load_blocked_chats() - kor
+        return kor - blocked
+    return startup_chat_ids() - kor
+
 
 def _telegram_error_description(response: requests.Response) -> str:
     try:
@@ -398,19 +427,27 @@ def _send_message_payload(token: str, chat_id: int, message: str | dict) -> bool
     return bool(send_text(token, chat_id, message))
 
 
-def broadcast_messages(token: str, messages: list[str] | list[dict]) -> int:
-    """Send messages to all startup chats. Returns number of chats delivered to."""
-    chat_ids = startup_chat_ids()
+def broadcast_messages(
+    token: str,
+    messages: list[str] | list[dict],
+    *,
+    audience: str = "default",
+) -> int:
+    """Send messages to audience targets. Returns number of chats delivered to."""
+    chat_ids = broadcast_targets(audience=audience)
     if not chat_ids:
         print(
-            "Broadcast skipped: no chat IDs configured. "
-            "Set TELEGRAM_CHAT_ID on Render, or message the bot once so known_chats.json is saved."
+            f"Broadcast skipped (audience={audience}): no chat IDs configured. "
+            "Set TELEGRAM_CHAT_ID / TELEGRAM_CHAT_ID_KOR on Render, or message the bot once."
         )
         return 0
     if not messages:
         print("Broadcast skipped: empty message list.")
         return 0
-    print(f"Broadcasting {len(messages)} message(s) to {len(chat_ids)} chat(s).")
+    print(
+        f"Broadcasting {len(messages)} message(s) to {len(chat_ids)} chat(s) "
+        f"(audience={audience})."
+    )
     delivered = 0
     for chat_id in chat_ids:
         ok = True
@@ -430,6 +467,11 @@ def broadcast_messages(token: str, messages: list[str] | list[dict]) -> int:
     if delivered == 0:
         print("Broadcast failed: no chats received messages.")
     return delivered
+
+
+def broadcast_messages_kor(token: str, messages: list[str] | list[dict]) -> int:
+    """Korea / NXT scheduled briefs → TELEGRAM_CHAT_ID_KOR only."""
+    return broadcast_messages(token, messages, audience="kor")
 
 
 _greeted_this_session: set[int] = set()
@@ -586,9 +628,9 @@ def process_my_chat_member(token: str, update: dict) -> None:
                 (
                     "SavvyETF Bot is ready in this channel.\n"
                     f"Channel chat_id: {chat_id}\n"
-                    "Tip: add this id to Render TELEGRAM_CHAT_ID "
-                    "(comma-separated with your 1:1 chat) so schedules "
-                    "keep working after redeploys.\n"
+                    "Tip: US/general → Render TELEGRAM_CHAT_ID; "
+                    "Korea/NXT → TELEGRAM_CHAT_ID_KOR "
+                    "(comma-separated ids OK).\n"
                     "Bot must be channel admin with Post Messages.\n"
                     "Try /help"
                 ),
@@ -1687,8 +1729,11 @@ def start_web_server():
                         "telegram_chat_id_env": env_chat,
                         "broadcast_chat_count": chat_count,
                         "broadcast_env_count": len(env_ids),
+                        "broadcast_env_kor_count": len(env_chat_ids_kor()),
                         "broadcast_known_count": len(load_known_chats()),
                         "broadcast_blocked_count": len(load_blocked_chats()),
+                        "broadcast_targets_default": sorted(broadcast_targets(audience="default")),
+                        "broadcast_targets_kor": sorted(broadcast_targets(audience="kor")),
                         "broadcast_chat_kinds": {
                             "private_or_group": sum(
                                 1 for c in startup_chat_ids() if c > 0
@@ -2175,13 +2220,13 @@ def start_telegram_bot(token: str):
 
     print("Starting Telegram bot (async command workers)...")
     # Pin env recipients so channels/1:1 survive blocked_chats leftovers + redeploys.
-    for chat_id in env_chat_ids():
+    for chat_id in env_chat_ids() | env_chat_ids_kor():
         register_delivery_chat(chat_id)
     targets = startup_chat_ids()
     print(
         f"Broadcast targets: {len(targets)} "
-        f"(env={len(env_chat_ids())}, known={len(load_known_chats())}, "
-        f"blocked={len(load_blocked_chats())})"
+        f"(env={len(env_chat_ids())}, kor={len(env_chat_ids_kor())}, "
+        f"known={len(load_known_chats())}, blocked={len(load_blocked_chats())})"
     )
 
     pending_updates, last_update_id = fetch_pending_updates(token)
@@ -2295,17 +2340,17 @@ if __name__ == "__main__":
     start_reddit_scheduler(token=token, broadcast_fn=broadcast_messages)
     start_summary_kor_intra_scheduler(
         token=token,
-        broadcast_fn=broadcast_messages,
+        broadcast_fn=broadcast_messages_kor,
         public_url=summary_public_url(),
     )
     start_summary_kor_scheduler(
         token=token,
-        broadcast_fn=broadcast_messages,
+        broadcast_fn=broadcast_messages_kor,
         public_url=summary_public_url(),
     )
     start_summary_nxt_scheduler(
         token=token,
-        broadcast_fn=broadcast_messages,
+        broadcast_fn=broadcast_messages_kor,
         public_url=summary_public_url(),
     )
     start_telegram_bot(token)
