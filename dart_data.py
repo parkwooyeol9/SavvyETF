@@ -166,6 +166,19 @@ def resolve_corp(query: str) -> dict:
     if len(exact) == 1:
         return exact[0]
     if len(exact) > 1:
+        # Prefer currently listed issuers when duplicate names exist in corpCode.xml.
+        listed = [corp for corp in exact if (corp.get("stock_code") or "").strip()]
+        if len(listed) == 1:
+            return listed[0]
+        if len(listed) > 1:
+            listed.sort(
+                key=lambda corp: (
+                    corp.get("modify_date") or "",
+                    corp.get("stock_code") or "",
+                ),
+                reverse=True,
+            )
+            return listed[0]
         names = ", ".join(corp["corp_name"] for corp in exact[:5])
         raise RuntimeError(f"Multiple exact matches: {names}")
 

@@ -132,6 +132,9 @@ What each command returns:
 /dart 삼성전자
 → 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
 
+/esg 삼성전자
+→ DART ESG 허브 (실적·배당·소유·주주환원·중대재해 스크리닝)
+
 /dart etf memb 0167A0
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
@@ -144,7 +147,7 @@ Type /help for the full command list.
 """
 
 # Telegram sendMessage limit is 4096 chars — keep help split and concise.
-HELP_TEXT_SHORT = "전체 명령어는 /help 를 입력하세요."
+HELP_TEXT_SHORT = "알 수 없는 명령어입니다. 전체 안내는 /help 를 입력하세요."
 
 
 def build_help_messages() -> list[dict]:
@@ -189,6 +192,7 @@ def build_help_messages() -> list[dict]:
 <code>/nxt 2026-06</code> — 월간 NXT 거래대금 누적
 <code>/nxt dailyvol 2026-06</code> — 시장 일별 대금·점유율
 <code>/dart 삼성전자</code> — DART 재무
+<code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
@@ -933,8 +937,19 @@ def handle_telegram_message(message, chat_id: int):
     if lower.startswith("/") and not lower.startswith("/event"):
         _pending_event_by_chat.pop(chat_id, None)
 
-    if lower.split()[0] in {"/help", "/start"} or lower == "help":
+    token0 = lower.split()[0] if lower else ""
+    if token0 == "/help" or lower == "help":
         return build_help_messages()
+    if token0 == "/start":
+        return [
+            {
+                "text": (
+                    "SavvyETF Bot입니다.\n"
+                    "명령어 전체 안내는 <code>/help</code> 를 입력하세요."
+                ),
+                "parse_mode": "HTML",
+            }
+        ]
 
     if lower.startswith("/summary_pre"):
         try:
@@ -1150,6 +1165,36 @@ def handle_telegram_message(message, chat_id: int):
             ]
         except Exception as exc:
             return [{"text": f"DART analysis failed: {exc}"}]
+
+    if lower.startswith("/esg") or lower.startswith("/governance"):
+        try:
+            from esg_pipeline import is_esg_command, parse_esg_command, run_esg
+
+            if not is_esg_command(normalized):
+                return [{"text": "Unknown command. Try /esg help"}]
+            mode, query = parse_esg_command(normalized)
+            if mode == "help":
+                return run_esg("help")["telegram_messages"]
+            label = query or "전체"
+            replies = [{"text": f"ESG 조회 중 ({mode}): {label}…"}]
+            result = run_esg(mode, query)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage:\n"
+                        "/esg 삼성전자\n"
+                        "/esg fin|div|own|return 기업\n"
+                        "/esg accident [기업]\n"
+                        "/esg help\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"/esg failed: {exc}"}]
 
     if lower.startswith("/financial"):
         try:
@@ -1606,7 +1651,7 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Error ranking stocks: {exc}"}]
 
-    return build_help_messages()
+    return [{"text": HELP_TEXT_SHORT}]
 
 
 def _handle_telegram_send_response(
