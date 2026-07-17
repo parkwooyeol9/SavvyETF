@@ -1,20 +1,21 @@
-"""Premarket market brief (/summary_pre): S&P 500 via /sp_pre, no ETF."""
+"""Premarket market brief (/summary_pre): Finnhub pre-market quotes only (S&P 500).
+
+Unlike /summary (US close), this brief must NOT pull Yahoo daily rankings, heatmaps,
+macro, crypto, or daily TA leader charts — those are regular-session / post-close data.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from news_crawler import _display_ticker_label, fetch_news_for_tickers
+from news_crawler import fetch_news_for_tickers
 from premarket_rankings import build_premarket_rankings, format_premarket_telegram
-from summary_analyst import collect_leader_charts, generate_chart_notes
 from summary_builder import (
     DEFAULT_TOP_N,
     TELEGRAM_CHUNK_SIZE,
     UNIVERSE_STYLE,
-    _as_photo_buffer,
     _esc,
-    _freeze_summary_charts,
     format_summary_pdf_message,
     resolve_summary_public_url,
 )
@@ -37,19 +38,16 @@ def build_premarket_summary(news_limit: int = SUMMARY_PRE_NEWS_PER_TICKER) -> di
 
         gainers = result.get("gainers") or []
         losers = result.get("losers") or []
-        # News/charts focus on top of each board.
         tickers = [row["ticker"] for row in gainers[:DEFAULT_TOP_N]]
         for row in losers[:DEFAULT_TOP_N]:
             if row["ticker"] not in tickers:
                 tickers.append(row["ticker"])
 
-        leader_ticker = gainers[0]["ticker"] if gainers else None
         for ticker in tickers:
             if ticker not in all_tickers:
                 all_tickers.append(ticker)
             ticker_universe[ticker] = universe
 
-        # Shape compatible with summary telegram/HTML helpers where useful.
         boards = {
             "surge": {
                 "top": [
@@ -70,7 +68,7 @@ def build_premarket_summary(news_limit: int = SUMMARY_PRE_NEWS_PER_TICKER) -> di
                 "name": f"{result['label']} (pre-market)",
                 "boards": boards,
                 "tickers": tickers,
-                "leader_ticker": leader_ticker,
+                "leader_ticker": gainers[0]["ticker"] if gainers else None,
                 "session": result.get("session"),
                 "premarket": result,
             }
@@ -91,6 +89,17 @@ def build_premarket_summary(news_limit: int = SUMMARY_PRE_NEWS_PER_TICKER) -> di
         "ticker_universe": ticker_universe,
         "ticker_count": len(all_tickers),
         "premarket_by_universe": premarket_by_universe,
+        # Explicit empties so PDF/Telegram helpers never chase close-brief fields.
+        "leader_charts": {},
+        "ai_analysis": {
+            "chart_notes_ko": {},
+            "market_brief_ko": "",
+            "source": "premarket",
+            "article_count": 0,
+        },
+        "heatmap_sp": None,
+        "macro": None,
+        "crypto": None,
     }
 
 
@@ -108,27 +117,7 @@ def _format_pre_universe_telegram(universe: dict, summary: dict) -> list[dict]:
             }
         )
 
-    leader = universe.get("leader_ticker")
-    leaders = summary.get("leader_charts") or {}
-    leader_pack = leaders.get(universe["key"]) or {}
-    chart_notes = (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
-    if leader:
-        caption_lines = [
-            f"📈 Premarket leader: {_display_ticker_label(leader, None)}",
-            f"Session: {universe.get('session', 'pre-market')}",
-        ]
-        note = chart_notes.get(universe["key"], "").strip()
-        if note:
-            caption_lines.extend(["", note])
-        chart_reply: dict = {"text": "\n".join(caption_lines)}
-        photo = _as_photo_buffer(leader_pack.get("chart_png"))
-        if photo is not None:
-            chart_reply["photo"] = photo
-        else:
-            chart_reply["chart_ticker"] = leader
-        messages.append(chart_reply)
-
-    # News blocks (chunked)
+    # News only — no Yahoo daily leader charts (those belong to /summary after the close).
     ukey = universe["key"]
     style = UNIVERSE_STYLE.get(ukey, {"emoji": "🌅"})
     header = f"<b>{style['emoji']} {_esc(universe['name'])}</b>\n"
@@ -180,7 +169,7 @@ def render_summary_pre_telegram(summary: dict) -> list[dict]:
             "text": (
                 "<b>🌅 SavvyETF Premarket Brief</b>\n"
                 f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
-                "S&P 500 pre-market returns (/sp_pre) · ETF excluded\n"
+                "S&P 500 pre-market % vs previous close (Finnhub) · ETF excluded\n"
                 "<i>Not financial advice.</i>"
             ),
             "parse_mode": "HTML",
@@ -192,17 +181,8 @@ def render_summary_pre_telegram(summary: dict) -> list[dict]:
 
 
 def generate_summary_pre(public_url: str = "") -> dict:
+    """Build Telegram + PDF from Finnhub pre-market data only."""
     summary = build_premarket_summary()
-    leader_charts = collect_leader_charts(summary)
-    summary["leader_charts"] = leader_charts
-    summary["ai_analysis"] = {
-        "chart_notes_ko": generate_chart_notes(summary, leader_charts),
-        "market_brief_ko": "",
-        "source": "rules",
-        "article_count": 0,
-    }
-    # Freeze charts before PDF/Telegram consumers touch buffers.
-    _freeze_summary_charts(summary)
 
     try:
         from summary_pdf import SUMMARY_PRE_PDF_PATH, build_summary_pdf_safe
@@ -219,9 +199,8 @@ def generate_summary_pre(public_url: str = "") -> dict:
     messages.append(
         {
             "text": (
-                "🌐 Regular close brief (web)\n"
-                f"{web}\n\n"
-                "Premarket PDF: /summary_pre.pdf · full /summary page updates after the US close."
+                "Premarket PDF: /summary_pre.pdf\n"
+                f"(Close brief /summary updates after the US session: {web})"
             )
         }
     )

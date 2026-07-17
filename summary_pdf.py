@@ -582,7 +582,12 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
                 outline=accent,
                 width=2,
             )
-            draw.text((_MARGIN + 16, y + 8), "Top surge leader", font=_load_font(12), fill=MUTED)
+            leader_label = (
+                "Top premarket gainer"
+                if is_pre
+                else "Top surge leader"
+            )
+            draw.text((_MARGIN + 16, y + 8), leader_label, font=_load_font(12), fill=MUTED)
             draw.text((_MARGIN + 16, y + 26), _safe(leader), font=_load_font(22), fill=TEXT)
 
     if is_pre or is_kor:
