@@ -14,6 +14,8 @@ services:
         value: "-1004323836037"
       - key: TELEGRAM_CHAT_ID_KOR
         value: "-1004386688578"
+      - key: TELEGRAM_CHAT_ID_ESG
+        value: "-1004486166524"
       - key: SUMMARY_PUBLIC_URL
         value: https://savvyetf-bot.onrender.com
       - key: PORT
@@ -52,6 +54,14 @@ services:
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
         value: "15:40"
+      - key: ESG_SCHEDULE_ENABLED
+        value: "true"
+      - key: ESG_ACCIDENT_SCHEDULE_KST
+        value: "9:00"
+      - key: ESG_OVERVIEW_SCHEDULE_KST
+        value: "9:20"
+      - key: ESG_SCHEDULE_OVERVIEW_QUERIES
+        value: "삼성전자"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY
