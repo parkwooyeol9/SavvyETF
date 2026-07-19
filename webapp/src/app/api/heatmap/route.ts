@@ -18,7 +18,22 @@ export async function GET(request: Request) {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(55_000),
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            res.status === 404
+              ? "봇에 히트맵 API가 아직 배포되지 않았습니다. Render가 최신 main을 받으면 표시됩니다."
+              : `Heatmap upstream returned non-JSON (HTTP ${res.status})`,
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(data, { status: res.ok ? 200 : res.status });
   } catch (exc) {
     return NextResponse.json(
