@@ -18,6 +18,10 @@ services:
         value: "-1004486166524"
       - key: SUMMARY_PUBLIC_URL
         value: https://savvyetf-bot.onrender.com
+      - key: WEB_PUBLISH_URL
+        sync: false
+      - key: WEB_INGEST_SECRET
+        sync: false
       - key: PORT
         value: "8080"
       - key: SUMMARY_SCHEDULE_ENABLED

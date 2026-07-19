@@ -1,0 +1,243 @@
+:root {
+  --bg: #0b1018;
+  --panel: #141d2b;
+  --panel-2: #1a2538;
+  --text: #e8eef5;
+  --muted: #8fa3b8;
+  --accent: #4da3ff;
+  --accent-2: #3dd68c;
+  --warn: #fbbf24;
+  --border: #2b3648;
+  --radius: 12px;
+  --sans: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --display: var(--font-instrument), "Instrument Serif", Georgia, serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+.mesh {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 70% 50% at 10% -5%, rgba(77, 163, 255, 0.14), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 95% 5%, rgba(61, 214, 140, 0.08), transparent 50%);
+}
+
+.shell {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.25rem 0 3rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--display);
+  font-size: 1.85rem;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.18);
+}
+
+.meta-line {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1.1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+}
+
+.tab-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tab-btn.active {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.panel {
+  background: rgba(20, 29, 43, 0.82);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem 1.25rem;
+}
+
+.slot-card + .slot-card {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.slot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.7rem;
+}
+
+.slot-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.slot-time {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.slot-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.html-frame {
+  width: 100%;
+  min-height: 480px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0a0f16;
+}
+
+.section-block {
+  margin-top: 0.75rem;
+}
+
+.section-block h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+  color: var(--accent);
+}
+
+.section-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+}
+
+.section-body :global(a) {
+  color: var(--accent);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 2rem 0.5rem;
+  text-align: center;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  background: var(--warn);
+}
+
+.status-dot.ok {
+  background: var(--accent-2);
+}
+
+.status-dot.err {
+  background: #f87171;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .meta-line {
+    text-align: left;
+  }
+
+  .brand {
+    font-size: 1.55rem;
+  }
+
+  .html-frame {
+    min-height: 360px;
+  }
+}

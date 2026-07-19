@@ -836,6 +836,24 @@ def generate_summary_kor(
         messages.append({"text": f"PDF export unavailable: {summary['pdf_error']}"})
 
     summary["telegram_messages"] = messages
+
+    try:
+        from web_publish import publish_brief
+
+        slot = "summary_kor_intra" if intraday else "summary_kor"
+        title = "국내 시황 /summary_kor_intra" if intraday else "국내 시황 /summary_kor"
+        publish_brief(
+            "kr",
+            slot,
+            title=title,
+            generated_at=summary.get("generated_at_display")
+            or summary.get("generated_at"),
+            html=summary.get("html"),
+            meta={"intraday": intraday, "has_pdf": bool(summary.get("pdf_path"))},
+        )
+    except Exception as pub_exc:
+        print(f"web_publish summary_kor skipped: {pub_exc}")
+
     return summary
 
 

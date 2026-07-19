@@ -84,7 +84,12 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     return "overview", query
 
 
-def run_esg(mode: str, query: str | None = None) -> dict[str, Any]:
+def run_esg(
+    mode: str,
+    query: str | None = None,
+    *,
+    publish: bool = True,
+) -> dict[str, Any]:
     if mode == "help":
         return {
             "mode": "help",
@@ -112,9 +117,34 @@ def run_esg(mode: str, query: str | None = None) -> dict[str, Any]:
     else:
         raise ValueError(f"Unknown /esg mode: {mode}")
 
-    return {
+    result = {
         "mode": mode,
         "profile": profile,
         "text_summary": text,
         "telegram_messages": [{"text": text, "parse_mode": "HTML"}],
     }
+
+    # Dashboard slots for accident/overview (schedulers may pass publish=False
+    # to batch multiple overview names into one slot).
+    if publish and mode in {"accident", "overview"}:
+        try:
+            from web_publish import publish_brief, section_from_html
+
+            slot = "esg_accident" if mode == "accident" else "esg_overview"
+            title = (
+                "ESG 시황 /esg accident"
+                if mode == "accident"
+                else f"ESG 시황 /esg {query or 'overview'}"
+            )
+            publish_brief(
+                "esg",
+                slot,
+                title=title,
+                generated_at=profile.get("generated_at"),
+                sections=section_from_html(text, heading=title),
+                meta={"mode": mode, "query": query},
+            )
+        except Exception as pub_exc:
+            print(f"web_publish esg/{mode} skipped: {pub_exc}")
+
+    return result

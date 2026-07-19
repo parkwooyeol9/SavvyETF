@@ -81,6 +81,7 @@ def run_scheduled_esg_accident(token: str, broadcast_fn) -> bool:
         )
         return False
     try:
+        # publish=True inside run_esg → Vercel dashboard slot esg_accident
         result = run_esg("accident", None)
         messages = result.get("telegram_messages") or []
         if not messages:
@@ -113,16 +114,42 @@ def run_scheduled_esg_overview(token: str, broadcast_fn) -> bool:
         return False
     try:
         all_messages: list[dict] = []
+        sections: list[dict] = []
+        last_generated = None
         for query in queries:
             try:
-                result = run_esg("overview", query)
-                all_messages.extend(result.get("telegram_messages") or [])
+                result = run_esg("overview", query, publish=False)
+                msgs = result.get("telegram_messages") or []
+                all_messages.extend(msgs)
+                profile = result.get("profile") or {}
+                last_generated = profile.get("generated_at") or last_generated
+                for m in msgs:
+                    if isinstance(m, dict) and m.get("text"):
+                        sections.append(
+                            {
+                                "heading": f"/esg {query}",
+                                "html_or_text": str(m["text"]),
+                            }
+                        )
             except Exception as exc:
                 print(f"Scheduled esg overview failed for {query!r}: {exc}")
             time.sleep(0.4)
         if not all_messages:
             print("Scheduled esg overview skipped: empty messages.")
             return False
+        try:
+            from web_publish import publish_brief
+
+            publish_brief(
+                "esg",
+                "esg_overview",
+                title="ESG 시황 /esg overview",
+                generated_at=last_generated,
+                sections=sections,
+                meta={"queries": queries},
+            )
+        except Exception as pub_exc:
+            print(f"web_publish esg_overview skipped: {pub_exc}")
         delivered = broadcast_fn(token, all_messages)
         if not delivered:
             print("Scheduled esg overview not delivered: 0 chats.")
