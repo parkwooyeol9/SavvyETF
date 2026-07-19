@@ -2,14 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import MainTab from "@/components/MainTab";
+import SimulateTab from "@/components/SimulateTab";
 import {
   type AllBriefs,
   type BriefSlot,
-  type TabId,
-  TAB_IDS,
+  type ShellTabId,
+  SHELL_TAB_IDS,
+  SHELL_TAB_LABELS,
   TAB_LABELS,
   TAB_SLOT_ORDER,
   emptyAllBriefs,
+  isBriefTabId,
+  type TabId,
 } from "@/lib/types";
 
 type BriefsResponse = {
@@ -46,7 +51,6 @@ function formatWhen(value?: string | null): string {
 function SlotView({ slot }: { slot: BriefSlot }) {
   const srcDoc = useMemo(() => {
     if (!slot.html) return null;
-    // If payload is a full document, use as-is; otherwise wrap.
     const trimmed = slot.html.trim();
     if (/^<!DOCTYPE|^<html/i.test(trimmed)) return trimmed;
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>body{margin:12px;font-family:system-ui,sans-serif;background:#0a0f16;color:#e8eef5;line-height:1.5}a{color:#4da3ff}</style></head><body>${trimmed}</body></html>`;
@@ -89,7 +93,7 @@ function SlotView({ slot }: { slot: BriefSlot }) {
 }
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<TabId>("kr");
+  const [tab, setTab] = useState<ShellTabId>("main");
   const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,8 +126,22 @@ export default function Dashboard() {
     };
   }, [load]);
 
-  const current = briefs[tab];
-  const slots = orderedSlots(tab, current.slots || {});
+  const briefTab = isBriefTabId(tab) ? tab : null;
+  const current = briefTab ? briefs[briefTab] : null;
+  const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
+
+  const metaText = (() => {
+    if (tab === "main" || tab === "simulate") {
+      return error
+        ? `시황 동기화 참고: ${error}`
+        : `시황 갱신 ${formatWhen(fetchedAt)}`;
+    }
+    if (error) return `동기화 오류: ${error}`;
+    if (configured === false) {
+      return "Blob 미설정 — 봇 publish 후 데이터가 표시됩니다";
+    }
+    return `갱신 ${formatWhen(fetchedAt)} · 탭 ${formatWhen(current?.updated_at)}`;
+  })();
 
   return (
     <div className="shell">
@@ -137,37 +155,39 @@ export default function Dashboard() {
             className={`status-dot ${error ? "err" : configured ? "ok" : ""}`}
             aria-hidden
           />
-          {error
-            ? `동기화 오류: ${error}`
-            : configured === false
-              ? "Blob 미설정 — 봇 publish 후 데이터가 표시됩니다"
-              : `갱신 ${formatWhen(fetchedAt)} · 탭 ${formatWhen(current.updated_at)}`}
+          {metaText}
         </div>
       </header>
 
-      <nav className="tabs" aria-label="시황 탭">
-        {TAB_IDS.map((id) => (
+      <nav className="tabs" aria-label="대시보드 탭">
+        {SHELL_TAB_IDS.map((id) => (
           <button
             key={id}
             type="button"
             className={`tab-btn ${tab === id ? "active" : ""}`}
             onClick={() => setTab(id)}
           >
-            {TAB_LABELS[id]}
+            {SHELL_TAB_LABELS[id]}
           </button>
         ))}
       </nav>
 
-      <section className="panel">
-        {!slots.length ? (
-          <p className="empty">
-            {TAB_LABELS[tab]} 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는
-            수동 명령 후 자동으로 채워집니다.
-          </p>
-        ) : (
-          slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
-        )}
-      </section>
+      {tab === "main" ? (
+        <MainTab />
+      ) : tab === "simulate" ? (
+        <SimulateTab />
+      ) : (
+        <section className="panel">
+          {!slots.length ? (
+            <p className="empty">
+              {TAB_LABELS[briefTab!]} 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는
+              수동 명령 후 자동으로 채워집니다.
+            </p>
+          ) : (
+            slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+          )}
+        </section>
+      )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 export type TabId = "kr" | "us" | "etf" | "esg";
 
+export type ShellTabId = "main" | "simulate" | TabId;
+
 export type BriefSection = {
   heading?: string;
   html_or_text: string;
@@ -25,11 +27,26 @@ export type AllBriefs = Record<TabId, TabBriefs>;
 
 export const TAB_IDS: TabId[] = ["kr", "us", "etf", "esg"];
 
+export const SHELL_TAB_IDS: ShellTabId[] = [
+  "main",
+  "simulate",
+  "kr",
+  "us",
+  "etf",
+  "esg",
+];
+
 export const TAB_LABELS: Record<TabId, string> = {
   kr: "국내시황",
   us: "미국시황",
   etf: "ETF시황",
   esg: "ESG시황",
+};
+
+export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
+  main: "메인",
+  simulate: "배분 시뮬레이션",
+  ...TAB_LABELS,
 };
 
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
@@ -41,6 +58,10 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
 
 export function isTabId(value: string): value is TabId {
   return (TAB_IDS as string[]).includes(value);
+}
+
+export function isBriefTabId(value: string): value is TabId {
+  return isTabId(value);
 }
 
 export function emptyTab(tab: TabId): TabBriefs {

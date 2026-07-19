@@ -2427,10 +2427,118 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                     self._send("Kakao test failed — see server logs.".encode("utf-8"), "text/plain; charset=utf-8", 500)
                 return
 
+            # --- Vercel dashboard APIs ---
+            if path == "/api/web/catalog":
+                from web_api import etf_catalog_payload
+
+                body = json.dumps(etf_catalog_payload(), ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body)
+                return
+
+            if path == "/api/web/heatmap":
+                from web_api import heatmap_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                universe = (query.get("universe") or ["etf"])[0]
+                top_raw = (query.get("top_n") or [""])[0]
+                include_image = (query.get("image") or ["1"])[0] not in {"0", "false", "no"}
+                try:
+                    top_n = int(top_raw) if top_raw else None
+                except ValueError:
+                    top_n = None
+                payload = heatmap_payload(universe, top_n, include_image=include_image)
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
+            if path == "/api/web/heatmap.png":
+                from web_api import heatmap_png
+
+                query = parse_qs(urlparse(self.path).query)
+                universe = (query.get("universe") or ["etf"])[0]
+                top_raw = (query.get("top_n") or [""])[0]
+                try:
+                    top_n = int(top_raw) if top_raw else None
+                except ValueError:
+                    top_n = None
+                result = heatmap_png(universe, top_n)
+                if isinstance(result, dict):
+                    body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                    self._send_cors_json(body, status=503)
+                    return
+                png_bytes, _caption = result
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(png_bytes)))
+                self.send_header("Cache-Control", "public, max-age=120")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(png_bytes)
+                return
+
+            if path == "/api/web/why-etf":
+                from web_api import why_etf_insights
+
+                payload = why_etf_insights()
+                status = 200 if payload.get("ok") else 500
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
+
+        def _send_cors_json(self, body: bytes, status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            path = urlparse(self.path).path
+            if path.startswith("/api/web/"):
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_error(404)
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/web/simulate":
+                from web_api import simulate_allocation
+
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    req = json.loads(raw.decode("utf-8") or "{}")
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    self._send_cors_json(
+                        json.dumps({"ok": False, "error": "Invalid JSON"}).encode("utf-8"),
+                        status=400,
+                    )
+                    return
+                tickers = req.get("tickers") or []
+                weights = req.get("weights")
+                payload = simulate_allocation(
+                    tickers,
+                    weights=weights,
+                    start_date=req.get("start_date"),
+                    end_date=req.get("end_date"),
+                    initial_capital=float(req.get("initial_capital") or 10_000),
+                    benchmark=req.get("benchmark") or "SPY",
+                )
+                status = 200 if payload.get("ok") else 400
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/kakao/skill":
                 from kakao_notify import build_skill_response
                 from summary_builder import SUMMARY_META_PATH, resolve_summary_public_url
@@ -2459,7 +2567,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/simulate )"
     )
 
 
