@@ -2047,6 +2047,30 @@ def start_web_server():
                     },
                 }
                 try:
+                    from urllib.parse import urlparse as _urlparse
+
+                    from web_publish import publish_configured
+
+                    pub_url = (os.environ.get("WEB_PUBLISH_URL") or "").strip()
+                    payload["web_publish"] = {
+                        "configured": publish_configured(),
+                        "url_set": bool(pub_url),
+                        "secret_set": bool(
+                            (os.environ.get("WEB_INGEST_SECRET") or "").strip()
+                        ),
+                        "url_host": (
+                            _urlparse(pub_url).netloc if pub_url else None
+                        ),
+                        "url_path": (
+                            _urlparse(pub_url).path if pub_url else None
+                        ),
+                    }
+                except Exception as pub_diag_exc:
+                    payload["web_publish"] = {
+                        "configured": False,
+                        "error": str(pub_diag_exc),
+                    }
+                try:
                     from market_data_freshness import (
                         expected_latest_daily_date,
                         is_yf_daily_data_ready,
