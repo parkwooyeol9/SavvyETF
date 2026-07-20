@@ -5,7 +5,7 @@ Tabs:
 | Tab | Contents |
 |-----|----------|
 | **메인** | ETF/S&P/Nasdaq 히트맵 + “왜 ETF인가” 실데이터 비교 차트 |
-| **배분 시뮬레이션** | 시작일·ETF·비중 선택 → 누적성과·배분효과·기여도 |
+| **ETF 배분** | 동일가중·역변동성·자산군·국가 목표 비중 시뮬레이션 |
 | 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etfcheck` |

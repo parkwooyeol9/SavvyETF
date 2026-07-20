@@ -19,7 +19,7 @@ const instrument = Instrument_Serif({
 export const metadata: Metadata = {
   title: "SavvyETF — ETF dashboard",
   description:
-    "ETF 히트맵·배분 시뮬레이션과 국내·미국·ETF·ESG 시황을 한곳에서 확인합니다.",
+    "ETF 히트맵·ETF 배분과 국내·미국·ETF·ESG 시황을 한곳에서 확인합니다.",
 };
 
 export default function RootLayout({

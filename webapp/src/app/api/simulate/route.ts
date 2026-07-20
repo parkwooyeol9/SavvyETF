@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import type { AllocMethod } from "@/lib/etfCatalog";
+import type { RegionBucket } from "@/lib/allocation";
+import type { AllocMethod, AssetClass } from "@/lib/etfCatalog";
 import { simulateAllocation } from "@/lib/simulate";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,9 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       tickers?: string[];
       weights?: number[];
-      method?: AllocMethod;
+      method?: AllocMethod | "asset_631";
+      asset_targets?: Record<AssetClass, number>;
+      region_targets?: Record<RegionBucket, number>;
       start_date?: string;
       end_date?: string;
       initial_capital?: number;
@@ -21,6 +24,8 @@ export async function POST(request: Request) {
       tickers: body.tickers || [],
       weights: body.weights,
       method: body.method || "equal",
+      asset_targets: body.asset_targets,
+      region_targets: body.region_targets,
       start_date: body.start_date,
       end_date: body.end_date,
       initial_capital: body.initial_capital,

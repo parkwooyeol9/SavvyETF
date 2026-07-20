@@ -1,24 +1,42 @@
-/** Portfolio weight engines for the simulation tab. */
+/** Portfolio weight engines for the ETF allocation tab. */
 
 import {
   CATALOG_BY_SYMBOL,
   type AllocMethod,
   type AssetClass,
-  type Region,
 } from "@/lib/etfCatalog";
 
-const ASSET_TARGETS: Record<AssetClass, number> = {
-  equity: 0.6,
-  bond: 0.3,
-  alt: 0.1,
+export const DEFAULT_ASSET_TARGETS: Record<AssetClass, number> = {
+  equity: 60,
+  bond: 30,
+  alt: 10,
 };
 
-const REGION_TARGETS: Partial<Record<Region, number>> = {
-  us: 0.6,
-  europe: 0.1,
-  japan: 0.1,
-  china: 0.1,
-  korea: 0.1,
+export const DEFAULT_REGION_TARGETS: Record<
+  "us" | "europe" | "japan" | "china" | "korea",
+  number
+> = {
+  us: 60,
+  europe: 10,
+  japan: 10,
+  china: 10,
+  korea: 10,
+};
+
+export type RegionBucket = keyof typeof DEFAULT_REGION_TARGETS;
+
+export const ASSET_LABELS: Record<AssetClass, string> = {
+  equity: "주식",
+  bond: "채권",
+  alt: "대안",
+};
+
+export const REGION_LABELS: Record<RegionBucket, string> = {
+  us: "미국",
+  europe: "유럽",
+  japan: "일본",
+  china: "중국",
+  korea: "한국",
 };
 
 function normalize(weights: number[]): number[] {
@@ -27,15 +45,16 @@ function normalize(weights: number[]): number[] {
   return weights.map((w) => w / sum);
 }
 
-function redistributeTargets(
-  targets: Record<string, number>,
-  presentKeys: string[],
-): Record<string, number> {
-  const present = presentKeys.filter((k) => (targets[k] || 0) > 0);
-  if (!present.length) return {};
-  const kept = present.reduce((a, k) => a + (targets[k] || 0), 0);
+function pctToFraction(targetsPct: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const k of present) out[k] = (targets[k] || 0) / kept;
+  for (const [k, v] of Object.entries(targetsPct)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) out[k] = n;
+  }
+  const sum = Object.values(out).reduce((a, b) => a + b, 0);
+  if (sum <= 0) return {};
+  // Allow 99–101 rounding drift; otherwise keep relative proportions.
+  for (const k of Object.keys(out)) out[k] = out[k] / sum;
   return out;
 }
 
@@ -44,133 +63,159 @@ export function equalWeights(tickers: string[]): number[] {
   return tickers.map(() => 1 / n);
 }
 
-/** Inverse-volatility weights from aligned daily return series (skip index 0). */
+export type VolDiag = {
+  ticker: string;
+  daily_vol: number;
+  annual_vol_pct: number;
+  inv_vol_weight: number;
+};
+
+/** Sample daily σ per ticker, then w_i ∝ 1/σ_i (inverse volatility). */
 export function invVolWeights(
   tickers: string[],
   legReturns: Record<string, number[]>,
-): number[] {
-  const raw = tickers.map((t) => {
+): { weights: number[]; diagnostics: VolDiag[] } {
+  const diags: VolDiag[] = tickers.map((t) => {
     const rets = (legReturns[t] || []).slice(1).filter((r) => Number.isFinite(r));
-    if (rets.length < 5) return 0;
+    if (rets.length < 5) {
+      return { ticker: t, daily_vol: 0, annual_vol_pct: 0, inv_vol_weight: 0 };
+    }
     const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
     const variance =
       rets.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(rets.length - 1, 1);
-    const vol = Math.sqrt(Math.max(variance, 0));
-    return vol > 1e-8 ? 1 / vol : 0;
+    const dailyVol = Math.sqrt(Math.max(variance, 0));
+    return {
+      ticker: t,
+      daily_vol: dailyVol,
+      annual_vol_pct: dailyVol * Math.sqrt(252) * 100,
+      inv_vol_weight: dailyVol > 1e-8 ? 1 / dailyVol : 0,
+    };
   });
-  if (raw.every((w) => w <= 0)) return equalWeights(tickers);
-  return normalize(raw);
+
+  if (diags.every((d) => d.inv_vol_weight <= 0)) {
+    const eq = equalWeights(tickers);
+    return {
+      weights: eq,
+      diagnostics: diags.map((d, i) => ({ ...d, inv_vol_weight: eq[i] })),
+    };
+  }
+
+  const weights = normalize(diags.map((d) => d.inv_vol_weight));
+  return {
+    weights,
+    diagnostics: diags.map((d, i) => ({ ...d, inv_vol_weight: weights[i] })),
+  };
 }
 
-export function asset631Weights(tickers: string[]): {
-  weights: number[];
-  note?: string;
-} {
-  const byClass: Record<AssetClass, string[]> = {
-    equity: [],
-    bond: [],
-    alt: [],
-  };
+/**
+ * Bucket allocation: each positive target bucket must have ≥1 ETF.
+ * Within a bucket, weight is split equally (or by optional withinBucket).
+ * Targets are percents (e.g. 60) and are normalized to sum to 1.
+ */
+export function bucketWeights(
+  tickers: string[],
+  bucketOf: (symbol: string) => string | null,
+  targetsPct: Record<string, number>,
+): { weights: number[]; note?: string; error?: string } {
+  const byBucket: Record<string, string[]> = {};
   const unknown: string[] = [];
   for (const t of tickers) {
-    const meta = CATALOG_BY_SYMBOL[t];
-    if (!meta) {
+    const b = bucketOf(t);
+    if (!b) {
       unknown.push(t);
       continue;
     }
-    byClass[meta.assetClass].push(t);
+    (byBucket[b] ||= []).push(t);
   }
 
-  const present = (Object.keys(byClass) as AssetClass[]).filter(
-    (k) => byClass[k].length > 0,
-  );
-  if (!present.length) {
+  const fractions = pctToFraction(targetsPct);
+  const activeBuckets = Object.keys(fractions);
+  if (!activeBuckets.length) {
+    return { weights: [], error: "배분 비중을 하나 이상 0보다 크게 설정하세요." };
+  }
+
+  const empty = activeBuckets.filter((b) => !(byBucket[b] || []).length);
+  if (empty.length) {
     return {
-      weights: equalWeights(tickers),
-      note: "자산군 태그가 없어 동일가중으로 대체했습니다.",
+      weights: [],
+      error: `비중이 있는 버킷에 ETF가 없습니다: ${empty.join(", ")}`,
     };
   }
 
-  const targets = redistributeTargets(
-    ASSET_TARGETS as unknown as Record<string, number>,
-    present,
-  );
   const weightMap: Record<string, number> = {};
-  for (const cls of present) {
-    const members = byClass[cls];
-    const slice = targets[cls] || 0;
+  for (const b of activeBuckets) {
+    const members = byBucket[b];
+    const slice = fractions[b];
     for (const t of members) weightMap[t] = slice / members.length;
   }
-  for (const t of unknown) weightMap[t] = 0;
 
-  const missing = (Object.keys(ASSET_TARGETS) as AssetClass[]).filter(
-    (k) => !byClass[k].length,
-  );
   let note: string | undefined;
-  if (missing.length) {
-    note = `선택에 없는 자산군(${missing.join(", ")}) 비중은 나머지에 재배분했습니다.`;
+  const unused = Object.keys(byBucket).filter((b) => !fractions[b]);
+  if (unused.length) {
+    note = `비중 0인 버킷 ETF는 제외됨: ${unused.join(", ")}`;
   }
   if (unknown.length) {
-    note = `${note ? `${note} ` : ""}카탈로그 밖 티커는 제외: ${unknown.join(", ")}`;
+    note = `${note ? `${note} · ` : ""}버킷 밖 티커 제외: ${unknown.join(", ")}`;
   }
 
-  return { weights: normalize(tickers.map((t) => weightMap[t] || 0)), note };
+  // Only include tickers that received weight (drop zero buckets).
+  const ordered = tickers.filter((t) => (weightMap[t] || 0) > 0);
+  if (!ordered.length) {
+    return { weights: [], error: "유효한 배분 비중이 없습니다." };
+  }
+
+  return {
+    weights: normalize(tickers.map((t) => weightMap[t] || 0)),
+    note,
+  };
 }
 
-export function regionWeights(tickers: string[]): {
-  weights: number[];
-  note?: string;
-} {
-  const byRegion: Partial<Record<Region, string[]>> = {};
-  const skipped: string[] = [];
-  for (const t of tickers) {
-    const meta = CATALOG_BY_SYMBOL[t];
-    if (!meta || !(meta.region in REGION_TARGETS)) {
-      skipped.push(t);
-      continue;
-    }
-    const list = byRegion[meta.region] || [];
-    list.push(t);
-    byRegion[meta.region] = list;
-  }
-
-  const present = Object.keys(byRegion) as Region[];
-  if (!present.length) {
-    return {
-      weights: equalWeights(tickers),
-      note: "국가 배분 대상(미국·유럽·일본·중국·한국) ETF가 없어 동일가중으로 대체했습니다.",
-    };
-  }
-
-  const targets = redistributeTargets(
-    REGION_TARGETS as Record<string, number>,
-    present,
-  );
-  const weightMap: Record<string, number> = {};
-  for (const region of present) {
-    const members = byRegion[region] || [];
-    const slice = targets[region] || 0;
-    for (const t of members) weightMap[t] = slice / members.length;
-  }
-
-  let note: string | undefined;
-  const expected = Object.keys(REGION_TARGETS) as Region[];
-  const missing = expected.filter((r) => !(byRegion[r] || []).length);
-  if (missing.length) {
-    note = `없는 국가(${missing.join(", ")}) 비중은 나머지에 재배분했습니다.`;
-  }
-  if (skipped.length) {
-    note = `${note ? `${note} ` : ""}국가 배분에서 제외: ${skipped.join(", ")}`;
-  }
-
-  return { weights: normalize(tickers.map((t) => weightMap[t] || 0)), note };
-}
-
-export function resolveMethodWeights(
-  method: AllocMethod,
+export function assetClassWeights(
   tickers: string[],
-  legReturns?: Record<string, number[]>,
-): { weights: number[]; method: AllocMethod; note?: string } {
+  targetsPct: Record<AssetClass, number> = DEFAULT_ASSET_TARGETS,
+): { weights: number[]; note?: string; error?: string } {
+  return bucketWeights(
+    tickers,
+    (sym) => CATALOG_BY_SYMBOL[sym]?.assetClass ?? null,
+    targetsPct,
+  );
+}
+
+export function regionBucketWeights(
+  tickers: string[],
+  targetsPct: Record<RegionBucket, number> = DEFAULT_REGION_TARGETS,
+): { weights: number[]; note?: string; error?: string } {
+  const regionKeys = new Set(Object.keys(DEFAULT_REGION_TARGETS));
+  return bucketWeights(
+    tickers,
+    (sym) => {
+      const r = CATALOG_BY_SYMBOL[sym]?.region;
+      if (!r || !regionKeys.has(r)) return null;
+      return r;
+    },
+    targetsPct,
+  );
+}
+
+export type ResolveOpts = {
+  method: AllocMethod;
+  tickers: string[];
+  legReturns?: Record<string, number[]>;
+  assetTargets?: Record<AssetClass, number>;
+  regionTargets?: Record<RegionBucket, number>;
+};
+
+export function resolveMethodWeights(opts: ResolveOpts): {
+  weights: number[];
+  method: AllocMethod;
+  note?: string;
+  error?: string;
+  volDiagnostics?: VolDiag[];
+  /** Tickers that actually received weight (zeros dropped for clarity). */
+  activeTickers?: string[];
+} {
+  const { method, tickers, legReturns, assetTargets, regionTargets } = opts;
+
   if (method === "inv_vol") {
     if (!legReturns) {
       return {
@@ -179,15 +224,30 @@ export function resolveMethodWeights(
         note: "변동성 데이터가 없어 동일가중으로 대체했습니다.",
       };
     }
-    return { weights: invVolWeights(tickers, legReturns), method };
+    const { weights, diagnostics } = invVolWeights(tickers, legReturns);
+    return { weights, method, volDiagnostics: diagnostics };
   }
-  if (method === "asset_631") {
-    const r = asset631Weights(tickers);
+
+  if (method === "asset") {
+    const r = assetClassWeights(tickers, assetTargets || DEFAULT_ASSET_TARGETS);
+    if (r.error) return { weights: [], method, error: r.error };
     return { weights: r.weights, method, note: r.note };
   }
+
   if (method === "region") {
-    const r = regionWeights(tickers);
+    const r = regionBucketWeights(tickers, regionTargets || DEFAULT_REGION_TARGETS);
+    if (r.error) return { weights: [], method, error: r.error };
     return { weights: r.weights, method, note: r.note };
   }
+
   return { weights: equalWeights(tickers), method: "equal" };
+}
+
+/** @deprecated alias — older method id */
+export function asset631Weights(tickers: string[]) {
+  return assetClassWeights(tickers, DEFAULT_ASSET_TARGETS);
+}
+
+export function regionWeights(tickers: string[]) {
+  return regionBucketWeights(tickers, DEFAULT_REGION_TARGETS);
 }

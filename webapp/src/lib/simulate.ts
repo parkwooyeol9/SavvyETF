@@ -1,7 +1,13 @@
 /** Yahoo Finance chart client + portfolio simulation for the dashboard. */
 
 import { resolveMethodWeights } from "@/lib/allocation";
-import { ETF_CATALOG, type AllocMethod } from "@/lib/etfCatalog";
+import type { VolDiag } from "@/lib/allocation";
+import {
+  ETF_CATALOG,
+  type AllocMethod,
+  type AssetClass,
+} from "@/lib/etfCatalog";
+import type { RegionBucket } from "@/lib/allocation";
 
 export type PricePoint = { date: string; close: number };
 
@@ -28,6 +34,9 @@ export type SimulateResult = {
   weights?: number[];
   method?: AllocMethod;
   method_note?: string;
+  asset_targets?: Record<string, number>;
+  region_targets?: Record<string, number>;
+  vol_diagnostics?: VolDiag[];
   metrics?: {
     portfolio: SimMetrics;
     benchmark: SimMetrics;
@@ -40,6 +49,7 @@ export type SimulateResult = {
     weight_pct: number;
     standalone_return_pct: number;
     weighted_contribution_pct: number;
+    annual_vol_pct?: number;
   }>;
   series?: {
     date: string[];
@@ -198,7 +208,9 @@ function downsample<T>(arr: T[], maxPoints = 400): T[] {
 export async function simulateAllocation(input: {
   tickers: string[];
   weights?: number[];
-  method?: AllocMethod;
+  method?: AllocMethod | "asset_631";
+  asset_targets?: Record<AssetClass, number>;
+  region_targets?: Record<RegionBucket, number>;
   start_date?: string;
   end_date?: string;
   initial_capital?: number;
@@ -215,7 +227,8 @@ export async function simulateAllocation(input: {
   const capital = input.initial_capital && input.initial_capital > 0 ? input.initial_capital : 10_000;
   const benchmark = (input.benchmark || "SPY").trim().toUpperCase();
   const needed = [...new Set([...tickers, benchmark])];
-  const method: AllocMethod = input.method || (input.weights?.length ? "equal" : "equal");
+  const rawMethod = input.method || "equal";
+  const method: AllocMethod = rawMethod === "asset_631" ? "asset" : rawMethod;
 
   const seriesMap: Record<string, PricePoint[]> = {};
   const missing: string[] = [];
@@ -246,18 +259,30 @@ export async function simulateAllocation(input: {
   let weights: number[];
   let methodNote: string | undefined;
   let usedMethod: AllocMethod = method;
+  let volDiagnostics: VolDiag[] | undefined;
 
   if (input.weights && input.weights.length === tickers.length && !input.method) {
     const sum = input.weights.reduce((a, b) => a + b, 0);
     if (sum <= 0) return { ok: false, error: "Weights must sum to a positive number" };
     weights = input.weights.map((w) => w / sum);
   } else {
-    const resolved = resolveMethodWeights(method, tickers, legRets);
+    const resolved = resolveMethodWeights({
+      method,
+      tickers,
+      legReturns: legRets,
+      assetTargets: input.asset_targets,
+      regionTargets: input.region_targets,
+    });
+    if (resolved.error) {
+      return { ok: false, error: resolved.error, method };
+    }
     weights = resolved.weights;
     methodNote = resolved.note;
     usedMethod = resolved.method;
+    volDiagnostics = resolved.volDiagnostics;
   }
 
+  // Keep zero-weight legs out of the contribution narrative only.
   const portRet = new Array(dates.length).fill(0);
   const eqRet = new Array(dates.length).fill(0);
 
@@ -294,6 +319,10 @@ export async function simulateAllocation(input: {
     series[t] = idx.map((i) => round(legCums[t][i] * capital, 2));
   }
 
+  const volByTicker = new Map(
+    (volDiagnostics || []).map((d) => [d.ticker, d.annual_vol_pct]),
+  );
+
   const contributions = tickers.map((t, j) => {
     const standalone = legCums[t][legCums[t].length - 1] - 1;
     return {
@@ -301,6 +330,9 @@ export async function simulateAllocation(input: {
       weight_pct: round(weights[j] * 100, 2),
       standalone_return_pct: round(standalone * 100, 2),
       weighted_contribution_pct: round(weights[j] * standalone * 100, 2),
+      annual_vol_pct: volByTicker.has(t)
+        ? round(volByTicker.get(t) as number, 2)
+        : undefined,
     };
   });
 
@@ -315,6 +347,14 @@ export async function simulateAllocation(input: {
     weights: weights.map((w) => round(w, 6)),
     method: usedMethod,
     method_note: methodNote,
+    asset_targets: input.asset_targets,
+    region_targets: input.region_targets,
+    vol_diagnostics: volDiagnostics?.map((d) => ({
+      ...d,
+      daily_vol: round(d.daily_vol, 6),
+      annual_vol_pct: round(d.annual_vol_pct, 2),
+      inv_vol_weight: round(d.inv_vol_weight, 6),
+    })),
     metrics: {
       portfolio: {
         ...portStats,

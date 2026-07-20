@@ -45,7 +45,7 @@ export const TAB_LABELS: Record<TabId, string> = {
 
 export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
-  simulate: "배분 시뮬레이션",
+  simulate: "ETF 배분",
   ...TAB_LABELS,
 };
 

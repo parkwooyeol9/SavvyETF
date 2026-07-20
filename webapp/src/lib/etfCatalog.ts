@@ -116,13 +116,13 @@ export function featuredEtfs(): EtfMeta[] {
   return ETF_CATALOG.filter((e) => e.featured);
 }
 
-/** Default basket for asset-class 60/30/10. */
-export const ASSET_631_BASKET = ["VTI", "VXUS", "BND", "TLT", "GLD"] as const;
+/** Default basket for asset-class mix (editable targets default 60/30/10). */
+export const ASSET_631_BASKET = ["VTI", "BND", "GLD"] as const;
 
 /** Default basket for country mix US60 / EU10 / JP10 / CN10 / KR10. */
 export const REGION_BASKET = ["SPY", "VGK", "EWJ", "MCHI", "EWY"] as const;
 
-export type AllocMethod = "equal" | "inv_vol" | "asset_631" | "region";
+export type AllocMethod = "equal" | "inv_vol" | "asset" | "region";
 
 export const ALLOC_METHODS: Array<{
   id: AllocMethod;
@@ -132,21 +132,21 @@ export const ALLOC_METHODS: Array<{
   {
     id: "equal",
     label: "동일가중",
-    blurb: "선택한 ETF에 같은 비중을 둡니다.",
+    blurb: "선택한 ETF에 같은 비중을 둡니다. w_i = 1/N",
   },
   {
     id: "inv_vol",
     label: "변동성 배분",
-    blurb: "과거 변동성이 낮은 ETF에 더 큰 비중(역변동성).",
+    blurb: "구간 일수익률로 σ를 구한 뒤 w_i ∝ 1/σ_i (역변동성).",
   },
   {
-    id: "asset_631",
-    label: "자산군 6:3:1",
-    blurb: "주식 60% · 채권 30% · 대안 10%. 클래스 안은 균등.",
+    id: "asset",
+    label: "자산군 배분",
+    blurb: "주식·채권·대안 목표 비중을 맞춘 뒤, 군 안에서는 균등.",
   },
   {
     id: "region",
     label: "국가 배분",
-    blurb: "미국 60 · 유럽 10 · 일본 10 · 중국 10 · 한국 10.",
+    blurb: "미국·유럽·일본·중국·한국 목표 비중을 맞춘 뒤, 국가 안에서는 균등.",
   },
 ];
