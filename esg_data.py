@@ -967,8 +967,9 @@ def format_esg_overview_telegram(profile: dict[str, Any]) -> str:
 
 
 ESG_HELP = """\
-<b>🧭 /esg — DART 기반 ESG·거버넌스</b>
+<b>🧭 /esg — ESG·거버넌스 + Climate Risk</b>
 
+<code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진 차트)
 <code>/esg 삼성전자</code> — 허브 요약
 <code>/esg fin 삼성전자</code> — 실적·현금흐름·건전성
 <code>/esg div 삼성전자</code> — 3년 배당 (DPS·성향·시가배당률)

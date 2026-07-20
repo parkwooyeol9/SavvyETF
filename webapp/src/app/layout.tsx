@@ -17,9 +17,9 @@ const instrument = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "SavvyETF — Market briefs",
+  title: "SavvyETF — ETF dashboard",
   description:
-    "국내·미국·ETF·ESG 시황 대시보드. Telegram bot 스케줄 결과를 실시간으로 표시합니다.",
+    "ETF 히트맵·배분·한국 투자자 세금/환율 교육과 국내·미국·ETF·ESG 시황을 한곳에서 확인합니다.",
 };
 
 export default function RootLayout({

@@ -143,7 +143,7 @@ Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
   /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
   /etf_sector 08:50 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
-  /esg accident 09:00 · /esg overview 09:20 (KRX days)  → SavvyESG channel
+  /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
 
 Type /help for the full command list.
 """
@@ -184,7 +184,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
 <code>/etf_sector</code> 08:50 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
-<code>/esg accident</code> 09:00 · <code>/esg</code> 개요 09:20 — SavvyESG 채널 (한국 휴장 제외)
+<code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 
 <b>🔬 종목 · ETF 분석</b>
@@ -195,6 +195,7 @@ def build_help_messages() -> list[dict]:
 <code>/nxt 2026-06</code> — 월간 NXT 거래대금 누적
 <code>/nxt dailyvol 2026-06</code> — 시장 일별 대금·점유율
 <code>/dart 삼성전자</code> — DART 재무
+<code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
@@ -418,7 +419,7 @@ def broadcast_messages_legacy(token: str, messages: list[str] | list[dict]) -> i
 
 
 def broadcast_messages_esg(token: str, messages: list[str] | list[dict]) -> int:
-    """SavvyESG schedules (/esg accident|overview) → TELEGRAM_CHAT_ID_ESG only."""
+    """SavvyESG schedules (/esg monitor|accident|overview) → TELEGRAM_CHAT_ID_ESG only."""
     return broadcast_messages(token, messages, audience="esg")
 
 
@@ -1206,7 +1207,7 @@ def handle_telegram_message(message, chat_id: int):
             mode, query = parse_esg_command(normalized)
             if mode == "help":
                 return run_esg("help")["telegram_messages"]
-            label = query or "전체"
+            label = query or ("Climate Risk" if mode == "monitor" else "전체")
             replies = [{"text": f"ESG 조회 중 ({mode}): {label}…"}]
             result = run_esg(mode, query)
             replies.extend(result["telegram_messages"])
@@ -1216,6 +1217,7 @@ def handle_telegram_message(message, chat_id: int):
                 {
                     "text": (
                         "Usage:\n"
+                        "/esg monitor\n"
                         "/esg 삼성전자\n"
                         "/esg fin|div|own|return 기업\n"
                         "/esg accident [기업]\n"
@@ -1421,7 +1423,7 @@ def handle_telegram_message(message, chat_id: int):
                 format_etf_sector_telegram,
                 plot_etf_sector_board,
             )
-            from web_publish import publish_brief, section_from_html
+            from web_publish import chart_to_image_payload, publish_brief, section_from_html
 
             board = build_etf_sector_board()
             chart = plot_etf_sector_board(board)
@@ -1434,6 +1436,13 @@ def handle_telegram_message(message, chat_id: int):
                     generated_at=board.get("generated_at_kst")
                     or board.get("generated_at_et"),
                     sections=section_from_html(text, heading="Sector rotation"),
+                    images=[
+                        chart_to_image_payload(
+                            chart,
+                            id="sector_rotation",
+                            caption=f"ETF Sector Rotation · {board.get('session_as_of', '')}",
+                        )
+                    ],
                     meta={"session_as_of": board.get("session_as_of")},
                 )
             except Exception as pub_exc:
@@ -1472,6 +1481,9 @@ def handle_telegram_message(message, chat_id: int):
                     sections=section_from_html(text, heading="ETF CHECK"),
                     meta={"mode": mode},
                 )
+                from etf_memb_publish import publish_etf_memb_from_brief
+
+                publish_etf_memb_from_brief(brief)
             except Exception as pub_exc:
                 print(f"web_publish etfcheck skipped: {pub_exc}")
             return [
@@ -2427,10 +2439,118 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                     self._send("Kakao test failed — see server logs.".encode("utf-8"), "text/plain; charset=utf-8", 500)
                 return
 
+            # --- Vercel dashboard APIs ---
+            if path == "/api/web/catalog":
+                from web_api import etf_catalog_payload
+
+                body = json.dumps(etf_catalog_payload(), ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body)
+                return
+
+            if path == "/api/web/heatmap":
+                from web_api import heatmap_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                universe = (query.get("universe") or ["etf"])[0]
+                top_raw = (query.get("top_n") or [""])[0]
+                include_image = (query.get("image") or ["1"])[0] not in {"0", "false", "no"}
+                try:
+                    top_n = int(top_raw) if top_raw else None
+                except ValueError:
+                    top_n = None
+                payload = heatmap_payload(universe, top_n, include_image=include_image)
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
+            if path == "/api/web/heatmap.png":
+                from web_api import heatmap_png
+
+                query = parse_qs(urlparse(self.path).query)
+                universe = (query.get("universe") or ["etf"])[0]
+                top_raw = (query.get("top_n") or [""])[0]
+                try:
+                    top_n = int(top_raw) if top_raw else None
+                except ValueError:
+                    top_n = None
+                result = heatmap_png(universe, top_n)
+                if isinstance(result, dict):
+                    body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+                    self._send_cors_json(body, status=503)
+                    return
+                png_bytes, _caption = result
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(png_bytes)))
+                self.send_header("Cache-Control", "public, max-age=120")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(png_bytes)
+                return
+
+            if path == "/api/web/why-etf":
+                from web_api import why_etf_insights
+
+                payload = why_etf_insights()
+                status = 200 if payload.get("ok") else 500
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
+
+        def _send_cors_json(self, body: bytes, status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            path = urlparse(self.path).path
+            if path.startswith("/api/web/"):
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_error(404)
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/web/simulate":
+                from web_api import simulate_allocation
+
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    req = json.loads(raw.decode("utf-8") or "{}")
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    self._send_cors_json(
+                        json.dumps({"ok": False, "error": "Invalid JSON"}).encode("utf-8"),
+                        status=400,
+                    )
+                    return
+                tickers = req.get("tickers") or []
+                weights = req.get("weights")
+                payload = simulate_allocation(
+                    tickers,
+                    weights=weights,
+                    start_date=req.get("start_date"),
+                    end_date=req.get("end_date"),
+                    initial_capital=float(req.get("initial_capital") or 10_000),
+                    benchmark=req.get("benchmark") or "SPY",
+                )
+                status = 200 if payload.get("ok") else 400
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/kakao/skill":
                 from kakao_notify import build_skill_response
                 from summary_builder import SUMMARY_META_PATH, resolve_summary_public_url
@@ -2459,7 +2579,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/simulate )"
     )
 
 

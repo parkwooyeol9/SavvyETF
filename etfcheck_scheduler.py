@@ -67,6 +67,7 @@ def run_scheduled_etfcheck(token: str, broadcast_fn) -> bool:
             print("Scheduled etfcheck skipped: empty message.")
             return False
         try:
+            from etf_memb_publish import publish_etf_memb_from_brief
             from web_publish import publish_brief, section_from_html
 
             publish_brief(
@@ -78,6 +79,7 @@ def run_scheduled_etfcheck(token: str, broadcast_fn) -> bool:
                 sections=section_from_html(text, heading="ETF CHECK"),
                 meta={"mode": brief.get("mode")},
             )
+            publish_etf_memb_from_brief(brief)
         except Exception as pub_exc:
             print(f"web_publish etfcheck skipped: {pub_exc}")
         delivered = broadcast_fn(

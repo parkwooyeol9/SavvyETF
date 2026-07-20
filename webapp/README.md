@@ -1,15 +1,17 @@
 # SavvyETF dashboard (Vercel)
 
-4-tab read-only market brief dashboard:
+Tabs:
 
-| Tab | Slots (from Telegram bot) |
-|-----|---------------------------|
+| Tab | Contents |
+|-----|----------|
+| **메인** | ETF/S&P/Nasdaq 히트맵 + “왜 ETF인가” 실데이터 비교 차트 |
+| **교육** | 한국 투자자 세금·계좌·환율 + 원/달러 차트 |
 | 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etfcheck` |
 | ESG시황 | `esg_accident`, `esg_overview` |
 
-The Render Telegram bot POSTs snapshots to `/api/ingest` after each brief. The page polls `/api/briefs` every 60s.
+시황 탭은 Render Telegram 봇이 `/api/ingest`로 푸시합니다. 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다(Render 배포 상태와 무관).
 
 ## 1. Deploy to Vercel
 
@@ -20,59 +22,36 @@ npx vercel          # first deploy → note the *.vercel.app URL
 npx vercel --prod
 ```
 
-Prefer project name `savvyetf` so the URL is `https://savvyetf.vercel.app` (if taken, Vercel will suggest another).
+Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 
-## 2. Create Vercel Blob store
-
-1. Vercel Dashboard → Project → **Storage** → Create **Blob**
-2. Connect the store to this project (adds `BLOB_READ_WRITE_TOKEN`)
-3. Redeploy so the token is available to serverless functions
-
-## 3. Set ingest secret (Vercel)
-
-In Project → Settings → Environment Variables:
+## 2. Environment
 
 | Name | Value |
 |------|--------|
 | `WEB_INGEST_SECRET` | long random string (same as Render) |
-| `BLOB_READ_WRITE_TOKEN` | (auto from Blob store) |
+| `BLOB_READ_WRITE_TOKEN` | from Vercel Blob store |
+| `RENDER_BOT_URL` | `https://savvyetf-bot.onrender.com` (optional; default) |
 
-Redeploy after adding env vars.
-
-## 4. Point the bot at the dashboard (Render)
-
-In Render → `savvyetf-bot` → Environment:
+## 3. Point the bot at the dashboard (Render)
 
 | Name | Value |
 |------|--------|
-| `WEB_PUBLISH_URL` | `https://<your-project>.vercel.app/api/ingest` |
+| `WEB_PUBLISH_URL` | `https://savvyetf.vercel.app/api/ingest` |
 | `WEB_INGEST_SECRET` | same secret as Vercel |
-
-After the next scheduled or manual `/summary`, `/summary_kor`, `/etf_sector`, `/etfcheck`, `/esg …`, the matching tab updates without redeploying Vercel.
-
-## 5. Custom domain (SavvyETF.com)
-
-Vercel does **not** include a free `SavvyETF.com` — free URLs are `*.vercel.app`.
-
-To attach a custom domain later:
-
-1. Vercel → Project → **Domains** → Add `savvyetf.com` (and `www`)
-2. Buy the domain in Vercel Domains **or** point an external registrar’s DNS to the records Vercel shows
-3. Wait for TLS to provision — no code changes required
-
-## Local dev
-
-```bash
-cd webapp
-cp .env.example .env.local   # optional
-npm run dev
-```
-
-Without Blob/token, the UI still loads with empty tabs (`configured: false`).
 
 ## API
 
-- `POST /api/ingest` — `Authorization: Bearer $WEB_INGEST_SECRET`  
-  Body: `{ tab, slot, generated_at, title, html?, sections?, meta? }`
-- `GET /api/briefs` — all tabs
-- `GET /api/briefs/[tab]` — one of `kr|us|etf|esg`
+- `POST /api/ingest` — bot snapshot ingest
+- `GET /api/briefs` — all brief tabs
+- `GET /api/heatmap?universe=etf\|sp\|nas` — proxy to Render heatmap
+- `POST /api/simulate` — `{ tickers, weights?, start_date?, initial_capital?, benchmark? }`
+- `GET /api/why-etf` — preset diversification / allocation charts
+- `GET /api/catalog` — ETF picker list
+
+### Render bot (source for heatmap)
+
+- `GET /api/web/heatmap`
+- `GET /api/web/heatmap.png`
+- `POST /api/web/simulate`
+- `GET /api/web/why-etf`
+- `GET /api/web/catalog`

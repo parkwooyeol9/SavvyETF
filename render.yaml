@@ -60,10 +60,14 @@ services:
         value: "15:40"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
-      - key: ESG_ACCIDENT_SCHEDULE_KST
+      - key: ESG_MONITOR_SCHEDULE_ENABLED
+        value: "true"
+      - key: ESG_MONITOR_SCHEDULE_KST
         value: "9:00"
+      - key: ESG_ACCIDENT_SCHEDULE_KST
+        value: "9:30"
       - key: ESG_OVERVIEW_SCHEDULE_KST
-        value: "9:20"
+        value: "9:45"
       - key: ESG_SCHEDULE_OVERVIEW_QUERIES
         value: "삼성전자"
       - key: GEMINI_API_KEY
