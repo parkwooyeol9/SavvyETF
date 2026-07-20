@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import MainTab from "@/components/MainTab";
+import EducationTab from "@/components/EducationTab";
 import SimulateTab from "@/components/SimulateTab";
 import {
   type AllBriefs,
@@ -131,7 +132,7 @@ export default function Dashboard() {
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
 
   const metaText = (() => {
-    if (tab === "main" || tab === "simulate") {
+    if (tab === "main" || tab === "simulate" || tab === "education") {
       return error
         ? `시황 동기화 참고: ${error}`
         : `시황 갱신 ${formatWhen(fetchedAt)}`;
@@ -176,6 +177,8 @@ export default function Dashboard() {
         <MainTab />
       ) : tab === "simulate" ? (
         <SimulateTab />
+      ) : tab === "education" ? (
+        <EducationTab />
       ) : (
         <section className="panel">
           {!slots.length ? (

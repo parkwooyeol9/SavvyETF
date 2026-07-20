@@ -1,6 +1,6 @@
 export type TabId = "kr" | "us" | "etf" | "esg";
 
-export type ShellTabId = "main" | "simulate" | TabId;
+export type ShellTabId = "main" | "simulate" | "education" | TabId;
 
 export type BriefSection = {
   heading?: string;
@@ -30,6 +30,7 @@ export const TAB_IDS: TabId[] = ["kr", "us", "etf", "esg"];
 export const SHELL_TAB_IDS: ShellTabId[] = [
   "main",
   "simulate",
+  "education",
   "kr",
   "us",
   "etf",
@@ -46,6 +47,7 @@ export const TAB_LABELS: Record<TabId, string> = {
 export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "ETF 배분",
+  education: "교육",
   ...TAB_LABELS,
 };
 
