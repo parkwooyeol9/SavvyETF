@@ -40,6 +40,10 @@ MODES = {
     "accidents": "accident",
     "중대재해": "accident",
     "재해": "accident",
+    "monitor": "monitor",
+    "climate": "monitor",
+    "기후": "monitor",
+    "기후리스크": "monitor",
     "overview": "overview",
     "all": "overview",
     "요약": "overview",
@@ -61,6 +65,7 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     /esg fin 삼성전자             → fin, 삼성전자
     /esg accident                → accident, None
     /esg accident 삼성전자        → accident, 삼성전자
+    /esg monitor                 → monitor, None
     """
     parts = command.strip().split()
     if len(parts) < 2:
@@ -73,7 +78,7 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     if first in MODES:
         mode = MODES[first]
         query = " ".join(parts[2:]).strip() or None
-        if mode != "accident" and not query:
+        if mode not in {"accident", "monitor"} and not query:
             raise ValueError(f"Usage: /esg {first} <기업명|종목코드>")
         return mode, query
 
@@ -114,6 +119,10 @@ def run_esg(
     elif mode == "overview":
         profile = build_esg_overview_profile(query or "")
         text = format_esg_overview_telegram(profile)
+    elif mode == "monitor":
+        from climate_pipeline import run_climate_monitor
+
+        return run_climate_monitor(publish=publish)
     else:
         raise ValueError(f"Unknown /esg mode: {mode}")
 

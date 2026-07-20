@@ -1,8 +1,9 @@
 """Scheduled /esg broadcasts → SavvyESG channel (TELEGRAM_CHAT_ID_ESG).
 
-Defaults (KST, KRX trading days):
-  - 09:00  /esg accident (market-wide 중대재해 screen)
-  - 09:20  /esg overview for configured names (default: 삼성전자)
+Defaults (KST):
+  - 09:00  /esg monitor — Climate Risk (every calendar day)
+  - 09:30  /esg accident — 중대재해 screen (KRX trading days)
+  - 09:45  /esg overview — configured names (KRX trading days)
 """
 
 from __future__ import annotations
@@ -18,8 +19,9 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_ACCIDENT_KST = (9, 0)
-DEFAULT_OVERVIEW_KST = (9, 20)
+DEFAULT_MONITOR_KST = (9, 0)
+DEFAULT_ACCIDENT_KST = (9, 30)
+DEFAULT_OVERVIEW_KST = (9, 45)
 DEFAULT_POLL_SECONDS = 30
 DEFAULT_OVERVIEW_QUERIES = ("삼성전자",)
 
@@ -36,16 +38,23 @@ def _parse_hhmm(raw: str, default: tuple[int, int]) -> tuple[int, int]:
     return default
 
 
+def _monitor_time_kst() -> tuple[int, int]:
+    return _parse_hhmm(
+        os.environ.get("ESG_MONITOR_SCHEDULE_KST", "9:00"),
+        DEFAULT_MONITOR_KST,
+    )
+
+
 def _accident_time_kst() -> tuple[int, int]:
     return _parse_hhmm(
-        os.environ.get("ESG_ACCIDENT_SCHEDULE_KST", "9:00"),
+        os.environ.get("ESG_ACCIDENT_SCHEDULE_KST", "9:30"),
         DEFAULT_ACCIDENT_KST,
     )
 
 
 def _overview_time_kst() -> tuple[int, int]:
     return _parse_hhmm(
-        os.environ.get("ESG_OVERVIEW_SCHEDULE_KST", "9:20"),
+        os.environ.get("ESG_OVERVIEW_SCHEDULE_KST", "9:45"),
         DEFAULT_OVERVIEW_KST,
     )
 
@@ -68,6 +77,36 @@ def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
     from kr_calendar import is_kr_equity_trading_day
 
     return not is_kr_equity_trading_day(now_kst.date())
+
+
+def run_scheduled_esg_monitor(token: str, broadcast_fn) -> bool:
+    from climate_pipeline import run_climate_monitor
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    if not begin_heavy_work_blocking("scheduled-esg-monitor", timeout=240):
+        print(
+            "Scheduled esg monitor skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
+        return False
+    try:
+        result = run_climate_monitor(publish=True)
+        messages = result.get("telegram_messages") or []
+        if not messages:
+            print("Scheduled esg monitor skipped: empty messages.")
+            return False
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled esg monitor not delivered: 0 chats.")
+            return False
+        print(f"Scheduled esg monitor sent → {delivered} chat(s).")
+        return True
+    except Exception as exc:
+        print(f"Scheduled esg monitor failed: {exc}")
+        update_scheduler_state(last_esg_monitor_error=str(exc))
+        return False
+    finally:
+        end_heavy_work("scheduled-esg-monitor")
 
 
 def run_scheduled_esg_accident(token: str, broadcast_fn) -> bool:
@@ -176,6 +215,7 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         print("esg scheduler disabled.")
         return
 
+    monitor_h, monitor_m = _monitor_time_kst()
     accident_h, accident_m = _accident_time_kst()
     overview_h, overview_m = _overview_time_kst()
     poll_seconds = _poll_seconds()
@@ -188,14 +228,22 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
     except ValueError:
         catchup_minutes = 120
 
+    monitor_enabled = os.environ.get("ESG_MONITOR_SCHEDULE_ENABLED", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
     def loop() -> None:
         state = _load_state()
+        last_monitor = state.get("last_esg_monitor_slot")
         last_accident = state.get("last_esg_accident_slot")
         last_overview = state.get("last_esg_overview_slot")
         queries = ", ".join(_overview_queries())
         print(
-            f"esg scheduler active — KRX days: "
-            f"accident {accident_h:02d}:{accident_m:02d} · "
+            f"esg scheduler active — "
+            f"monitor {monitor_h:02d}:{monitor_m:02d} daily · "
+            f"KRX accident {accident_h:02d}:{accident_m:02d} · "
             f"overview {overview_h:02d}:{overview_m:02d} ({queries}) "
             f"→ TELEGRAM_CHAT_ID_ESG ({catchup_minutes}m catch-up)"
         )
@@ -208,6 +256,19 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
 
                 now = datetime.now(KST)
                 update_scheduler_state(esg_scheduler_heartbeat=now.isoformat())
+
+                if monitor_enabled:
+                    monitor_slot = due_slot_id(
+                        now,
+                        monitor_h,
+                        monitor_m,
+                        last_slot=last_monitor,
+                        window_minutes=catchup_minutes,
+                    )
+                    if monitor_slot:
+                        if run_scheduled_esg_monitor(token, broadcast_fn):
+                            last_monitor = monitor_slot
+                            update_scheduler_state(last_esg_monitor_slot=monitor_slot)
 
                 accident_slot = due_slot_id(
                     now,

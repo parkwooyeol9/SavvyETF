@@ -62,7 +62,7 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_kor_intra", "summary_nxt"],
   us: ["summary", "summary_pre", "reddit"],
   etf: ["etf_sector", "etfcheck", "etf_memb"],
-  esg: ["esg_accident", "esg_overview"],
+  esg: ["esg_monitor", "esg_accident", "esg_overview"],
 };
 
 export function isTabId(value: string): value is TabId {
