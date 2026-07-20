@@ -76,6 +76,14 @@ function SlotView({ slot }: { slot: BriefSlot }) {
         />
       ) : null}
 
+      {(slot.images || []).map((image) => (
+        <figure className="slot-image" key={`${slot.slot}-${image.id}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image.url} alt={image.caption || slot.title} loading="lazy" />
+          {image.caption ? <figcaption>{image.caption}</figcaption> : null}
+        </figure>
+      ))}
+
       {(slot.sections || []).map((section, idx) => (
         <div className="section-block" key={`${slot.slot}-${idx}`}>
           {section.heading ? <h4>{section.heading}</h4> : null}
@@ -86,7 +94,9 @@ function SlotView({ slot }: { slot: BriefSlot }) {
         </div>
       ))}
 
-      {!srcDoc && !(slot.sections || []).length ? (
+      {!srcDoc &&
+      !(slot.images || []).length &&
+      !(slot.sections || []).length ? (
         <p className="empty">이 슬롯에 표시할 본문이 없습니다.</p>
       ) : null}
     </article>

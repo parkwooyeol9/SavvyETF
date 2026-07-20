@@ -2,6 +2,7 @@ import { head, put } from "@vercel/blob";
 
 import {
   type AllBriefs,
+  type BriefImage,
   type BriefSlot,
   type TabBriefs,
   type TabId,
@@ -45,6 +46,12 @@ export async function loadAllBriefs(): Promise<AllBriefs> {
   return { kr, us, etf, esg };
 }
 
+export type IngestImage = {
+  id: string;
+  caption?: string;
+  png_base64: string;
+};
+
 export type IngestBody = {
   tab: string;
   slot: string;
@@ -52,8 +59,39 @@ export type IngestBody = {
   title: string;
   html?: string;
   sections?: BriefSlot["sections"];
+  images?: IngestImage[];
   meta?: Record<string, unknown>;
 };
+
+function imageBlobPath(tab: TabId, slot: string, id: string): string {
+  return `briefs/images/${tab}/${slot}/${id}.png`;
+}
+
+async function uploadImages(
+  tab: TabId,
+  slot: string,
+  images: IngestImage[] | undefined,
+): Promise<BriefImage[] | undefined> {
+  if (!images?.length) return undefined;
+
+  const out: BriefImage[] = [];
+  for (const image of images) {
+    const id = image.id?.trim() || "chart";
+    const buf = Buffer.from(image.png_base64, "base64");
+    const result = await put(imageBlobPath(tab, slot, id), buf, {
+      access: "public",
+      contentType: "image/png",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    out.push({
+      id,
+      url: result.url,
+      caption: image.caption,
+    });
+  }
+  return out;
+}
 
 export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
   if (!isTabId(body.tab)) {
@@ -68,12 +106,15 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
 
   const current = await readTab(body.tab);
   const now = new Date().toISOString();
+  const slotKey = body.slot.trim();
+  const uploadedImages = await uploadImages(body.tab, slotKey, body.images);
   const slot: BriefSlot = {
-    slot: body.slot.trim(),
+    slot: slotKey,
     generated_at: body.generated_at,
     title: body.title,
     html: body.html,
     sections: body.sections,
+    images: uploadedImages,
     meta: body.meta ?? {},
     received_at: now,
   };

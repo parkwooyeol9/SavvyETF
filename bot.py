@@ -1421,7 +1421,7 @@ def handle_telegram_message(message, chat_id: int):
                 format_etf_sector_telegram,
                 plot_etf_sector_board,
             )
-            from web_publish import publish_brief, section_from_html
+            from web_publish import chart_to_image_payload, publish_brief, section_from_html
 
             board = build_etf_sector_board()
             chart = plot_etf_sector_board(board)
@@ -1434,6 +1434,13 @@ def handle_telegram_message(message, chat_id: int):
                     generated_at=board.get("generated_at_kst")
                     or board.get("generated_at_et"),
                     sections=section_from_html(text, heading="Sector rotation"),
+                    images=[
+                        chart_to_image_payload(
+                            chart,
+                            id="sector_rotation",
+                            caption=f"ETF Sector Rotation · {board.get('session_as_of', '')}",
+                        )
+                    ],
                     meta={"session_as_of": board.get("session_as_of")},
                 )
             except Exception as pub_exc:
@@ -1472,6 +1479,9 @@ def handle_telegram_message(message, chat_id: int):
                     sections=section_from_html(text, heading="ETF CHECK"),
                     meta={"mode": mode},
                 )
+                from etf_memb_publish import publish_etf_memb_from_brief
+
+                publish_etf_memb_from_brief(brief)
             except Exception as pub_exc:
                 print(f"web_publish etfcheck skipped: {pub_exc}")
             return [

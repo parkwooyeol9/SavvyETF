@@ -5,6 +5,8 @@ No-ops unless WEB_PUBLISH_URL and WEB_INGEST_SECRET are set.
 
 from __future__ import annotations
 
+import base64
+import io
 import os
 from datetime import datetime
 from typing import Any
@@ -35,6 +37,21 @@ def publish_configured() -> bool:
     )
 
 
+def chart_to_image_payload(
+    chart: io.BytesIO,
+    *,
+    id: str = "chart",
+    caption: str | None = None,
+) -> dict[str, Any]:
+    """Encode a PNG chart buffer for dashboard ingest."""
+    chart.seek(0)
+    return {
+        "id": id,
+        "caption": caption,
+        "png_base64": base64.b64encode(chart.read()).decode("ascii"),
+    }
+
+
 def publish_brief(
     tab: str,
     slot: str,
@@ -43,6 +60,7 @@ def publish_brief(
     generated_at: str | None = None,
     html: str | None = None,
     sections: list[dict[str, Any]] | None = None,
+    images: list[dict[str, Any]] | None = None,
     meta: dict[str, Any] | None = None,
 ) -> bool:
     """
@@ -75,6 +93,8 @@ def publish_brief(
         payload["html"] = html
     if sections:
         payload["sections"] = sections
+    if images:
+        payload["images"] = images
 
     try:
         response = requests.post(

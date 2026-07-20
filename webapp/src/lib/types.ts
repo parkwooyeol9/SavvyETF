@@ -7,12 +7,19 @@ export type BriefSection = {
   html_or_text: string;
 };
 
+export type BriefImage = {
+  id: string;
+  url: string;
+  caption?: string;
+};
+
 export type BriefSlot = {
   slot: string;
   generated_at: string;
   title: string;
   html?: string;
   sections?: BriefSection[];
+  images?: BriefImage[];
   meta?: Record<string, unknown>;
   received_at?: string;
 };
@@ -54,7 +61,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_kor_intra", "summary_nxt"],
   us: ["summary", "summary_pre", "reddit"],
-  etf: ["etf_sector", "etfcheck"],
+  etf: ["etf_sector", "etfcheck", "etf_memb"],
   esg: ["esg_accident", "esg_overview"],
 };
 

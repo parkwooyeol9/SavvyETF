@@ -85,7 +85,7 @@ def run_scheduled_etf_sector(token: str, broadcast_fn) -> bool:
             }
         ]
         try:
-            from web_publish import publish_brief, section_from_html
+            from web_publish import chart_to_image_payload, publish_brief, section_from_html
 
             publish_brief(
                 "etf",
@@ -94,6 +94,13 @@ def run_scheduled_etf_sector(token: str, broadcast_fn) -> bool:
                 generated_at=board.get("generated_at_kst")
                 or board.get("generated_at_et"),
                 sections=section_from_html(text, heading="Sector rotation"),
+                images=[
+                    chart_to_image_payload(
+                        chart,
+                        id="sector_rotation",
+                        caption=f"ETF Sector Rotation · {board.get('session_as_of', '')}",
+                    )
+                ],
                 meta={"session_as_of": board.get("session_as_of")},
             )
         except Exception as pub_exc:
