@@ -1990,6 +1990,7 @@ def start_web_server():
                         "last_summary_nxt_slot": state.get("last_summary_nxt_slot"),
                         "last_etfcheck_slot": state.get("last_etfcheck_slot"),
                         "last_etf_sector_slot": state.get("last_etf_sector_slot"),
+                        "last_esg_monitor_slot": state.get("last_esg_monitor_slot"),
                         "last_esg_accident_slot": state.get("last_esg_accident_slot"),
                         "last_esg_overview_slot": state.get("last_esg_overview_slot"),
                         "last_summary_error": state.get("last_summary_error"),
@@ -1999,6 +2000,7 @@ def start_web_server():
                         ),
                         "last_etfcheck_error": state.get("last_etfcheck_error"),
                         "last_etf_sector_error": state.get("last_etf_sector_error"),
+                        "last_esg_monitor_error": state.get("last_esg_monitor_error"),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
                         "last_esg_overview_error": state.get("last_esg_overview_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
@@ -2046,11 +2048,14 @@ def start_web_server():
                         "etfcheck_kst": os.environ.get(
                             "ETFCHECK_SCHEDULE_KST", "15:40"
                         ),
+                        "esg_monitor_kst": os.environ.get(
+                            "ESG_MONITOR_SCHEDULE_KST", "9:00"
+                        ),
                         "esg_accident_kst": os.environ.get(
-                            "ESG_ACCIDENT_SCHEDULE_KST", "9:00"
+                            "ESG_ACCIDENT_SCHEDULE_KST", "9:30"
                         ),
                         "esg_overview_kst": os.environ.get(
-                            "ESG_OVERVIEW_SCHEDULE_KST", "9:20"
+                            "ESG_OVERVIEW_SCHEDULE_KST", "9:45"
                         ),
                         "note": (
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "

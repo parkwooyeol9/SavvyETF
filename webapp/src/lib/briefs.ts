@@ -18,7 +18,17 @@ async function readTab(tab: TabId): Promise<TabBriefs> {
   try {
     const meta = await head(blobPath(tab));
     if (!meta?.url) return emptyTab(tab);
-    const res = await fetch(meta.url, { cache: "no-store" });
+    // Prefer downloadUrl / cache-bust — public blob URLs are CDN-cached and
+    // can serve stale JSON right after overwrite.
+    const uploadedMs = meta.uploadedAt
+      ? new Date(meta.uploadedAt).getTime()
+      : Date.now();
+    const baseUrl = meta.downloadUrl || meta.url;
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const res = await fetch(`${baseUrl}${sep}v=${uploadedMs}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    });
     if (!res.ok) return emptyTab(tab);
     const parsed = (await res.json()) as TabBriefs;
     if (!parsed || typeof parsed.slots !== "object") return emptyTab(tab);
