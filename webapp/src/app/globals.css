@@ -602,28 +602,74 @@ a {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  margin-top: 0.5rem;
 }
 
-.etf-grid {
+.method-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
 }
 
-.etf-item {
-  display: grid;
-  grid-template-columns: auto auto 1fr 4.2rem;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.55rem;
+.method-card {
+  appearance: none;
+  text-align: left;
   border: 1px solid var(--border);
-  border-radius: 8px;
   background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font: inherit;
 }
 
-.etf-item.on {
-  background: rgba(77, 163, 255, 0.08);
+.method-card strong {
+  font-size: 0.95rem;
+}
+
+.method-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.method-card.on {
+  background: rgba(77, 163, 255, 0.1);
+  border-color: #3a5478;
+}
+
+.basket-row {
+  margin-bottom: 0.75rem;
+}
+
+.etf-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.etf-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 7.5rem;
+  font: inherit;
+}
+
+.etf-chip.on {
+  background: rgba(77, 163, 255, 0.12);
   border-color: #3a5478;
 }
 
@@ -634,16 +680,31 @@ a {
 
 .etf-name {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  max-width: 9.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.weight-input {
-  width: 100%;
-  padding: 0.3rem 0.4rem;
-  text-align: right;
+.more-etf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.etf-search {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  font-size: 0.9rem;
+  min-width: 12rem;
 }
 
 .contrib-table-wrap {
@@ -705,11 +766,7 @@ a {
     font-size: 1.35rem;
   }
 
-  .etf-item {
-    grid-template-columns: auto auto 1fr;
-  }
-
-  .etf-item .weight-input {
-    grid-column: 1 / -1;
+  .etf-chip {
+    min-width: calc(50% - 0.25rem);
   }
 }

@@ -1,5 +1,8 @@
 /** Yahoo Finance chart client + portfolio simulation for the dashboard. */
 
+import { resolveMethodWeights } from "@/lib/allocation";
+import { ETF_CATALOG, type AllocMethod } from "@/lib/etfCatalog";
+
 export type PricePoint = { date: string; close: number };
 
 export type LegInput = { symbol: string; weight: number };
@@ -23,6 +26,8 @@ export type SimulateResult = {
   benchmark?: string;
   tickers?: string[];
   weights?: number[];
+  method?: AllocMethod;
+  method_note?: string;
   metrics?: {
     portfolio: SimMetrics;
     benchmark: SimMetrics;
@@ -49,27 +54,8 @@ const YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart";
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
-export const ETF_CATALOG: Array<{ symbol: string; name: string; group: string }> = [
-  { symbol: "SPY", name: "S&P 500", group: "미국 주식" },
-  { symbol: "VOO", name: "S&P 500 (Vanguard)", group: "미국 주식" },
-  { symbol: "QQQ", name: "Nasdaq-100", group: "미국 주식" },
-  { symbol: "IWM", name: "Russell 2000", group: "미국 주식" },
-  { symbol: "VTI", name: "Total US Stock", group: "미국 주식" },
-  { symbol: "VXUS", name: "Total Intl Stock", group: "해외 주식" },
-  { symbol: "EFA", name: "EAFE Developed", group: "해외 주식" },
-  { symbol: "EEM", name: "Emerging Markets", group: "해외 주식" },
-  { symbol: "TLT", name: "20+ Year Treasury", group: "채권" },
-  { symbol: "IEF", name: "7-10 Year Treasury", group: "채권" },
-  { symbol: "BND", name: "Total Bond Market", group: "채권" },
-  { symbol: "GLD", name: "Gold", group: "대안" },
-  { symbol: "VNQ", name: "US Real Estate", group: "대안" },
-  { symbol: "XLK", name: "Technology", group: "섹터" },
-  { symbol: "XLF", name: "Financials", group: "섹터" },
-  { symbol: "XLE", name: "Energy", group: "섹터" },
-  { symbol: "XLV", name: "Health Care", group: "섹터" },
-  { symbol: "SMH", name: "Semiconductors", group: "섹터" },
-];
-
+/** @deprecated use etfCatalog — kept for older imports */
+export { ETF_CATALOG };
 function toYahooSymbol(ticker: string): string {
   const symbol = ticker.trim().toUpperCase();
   if (symbol.endsWith(".KS") || symbol.endsWith(".KQ")) return symbol;
@@ -212,6 +198,7 @@ function downsample<T>(arr: T[], maxPoints = 400): T[] {
 export async function simulateAllocation(input: {
   tickers: string[];
   weights?: number[];
+  method?: AllocMethod;
   start_date?: string;
   end_date?: string;
   initial_capital?: number;
@@ -219,15 +206,7 @@ export async function simulateAllocation(input: {
 }): Promise<SimulateResult> {
   const tickers = [...new Set(input.tickers.map((t) => t.trim().toUpperCase()).filter(Boolean))];
   if (!tickers.length) return { ok: false, error: "Provide at least one ETF ticker" };
-  if (tickers.length > 12) return { ok: false, error: "Select at most 12 ETFs" };
-
-  let weights = input.weights;
-  if (!weights || weights.length !== tickers.length) {
-    weights = tickers.map(() => 1 / tickers.length);
-  }
-  const sum = weights.reduce((a, b) => a + b, 0);
-  if (sum <= 0) return { ok: false, error: "Weights must sum to a positive number" };
-  weights = weights.map((w) => w / sum);
+  if (tickers.length > 20) return { ok: false, error: "Select at most 20 ETFs" };
 
   const end = input.end_date || new Date().toISOString().slice(0, 10);
   const start =
@@ -236,6 +215,7 @@ export async function simulateAllocation(input: {
   const capital = input.initial_capital && input.initial_capital > 0 ? input.initial_capital : 10_000;
   const benchmark = (input.benchmark || "SPY").trim().toUpperCase();
   const needed = [...new Set([...tickers, benchmark])];
+  const method: AllocMethod = input.method || (input.weights?.length ? "equal" : "equal");
 
   const seriesMap: Record<string, PricePoint[]> = {};
   const missing: string[] = [];
@@ -259,11 +239,27 @@ export async function simulateAllocation(input: {
     return { ok: false, error: "Not enough overlapping history for these ETFs" };
   }
 
-  const portRet = new Array(dates.length).fill(0);
-  const eqRet = new Array(dates.length).fill(0);
   const legRets: Record<string, number[]> = {};
   for (const t of tickers) legRets[t] = pctChange(values[t]);
   const benchRet = pctChange(values[benchmark]);
+
+  let weights: number[];
+  let methodNote: string | undefined;
+  let usedMethod: AllocMethod = method;
+
+  if (input.weights && input.weights.length === tickers.length && !input.method) {
+    const sum = input.weights.reduce((a, b) => a + b, 0);
+    if (sum <= 0) return { ok: false, error: "Weights must sum to a positive number" };
+    weights = input.weights.map((w) => w / sum);
+  } else {
+    const resolved = resolveMethodWeights(method, tickers, legRets);
+    weights = resolved.weights;
+    methodNote = resolved.note;
+    usedMethod = resolved.method;
+  }
+
+  const portRet = new Array(dates.length).fill(0);
+  const eqRet = new Array(dates.length).fill(0);
 
   for (let i = 0; i < dates.length; i++) {
     let p = 0;
@@ -317,6 +313,8 @@ export async function simulateAllocation(input: {
     benchmark,
     tickers,
     weights: weights.map((w) => round(w, 6)),
+    method: usedMethod,
+    method_note: methodNote,
     metrics: {
       portfolio: {
         ...portStats,
