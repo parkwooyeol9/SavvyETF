@@ -11,7 +11,7 @@ Tabs:
 | ETF시황 | `etf_sector`, `etfcheck` |
 | ESG시황 | `esg_accident`, `esg_overview` |
 
-시황 탭은 Render Telegram 봇이 `/api/ingest`로 푸시합니다. 메인 히트맵은 봇의 `/api/web/heatmap`을 프록시합니다. 시뮬레이션·why-ETF 차트는 Vercel이 Yahoo Finance로 직접 계산합니다.
+시황 탭은 Render Telegram 봇이 `/api/ingest`로 푸시합니다. 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다(Render 배포 상태와 무관).
 
 ## 1. Deploy to Vercel
 

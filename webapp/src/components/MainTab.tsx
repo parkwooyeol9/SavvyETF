@@ -3,17 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import EquityChart from "@/components/EquityChart";
+import TreemapHeatmap from "@/components/TreemapHeatmap";
+import type { HeatmapCell } from "@/lib/heatmap";
 import type { SimulateResult } from "@/lib/simulate";
-
-type HeatmapCell = {
-  ticker: string;
-  size: number;
-  daily_return_pct: number;
-};
 
 type HeatmapPayload = {
   ok: boolean;
   error?: string;
+  source?: string;
   universe?: string;
   label?: string;
   size_label?: string;
@@ -27,8 +24,6 @@ type HeatmapPayload = {
     down_count: number;
   };
   cells?: HeatmapCell[];
-  image_png_base64?: string;
-  caption?: string;
 };
 
 type WhyPayload = {
@@ -76,7 +71,7 @@ export default function MainTab() {
   const loadHeatmap = useCallback(async (u: string) => {
     setHeatLoading(true);
     try {
-      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30&image=1`, {
+      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30`, {
         cache: "no-store",
       });
       const data = (await res.json()) as HeatmapPayload;
@@ -131,7 +126,8 @@ export default function MainTab() {
         <div className="feature-head">
           <h2 className="feature-title">ETF 히트맵</h2>
           <p className="feature-lead">
-            시가총액·AUM 기준 상위 종목의 하루 수익률을 Finviz 스타일로 보여줍니다.
+            시가총액·AUM 기준 상위 종목의 하루 수익률을 Finviz 스타일로 보여줍니다. Yahoo
+            일봉으로 실시간 갱신됩니다.
           </p>
         </div>
 
@@ -146,17 +142,28 @@ export default function MainTab() {
               {u.label}
             </button>
           ))}
+          <button
+            type="button"
+            className="chip"
+            onClick={() => void loadHeatmap(universe)}
+            disabled={heatLoading}
+          >
+            새로고침
+          </button>
         </div>
 
-        {heatLoading ? <p className="empty">히트맵 불러오는 중…</p> : null}
-
-        {!heatLoading && heatmap && !heatmap.ok ? (
-          <p className="empty warn">
-            {heatmap.error || "히트맵을 아직 준비하지 못했습니다. 봇 랭킹 캐시가 채워지면 표시됩니다."}
-          </p>
+        {heatLoading ? (
+          <div className="skeleton-block" aria-busy>
+            <div className="skeleton treemap-skeleton" />
+            <p className="empty">히트맵 불러오는 중…</p>
+          </div>
         ) : null}
 
-        {!heatLoading && heatmap?.ok ? (
+        {!heatLoading && heatmap && !heatmap.ok ? (
+          <p className="empty warn">{heatmap.error || "히트맵을 불러오지 못했습니다."}</p>
+        ) : null}
+
+        {!heatLoading && heatmap?.ok && heatmap.cells?.length ? (
           <>
             <div className="stat-row">
               <div className="stat">
@@ -185,13 +192,7 @@ export default function MainTab() {
               </div>
             </div>
 
-            {heatmap.image_png_base64 ? (
-              <img
-                className="heatmap-img"
-                alt={heatmap.caption || `${heatmap.label} heatmap`}
-                src={`data:image/png;base64,${heatmap.image_png_base64}`}
-              />
-            ) : null}
+            <TreemapHeatmap cells={heatmap.cells} />
 
             <p className="meta-soft">
               {heatmap.session_label || heatmap.label}
@@ -206,7 +207,10 @@ export default function MainTab() {
                 <ul className="mover-list">
                   {movers.top.map((c) => (
                     <li key={`t-${c.ticker}`}>
-                      <span>{c.ticker}</span>
+                      <span>
+                        {c.ticker}
+                        <span className="mover-name"> {c.name}</span>
+                      </span>
                       <span className="up">{fmtPct(c.daily_return_pct)}</span>
                     </li>
                   ))}
@@ -217,7 +221,10 @@ export default function MainTab() {
                 <ul className="mover-list">
                   {movers.bottom.map((c) => (
                     <li key={`b-${c.ticker}`}>
-                      <span>{c.ticker}</span>
+                      <span>
+                        {c.ticker}
+                        <span className="mover-name"> {c.name}</span>
+                      </span>
                       <span className="down">{fmtPct(c.daily_return_pct)}</span>
                     </li>
                   ))}

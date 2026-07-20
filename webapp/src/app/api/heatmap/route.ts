@@ -1,50 +1,57 @@
 import { NextResponse } from "next/server";
 
 import { botBaseUrl } from "@/lib/bot";
+import { buildLocalHeatmap, isHeatmapUniverse } from "@/lib/heatmap";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const universe = searchParams.get("universe") || "etf";
-  const topN = searchParams.get("top_n") || "30";
-  const image = searchParams.get("image") || "1";
-  const qs = new URLSearchParams({ universe, top_n: topN, image });
+  const universeRaw = searchParams.get("universe") || "etf";
+  const topN = Number(searchParams.get("top_n") || "30");
+  const prefer = searchParams.get("prefer") || "local"; // local | render
+
+  const universe = isHeatmapUniverse(universeRaw) ? universeRaw : "etf";
+
+  // Prefer local Yahoo heatmap so the Main tab never depends on Render deploy state.
+  if (prefer !== "render") {
+    const local = await buildLocalHeatmap(universe, topN);
+    if (local.ok) {
+      return NextResponse.json(local);
+    }
+    // Fall through to Render if local Yahoo fails.
+  }
 
   try {
+    const qs = new URLSearchParams({
+      universe,
+      top_n: String(topN),
+      image: "0",
+    });
     const res = await fetch(`${botBaseUrl()}/api/web/heatmap?${qs}`, {
       cache: "no-store",
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(55_000),
+      signal: AbortSignal.timeout(20_000),
     });
     const text = await res.text();
-    let data: unknown;
     try {
-      data = JSON.parse(text);
+      const data = JSON.parse(text) as { ok?: boolean };
+      if (data?.ok) {
+        return NextResponse.json({ ...data, source: "render" });
+      }
     } catch {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            res.status === 404
-              ? "봇에 히트맵 API가 아직 배포되지 않았습니다. Render가 최신 main을 받으면 표시됩니다."
-              : `Heatmap upstream returned non-JSON (HTTP ${res.status})`,
-        },
-        { status: 502 },
-      );
+      // ignore non-JSON
     }
-    return NextResponse.json(data, { status: res.ok ? 200 : res.status });
-  } catch (exc) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          exc instanceof Error
-            ? `Heatmap upstream unavailable: ${exc.message}`
-            : "Heatmap upstream unavailable",
-      },
-      { status: 502 },
-    );
+  } catch {
+    // ignore upstream errors; return local error below
   }
+
+  if (prefer === "render") {
+    const local = await buildLocalHeatmap(universe, topN);
+    return NextResponse.json(local, { status: local.ok ? 200 : 502 });
+  }
+
+  const local = await buildLocalHeatmap(universe, topN);
+  return NextResponse.json(local, { status: local.ok ? 200 : 502 });
 }

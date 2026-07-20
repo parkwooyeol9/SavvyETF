@@ -336,6 +336,128 @@ a {
   background: #0a0a0c;
 }
 
+.treemap-shell {
+  margin-top: 0.35rem;
+}
+
+.treemap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 280px;
+  background: #0a0a0c;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.treemap-tile {
+  position: absolute;
+  appearance: none;
+  border: 1px solid rgba(10, 10, 12, 0.85);
+  margin: 0;
+  padding: 0.25rem;
+  color: #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  cursor: pointer;
+  overflow: hidden;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.treemap-tile:hover,
+.treemap-tile.active,
+.treemap-tile:focus-visible {
+  filter: brightness(1.12);
+  z-index: 2;
+  outline: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.tile-ticker {
+  font-weight: 800;
+  font-size: clamp(0.62rem, 1.4vw, 0.95rem);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  line-height: 1.1;
+}
+
+.tile-pct {
+  font-size: clamp(0.58rem, 1.1vw, 0.8rem);
+  font-weight: 650;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.tile-name {
+  font-size: 0.62rem;
+  opacity: 0.85;
+  max-width: 95%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treemap-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.treemap-legend-bar {
+  flex: 1;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgb(228, 60, 60),
+    rgb(62, 68, 82),
+    rgb(33, 191, 94)
+  );
+}
+
+.treemap-hover {
+  margin: 0.45rem 0 0;
+  font-size: 0.88rem;
+  min-height: 1.3em;
+}
+
+.treemap-hover.muted {
+  color: var(--muted);
+}
+
+.treemap-skeleton {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 280px;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    rgba(26, 37, 56, 0.5),
+    rgba(43, 54, 72, 0.75),
+    rgba(26, 37, 56, 0.5)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.mover-name {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .meta-soft {
   color: var(--muted);
   font-size: 0.8rem;
