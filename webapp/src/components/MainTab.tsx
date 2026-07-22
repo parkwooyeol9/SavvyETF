@@ -359,11 +359,8 @@ export default function MainTab() {
             텔레그램 채널
           </h2>
           <p className="feature-lead">
-            시황 브리프를 채널에서 받아보세요. 종합 웹페이지는{" "}
-            <a href="https://savvyetf.vercel.app/" rel="noopener noreferrer">
-              savvyetf.vercel.app
-            </a>
-            입니다.
+            텔레그램으로 시황을 받아보세요, 업데이트 내용은 본 홈페이지에 실시간
+            적재됩니다.
           </p>
         </div>
 
