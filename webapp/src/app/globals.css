@@ -585,6 +585,26 @@ a {
   font-weight: 650;
 }
 
+.esg-carbon-tab {
+  margin-bottom: 0.75rem;
+}
+
+.esg-carbon-section {
+  margin: 0.85rem 0 1.1rem;
+}
+
+.esg-carbon-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.esg-carbon-chart {
+  margin-top: 0.55rem;
+}
+
 @media (max-width: 900px) {
   .kr-grid-2 {
     grid-template-columns: 1fr;

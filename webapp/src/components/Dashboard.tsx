@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
+import EsgCarbonTab from "@/components/EsgCarbonTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import SimulateTab from "@/components/SimulateTab";
 import {
@@ -207,6 +208,21 @@ export default function Dashboard() {
             {!slots.length ? (
               <p className="empty">
                 국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
+                명령 후 자동으로 채워집니다.
+              </p>
+            ) : (
+              slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+            )}
+          </section>
+        </>
+      ) : tab === "esg" ? (
+        <>
+          <EsgCarbonTab />
+          <section className="panel kr-briefs">
+            <h2 className="kr-briefs-title">ESG 시황 브리프</h2>
+            {!slots.length ? (
+              <p className="empty">
+                ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
                 명령 후 자동으로 채워집니다.
               </p>
             ) : (
