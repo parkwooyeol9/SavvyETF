@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   computeTechnicals,
+  SINGLE_STOCK_LEV_ETFS,
   type KrCandle,
   type KrCreditRow,
   type KrFlowDay,
@@ -9,6 +10,7 @@ import {
   type KrIndexBoard,
   type KrIndexQuote,
   type KrMarketPayload,
+  type SingleStockLevRow,
 } from "@/lib/krMarket";
 
 export const dynamic = "force-dynamic";
@@ -454,6 +456,125 @@ async function fetchCredit(): Promise<{
   return { rows: chronological, latest, credit_ratio_proxy };
 }
 
+async function fetchSingleStockLevBoard(): Promise<{
+  rows: SingleStockLevRow[];
+  total_value_eok: number;
+  as_of?: string;
+}> {
+  const codes = SINGLE_STOCK_LEV_ETFS.map((e) => e.code);
+  const metaByCode = Object.fromEntries(
+    SINGLE_STOCK_LEV_ETFS.map((e) => [e.code, e]),
+  );
+
+  type PollRow = {
+    itemCode?: string;
+    stockName?: string;
+    closePriceRaw?: string;
+    compareToPreviousClosePriceRaw?: string;
+    fluctuationsRatioRaw?: string;
+    accumulatedTradingVolumeRaw?: string;
+    accumulatedTradingValueRaw?: string;
+    marketStatus?: string;
+    localTradedAt?: string;
+  };
+
+  const poll = await settled(
+    fetchJson<{ datas?: PollRow[] }>(
+      `https://polling.finance.naver.com/api/realtime/domestic/stock/${codes.join(",")}`,
+    ),
+    { datas: [] },
+  );
+
+  type TrendRow = {
+    bizdate?: string;
+    foreignerPureBuyQuant?: string;
+    organPureBuyQuant?: string;
+    individualPureBuyQuant?: string;
+  };
+
+  const trendMap: Record<string, TrendRow | null> = {};
+  await Promise.all(
+    codes.map(async (code) => {
+      try {
+        const rows = await fetchJson<TrendRow[]>(
+          `https://m.stock.naver.com/api/stock/${code}/trend`,
+        );
+        trendMap[code] = rows?.[0] || null;
+      } catch {
+        trendMap[code] = null;
+      }
+    }),
+  );
+
+  const rows: SingleStockLevRow[] = [];
+  let asOf: string | undefined;
+  for (const raw of poll.datas || []) {
+    const code = raw.itemCode || "";
+    const meta = metaByCode[code];
+    if (!meta) continue;
+    const last = parseNumber(raw.closePriceRaw) ?? 0;
+    const change = parseNumber(raw.compareToPreviousClosePriceRaw) ?? 0;
+    const change_pct = parseNumber(raw.fluctuationsRatioRaw) ?? 0;
+    const volume = parseNumber(raw.accumulatedTradingVolumeRaw) ?? 0;
+    const value = parseNumber(raw.accumulatedTradingValueRaw) ?? 0;
+    const trend = trendMap[code];
+    const foreign_net = parseNumber(trend?.foreignerPureBuyQuant);
+    const institution_net = parseNumber(trend?.organPureBuyQuant);
+    const individual_net = parseNumber(trend?.individualPureBuyQuant);
+    const trend_date = trend?.bizdate
+      ? `${trend.bizdate.slice(0, 4)}-${trend.bizdate.slice(4, 6)}-${trend.bizdate.slice(6, 8)}`
+      : null;
+    if (raw.localTradedAt) asOf = raw.localTradedAt;
+    rows.push({
+      code,
+      name: meta.name,
+      underlying: meta.underlying,
+      direction: meta.direction,
+      structure: meta.structure,
+      last,
+      change,
+      change_pct,
+      volume,
+      value,
+      value_eok: value / 1e8,
+      foreign_net,
+      institution_net,
+      individual_net,
+      trend_date,
+      market_status: raw.marketStatus,
+    });
+  }
+
+  // Keep catalog order for missing quotes, fill blanks if poll missed some
+  if (rows.length < codes.length) {
+    const have = new Set(rows.map((r) => r.code));
+    for (const meta of SINGLE_STOCK_LEV_ETFS) {
+      if (have.has(meta.code)) continue;
+      rows.push({
+        code: meta.code,
+        name: meta.name,
+        underlying: meta.underlying,
+        direction: meta.direction,
+        structure: meta.structure,
+        last: 0,
+        change: 0,
+        change_pct: 0,
+        volume: 0,
+        value: 0,
+        value_eok: 0,
+        foreign_net: null,
+        institution_net: null,
+        individual_net: null,
+        trend_date: null,
+      });
+    }
+  }
+
+  rows.sort((a, b) => b.value - a.value);
+  const total_value_eok = rows.reduce((sum, r) => sum + r.value_eok, 0);
+  return { rows, total_value_eok, as_of: asOf };
+}
+
 export async function GET() {
   try {
     const [
@@ -467,6 +588,7 @@ export async function GET() {
       credit,
       kq150Daily,
       kq150Quote,
+      singleStockLev,
     ] = await Promise.all([
       settled(fetchRealtimeQuotes(["KPI200", "KOSDAQ", "KOSPI"]), {}),
       settled(fetchDailyPrices("KPI200", 60), [] as KrCandle[]),
@@ -482,6 +604,10 @@ export async function GET() {
       }),
       settled(fetchStockDaily("229200", 120), [] as KrCandle[]),
       settled(fetchStockQuote("229200"), null),
+      settled(fetchSingleStockLevBoard(), {
+        rows: [] as SingleStockLevRow[],
+        total_value_eok: 0,
+      }),
     ]);
 
     const kpiQuote = rt.KPI200
@@ -577,6 +703,7 @@ export async function GET() {
         latest: credit.latest,
         credit_ratio_proxy: credit.credit_ratio_proxy,
       },
+      single_stock_lev: singleStockLev,
     };
 
     return NextResponse.json(payload);
