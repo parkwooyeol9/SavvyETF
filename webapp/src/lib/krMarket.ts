@@ -45,6 +45,53 @@ export type KrCreditRow = {
   fund_bond: number;
 };
 
+export type SingleStockLevMeta = {
+  code: string;
+  name: string;
+  underlying: "samsung" | "hynix";
+  direction: "lev" | "inv";
+  structure: "spot" | "fut";
+};
+
+export type SingleStockLevRow = {
+  code: string;
+  name: string;
+  underlying: "samsung" | "hynix";
+  direction: "lev" | "inv";
+  structure: "spot" | "fut";
+  last: number;
+  change: number;
+  change_pct: number;
+  volume: number;
+  value: number; // KRW
+  value_eok: number; // 억원
+  foreign_net: number | null; // shares (latest session)
+  institution_net: number | null;
+  individual_net: number | null;
+  trend_date?: string | null;
+  market_status?: string;
+};
+
+/** 2026-05-27 listed Samsung/Hynix single-stock leverage·inverse ETFs (16). */
+export const SINGLE_STOCK_LEV_ETFS: SingleStockLevMeta[] = [
+  { code: "0193W0", name: "KODEX 삼성전자단일종목레버리지", underlying: "samsung", direction: "lev", structure: "spot" },
+  { code: "0195R0", name: "TIGER 삼성전자단일종목레버리지", underlying: "samsung", direction: "lev", structure: "spot" },
+  { code: "0194M0", name: "ACE 삼성전자단일종목레버리지", underlying: "samsung", direction: "lev", structure: "spot" },
+  { code: "0192M0", name: "RISE 삼성전자단일종목레버리지", underlying: "samsung", direction: "lev", structure: "spot" },
+  { code: "0193K0", name: "PLUS 삼성전자단일종목레버리지", underlying: "samsung", direction: "lev", structure: "spot" },
+  { code: "0194N0", name: "KIWOOM 삼성전자선물단일종목레버리지", underlying: "samsung", direction: "lev", structure: "fut" },
+  { code: "0198B0", name: "1Q 삼성전자선물단일종목레버리지", underlying: "samsung", direction: "lev", structure: "fut" },
+  { code: "0193L0", name: "PLUS 삼성전자선물단일종목인버스2X", underlying: "samsung", direction: "inv", structure: "fut" },
+  { code: "0193T0", name: "KODEX SK하이닉스단일종목레버리지", underlying: "hynix", direction: "lev", structure: "spot" },
+  { code: "0195S0", name: "TIGER SK하이닉스단일종목레버리지", underlying: "hynix", direction: "lev", structure: "spot" },
+  { code: "0194T0", name: "ACE SK하이닉스단일종목레버리지", underlying: "hynix", direction: "lev", structure: "spot" },
+  { code: "0192L0", name: "RISE SK하이닉스단일종목레버리지", underlying: "hynix", direction: "lev", structure: "spot" },
+  { code: "0197W0", name: "SOL SK하이닉스단일종목레버리지", underlying: "hynix", direction: "lev", structure: "spot" },
+  { code: "0194R0", name: "KIWOOM SK하이닉스선물단일종목레버리지", underlying: "hynix", direction: "lev", structure: "fut" },
+  { code: "0198D0", name: "1Q SK하이닉스선물단일종목레버리지", underlying: "hynix", direction: "lev", structure: "fut" },
+  { code: "0197X0", name: "SOL SK하이닉스선물단일종목인버스2X", underlying: "hynix", direction: "inv", structure: "fut" },
+];
+
 export type KrTechnicals = {
   sma5?: number | null;
   sma20?: number | null;
@@ -86,6 +133,11 @@ export type KrMarketPayload = {
     rows: KrCreditRow[];
     latest?: KrCreditRow | null;
     credit_ratio_proxy?: number | null;
+  };
+  single_stock_lev?: {
+    rows: SingleStockLevRow[];
+    total_value_eok: number;
+    as_of?: string;
   };
 };
 
@@ -183,4 +235,20 @@ export function fmtNum(n?: number | null, digits = 2): string {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
   });
+}
+
+export function fmtShares(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const sign = n > 0 ? "+" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 10_000) return `${sign}${(abs / 10_000).toFixed(1)}만`;
+  return `${sign}${abs.toLocaleString("ko-KR")}`;
+}
+
+export function fmtValueEok(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  if (n >= 100) return `${n.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
+  if (n >= 10) return `${n.toFixed(1)}억`;
+  return `${n.toFixed(2)}억`;
 }
