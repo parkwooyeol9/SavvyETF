@@ -49,6 +49,56 @@ const UNIVERSES = [
   { id: "nas", label: "Nasdaq 100" },
 ] as const;
 
+const TELEGRAM_CHANNELS = [
+  {
+    id: "us",
+    title: "미국시황",
+    handle: "@SavvyETF02",
+    href: "https://t.me/SavvyETF02",
+    accent: "us",
+    lines: [
+      "07:00 — 미국장 마감 시황",
+      "21:00 — WSB 핫토픽",
+      "21:50 — 미국 프리마켓 시황",
+    ],
+  },
+  {
+    id: "kr",
+    title: "국내시황",
+    handle: "@SavvyETF01",
+    href: "https://t.me/SavvyETF01",
+    accent: "kr",
+    lines: [
+      "08:30 — NXT 거래 흐름",
+      "11:00 — 장중 거래대금",
+      "15:40 — 장마감 시황",
+    ],
+  },
+  {
+    id: "etf",
+    title: "ETF시황",
+    handle: "@SavvyETF",
+    href: "https://t.me/SavvyETF",
+    accent: "etf",
+    lines: [
+      "08:50 — 미국 업종·테마 ETF",
+      "15:40 — 신규 ETF·수급",
+      "수시 — ETF 정기변경·편입비",
+    ],
+  },
+  {
+    id: "esg",
+    title: "ESG에이전트",
+    handle: "@SavvyESG",
+    href: "https://t.me/SavvyESG",
+    accent: "esg",
+    lines: [
+      "유럽 이상기후·지진 모니터",
+      "DART 기반 기업 ESG 모니터",
+    ],
+  },
+] as const;
+
 function fmtPct(n?: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
@@ -300,6 +350,44 @@ export default function MainTab() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      <section className="feature-block tg-channels" aria-labelledby="tg-channels-title">
+        <div className="feature-head">
+          <h2 className="feature-title" id="tg-channels-title">
+            텔레그램 채널
+          </h2>
+          <p className="feature-lead">
+            시황 브리프를 채널에서 받아보세요. 종합 웹페이지는{" "}
+            <a href="https://savvyetf.vercel.app/" rel="noopener noreferrer">
+              savvyetf.vercel.app
+            </a>
+            입니다.
+          </p>
+        </div>
+
+        <div className="tg-channel-grid">
+          {TELEGRAM_CHANNELS.map((ch) => (
+            <a
+              key={ch.id}
+              className={`tg-channel tg-channel--${ch.accent}`}
+              href={ch.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <div className="tg-channel-top">
+                <span className="tg-channel-title">{ch.title}</span>
+                <span className="tg-channel-handle">{ch.handle}</span>
+              </div>
+              <ul className="tg-channel-lines">
+                {ch.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <span className="tg-channel-cta">채널 입장 →</span>
+            </a>
+          ))}
         </div>
       </section>
     </div>
