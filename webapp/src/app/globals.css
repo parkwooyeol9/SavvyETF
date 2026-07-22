@@ -250,11 +250,272 @@ a {
 }
 
 .main-tab,
-.sim-tab {
+.sim-tab,
+.kr-tab {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
+
+.kr-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  padding: 0.35rem 0.15rem 0.2rem;
+}
+
+.kr-hero-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.kr-hero-sub {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  max-width: 40rem;
+}
+
+.kr-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.kr-note {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid rgba(77, 163, 255, 0.28);
+  background: rgba(77, 163, 255, 0.08);
+  color: #c7ddf8;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.kr-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.kr-card {
+  background: rgba(20, 29, 43, 0.82);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.05rem 1.1rem;
+}
+
+.kr-card-compact {
+  padding-bottom: 0.85rem;
+}
+
+.kr-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem 1rem;
+  margin-bottom: 0.7rem;
+}
+
+.kr-card-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 650;
+}
+
+.kr-card-sub {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.kr-quote {
+  text-align: right;
+}
+
+.kr-quote .kr-last {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.kr-quote .kr-chg {
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kr-quote .kr-status {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.kr-quote.up .kr-last,
+.kr-quote.up .kr-chg,
+.kr-flow-summary > div.up strong,
+.kr-ta-grid .up {
+  color: #f87171;
+}
+
+.kr-quote.down .kr-last,
+.kr-quote.down .kr-chg,
+.kr-flow-summary > div.down strong,
+.kr-ta-grid .down {
+  color: #60a5fa;
+}
+
+.kr-chart {
+  width: 100%;
+}
+
+.kr-ta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.kr-ta-grid > div {
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(10, 15, 22, 0.55);
+  border: 1px solid rgba(43, 54, 72, 0.85);
+}
+
+.kr-ta-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-bottom: 0.15rem;
+}
+
+.kr-ta-grid strong {
+  font-size: 0.88rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.kr-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(10, 15, 22, 0.45);
+}
+
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.seg button.active {
+  background: rgba(77, 163, 255, 0.18);
+  color: #e8eef5;
+}
+
+.ghost-btn {
+  border: 1px solid var(--border);
+  background: rgba(20, 29, 43, 0.7);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.kr-flow-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.kr-flow-summary > div,
+.kr-credit-kpis > div {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(10, 15, 22, 0.55);
+  border: 1px solid rgba(43, 54, 72, 0.85);
+}
+
+.kr-flow-summary span,
+.kr-credit-kpis span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.15rem;
+}
+
+.kr-flow-summary strong,
+.kr-credit-kpis strong {
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kr-credit-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.kr-fund-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.kr-foot {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.kr-briefs {
+  margin-top: 0.5rem;
+}
+
+.kr-briefs-title {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+@media (max-width: 900px) {
+  .kr-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .kr-ta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kr-flow-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 .edu-disclaimer {
   margin: 0;
