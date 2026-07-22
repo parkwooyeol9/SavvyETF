@@ -224,9 +224,36 @@ export const DIVIDEND_BASKET: Record<ListingMarket, readonly string[]> = {
   kr: ["458730.KS", "161510.KS", "402970.KS", "441640.KS", "114260.KS"],
 };
 
+/** Index benchmarks shared across US/KR listing portfolios. */
+export const BENCHMARK_OPTIONS = [
+  {
+    id: "^GSPC",
+    label: "S&P 500",
+    blurb: "미국 대형주 지수 (^GSPC)",
+  },
+  {
+    id: "^KS11",
+    label: "코스피 지수",
+    blurb: "한국 종합주가지수 (^KS11)",
+  },
+  {
+    id: "ACWI",
+    label: "MSCI ACWI",
+    blurb: "전세계 주식 (iShares ACWI)",
+  },
+] as const;
+
+export type BenchmarkId = (typeof BENCHMARK_OPTIONS)[number]["id"];
+
+export function benchmarkLabel(id: string): string {
+  const hit = BENCHMARK_OPTIONS.find((b) => b.id === id);
+  return hit?.label || id;
+}
+
+/** @deprecated Prefer BENCHMARK_OPTIONS — kept for older imports */
 export const BENCHMARKS: Record<ListingMarket, readonly string[]> = {
-  us: ["SPY", "QQQ", "VTI", "VOO"],
-  kr: ["360750.KS", "069500.KS", "133690.KS", "251350.KS"],
+  us: ["^GSPC", "^KS11", "ACWI"],
+  kr: ["^GSPC", "^KS11", "ACWI"],
 };
 
 export const DEFAULT_CAPITAL: Record<ListingMarket, number> = {

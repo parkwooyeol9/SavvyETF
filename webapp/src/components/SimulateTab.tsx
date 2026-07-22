@@ -15,11 +15,12 @@ import {
 import {
   ALLOC_METHODS,
   ASSET_631_BASKET,
-  BENCHMARKS,
+  BENCHMARK_OPTIONS,
   DEFAULT_CAPITAL,
   DIVIDEND_BASKET,
   LISTING_MARKETS,
   REGION_BASKET,
+  benchmarkLabel,
   catalogForListing,
   etfDisplay,
   mapToListing,
@@ -134,7 +135,7 @@ export default function SimulateTab() {
 
   const [startDate, setStartDate] = useState(yearsAgo(3));
   const [capital, setCapital] = useState(DEFAULT_CAPITAL.us);
-  const [benchmark, setBenchmark] = useState<string>(BENCHMARKS.us[0]);
+  const [benchmark, setBenchmark] = useState<string>(BENCHMARK_OPTIONS[0].id);
   const [showAll, setShowAll] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -223,7 +224,7 @@ export default function SimulateTab() {
     setShowAll(false);
     setQuery("");
     setCapital(DEFAULT_CAPITAL[next]);
-    setBenchmark(BENCHMARKS[next][0]);
+    // Keep the user's index benchmark across listing switches.
 
     setFreeSelected((prev) => {
       const mapped = mapList(prev, next);
@@ -355,12 +356,13 @@ export default function SimulateTab() {
 
   const chartSeries = useMemo(() => {
     if (!result?.series) return null;
+    const benchName = benchmarkLabel(result.benchmark || benchmark);
     return {
       Portfolio: result.series.portfolio as number[],
-      [`Benchmark (${result.benchmark})`]: result.series.benchmark as number[],
+      [`Benchmark (${benchName})`]: result.series.benchmark as number[],
       "Equal weight": result.series.equal_weight as number[],
     };
-  }, [result]);
+  }, [result, benchmark]);
 
   function renderChip(e: EtfMeta, on: boolean, onClick: () => void) {
     return (
@@ -433,14 +435,11 @@ export default function SimulateTab() {
           <label className="field">
             <span>벤치마크</span>
             <select value={benchmark} onChange={(e) => setBenchmark(e.target.value)}>
-              {BENCHMARKS[listing].map((s) => {
-                const meta = catalog.find((e) => e.symbol === s);
-                return (
-                  <option key={s} value={s}>
-                    {meta ? `${s.replace(/\.KS$/i, "")} · ${meta.name}` : s}
-                  </option>
-                );
-              })}
+              {BENCHMARK_OPTIONS.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
             </select>
           </label>
           <div className="field actions">
@@ -829,7 +828,7 @@ export default function SimulateTab() {
               균등 비중 최종 {fmtMoney(result.metrics.equal_weight.final_value, listing)} (
               {fmtPct(result.metrics.equal_weight.total_return_pct)}, MDD{" "}
               {fmtPct(result.metrics.equal_weight.max_drawdown_pct)}) · 벤치마크{" "}
-              {result.benchmark} 최종{" "}
+              {benchmarkLabel(result.benchmark || benchmark)} 최종{" "}
               {fmtMoney(result.metrics.benchmark.final_value, listing)} (
               {fmtPct(result.metrics.benchmark.total_return_pct)})
             </p>

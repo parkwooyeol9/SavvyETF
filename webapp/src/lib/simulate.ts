@@ -71,7 +71,12 @@ const UA =
 /** @deprecated use etfCatalog — kept for older imports */
 export { ETF_CATALOG };
 function toYahooSymbol(ticker: string): string {
-  const symbol = ticker.trim().toUpperCase();
+  const raw = ticker.trim();
+  // Yahoo index symbols like ^GSPC / ^KS11 — preserve caret, upper-case body.
+  if (raw.startsWith("^")) {
+    return `^${raw.slice(1).toUpperCase()}`;
+  }
+  const symbol = raw.toUpperCase();
   if (symbol.endsWith(".KS") || symbol.endsWith(".KQ")) return symbol;
   return symbol.replace(/\./g, "-");
 }
@@ -230,7 +235,11 @@ export async function simulateAllocation(input: {
     input.start_date ||
     new Date(Date.now() - 365 * 3 * 86_400_000).toISOString().slice(0, 10);
   const capital = input.initial_capital && input.initial_capital > 0 ? input.initial_capital : 10_000;
-  const benchmark = (input.benchmark || "SPY").trim().toUpperCase();
+  // Keep caret indices (^GSPC, ^KS11); only upper-case the rest.
+  const rawBench = (input.benchmark || "^GSPC").trim();
+  const benchmark = rawBench.startsWith("^")
+    ? `^${rawBench.slice(1).toUpperCase()}`
+    : rawBench.toUpperCase();
   const needed = [...new Set([...tickers, benchmark])];
   const rawMethod = input.method || "equal";
   const method: AllocMethod = rawMethod === "asset_631" ? "asset" : rawMethod;
