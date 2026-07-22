@@ -798,6 +798,11 @@ def enqueue_telegram_update(token: str, update: dict) -> None:
             _chat_inflight[chat_id] = future
 
 
+def _is_private_chat_id(chat_id: int) -> bool:
+    """Telegram private (1:1 bot DM) ids are positive; channels/groups are negative."""
+    return chat_id > 0
+
+
 def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
     if chat_id in _greeted_this_session:
         return False
@@ -810,21 +815,40 @@ def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
 
 
 def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) -> bool:
+    """Notify that the bot is online after redeploy.
+
+    Only private 1:1 chats (positive ids) get the startup guide — never channels
+    or groups. Scheduled briefs still go to TELEGRAM_CHAT_ID_* channels as usual.
+    """
     chat_ids = startup_chat_ids()
     if extra_chat_ids:
         chat_ids |= extra_chat_ids
 
-    if not chat_ids:
-        print("Startup guide deferred: no chat IDs yet.")
-        print("It will be sent when you message the bot, or set TELEGRAM_CHAT_ID in .env")
+    private_ids = {c for c in chat_ids if _is_private_chat_id(c)}
+    skipped = len(chat_ids) - len(private_ids)
+    if skipped:
+        print(
+            f"Startup guide: skipping {skipped} channel/group chat(s); "
+            f"private DMs only."
+        )
+
+    if not private_ids:
+        print("Startup guide deferred: no private (bot DM) chat IDs yet.")
+        print("It will be sent the next time you message the bot in a 1:1 chat.")
         return False
 
-    for chat_id in chat_ids:
-        send_startup_guide_to_chat(token, chat_id)
-    return True
+    # One redeploy → one notice per known private chat (not per channel).
+    sent_any = False
+    for chat_id in sorted(private_ids):
+        if send_startup_guide_to_chat(token, chat_id):
+            sent_any = True
+    return sent_any
 
 
 def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
+    # Channels already skip this caller; also guard groups if invoked elsewhere.
+    if not _is_private_chat_id(chat_id):
+        return
     if chat_id not in _greeted_this_session:
         send_startup_guide_to_chat(token, chat_id)
 
