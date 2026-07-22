@@ -1053,6 +1053,43 @@ a {
   margin-top: 0.5rem;
 }
 
+.listing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.listing-card {
+  appearance: none;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font: inherit;
+}
+
+.listing-card strong {
+  font-size: 1rem;
+}
+
+.listing-card span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.listing-card.on {
+  background: rgba(34, 160, 107, 0.12);
+  border-color: #2f6b52;
+}
+
 .method-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

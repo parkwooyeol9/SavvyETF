@@ -6,16 +6,27 @@ import EquityChart from "@/components/EquityChart";
 import {
   ASSET_LABELS,
   DEFAULT_ASSET_TARGETS,
+  DEFAULT_DIVIDEND_TARGETS,
   DEFAULT_REGION_TARGETS,
+  DIVIDEND_LABELS,
   REGION_LABELS,
   type RegionBucket,
 } from "@/lib/allocation";
 import {
   ALLOC_METHODS,
-  ETF_CATALOG,
+  ASSET_631_BASKET,
+  BENCHMARKS,
+  DEFAULT_CAPITAL,
+  DIVIDEND_BASKET,
+  LISTING_MARKETS,
+  REGION_BASKET,
+  catalogForListing,
+  mapToListing,
   type AllocMethod,
   type AssetClass,
+  type DividendStyle,
   type EtfMeta,
+  type ListingMarket,
 } from "@/lib/etfCatalog";
 import type { SimulateResult } from "@/lib/simulate";
 
@@ -31,8 +42,11 @@ function fmtPct(n?: number | null): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-function fmtUsd(n?: number | null): string {
+function fmtMoney(n: number | null | undefined, listing: ListingMarket): string {
   if (n == null || Number.isNaN(n)) return "—";
+  if (listing === "kr") {
+    return `₩${Math.round(n).toLocaleString("ko-KR")}`;
+  }
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
@@ -42,58 +56,86 @@ function retClass(n: number): string {
   return "flat";
 }
 
+function mapList(symbols: string[], listing: ListingMarket): string[] {
+  const out: string[] = [];
+  for (const s of symbols) {
+    const mapped = mapToListing(s, listing);
+    if (mapped && !out.includes(mapped)) out.push(mapped);
+  }
+  return out;
+}
+
 const METHOD_LABEL: Record<AllocMethod, string> = Object.fromEntries(
   ALLOC_METHODS.map((m) => [m.id, m.label]),
 ) as Record<AllocMethod, string>;
 
 const ASSET_KEYS: AssetClass[] = ["equity", "bond", "alt"];
 const REGION_KEYS: RegionBucket[] = ["us", "europe", "japan", "china", "korea"];
+const DIVIDEND_KEYS: DividendStyle[] = [
+  "quality_div",
+  "high_div",
+  "intl_div",
+  "monthly_income",
+];
 
-const DEFAULT_ASSET_PICKS: Record<AssetClass, string[]> = {
-  equity: ["VTI"],
-  bond: ["BND"],
-  alt: ["GLD"],
-};
-
-const DEFAULT_REGION_PICKS: Record<RegionBucket, string[]> = {
-  us: ["SPY"],
-  europe: ["VGK"],
-  japan: ["EWJ"],
-  china: ["MCHI"],
-  korea: ["EWY"],
-};
-
-function etfsForAsset(cls: AssetClass): EtfMeta[] {
-  return ETF_CATALOG.filter((e) => e.assetClass === cls);
+function defaultAssetPicks(listing: ListingMarket): Record<AssetClass, string[]> {
+  const [eq, bond, alt] = ASSET_631_BASKET[listing];
+  return { equity: [eq], bond: [bond], alt: [alt] };
 }
 
-function etfsForRegion(region: RegionBucket): EtfMeta[] {
-  return ETF_CATALOG.filter((e) => e.region === region);
+function defaultRegionPicks(listing: ListingMarket): Record<RegionBucket, string[]> {
+  const [us, europe, japan, china, korea] = REGION_BASKET[listing];
+  return { us: [us], europe: [europe], japan: [japan], china: [china], korea: [korea] };
+}
+
+function defaultDividendPicks(
+  listing: ListingMarket,
+): Record<DividendStyle, string[]> {
+  const [quality, high, intl, monthly] = DIVIDEND_BASKET[listing];
+  return {
+    quality_div: [quality],
+    high_div: [high],
+    intl_div: [intl],
+    monthly_income: [monthly],
+  };
+}
+
+function defaultFreeSelected(listing: ListingMarket): string[] {
+  if (listing === "kr") {
+    return ["360750.KS", "133690.KS", "453850.KS", "411060.KS"];
+  }
+  return ["SPY", "QQQ", "TLT", "GLD"];
 }
 
 export default function SimulateTab() {
+  const [listing, setListing] = useState<ListingMarket>("us");
   const [method, setMethod] = useState<AllocMethod>("equal");
-  const [freeSelected, setFreeSelected] = useState<string[]>(["SPY", "QQQ", "TLT", "GLD"]);
+  const [freeSelected, setFreeSelected] = useState<string[]>(defaultFreeSelected("us"));
   const [assetTargets, setAssetTargets] =
     useState<Record<AssetClass, number>>(DEFAULT_ASSET_TARGETS);
   const [assetPicks, setAssetPicks] =
-    useState<Record<AssetClass, string[]>>(DEFAULT_ASSET_PICKS);
+    useState<Record<AssetClass, string[]>>(defaultAssetPicks("us"));
   const [regionTargets, setRegionTargets] =
     useState<Record<RegionBucket, number>>(DEFAULT_REGION_TARGETS);
   const [regionPicks, setRegionPicks] =
-    useState<Record<RegionBucket, string[]>>(DEFAULT_REGION_PICKS);
+    useState<Record<RegionBucket, string[]>>(defaultRegionPicks("us"));
+  const [dividendTargets, setDividendTargets] =
+    useState<Record<DividendStyle, number>>(DEFAULT_DIVIDEND_TARGETS);
+  const [dividendPicks, setDividendPicks] =
+    useState<Record<DividendStyle, string[]>>(defaultDividendPicks("us"));
 
   const [startDate, setStartDate] = useState(yearsAgo(3));
-  const [capital, setCapital] = useState(10_000);
-  const [benchmark, setBenchmark] = useState("SPY");
+  const [capital, setCapital] = useState(DEFAULT_CAPITAL.us);
+  const [benchmark, setBenchmark] = useState<string>(BENCHMARKS.us[0]);
   const [showAll, setShowAll] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SimulateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const featured = useMemo(() => ETF_CATALOG.filter((e) => e.featured), []);
-  const extra = useMemo(() => ETF_CATALOG.filter((e) => !e.featured), []);
+  const catalog = useMemo(() => catalogForListing(listing), [listing]);
+  const featured = useMemo(() => catalog.filter((e) => e.featured), [catalog]);
+  const extra = useMemo(() => catalog.filter((e) => !e.featured), [catalog]);
   const freeSet = useMemo(() => new Set(freeSelected), [freeSelected]);
 
   const filteredExtra = useMemo(() => {
@@ -101,7 +143,7 @@ export default function SimulateTab() {
     if (!q) return extra;
     return extra.filter(
       (e) =>
-        e.symbol.includes(q) ||
+        e.symbol.toUpperCase().includes(q) ||
         e.name.toUpperCase().includes(q) ||
         e.group.includes(query.trim()),
     );
@@ -120,6 +162,10 @@ export default function SimulateTab() {
   const methodMeta = ALLOC_METHODS.find((m) => m.id === method);
   const assetSum = ASSET_KEYS.reduce((a, k) => a + (Number(assetTargets[k]) || 0), 0);
   const regionSum = REGION_KEYS.reduce((a, k) => a + (Number(regionTargets[k]) || 0), 0);
+  const dividendSum = DIVIDEND_KEYS.reduce(
+    (a, k) => a + (Number(dividendTargets[k]) || 0),
+    0,
+  );
 
   const selectedTickers = useMemo(() => {
     if (method === "asset") {
@@ -132,8 +178,75 @@ export default function SimulateTab() {
         (Number(regionTargets[k]) || 0) > 0 ? regionPicks[k] : [],
       );
     }
+    if (method === "dividend") {
+      return DIVIDEND_KEYS.flatMap((k) =>
+        (Number(dividendTargets[k]) || 0) > 0 ? dividendPicks[k] : [],
+      );
+    }
     return freeSelected;
-  }, [method, assetTargets, assetPicks, regionTargets, regionPicks, freeSelected]);
+  }, [
+    method,
+    assetTargets,
+    assetPicks,
+    regionTargets,
+    regionPicks,
+    dividendTargets,
+    dividendPicks,
+    freeSelected,
+  ]);
+
+  function etfsForAsset(cls: AssetClass): EtfMeta[] {
+    return catalog.filter((e) => e.assetClass === cls);
+  }
+
+  function etfsForRegion(region: RegionBucket): EtfMeta[] {
+    return catalog.filter((e) => e.region === region);
+  }
+
+  function etfsForDividend(style: DividendStyle): EtfMeta[] {
+    return catalog.filter((e) => e.dividendStyle === style);
+  }
+
+  function switchListing(next: ListingMarket) {
+    if (next === listing) return;
+    setListing(next);
+    setResult(null);
+    setError(null);
+    setShowAll(false);
+    setQuery("");
+    setCapital(DEFAULT_CAPITAL[next]);
+    setBenchmark(BENCHMARKS[next][0]);
+
+    setFreeSelected((prev) => {
+      const mapped = mapList(prev, next);
+      return mapped.length ? mapped : defaultFreeSelected(next);
+    });
+    setAssetPicks((prev) => {
+      const mapped: Record<AssetClass, string[]> = {
+        equity: mapList(prev.equity, next),
+        bond: mapList(prev.bond, next),
+        alt: mapList(prev.alt, next),
+      };
+      const fallback = defaultAssetPicks(next);
+      for (const k of ASSET_KEYS) {
+        if (!mapped[k].length) mapped[k] = fallback[k];
+      }
+      return mapped;
+    });
+    setRegionPicks((prev) => {
+      const mapped = {} as Record<RegionBucket, string[]>;
+      const fallback = defaultRegionPicks(next);
+      for (const k of REGION_KEYS) {
+        mapped[k] = mapList(prev[k], next);
+        if (!mapped[k].length) mapped[k] = fallback[k];
+      }
+      return mapped;
+    });
+    // Dividend style taxonomy differs by listing (KR high-div ≈ domestic,
+    // KR intl_div ≈ US high-yield listed locally), so reset to the market basket.
+    setDividendPicks(defaultDividendPicks(next));
+    setDividendTargets({ ...DEFAULT_DIVIDEND_TARGETS });
+  }
 
   function toggleFree(symbol: string) {
     setFreeSelected((prev) => {
@@ -169,6 +282,12 @@ export default function SimulateTab() {
       setError(`국가 비중 합계가 100%가 되어야 합니다 (현재 ${regionSum.toFixed(1)}%).`);
       return;
     }
+    if (method === "dividend" && Math.abs(dividendSum - 100) > 0.5) {
+      setError(
+        `배당 유형 비중 합계가 100%가 되어야 합니다 (현재 ${dividendSum.toFixed(1)}%).`,
+      );
+      return;
+    }
     if (method === "asset") {
       for (const k of ASSET_KEYS) {
         if ((Number(assetTargets[k]) || 0) > 0 && !assetPicks[k].length) {
@@ -181,6 +300,14 @@ export default function SimulateTab() {
       for (const k of REGION_KEYS) {
         if ((Number(regionTargets[k]) || 0) > 0 && !regionPicks[k].length) {
           setError(`${REGION_LABELS[k]} 비중이 있으면 ETF를 1개 이상 고르세요.`);
+          return;
+        }
+      }
+    }
+    if (method === "dividend") {
+      for (const k of DIVIDEND_KEYS) {
+        if ((Number(dividendTargets[k]) || 0) > 0 && !dividendPicks[k].length) {
+          setError(`${DIVIDEND_LABELS[k]} 비중이 있으면 ETF를 1개 이상 고르세요.`);
           return;
         }
       }
@@ -200,6 +327,7 @@ export default function SimulateTab() {
           benchmark,
           ...(method === "asset" ? { asset_targets: assetTargets } : {}),
           ...(method === "region" ? { region_targets: regionTargets } : {}),
+          ...(method === "dividend" ? { dividend_targets: dividendTargets } : {}),
         }),
       });
       const data = (await res.json()) as SimulateResult;
@@ -226,11 +354,7 @@ export default function SimulateTab() {
     };
   }, [result]);
 
-  function renderChip(
-    e: EtfMeta,
-    on: boolean,
-    onClick: () => void,
-  ) {
+  function renderChip(e: EtfMeta, on: boolean, onClick: () => void) {
     return (
       <button
         key={e.symbol}
@@ -239,11 +363,13 @@ export default function SimulateTab() {
         onClick={onClick}
         aria-pressed={on}
       >
-        <span className="etf-sym">{e.symbol}</span>
+        <span className="etf-sym">{e.symbol.replace(/\.KS$/i, "")}</span>
         <span className="etf-name">{e.name}</span>
       </button>
     );
   }
+
+  const currencyHint = listing === "kr" ? "원" : "$";
 
   return (
     <div className="sim-tab">
@@ -251,9 +377,27 @@ export default function SimulateTab() {
         <div className="feature-head">
           <h2 className="feature-title">ETF 배분</h2>
           <p className="feature-lead">
-            배분 방식을 고른 뒤 ETF(와 목표 비중)를 맞추면, 그 시점부터 지금까지의 성과를
-            계산합니다.
+            상장 국가를 고른 뒤 배분 방식과 ETF를 맞추면, 그 시점부터 지금까지의 성과를
+            계산합니다. 한국 상장 상품으로도 미국 포트폴리오와 유사한 구성을 만들 수
+            있습니다 (예: SPY → TIGER 미국S&P500).
           </p>
+        </div>
+
+        <h3 className="subhead">상장국가</h3>
+        <div className="listing-grid" role="tablist" aria-label="상장국가">
+          {LISTING_MARKETS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={listing === m.id}
+              className={`listing-card ${listing === m.id ? "on" : ""}`}
+              onClick={() => switchListing(m.id)}
+            >
+              <strong>{m.label}</strong>
+              <span>{m.blurb}</span>
+            </button>
+          ))}
         </div>
 
         <div className="sim-controls">
@@ -267,23 +411,28 @@ export default function SimulateTab() {
             />
           </label>
           <label className="field">
-            <span>초기 자본 ($)</span>
+            <span>초기 자본 ({currencyHint})</span>
             <input
               type="number"
-              min={1000}
-              step={1000}
+              min={listing === "kr" ? 100_000 : 1000}
+              step={listing === "kr" ? 100_000 : 1000}
               value={capital}
-              onChange={(e) => setCapital(Number(e.target.value) || 10000)}
+              onChange={(e) =>
+                setCapital(Number(e.target.value) || DEFAULT_CAPITAL[listing])
+              }
             />
           </label>
           <label className="field">
             <span>벤치마크</span>
             <select value={benchmark} onChange={(e) => setBenchmark(e.target.value)}>
-              {["SPY", "QQQ", "VTI", "VOO"].map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              {BENCHMARKS[listing].map((s) => {
+                const meta = catalog.find((e) => e.symbol === s);
+                return (
+                  <option key={s} value={s}>
+                    {meta ? `${s.replace(/\.KS$/i, "")} · ${meta.name}` : s}
+                  </option>
+                );
+              })}
             </select>
           </label>
           <div className="field actions">
@@ -330,9 +479,11 @@ export default function SimulateTab() {
                 ? "선택한 각 ETF의 시뮬레이션 구간 일수익률 표준편차 σ를 구한 뒤, 비중 w_i = (1/σ_i) / Σ(1/σ_j) 로 둡니다."
                 : "선택 N개에 대해 w_i = 1/N."}
             </p>
-            <div className="etf-chip-row">{featured.map((e) =>
-              renderChip(e, freeSet.has(e.symbol), () => toggleFree(e.symbol)),
-            )}</div>
+            <div className="etf-chip-row">
+              {featured.map((e) =>
+                renderChip(e, freeSet.has(e.symbol), () => toggleFree(e.symbol)),
+              )}
+            </div>
             <div className="more-etf-bar">
               <button
                 type="button"
@@ -418,7 +569,7 @@ export default function SimulateTab() {
                 className="btn ghost"
                 onClick={() => {
                   setAssetTargets({ ...DEFAULT_ASSET_TARGETS });
-                  setAssetPicks({ ...DEFAULT_ASSET_PICKS });
+                  setAssetPicks(defaultAssetPicks(listing));
                 }}
               >
                 기본 6:3:1 복원
@@ -474,10 +625,67 @@ export default function SimulateTab() {
                 className="btn ghost"
                 onClick={() => {
                   setRegionTargets({ ...DEFAULT_REGION_TARGETS });
-                  setRegionPicks({ ...DEFAULT_REGION_PICKS });
+                  setRegionPicks(defaultRegionPicks(listing));
                 }}
               >
                 기본 60/10/10/10/10 복원
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {method === "dividend" ? (
+          <>
+            <h3 className="subhead">배당 유형 목표 비중 · ETF</h3>
+            <p className="meta-soft">
+              퀄리티 배당·고배당·해외배당·월배당(커버드콜) 대표 유형으로 소득형
+              포트폴리오를 구성합니다. 합계 {dividendSum.toFixed(1)}%
+              {Math.abs(dividendSum - 100) > 0.5 ? " ← 100%로 맞춰 주세요" : " ✓"}
+            </p>
+            <div className="bucket-stack">
+              {DIVIDEND_KEYS.map((k) => (
+                <div className="bucket-row" key={k}>
+                  <div className="bucket-head">
+                    <strong>{DIVIDEND_LABELS[k]}</strong>
+                    <label className="bucket-pct">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={dividendTargets[k]}
+                        onChange={(e) =>
+                          setDividendTargets((prev) => ({
+                            ...prev,
+                            [k]: Number(e.target.value) || 0,
+                          }))
+                        }
+                      />
+                      %
+                    </label>
+                  </div>
+                  <div className="etf-chip-row">
+                    {etfsForDividend(k).map((e) =>
+                      renderChip(e, dividendPicks[k].includes(e.symbol), () =>
+                        toggleBucket(dividendPicks[k], e.symbol, (next) =>
+                          setDividendPicks((prev) => ({ ...prev, [k]: next })),
+                        ),
+                      ),
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="btn-row basket-row">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  setDividendTargets({ ...DEFAULT_DIVIDEND_TARGETS });
+                  setDividendPicks(defaultDividendPicks(listing));
+                }}
+              >
+                기본 40/25/20/15 복원
               </button>
             </div>
           </>
@@ -496,7 +704,7 @@ export default function SimulateTab() {
             <h2 className="feature-title">성과 요약</h2>
             <p className="feature-lead">
               {result.start_date} → {result.end_date} · {result.trading_days} 거래일 · 초기{" "}
-              {fmtUsd(result.initial_capital)} ·{" "}
+              {fmtMoney(result.initial_capital, listing)} ·{" "}
               {METHOD_LABEL[result.method || "equal"] || result.method}
             </p>
             {result.method_note ? (
@@ -507,7 +715,9 @@ export default function SimulateTab() {
           <div className="stat-row">
             <div className="stat">
               <span className="stat-label">최종 자산</span>
-              <span className="stat-value">{fmtUsd(result.metrics.portfolio.final_value)}</span>
+              <span className="stat-value">
+                {fmtMoney(result.metrics.portfolio.final_value, listing)}
+              </span>
             </div>
             <div className="stat">
               <span className="stat-label">총수익</span>
@@ -551,7 +761,12 @@ export default function SimulateTab() {
           </div>
 
           <h3 className="subhead">자산 곡선</h3>
-          <EquityChart dates={result.series.date} series={chartSeries} height={340} />
+          <EquityChart
+            dates={result.series.date}
+            series={chartSeries}
+            height={340}
+            currency={listing === "kr" ? "KRW" : "USD"}
+          />
 
           <h3 className="subhead">산출 비중 · 기여도</h3>
           <div className="contrib-table-wrap">
@@ -573,7 +788,11 @@ export default function SimulateTab() {
                       <td>{c.ticker}</td>
                       <td>{c.weight_pct.toFixed(1)}%</td>
                       {result.method === "inv_vol" ? (
-                        <td>{c.annual_vol_pct != null ? `${c.annual_vol_pct.toFixed(1)}%` : "—"}</td>
+                        <td>
+                          {c.annual_vol_pct != null
+                            ? `${c.annual_vol_pct.toFixed(1)}%`
+                            : "—"}
+                        </td>
                       ) : null}
                       <td className={retClass(c.standalone_return_pct)}>
                         {fmtPct(c.standalone_return_pct)}
@@ -589,10 +808,11 @@ export default function SimulateTab() {
 
           <div className="compare-note">
             <p>
-              균등 비중 최종 {fmtUsd(result.metrics.equal_weight.final_value)} (
+              균등 비중 최종 {fmtMoney(result.metrics.equal_weight.final_value, listing)} (
               {fmtPct(result.metrics.equal_weight.total_return_pct)}, MDD{" "}
               {fmtPct(result.metrics.equal_weight.max_drawdown_pct)}) · 벤치마크{" "}
-              {result.benchmark} 최종 {fmtUsd(result.metrics.benchmark.final_value)} (
+              {result.benchmark} 최종{" "}
+              {fmtMoney(result.metrics.benchmark.final_value, listing)} (
               {fmtPct(result.metrics.benchmark.total_return_pct)})
             </p>
           </div>

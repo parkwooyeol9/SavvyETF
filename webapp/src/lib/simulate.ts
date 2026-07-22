@@ -6,6 +6,7 @@ import {
   ETF_CATALOG,
   type AllocMethod,
   type AssetClass,
+  type DividendStyle,
 } from "@/lib/etfCatalog";
 import type { RegionBucket } from "@/lib/allocation";
 
@@ -36,6 +37,7 @@ export type SimulateResult = {
   method_note?: string;
   asset_targets?: Record<string, number>;
   region_targets?: Record<string, number>;
+  dividend_targets?: Record<string, number>;
   vol_diagnostics?: VolDiag[];
   metrics?: {
     portfolio: SimMetrics;
@@ -211,6 +213,7 @@ export async function simulateAllocation(input: {
   method?: AllocMethod | "asset_631";
   asset_targets?: Record<AssetClass, number>;
   region_targets?: Record<RegionBucket, number>;
+  dividend_targets?: Record<DividendStyle, number>;
   start_date?: string;
   end_date?: string;
   initial_capital?: number;
@@ -272,6 +275,7 @@ export async function simulateAllocation(input: {
       legReturns: legRets,
       assetTargets: input.asset_targets,
       regionTargets: input.region_targets,
+      dividendTargets: input.dividend_targets,
     });
     if (resolved.error) {
       return { ok: false, error: resolved.error, method };
@@ -349,6 +353,7 @@ export async function simulateAllocation(input: {
     method_note: methodNote,
     asset_targets: input.asset_targets,
     region_targets: input.region_targets,
+    dividend_targets: input.dividend_targets,
     vol_diagnostics: volDiagnostics?.map((d) => ({
       ...d,
       daily_vol: round(d.daily_vol, 6),

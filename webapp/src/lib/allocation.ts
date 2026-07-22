@@ -2,8 +2,10 @@
 
 import {
   CATALOG_BY_SYMBOL,
+  DIVIDEND_STYLE_LABELS,
   type AllocMethod,
   type AssetClass,
+  type DividendStyle,
 } from "@/lib/etfCatalog";
 
 export const DEFAULT_ASSET_TARGETS: Record<AssetClass, number> = {
@@ -23,6 +25,14 @@ export const DEFAULT_REGION_TARGETS: Record<
   korea: 10,
 };
 
+/** Quality / high / intl / monthly income mix for 배당투자. */
+export const DEFAULT_DIVIDEND_TARGETS: Record<DividendStyle, number> = {
+  quality_div: 40,
+  high_div: 25,
+  intl_div: 20,
+  monthly_income: 15,
+};
+
 export type RegionBucket = keyof typeof DEFAULT_REGION_TARGETS;
 
 export const ASSET_LABELS: Record<AssetClass, string> = {
@@ -38,6 +48,8 @@ export const REGION_LABELS: Record<RegionBucket, string> = {
   china: "중국",
   korea: "한국",
 };
+
+export const DIVIDEND_LABELS = DIVIDEND_STYLE_LABELS;
 
 function normalize(weights: number[]): number[] {
   const sum = weights.reduce((a, b) => a + b, 0);
@@ -197,12 +209,37 @@ export function regionBucketWeights(
   );
 }
 
+export function dividendBucketWeights(
+  tickers: string[],
+  targetsPct: Record<DividendStyle, number> = DEFAULT_DIVIDEND_TARGETS,
+): { weights: number[]; note?: string; error?: string } {
+  const r = bucketWeights(
+    tickers,
+    (sym) => CATALOG_BY_SYMBOL[sym]?.dividendStyle ?? null,
+    targetsPct,
+  );
+  if (r.error) {
+    // Friendlier labels in Korean for empty buckets.
+    const pretty = r.error.replace(
+      /: (.+)$/,
+      (_, keys: string) =>
+        `: ${keys
+          .split(", ")
+          .map((k) => DIVIDEND_LABELS[k as DividendStyle] || k)
+          .join(", ")}`,
+    );
+    return { ...r, error: pretty };
+  }
+  return r;
+}
+
 export type ResolveOpts = {
   method: AllocMethod;
   tickers: string[];
   legReturns?: Record<string, number[]>;
   assetTargets?: Record<AssetClass, number>;
   regionTargets?: Record<RegionBucket, number>;
+  dividendTargets?: Record<DividendStyle, number>;
 };
 
 export function resolveMethodWeights(opts: ResolveOpts): {
@@ -214,7 +251,14 @@ export function resolveMethodWeights(opts: ResolveOpts): {
   /** Tickers that actually received weight (zeros dropped for clarity). */
   activeTickers?: string[];
 } {
-  const { method, tickers, legReturns, assetTargets, regionTargets } = opts;
+  const {
+    method,
+    tickers,
+    legReturns,
+    assetTargets,
+    regionTargets,
+    dividendTargets,
+  } = opts;
 
   if (method === "inv_vol") {
     if (!legReturns) {
@@ -236,6 +280,15 @@ export function resolveMethodWeights(opts: ResolveOpts): {
 
   if (method === "region") {
     const r = regionBucketWeights(tickers, regionTargets || DEFAULT_REGION_TARGETS);
+    if (r.error) return { weights: [], method, error: r.error };
+    return { weights: r.weights, method, note: r.note };
+  }
+
+  if (method === "dividend") {
+    const r = dividendBucketWeights(
+      tickers,
+      dividendTargets || DEFAULT_DIVIDEND_TARGETS,
+    );
     if (r.error) return { weights: [], method, error: r.error };
     return { weights: r.weights, method, note: r.note };
   }

@@ -17,9 +17,32 @@ type Props = {
   dates: string[];
   series: Record<string, number[]>;
   height?: number;
+  currency?: "USD" | "KRW";
 };
 
-export default function EquityChart({ dates, series, height = 320 }: Props) {
+function formatAxis(v: number, currency: "USD" | "KRW"): string {
+  if (currency === "KRW") {
+    if (v >= 1_000_000) return `₩${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1)}M`;
+    if (v >= 1000) return `₩${(v / 1000).toFixed(0)}k`;
+    return `₩${v}`;
+  }
+  if (v >= 1000) return `$${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`;
+  return `$${v}`;
+}
+
+function formatTooltip(v: number, currency: "USD" | "KRW"): string {
+  if (currency === "KRW") {
+    return `₩${Math.round(v).toLocaleString("ko-KR")}`;
+  }
+  return `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+export default function EquityChart({
+  dates,
+  series,
+  height = 320,
+  currency = "USD",
+}: Props) {
   const keys = Object.keys(series);
   const data = dates.map((date, i) => {
     const row: Record<string, string | number> = { date };
@@ -40,10 +63,8 @@ export default function EquityChart({ dates, series, height = 320 }: Props) {
           />
           <YAxis
             tick={{ fill: "#8fa3b8", fontSize: 11 }}
-            width={64}
-            tickFormatter={(v: number) =>
-              v >= 1000 ? `$${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : `$${v}`
-            }
+            width={currency === "KRW" ? 72 : 64}
+            tickFormatter={(v: number) => formatAxis(v, currency)}
           />
           <Tooltip
             contentStyle={{
@@ -54,7 +75,7 @@ export default function EquityChart({ dates, series, height = 320 }: Props) {
             }}
             labelStyle={{ color: "#8fa3b8" }}
             formatter={(value: number, name: string) => [
-              `$${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+              formatTooltip(Number(value), currency),
               name,
             ]}
           />
