@@ -196,16 +196,27 @@ async function fetchDomesticCarbon(): Promise<CarbonSeries> {
   for (const row of rows) {
     const close = parseNumber(row.tdd_clsprc);
     const volume = parseNumber(row.acc_trdvol) ?? 0;
+    const open = parseNumber(row.tdd_opnprc);
+    const high = parseNumber(row.tdd_hgprc);
+    const low = parseNumber(row.tdd_lwprc);
+    const value = parseNumber(row.acc_trdval);
     const date = String(row.trd_dd || "").slice(0, 10);
     if (!date || close == null || close <= 0) continue;
+    // KRX pads non-trading / not-yet-open days with flat close and zero OHLV
+    const traded =
+      volume > 0 ||
+      (open != null && open > 0) ||
+      (high != null && high > 0) ||
+      (value != null && value > 0);
+    if (!traded) continue;
     bars.push({
       date,
       close,
       volume,
-      open: parseNumber(row.tdd_opnprc),
-      high: parseNumber(row.tdd_hgprc),
-      low: parseNumber(row.tdd_lwprc),
-      value: parseNumber(row.acc_trdval),
+      open,
+      high,
+      low,
+      value,
     });
   }
   // API returns newest-first; chart wants oldest-first
@@ -213,12 +224,11 @@ async function fetchDomesticCarbon(): Promise<CarbonSeries> {
 
   const last = bars[bars.length - 1];
   const prev = bars.length >= 2 ? bars[bars.length - 2] : null;
-  const change =
-    last && prev ? last.close - prev.close : parseNumber(rows[0]?.cmpprevdd_prc);
+  const change = last && prev ? last.close - prev.close : null;
   const changePct =
     last && prev && prev.close
       ? ((last.close - prev.close) / prev.close) * 100
-      : parseNumber(rows[0]?.fluc_rt);
+      : null;
 
   return {
     symbol: isu.isu_abbrv,
