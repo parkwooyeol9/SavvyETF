@@ -142,7 +142,7 @@ What each command returns:
 Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
   /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
-  /etf_sector 08:50 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /etf_sector 07:00 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
 
 Type /help for the full command list.
@@ -182,7 +182,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary_kor</code> 15:40 — 한국 마감 (Korea 채널)
 <code>/summary_kor_intra</code> 11:00 — 한국 장중 (Korea 채널)
 <code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
-<code>/etf_sector</code> 08:50 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
+<code>/etf_sector</code> 07:00 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
@@ -2067,7 +2067,7 @@ def start_web_server():
                             "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:40"
                         ),
                         "etf_sector_kst": os.environ.get(
-                            "ETF_SECTOR_SCHEDULE_KST", "8:50"
+                            "ETF_SECTOR_SCHEDULE_KST", "7:00"
                         ),
                         "etfcheck_kst": os.environ.get(
                             "ETFCHECK_SCHEDULE_KST", "15:40"

@@ -1,4 +1,4 @@
-"""Scheduled /etf_sector broadcast — default 08:50 KST on US session days.
+"""Scheduled /etf_sector broadcast — default 07:00 KST on US session days.
 
 Delivers to the legacy ETF channel (TELEGRAM_CHAT_ID).
 Skips weekends and when the covered US equity session is a holiday.
@@ -19,13 +19,13 @@ from summary_scheduler import _load_state, update_scheduler_state
 from us_calendar import is_us_equity_trading_day
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 8
-DEFAULT_MINUTE_KST = 50
+DEFAULT_HOUR_KST = 7
+DEFAULT_MINUTE_KST = 0
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETF_SECTOR_SCHEDULE_KST", "8:50").strip()
+    raw = os.environ.get("ETF_SECTOR_SCHEDULE_KST", "7:00").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)

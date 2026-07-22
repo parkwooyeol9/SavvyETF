@@ -81,7 +81,7 @@ const TELEGRAM_CHANNELS = [
     href: "https://t.me/SavvyETF",
     accent: "etf",
     lines: [
-      "08:50 — 미국 업종·테마 ETF",
+      "07:00 — 미국 업종·테마 ETF",
       "15:40 — 신규 ETF·수급",
       "수시 — ETF 정기변경·편입비",
     ],

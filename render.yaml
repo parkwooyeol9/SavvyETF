@@ -53,7 +53,7 @@ services:
       - key: ETF_SECTOR_SCHEDULE_ENABLED
         value: "true"
       - key: ETF_SECTOR_SCHEDULE_KST
-        value: "8:50"
+        value: "7:00"
       - key: ETFCHECK_SCHEDULE_ENABLED
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
