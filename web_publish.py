@@ -43,13 +43,18 @@ def chart_to_image_payload(
     id: str = "chart",
     caption: str | None = None,
 ) -> dict[str, Any]:
-    """Encode a PNG chart buffer for dashboard ingest."""
+    """Encode a PNG chart buffer for dashboard ingest.
+
+    Rewinds the buffer afterward so the same BytesIO can still be sent to Telegram.
+    """
     chart.seek(0)
-    return {
+    payload = {
         "id": id,
         "caption": caption,
         "png_base64": base64.b64encode(chart.read()).decode("ascii"),
     }
+    chart.seek(0)
+    return payload
 
 
 def publish_brief(

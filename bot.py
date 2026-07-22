@@ -1453,6 +1453,11 @@ def handle_telegram_message(message, chat_id: int):
             chart = plot_etf_sector_board(board)
             text = format_etf_sector_telegram(board)
             try:
+                image_payload = chart_to_image_payload(
+                    chart,
+                    id="sector_rotation",
+                    caption=f"ETF Sector Rotation · {board.get('session_as_of', '')}",
+                )
                 publish_brief(
                     "etf",
                     "etf_sector",
@@ -1460,17 +1465,12 @@ def handle_telegram_message(message, chat_id: int):
                     generated_at=board.get("generated_at_kst")
                     or board.get("generated_at_et"),
                     sections=section_from_html(text, heading="Sector rotation"),
-                    images=[
-                        chart_to_image_payload(
-                            chart,
-                            id="sector_rotation",
-                            caption=f"ETF Sector Rotation · {board.get('session_as_of', '')}",
-                        )
-                    ],
+                    images=[image_payload],
                     meta={"session_as_of": board.get("session_as_of")},
                 )
             except Exception as pub_exc:
                 print(f"web_publish etf_sector skipped: {pub_exc}")
+            chart.seek(0)
             return [
                 {
                     "text": text,

@@ -73,8 +73,10 @@ export type IngestBody = {
   meta?: Record<string, unknown>;
 };
 
-function imageBlobPath(tab: TabId, slot: string, id: string): string {
-  return `briefs/images/${tab}/${slot}/${id}.png`;
+function imageBlobPath(tab: TabId, slot: string, id: string, version: number): string {
+  // Versioned pathname so overwrites never reuse a CDN-cached URL
+  // (public Blob URLs default to max-age ≈ 30 days).
+  return `briefs/images/${tab}/${slot}/${id}-${version}.png`;
 }
 
 async function uploadImages(
@@ -88,15 +90,19 @@ async function uploadImages(
   for (const image of images) {
     const id = image.id?.trim() || "chart";
     const buf = Buffer.from(image.png_base64, "base64");
-    const result = await put(imageBlobPath(tab, slot, id), buf, {
+    const version = Date.now();
+    const result = await put(imageBlobPath(tab, slot, id, version), buf, {
       access: "public",
       contentType: "image/png",
       addRandomSuffix: false,
-      allowOverwrite: true,
+      // Minimum allowed by @vercel/blob; still far better than 30-day default.
+      cacheControlMaxAge: 60,
     });
+    // Extra query bust for any intermediary that keys only on pathname.
+    const sep = result.url.includes("?") ? "&" : "?";
     out.push({
       id,
-      url: result.url,
+      url: `${result.url}${sep}v=${version}`,
       caption: image.caption,
     });
   }

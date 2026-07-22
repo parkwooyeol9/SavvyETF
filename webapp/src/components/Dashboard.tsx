@@ -77,13 +77,22 @@ function SlotView({ slot }: { slot: BriefSlot }) {
         />
       ) : null}
 
-      {(slot.images || []).map((image) => (
-        <figure className="slot-image" key={`${slot.slot}-${image.id}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image.url} alt={image.caption || slot.title} loading="lazy" />
-          {image.caption ? <figcaption>{image.caption}</figcaption> : null}
-        </figure>
-      ))}
+      {(slot.images || []).map((image) => {
+        const bust =
+          slot.received_at || slot.generated_at || image.id || "1";
+        const sep = image.url.includes("?") ? "&" : "?";
+        const src = `${image.url}${sep}t=${encodeURIComponent(bust)}`;
+        return (
+          <figure
+            className="slot-image"
+            key={`${slot.slot}-${image.id}-${bust}`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={image.caption || slot.title} loading="lazy" />
+            {image.caption ? <figcaption>{image.caption}</figcaption> : null}
+          </figure>
+        );
+      })}
 
       {(slot.sections || []).map((section, idx) => (
         <div className="section-block" key={`${slot.slot}-${idx}`}>
