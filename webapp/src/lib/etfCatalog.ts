@@ -18,7 +18,8 @@ export type DividendStyle =
   | "quality_div"
   | "high_div"
   | "intl_div"
-  | "monthly_income";
+  | "monthly_income"
+  | "bond_income";
 
 export type EtfMeta = {
   symbol: string;
@@ -63,8 +64,8 @@ export const ETF_CATALOG: EtfMeta[] = [
   { symbol: "EWJ", name: "Japan", group: "국가·지역", assetClass: "equity", region: "japan", listing: "us", featured: true, counterpart: "241180.KS" },
   { symbol: "MCHI", name: "China", group: "국가·지역", assetClass: "equity", region: "china", listing: "us", featured: true, counterpart: "283580.KS" },
   { symbol: "EWY", name: "South Korea", group: "국가·지역", assetClass: "equity", region: "korea", listing: "us", featured: true, counterpart: "069500.KS" },
-  { symbol: "TLT", name: "20+ Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us", featured: true, counterpart: "453850.KS" },
-  { symbol: "BND", name: "Total Bond Market", group: "채권", assetClass: "bond", region: "us", listing: "us", featured: true, counterpart: "114260.KS" },
+  { symbol: "TLT", name: "20+ Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us", featured: true, counterpart: "453850.KS", dividendStyle: "bond_income" },
+  { symbol: "BND", name: "Total Bond Market", group: "채권", assetClass: "bond", region: "us", listing: "us", featured: true, counterpart: "114260.KS", dividendStyle: "bond_income" },
   { symbol: "GLD", name: "Gold", group: "대안", assetClass: "alt", region: "global", listing: "us", featured: true, counterpart: "411060.KS" },
   { symbol: "VNQ", name: "US Real Estate", group: "대안", assetClass: "alt", region: "us", listing: "us", featured: true },
 
@@ -109,15 +110,15 @@ export const ETF_CATALOG: EtfMeta[] = [
   { symbol: "INDA", name: "India", group: "국가·지역", assetClass: "equity", region: "em", listing: "us" },
   { symbol: "EWZ", name: "Brazil", group: "국가·지역", assetClass: "equity", region: "em", listing: "us" },
 
-  { symbol: "AGG", name: "US Aggregate Bond", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "IEF", name: "7-10 Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us", counterpart: "305080.KS" },
-  { symbol: "SHY", name: "1-3 Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "TIP", name: "TIPS", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "LQD", name: "Investment Grade Corp", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "HYG", name: "High Yield Corp", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "JNK", name: "High Yield Bond", group: "채권", assetClass: "bond", region: "us", listing: "us" },
-  { symbol: "BNDX", name: "Intl Bond (USD Hedged)", group: "채권", assetClass: "bond", region: "global", listing: "us" },
-  { symbol: "EMB", name: "EM USD Bond", group: "채권", assetClass: "bond", region: "em", listing: "us" },
+  { symbol: "AGG", name: "US Aggregate Bond", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "IEF", name: "7-10 Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us", counterpart: "305080.KS", dividendStyle: "bond_income" },
+  { symbol: "SHY", name: "1-3 Year Treasury", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "TIP", name: "TIPS", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "LQD", name: "Investment Grade Corp", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "HYG", name: "High Yield Corp", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "JNK", name: "High Yield Bond", group: "채권", assetClass: "bond", region: "us", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "BNDX", name: "Intl Bond (USD Hedged)", group: "채권", assetClass: "bond", region: "global", listing: "us", dividendStyle: "bond_income" },
+  { symbol: "EMB", name: "EM USD Bond", group: "채권", assetClass: "bond", region: "em", listing: "us", dividendStyle: "bond_income" },
 
   { symbol: "IAU", name: "Gold Trust", group: "대안", assetClass: "alt", region: "global", listing: "us", counterpart: "132030.KS" },
   { symbol: "SLV", name: "Silver", group: "대안", assetClass: "alt", region: "global", listing: "us" },
@@ -157,10 +158,10 @@ export const ETF_CATALOG: EtfMeta[] = [
   { symbol: "241180.KS", name: "TIGER 일본니케이225", group: "국가·지역", assetClass: "equity", region: "japan", listing: "kr", featured: true, counterpart: "EWJ" },
   { symbol: "283580.KS", name: "KODEX 중국본토CSI300", group: "국가·지역", assetClass: "equity", region: "china", listing: "kr", featured: true, counterpart: "MCHI" },
   { symbol: "195980.KS", name: "PLUS 신흥국MSCI(H)", group: "국가·지역", assetClass: "equity", region: "em", listing: "kr", counterpart: "EEM" },
-  { symbol: "305080.KS", name: "TIGER 미국채10년선물", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "IEF" },
-  { symbol: "453850.KS", name: "ACE 미국30년국채액티브", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "TLT" },
-  { symbol: "114260.KS", name: "KODEX 국고채", group: "채권", assetClass: "bond", region: "korea", listing: "kr", featured: true, counterpart: "BND" },
-  { symbol: "148070.KS", name: "KIWOOM 국고채10년", group: "채권", assetClass: "bond", region: "korea", listing: "kr" },
+  { symbol: "305080.KS", name: "TIGER 미국채10년선물", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "IEF", dividendStyle: "bond_income" },
+  { symbol: "453850.KS", name: "ACE 미국30년국채액티브", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "TLT", dividendStyle: "bond_income" },
+  { symbol: "114260.KS", name: "KODEX 국고채", group: "채권", assetClass: "bond", region: "korea", listing: "kr", featured: true, counterpart: "BND", dividendStyle: "bond_income" },
+  { symbol: "148070.KS", name: "KIWOOM 국고채10년", group: "채권", assetClass: "bond", region: "korea", listing: "kr", dividendStyle: "bond_income" },
   { symbol: "411060.KS", name: "ACE KRX금현물", group: "대안", assetClass: "alt", region: "global", listing: "kr", featured: true, counterpart: "GLD" },
   { symbol: "132030.KS", name: "KODEX 골드선물(H)", group: "대안", assetClass: "alt", region: "global", listing: "kr", counterpart: "IAU" },
   { symbol: "261220.KS", name: "KODEX WTI원유선물(H)", group: "대안", assetClass: "alt", region: "global", listing: "kr", counterpart: "USO" },
@@ -219,8 +220,8 @@ export const REGION_BASKET: Record<ListingMarket, readonly string[]> = {
 };
 
 export const DIVIDEND_BASKET: Record<ListingMarket, readonly string[]> = {
-  us: ["SCHD", "VYM", "VYMI", "JEPI"],
-  kr: ["458730.KS", "161510.KS", "402970.KS", "441640.KS"],
+  us: ["SCHD", "VYM", "VYMI", "JEPI", "BND"],
+  kr: ["458730.KS", "161510.KS", "402970.KS", "441640.KS", "114260.KS"],
 };
 
 export const BENCHMARKS: Record<ListingMarket, readonly string[]> = {
@@ -263,7 +264,7 @@ export const ALLOC_METHODS: Array<{
   {
     id: "dividend",
     label: "배당투자",
-    blurb: "퀄리티 배당·고배당·해외배당·월배당 등 대표 유형으로 소득형 포트폴리오.",
+    blurb: "퀄리티·고배당·해외배당·월배당·채권 등 소득형 포트폴리오.",
   },
 ];
 
@@ -272,4 +273,13 @@ export const DIVIDEND_STYLE_LABELS: Record<DividendStyle, string> = {
   high_div: "고배당",
   intl_div: "해외·국제 배당",
   monthly_income: "월배당·커버드콜",
+  bond_income: "채권·인컴",
 };
+
+/** Display code (strip .KS) + catalog name for UI. */
+export function etfDisplay(symbol: string): { code: string; name: string } {
+  const key = symbol.trim();
+  const meta = CATALOG_BY_SYMBOL[key] || CATALOG_BY_SYMBOL[key.toUpperCase()];
+  const code = key.replace(/\.KS$/i, "");
+  return { code, name: meta?.name || code };
+}

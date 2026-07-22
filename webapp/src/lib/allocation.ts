@@ -25,12 +25,13 @@ export const DEFAULT_REGION_TARGETS: Record<
   korea: 10,
 };
 
-/** Quality / high / intl / monthly income mix for 배당투자. */
+/** Quality / high / intl / monthly / bond mix for 배당투자. */
 export const DEFAULT_DIVIDEND_TARGETS: Record<DividendStyle, number> = {
-  quality_div: 40,
-  high_div: 25,
-  intl_div: 20,
+  quality_div: 30,
+  high_div: 20,
+  intl_div: 15,
   monthly_income: 15,
+  bond_income: 20,
 };
 
 export type RegionBucket = keyof typeof DEFAULT_REGION_TARGETS;

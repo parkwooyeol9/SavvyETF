@@ -21,6 +21,7 @@ import {
   LISTING_MARKETS,
   REGION_BASKET,
   catalogForListing,
+  etfDisplay,
   mapToListing,
   type AllocMethod,
   type AssetClass,
@@ -76,6 +77,7 @@ const DIVIDEND_KEYS: DividendStyle[] = [
   "high_div",
   "intl_div",
   "monthly_income",
+  "bond_income",
 ];
 
 function defaultAssetPicks(listing: ListingMarket): Record<AssetClass, string[]> {
@@ -91,13 +93,19 @@ function defaultRegionPicks(listing: ListingMarket): Record<RegionBucket, string
 function defaultDividendPicks(
   listing: ListingMarket,
 ): Record<DividendStyle, string[]> {
-  const [quality, high, intl, monthly] = DIVIDEND_BASKET[listing];
+  const [quality, high, intl, monthly, bond] = DIVIDEND_BASKET[listing];
   return {
     quality_div: [quality],
     high_div: [high],
     intl_div: [intl],
     monthly_income: [monthly],
+    bond_income: [bond],
   };
+}
+
+function formatEtfChoice(symbol: string): string {
+  const { code, name } = etfDisplay(symbol);
+  return name && name !== code ? `${name} (${code})` : code;
 }
 
 function defaultFreeSelected(listing: ListingMarket): string[] {
@@ -638,7 +646,7 @@ export default function SimulateTab() {
           <>
             <h3 className="subhead">배당 유형 목표 비중 · ETF</h3>
             <p className="meta-soft">
-              퀄리티 배당·고배당·해외배당·월배당(커버드콜) 대표 유형으로 소득형
+              퀄리티 배당·고배당·해외배당·월배당(커버드콜)·채권 대표 유형으로 소득형
               포트폴리오를 구성합니다. 합계 {dividendSum.toFixed(1)}%
               {Math.abs(dividendSum - 100) > 0.5 ? " ← 100%로 맞춰 주세요" : " ✓"}
             </p>
@@ -685,14 +693,16 @@ export default function SimulateTab() {
                   setDividendPicks(defaultDividendPicks(listing));
                 }}
               >
-                기본 40/25/20/15 복원
+                기본 30/20/15/15/20 복원
               </button>
             </div>
           </>
         ) : null}
 
         {selectedTickers.length ? (
-          <p className="meta-soft">선택: {selectedTickers.join(", ")}</p>
+          <p className="meta-soft">
+            선택: {selectedTickers.map(formatEtfChoice).join(" · ")}
+          </p>
         ) : null}
 
         {error ? <p className="empty warn">{error}</p> : null}
@@ -773,7 +783,7 @@ export default function SimulateTab() {
             <table className="contrib-table">
               <thead>
                 <tr>
-                  <th>ETF</th>
+                  <th>상품</th>
                   <th>비중</th>
                   {result.method === "inv_vol" ? <th>연환산 σ</th> : null}
                   <th>개별 수익</th>
@@ -783,25 +793,33 @@ export default function SimulateTab() {
               <tbody>
                 {(result.contributions || [])
                   .filter((c) => c.weight_pct > 0)
-                  .map((c) => (
-                    <tr key={c.ticker}>
-                      <td>{c.ticker}</td>
-                      <td>{c.weight_pct.toFixed(1)}%</td>
-                      {result.method === "inv_vol" ? (
+                  .map((c) => {
+                    const { code, name } = etfDisplay(c.ticker);
+                    return (
+                      <tr key={c.ticker}>
                         <td>
-                          {c.annual_vol_pct != null
-                            ? `${c.annual_vol_pct.toFixed(1)}%`
-                            : "—"}
+                          <div className="etf-result-cell">
+                            <span className="etf-result-name">{name}</span>
+                            <span className="etf-result-code">{code}</span>
+                          </div>
                         </td>
-                      ) : null}
-                      <td className={retClass(c.standalone_return_pct)}>
-                        {fmtPct(c.standalone_return_pct)}
-                      </td>
-                      <td className={retClass(c.weighted_contribution_pct)}>
-                        {fmtPct(c.weighted_contribution_pct)}
-                      </td>
-                    </tr>
-                  ))}
+                        <td>{c.weight_pct.toFixed(1)}%</td>
+                        {result.method === "inv_vol" ? (
+                          <td>
+                            {c.annual_vol_pct != null
+                              ? `${c.annual_vol_pct.toFixed(1)}%`
+                              : "—"}
+                          </td>
+                        ) : null}
+                        <td className={retClass(c.standalone_return_pct)}>
+                          {fmtPct(c.standalone_return_pct)}
+                        </td>
+                        <td className={retClass(c.weighted_contribution_pct)}>
+                          {fmtPct(c.weighted_contribution_pct)}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

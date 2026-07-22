@@ -4,6 +4,7 @@ import { resolveMethodWeights } from "@/lib/allocation";
 import type { VolDiag } from "@/lib/allocation";
 import {
   ETF_CATALOG,
+  etfDisplay,
   type AllocMethod,
   type AssetClass,
   type DividendStyle,
@@ -48,6 +49,7 @@ export type SimulateResult = {
   };
   contributions?: Array<{
     ticker: string;
+    name?: string;
     weight_pct: number;
     standalone_return_pct: number;
     weighted_contribution_pct: number;
@@ -329,8 +331,10 @@ export async function simulateAllocation(input: {
 
   const contributions = tickers.map((t, j) => {
     const standalone = legCums[t][legCums[t].length - 1] - 1;
+    const { name } = etfDisplay(t);
     return {
       ticker: t,
+      name,
       weight_pct: round(weights[j] * 100, 2),
       standalone_return_pct: round(standalone * 100, 2),
       weighted_contribution_pct: round(weights[j] * standalone * 100, 2),
