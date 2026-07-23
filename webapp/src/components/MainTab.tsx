@@ -82,7 +82,8 @@ const TELEGRAM_CHANNELS = [
     accent: "etf",
     lines: [
       "07:00 — 미국 업종·테마 ETF",
-      "15:40 — 신규 ETF·수급",
+      "07:20 — 미국 신규 상장 ETF",
+      "15:40 — 국내 신규 ETF·수급",
       "수시 — ETF 정기변경·편입비",
     ],
   },

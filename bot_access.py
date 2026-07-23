@@ -19,6 +19,10 @@ HEAVY_COMMAND_TOKENS = {
     "/etf_memb",
     "/etfmemb",
     "/memb",
+    "/etf_us_new",
+    "/etfusnew",
+    "/etf_usnew",
+    "/us_etf_new",
     "/dart",
     "/comp",
     "/nxt",
@@ -136,6 +140,12 @@ def is_heavy_command(command_text: str) -> bool:
         "members",
         "composition",
         "holdings_top",
+        "usnew",
+        "us_new",
+        "newus",
+        "launches",
+        "launch",
+        "new",
     }:
         return True
     return False
@@ -146,7 +156,7 @@ def is_public_command(command_text: str) -> bool:
     token = command_token(command_text)
     if not token:
         return True
-    # `/etf holdings|memb …` are heavy even though plain `/etf` is public
+    # `/etf holdings|memb|usnew …` are heavy even though plain `/etf` is public
     if token == "/etf":
         parts = (command_text or "").strip().split()
         if len(parts) >= 2 and parts[1].lower() in {
@@ -159,6 +169,12 @@ def is_public_command(command_text: str) -> bool:
             "members",
             "composition",
             "holdings_top",
+            "usnew",
+            "us_new",
+            "newus",
+            "launches",
+            "launch",
+            "new",
         }:
             return False
         return True

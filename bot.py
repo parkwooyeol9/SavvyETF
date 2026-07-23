@@ -31,6 +31,7 @@ from stock_crawler import (
     warmup_startup_caches,
 )
 from etf_sector_scheduler import start_etf_sector_scheduler
+from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
 from esg_scheduler import start_esg_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -65,6 +66,9 @@ What each command returns:
 
 /etf memb EEM
 → US ETF current holdings Top10 chart + Excel (Yahoo; iShares full CU when available)
+
+/etf_us_new
+→ 미국 신규 상장 ETF (Nasdaq + Yahoo inception) + 구성 Top holdings
 
 /etf_holdings EEM 005930
 → ETF 내 특정 종목 편입비 시계열 차트 + 표 + Excel (iShares/Naver)
@@ -148,7 +152,7 @@ What each command returns:
 Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
   /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
-  /etf_sector 07:00 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /etf_sector 07:00 · /etf_us_new 07:20 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
 
 Type /help for the full command list.
@@ -166,6 +170,7 @@ def build_help_messages() -> list[dict]:
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/etf_sector</code> — 섹터 로테이션 (전일 수익률 + 차트, XL*/테마 vs SPY)
 <code>/etf memb EEM</code> — 미국 ETF 편입비중 Top10 + Excel
+<code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
@@ -191,6 +196,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary_kor_intra</code> 11:00 — 한국 장중 (Korea 채널)
 <code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
 <code>/etf_sector</code> 07:00 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
+<code>/etf_us_new</code> 07:20 — 미국 신규 상장 ETF (레거시 ETF 채널, 미국 휴장 제외)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
@@ -207,6 +213,7 @@ def build_help_messages() -> list[dict]:
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/etf memb EEM</code> — 미국 ETF 현재 편입비중 Top10 + Excel
+<code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 내 종목 편입비 시계열 + Excel
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
@@ -1492,6 +1499,21 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": f"Invalid heatmap command: {exc}\n\nUsage: /heatmap sp | /heatmap nas 20 | /heatmap etf 30"}]
         except Exception as exc:
             return [{"text": f"Heatmap failed: {exc}"}]
+
+    from etf_us_new import is_etf_us_new_command
+
+    if is_etf_us_new_command(normalized):
+        try:
+            from etf_us_new import run_etf_us_new
+
+            replies: list[dict] = [
+                {"text": "미국 신규 상장 ETF 조회 중 (Nasdaq + Yahoo)…"}
+            ]
+            result = run_etf_us_new()
+            replies.extend(result["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"/etf_us_new failed: {exc}"}]
 
     from etf_memb_us import is_etf_memb_command
 
@@ -3166,6 +3188,7 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_etf_us_new_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)

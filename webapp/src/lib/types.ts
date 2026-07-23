@@ -63,7 +63,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_kor_intra", "summary_nxt"],
   us: ["summary", "summary_pre", "reddit"],
-  etf: ["etf_sector", "etfcheck", "etf_memb"],
+  etf: ["etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
   esg: ["esg_monitor", "esg_accident", "esg_overview"],
 };
 

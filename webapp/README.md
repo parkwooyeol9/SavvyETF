@@ -8,7 +8,7 @@ Tabs:
 | **교육** | 한국 투자자 세금·계좌·환율 + 원/달러 차트 |
 | 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
-| ETF시황 | `etf_sector`, `etfcheck` |
+| ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |
 | ESG시황 | `esg_accident`, `esg_overview` |
 
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.
