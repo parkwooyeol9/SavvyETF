@@ -2787,6 +2787,99 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
 
         def do_POST(self):
             path = urlparse(self.path).path
+
+            if path == "/api/web-briefs":
+                # Seed/upsert local brief store (same secret as Vercel ingest).
+                ingest_secret = (os.environ.get("WEB_INGEST_SECRET") or "").strip()
+                if not ingest_secret:
+                    self._send(
+                        b'{"ok":false,"error":"WEB_INGEST_SECRET unset"}',
+                        "application/json; charset=utf-8",
+                        503,
+                    )
+                    return
+                auth = self.headers.get("Authorization", "")
+                bearer = (
+                    auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+                )
+                if bearer != ingest_secret:
+                    self._reject_unauthorized()
+                    return
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > 12_000_000:
+                    self._send(
+                        b'{"ok":false,"error":"Payload too large"}',
+                        "application/json; charset=utf-8",
+                        413,
+                    )
+                    return
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    req = json.loads(raw.decode("utf-8") or "{}")
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    self._send(
+                        b'{"ok":false,"error":"Invalid JSON"}',
+                        "application/json; charset=utf-8",
+                        400,
+                    )
+                    return
+                try:
+                    from web_briefs_store import upsert_brief
+
+                    # Bulk: { "briefs": { "kr": {slots...}, ... } }
+                    if isinstance(req.get("briefs"), dict):
+                        written = []
+                        for tab, tab_body in req["briefs"].items():
+                            slots = (tab_body or {}).get("slots") or {}
+                            if not isinstance(slots, dict):
+                                continue
+                            for slot_key, slot in slots.items():
+                                if not isinstance(slot, dict):
+                                    continue
+                                upsert_brief(
+                                    tab,
+                                    slot.get("slot") or slot_key,
+                                    title=slot.get("title") or slot_key,
+                                    generated_at=slot.get("generated_at")
+                                    or slot.get("received_at")
+                                    or "",
+                                    html=slot.get("html"),
+                                    sections=slot.get("sections"),
+                                    images=slot.get("images"),
+                                    meta=slot.get("meta") or {},
+                                )
+                                written.append(f"{tab}/{slot_key}")
+                        body = json.dumps(
+                            {"ok": True, "written": written},
+                            ensure_ascii=False,
+                        ).encode("utf-8")
+                        self._send(body, "application/json; charset=utf-8")
+                        return
+
+                    # Single slot (same shape as Vercel /api/ingest)
+                    tab = upsert_brief(
+                        req.get("tab") or "",
+                        req.get("slot") or "",
+                        title=req.get("title") or "",
+                        generated_at=req.get("generated_at") or "",
+                        html=req.get("html"),
+                        sections=req.get("sections"),
+                        images=req.get("images"),
+                        meta=req.get("meta") or {},
+                    )
+                    body = json.dumps(
+                        {"ok": True, "tab": tab},
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(body, "application/json; charset=utf-8")
+                except Exception as exc:
+                    err = json.dumps(
+                        {"ok": False, "error": str(exc)[:400]},
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(err, "application/json; charset=utf-8", 400)
+                return
+
             if path == "/api/web/simulate":
                 if not self._bot_web_api_ok():
                     self._reject_unauthorized(cors=True)
