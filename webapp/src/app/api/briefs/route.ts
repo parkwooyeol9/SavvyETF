@@ -8,23 +8,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      // Still try Render — local bot cache does not need Blob.
-      const result = await loadAllBriefs();
-      return NextResponse.json({
-        ok: true,
-        configured: false,
-        source: result.source,
-        warning:
-          result.warning ||
-          "BLOB_READ_WRITE_TOKEN unset — using Render fallback when available",
-        briefs: result.briefs,
-      });
-    }
     const result = await loadAllBriefs();
     return NextResponse.json({
       ok: true,
-      configured: true,
+      configured: Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim()),
       source: result.source,
       warning: result.warning,
       briefs: result.briefs,
