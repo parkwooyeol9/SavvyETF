@@ -853,6 +853,15 @@ a.geo-choke-hl:hover {
     grid-template-columns: 1fr;
     gap: 0.2rem;
   }
+
+  .geo-hormuz-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .geo-hormuz-carriers li {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
 }
 
 .main-tab,
