@@ -601,6 +601,14 @@ a {
   letter-spacing: 0.02em;
 }
 
+.esg-carbon-pair {
+  align-items: stretch;
+}
+
+.esg-carbon-pair > div {
+  min-width: 0;
+}
+
 .esg-carbon-chart {
   margin-top: 0.55rem;
 }

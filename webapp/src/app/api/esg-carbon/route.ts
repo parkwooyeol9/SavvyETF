@@ -24,11 +24,6 @@ const GLOBAL_ETFS = [
     name: "KraneShares Global Carbon",
     note: "글로벌 탄소배출권 선물 바스켓",
   },
-  {
-    symbol: "KEUA",
-    name: "KraneShares European Carbon Allowance",
-    note: "EU ETS 배출권 선물",
-  },
 ] as const;
 
 function parseNumber(raw: unknown): number | null {
@@ -390,7 +385,7 @@ export async function GET() {
       domestic,
       global,
       note:
-        "국내는 KRX 배출권(KAU) 일별 종가·거래량, 해외는 탄소배출권 ETF(KRBN·KEUA)로 대체합니다." +
+        "국내는 KRX 배출권(KAU) 일별 종가·거래량, 해외는 탄소배출권 ETF(KRBN)로 대체합니다." +
         (errors.length ? ` 일부 실패: ${errors.join(" · ")}` : ""),
     };
     return NextResponse.json(payload, {
