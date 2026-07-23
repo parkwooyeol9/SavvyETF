@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { DM_Sans, Instrument_Serif } from "next/font/google";
 
 import "./globals.css";
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body className={`${dmSans.variable} ${instrument.variable}`}>
         <div className="mesh" aria-hidden />
         {children}
+        <Analytics />
       </body>
     </html>
   );
