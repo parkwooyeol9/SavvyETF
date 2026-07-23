@@ -138,12 +138,32 @@ def upsert_brief(
     slot_key = _safe_part(slot, "")
     if not slot_key:
         raise ValueError("Missing slot")
-    if not title or not generated_at:
-        raise ValueError("Missing title or generated_at")
+    if not (title or "").strip():
+        raise ValueError("Missing title")
+    if not (generated_at or "").strip():
+        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     current = _read_tab(tab)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     uploaded = _save_images(tab, slot_key, images)
+    # Prefer freshly saved local image URLs; keep plain URL images that are not
+    # on a blocked Vercel Blob host.
+    if uploaded is None and images:
+        kept: list[dict[str, Any]] = []
+        for image in images:
+            url = (image.get("url") or "").strip()
+            if not url:
+                continue
+            if "blob.vercel-storage.com" in url:
+                continue
+            kept.append(
+                {
+                    "id": _safe_part(str(image.get("id") or "chart"), "chart"),
+                    "url": url,
+                    "caption": image.get("caption"),
+                }
+            )
+        uploaded = kept or None
     slot_payload: dict[str, Any] = {
         "slot": slot_key,
         "generated_at": generated_at,
