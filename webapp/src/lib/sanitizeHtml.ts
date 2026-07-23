@@ -1,9 +1,12 @@
 /**
- * Sanitize Telegram-style HTML before dangerouslySetInnerHTML.
- * Allowlist tags only; strip scripts/handlers/javascript: URLs.
+ * HTML sanitizers for dashboard ingest.
+ *
+ * - sanitizeBriefHtml: Telegram-style fragments for dangerouslySetInnerHTML
+ * - sanitizeDocumentHtml: full brief pages for sandboxed iframe srcDoc
+ *   (must preserve layout tags — do NOT run Telegram allowlist on these)
  */
 
-const ALLOWED_TAGS = new Set([
+const FRAGMENT_TAGS = new Set([
   "b",
   "strong",
   "i",
@@ -42,11 +45,10 @@ function sanitizeAttributes(tag: string, rawAttrs: string): string {
   return ` href="${safe}" rel="noopener noreferrer" target="_blank"`;
 }
 
-/** Convert untrusted HTML to a safe subset suitable for Telegram brief sections. */
+/** Telegram HTML fragments only (sections). */
 export function sanitizeBriefHtml(input: string): string {
   if (!input) return "";
-  // Drop script/style/iframe blocks entirely
-  let html = input
+  const html = input
     .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
     .replace(/<\s*(script|style|iframe|object|embed|link|meta)[^>]*\/?\s*>/gi, "");
 
@@ -61,9 +63,7 @@ export function sanitizeBriefHtml(input: string): string {
     const tag = (m[1] || "").toLowerCase();
     const full = m[0];
     const closing = full.startsWith("</");
-    if (!ALLOWED_TAGS.has(tag)) {
-      continue;
-    }
+    if (!FRAGMENT_TAGS.has(tag)) continue;
     if (closing) {
       out.push(`</${tag}>`);
       continue;
@@ -76,4 +76,17 @@ export function sanitizeBriefHtml(input: string): string {
     out.push(`<${tag}${attrs}>`);
   }
   return out.join("");
+}
+
+/**
+ * Full HTML documents rendered in <iframe sandbox="">.
+ * Keep structure; only strip executable bits (scripts already blocked by sandbox).
+ */
+export function sanitizeDocumentHtml(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/<\s*script[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, "")
+    .replace(/<\s*script[^>]*\/?\s*>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript\s*:/gi, "");
 }

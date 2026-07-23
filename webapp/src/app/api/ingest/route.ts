@@ -3,14 +3,15 @@ import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 
 import { upsertBriefSlot, type IngestBody } from "@/lib/briefs";
-import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
+import { sanitizeBriefHtml, sanitizeDocumentHtml } from "@/lib/sanitizeHtml";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_BODY_BYTES = 1_500_000;
-const MAX_IMAGES = 5;
-const MAX_IMAGE_BYTES = 900_000;
+// US/KR full HTML briefs + chart PNGs routinely exceed 1.5MB as JSON.
+const MAX_BODY_BYTES = 12_000_000;
+const MAX_IMAGES = 8;
+const MAX_IMAGE_BYTES = 2_500_000;
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,16 +62,20 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  for (const image of body.images || []) {
-    const approx = Math.ceil((image.png_base64?.length || 0) * 0.75);
-    if (approx > MAX_IMAGE_BYTES) {
-      return NextResponse.json({ error: "Image too large" }, { status: 400 });
-    }
+  // Drop oversized images instead of rejecting the whole brief
+  if (body.images?.length) {
+    body.images = body.images.filter((image) => {
+      const approx = Math.ceil((image.png_base64?.length || 0) * 0.75);
+      return approx > 0 && approx <= MAX_IMAGE_BYTES;
+    });
+    if (!body.images.length) body.images = undefined;
   }
 
+  // Full documents (US/KR summary pages) keep structure for iframe srcDoc.
   if (body.html) {
-    body.html = sanitizeBriefHtml(body.html);
+    body.html = sanitizeDocumentHtml(body.html);
   }
+  // Telegram fragments only
   if (body.sections?.length) {
     body.sections = body.sections.map((section) => ({
       ...section,

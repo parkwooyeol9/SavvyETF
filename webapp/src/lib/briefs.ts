@@ -6,11 +6,10 @@ import {
   type BriefSlot,
   type TabBriefs,
   type TabId,
-  TAB_SLOT_ORDER,
   emptyTab,
   isTabId,
 } from "./types";
-import { sanitizeBriefHtml } from "./sanitizeHtml";
+import { sanitizeBriefHtml, sanitizeDocumentHtml } from "./sanitizeHtml";
 
 function blobPath(tab: TabId): string {
   return `briefs/${tab}.json`;
@@ -98,8 +97,14 @@ async function uploadImages(
   const out: BriefImage[] = [];
   for (const image of images) {
     const id = safeKeyPart(image.id || "chart", "chart");
-    const buf = Buffer.from(image.png_base64, "base64");
-    // PNG magic bytes
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(image.png_base64 || "", "base64");
+    } catch {
+      console.warn(`ingest skip image id=${id}: invalid base64`);
+      continue;
+    }
+    // PNG magic bytes — skip bad images, do not fail the whole brief
     if (
       buf.length < 8 ||
       buf[0] !== 0x89 ||
@@ -107,17 +112,16 @@ async function uploadImages(
       buf[2] !== 0x4e ||
       buf[3] !== 0x47
     ) {
-      throw new Error(`Invalid PNG for image id=${id}`);
+      console.warn(`ingest skip image id=${id}: not a PNG`);
+      continue;
     }
     const version = Date.now();
     const result = await put(imageBlobPath(tab, slot, id, version), buf, {
       access: "public",
       contentType: "image/png",
       addRandomSuffix: false,
-      // Minimum allowed by @vercel/blob; still far better than 30-day default.
       cacheControlMaxAge: 60,
     });
-    // Extra query bust for any intermediary that keys only on pathname.
     const sep = result.url.includes("?") ? "&" : "?";
     out.push({
       id,
@@ -125,7 +129,7 @@ async function uploadImages(
       caption: image.caption,
     });
   }
-  return out;
+  return out.length ? out : undefined;
 }
 
 export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
@@ -135,13 +139,6 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
   const slotKey = safeKeyPart(body.slot || "", "");
   if (!slotKey) {
     throw new Error("Missing slot");
-  }
-  const allowedSlots = new Set(TAB_SLOT_ORDER[body.tab] || []);
-  // Allow known slots plus a few dynamic publish keys used by bot
-  const extraOk = /^(etf_memb_|premarket_|manual_)/.test(slotKey);
-  if (allowedSlots.size && !allowedSlots.has(slotKey) && !extraOk) {
-    // Still accept unknown slots used historically, but keep charset-safe
-    // (already sanitized). Soft allow — deny only empty.
   }
   if (!body.generated_at?.trim() || !body.title?.trim()) {
     throw new Error("Missing generated_at or title");
@@ -158,8 +155,9 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     slot: slotKey,
     generated_at: body.generated_at,
     title: body.title.slice(0, 200),
-    html: body.html ? sanitizeBriefHtml(body.html) : body.html,
-    sections: sections.length ? sections : body.sections,
+    // Full pages: document sanitizer only (iframe sandbox)
+    html: body.html ? sanitizeDocumentHtml(body.html) : body.html,
+    sections: sections.length ? sections : undefined,
     images: uploadedImages,
     meta: body.meta ?? {},
     received_at: now,
