@@ -1,8 +1,13 @@
-"""Publish brief snapshots from the Telegram bot to the Vercel dashboard.
+"""Publish brief snapshots from the Telegram bot to durable remote + local store.
 
-Always writes a local Render copy first (homepage fallback). Then POSTs to
-WEB_PUBLISH_URL when WEB_INGEST_SECRET is set. Local success is enough for
-the dashboard proxy; remote Blob failures are logged but non-fatal.
+Order:
+  1. Always write a local Render copy (homepage fallback after redeploys need reseed).
+  2. If Cloudflare R2 is configured, write JSON + PNGs there (primary durable store)
+     with stable image keys and orphan PNG GC.
+  3. If WEB_PUBLISH_URL + WEB_INGEST_SECRET are set, POST to Vercel /api/ingest
+     (also writes R2/Blob on the webapp side).
+
+Local or R2 success is enough for the dashboard; Vercel ingest failures are non-fatal.
 """
 
 from __future__ import annotations
@@ -32,7 +37,15 @@ def _ensure_dotenv() -> None:
 
 
 def publish_configured() -> bool:
+    """True when any durable publish path beyond local disk is available."""
     _ensure_dotenv()
+    try:
+        from r2_briefs import r2_configured
+
+        if r2_configured():
+            return True
+    except Exception:
+        pass
     return bool(
         os.environ.get("WEB_PUBLISH_URL", "").strip()
         and os.environ.get("WEB_INGEST_SECRET", "").strip()
@@ -71,10 +84,9 @@ def publish_brief(
     meta: dict[str, Any] | None = None,
 ) -> bool:
     """
-    Save locally, then POST a snapshot to Vercel /api/ingest when configured.
+    Save locally, then R2 (if configured), then POST to Vercel ingest when set.
 
-    Returns True when the local store write succeeds (dashboard can show it via
-    Render fallback). Remote Blob failures do not flip the return to False.
+    Returns True when local or R2 write succeeds.
     """
     _ensure_dotenv()
 
@@ -117,11 +129,41 @@ def publish_brief(
             )
         except Exception:
             pass
-        # Still try remote if configured — better than dropping both paths.
+
+    r2_ok: bool | None = None
+    r2_err: str | None = None
+    try:
+        from r2_briefs import r2_configured, upsert_brief_r2
+
+        if r2_configured():
+            upsert_brief_r2(
+                tab,
+                slot,
+                title=title,
+                generated_at=generated,
+                html=html,
+                sections=sections,
+                images=images,
+                meta=meta,
+            )
+            r2_ok = True
+            print(f"web_publish r2 ok ({tab}/{slot})")
+        else:
+            r2_ok = None
+    except Exception as exc:
+        r2_ok = False
+        r2_err = f"r2: {exc}"
+        print(f"web_publish r2 failed ({tab}/{slot}): {exc}")
 
     url = os.environ.get("WEB_PUBLISH_URL", "").strip()
     secret = os.environ.get("WEB_INGEST_SECRET", "").strip()
+    remote_ok: bool | None = None
+    http_status: int | None = None
+    err: str | None = r2_err
+
     if not url or not secret:
+        if r2_ok is None and not local_ok:
+            err = err or "remote skipped: WEB_PUBLISH_URL/WEB_INGEST_SECRET unset"
         try:
             from web_briefs_store import record_publish_result
 
@@ -129,12 +171,12 @@ def publish_brief(
                 tab=tab,
                 slot=slot,
                 local_ok=local_ok,
-                remote_ok=None,
-                error="remote skipped: WEB_PUBLISH_URL/WEB_INGEST_SECRET unset",
+                remote_ok=True if r2_ok else (None if r2_ok is None else False),
+                error=err,
             )
         except Exception:
             pass
-        return local_ok
+        return local_ok or bool(r2_ok)
 
     payload: dict[str, Any] = {
         "tab": tab,
@@ -150,9 +192,6 @@ def publish_brief(
     if images:
         payload["images"] = images
 
-    remote_ok = False
-    http_status: int | None = None
-    err: str | None = None
     try:
         response = requests.post(
             url,
@@ -165,16 +204,22 @@ def publish_brief(
         )
         http_status = response.status_code
     except requests.RequestException as exc:
-        err = f"network: {exc}"
+        ingest_err = f"network: {exc}"
+        err = f"{err}; {ingest_err}" if err else ingest_err
         print(f"web_publish network error ({tab}/{slot}): {exc}")
+        remote_ok = False
     else:
         if response.ok:
             remote_ok = True
-            print(f"web_publish ok ({tab}/{slot}) → {url}")
+            print(f"web_publish ingest ok ({tab}/{slot}) → {url}")
         else:
-            err = f"HTTP {response.status_code} {response.text[:300]}"
-            print(f"web_publish failed ({tab}/{slot}): {err}")
+            ingest_err = f"HTTP {response.status_code} {response.text[:300]}"
+            err = f"{err}; {ingest_err}" if err else ingest_err
+            print(f"web_publish ingest failed ({tab}/{slot}): {err}")
+            remote_ok = False
 
+    # remote_ok for health: R2 or ingest success
+    combined_remote = bool(r2_ok) or bool(remote_ok)
     try:
         from web_briefs_store import record_publish_result
 
@@ -182,14 +227,14 @@ def publish_brief(
             tab=tab,
             slot=slot,
             local_ok=local_ok,
-            remote_ok=remote_ok,
+            remote_ok=combined_remote if (r2_ok is not None or remote_ok is not None) else None,
             error=err,
             http_status=http_status,
         )
     except Exception:
         pass
 
-    return local_ok or remote_ok
+    return local_ok or bool(r2_ok) or bool(remote_ok)
 
 
 def section_from_html(text: str, heading: str | None = None) -> list[dict[str, Any]]:

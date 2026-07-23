@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { loadTabBriefs } from "@/lib/briefs";
+import { loadTabBriefs, remoteStoreConfigured } from "@/lib/briefs";
 import { isTabId } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function GET(
     const brief = await loadTabBriefs(tab);
     return NextResponse.json({
       ok: true,
-      configured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      configured: remoteStoreConfigured(),
       brief,
     });
   } catch (exc) {
