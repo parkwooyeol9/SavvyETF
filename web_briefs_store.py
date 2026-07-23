@@ -190,6 +190,50 @@ def upsert_brief(
     return next_tab
 
 
+
+def replace_tab(tab: str, slots: dict[str, Any]) -> dict[str, Any]:
+    """Overwrite all slots for a tab (used by seed replace mode)."""
+    if tab not in VALID_TABS:
+        raise ValueError(f"Invalid tab: {tab}")
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    cleaned: dict[str, Any] = {}
+    for slot_key, slot in (slots or {}).items():
+        if not isinstance(slot, dict):
+            continue
+        key = _safe_part(slot.get("slot") or slot_key, "")
+        if not key:
+            continue
+        item = {
+            "slot": key,
+            "generated_at": slot.get("generated_at") or slot.get("received_at") or now,
+            "title": (slot.get("title") or key)[:200],
+            "meta": slot.get("meta") or {},
+            "received_at": now,
+        }
+        if slot.get("html"):
+            item["html"] = slot["html"]
+        if slot.get("sections"):
+            item["sections"] = slot["sections"]
+        # Drop blocked blob image URLs
+        images = []
+        for image in slot.get("images") or []:
+            url = (image.get("url") or "").strip()
+            if not url or "blob.vercel-storage.com" in url:
+                continue
+            images.append(
+                {
+                    "id": _safe_part(str(image.get("id") or "chart"), "chart"),
+                    "url": url,
+                    "caption": image.get("caption"),
+                }
+            )
+        if images:
+            item["images"] = images
+        cleaned[key] = item
+    payload = {"tab": tab, "updated_at": now if cleaned else None, "slots": cleaned}
+    _write_tab(tab, payload)
+    return payload
+
 def load_all_briefs() -> dict[str, Any]:
     """Return {kr,us,etf,esg} tab payloads, seeding from on-disk HTML when empty."""
     out = {tab: _read_tab(tab) for tab in VALID_TABS}

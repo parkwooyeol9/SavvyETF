@@ -2830,10 +2830,17 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
 
                     # Bulk: { "briefs": { "kr": {slots...}, ... } }
                     if isinstance(req.get("briefs"), dict):
+                        from web_briefs_store import replace_tab
+
                         written = []
+                        replace = bool(req.get("replace"))
                         for tab, tab_body in req["briefs"].items():
                             slots = (tab_body or {}).get("slots") or {}
                             if not isinstance(slots, dict):
+                                continue
+                            if replace:
+                                replace_tab(tab, slots)
+                                written.extend(f"{tab}/{k}" for k in slots)
                                 continue
                             for slot_key, slot in slots.items():
                                 if not isinstance(slot, dict):
