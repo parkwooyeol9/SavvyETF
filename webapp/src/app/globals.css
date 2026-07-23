@@ -2410,6 +2410,44 @@ a.geo-choke-hl:hover {
   background: rgba(77, 163, 255, 0.28);
 }
 
+.community-auth-panel {
+  width: min(100%, 20rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.community-auth-form {
+  margin-top: 0;
+}
+
+.community-auth-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.community-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.community-auth-divider::before,
+.community-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(43, 54, 72, 0.9);
+}
+
+.community-auth-inline .community-auth-panel {
+  width: min(100%, 22rem);
+}
+
 .community-section-title {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;

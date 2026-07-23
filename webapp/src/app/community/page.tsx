@@ -101,7 +101,11 @@ export default async function CommunityPage({
   return (
     <SiteChrome
       active="community"
-      meta={user ? `${profile?.display_name} 로그인됨` : "누구나 열람 · 글쓰기는 로그인"}
+      meta={
+        user
+          ? `${profile?.display_name} 로그인됨`
+          : "누구나 열람 · 글쓰기는 익명 아이디"
+      }
     >
       <CommunityHome
         posts={posts}

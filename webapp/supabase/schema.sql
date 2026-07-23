@@ -33,6 +33,10 @@ create index if not exists posts_created_at_idx on public.posts (created_at desc
 create index if not exists posts_category_idx on public.posts (category);
 create index if not exists comments_post_id_idx on public.comments (post_id, created_at);
 
+-- Soft uniqueness for anonymous usernames (display_name)
+create unique index if not exists profiles_display_name_lower_uidx
+  on public.profiles (lower(display_name));
+
 alter table public.profiles enable row level security;
 alter table public.posts enable row level security;
 alter table public.comments enable row level security;

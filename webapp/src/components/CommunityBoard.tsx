@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import GoogleSignInButton from "@/components/GoogleSignInButton";
+import CommunityAuthPanel from "@/components/CommunityAuthPanel";
 import {
   createCommentAction,
   createPostAction,
@@ -14,6 +14,7 @@ import {
   type CommunityPost,
   type CommunityProfile,
 } from "@/lib/community";
+import { emailToUsername, isAnonCommunityEmail } from "@/lib/communityAuth";
 
 function formatWhen(value?: string | null): string {
   if (!value) return "—";
@@ -27,11 +28,15 @@ export function CommunitySetupNotice() {
     <section className="panel community-panel">
       <h1 className="community-title">커뮤니티</h1>
       <p className="community-lead">
-        Google 로그인 기반의 가벼운 질문·피드백 게시판입니다. Supabase 환경
-        변수가 아직 없어 읽기/쓰기가 비활성화되어 있습니다.
+        익명 아이디(또는 선택적 Google)로 질문·피드백을 남기는 게시판입니다.
+        Supabase 환경 변수가 아직 없어 읽기/쓰기가 비활성화되어 있습니다.
       </p>
       <ol className="community-setup">
-        <li>Supabase 프로젝트를 만들고 Google provider를 켭니다.</li>
+        <li>Supabase 프로젝트를 만듭니다.</li>
+        <li>
+          Authentication → Providers → <strong>Email</strong> 활성화,{" "}
+          <strong>Confirm email OFF</strong> (익명 아이디 즉시 로그인용).
+        </li>
         <li>
           <code>webapp/supabase/schema.sql</code> 을 SQL Editor에서 실행합니다.
         </li>
@@ -40,11 +45,7 @@ export function CommunitySetupNotice() {
           <code>NEXT_PUBLIC_SUPABASE_URL</code>,{" "}
           <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> 를 넣습니다.
         </li>
-        <li>
-          Google Cloud OAuth 리다이렉트에{" "}
-          <code>https://&lt;project&gt;.supabase.co/auth/v1/callback</code> 를
-          등록합니다.
-        </li>
+        <li>(선택) Google provider도 켜면 Google 로그인을 쓸 수 있습니다.</li>
       </ol>
       <p className="meta-soft">상세: webapp/README.md → Community 섹션</p>
     </section>
@@ -76,7 +77,7 @@ export function CommunityHome({
             <h1 className="community-title">커뮤니티</h1>
             <p className="community-lead">
               시황은 텔레그램·대시보드, 여기는 질문·아이디어·피드백을 남기는
-              공간입니다. 글쓰기는 Google 로그인이 필요합니다.
+              공간입니다. 글쓰기는 익명 아이디(또는 Google)로 가능합니다.
             </p>
           </div>
           <div className="community-userbox">
@@ -93,7 +94,11 @@ export function CommunityHome({
                   ) : null}
                   <div>
                     <strong>{profile?.display_name}</strong>
-                    <div className="meta-soft">{email}</div>
+                    <div className="meta-soft">
+                      {isAnonCommunityEmail(email)
+                        ? `@${emailToUsername(email)}`
+                        : email}
+                    </div>
                   </div>
                 </div>
                 <form action={updateDisplayNameAction} className="community-nick-form">
@@ -101,11 +106,11 @@ export function CommunityHome({
                     name="display_name"
                     defaultValue={profile?.display_name || ""}
                     maxLength={40}
-                    placeholder="닉네임"
-                    aria-label="닉네임"
+                    placeholder="표시 이름"
+                    aria-label="표시 이름"
                   />
                   <button type="submit" className="ghost-btn">
-                    닉네임 저장
+                    이름 저장
                   </button>
                 </form>
                 <form action="/auth/signout" method="post">
@@ -115,7 +120,7 @@ export function CommunityHome({
                 </form>
               </>
             ) : (
-              <GoogleSignInButton />
+              <CommunityAuthPanel />
             )}
           </div>
         </div>
@@ -176,7 +181,10 @@ export function CommunityHome({
         </section>
       ) : (
         <section className="panel community-panel">
-          <p className="empty">글을 쓰려면 Google로 로그인해 주세요. 열람은 자유입니다.</p>
+          <p className="empty">
+            글을 쓰려면 위에서 익명 아이디를 만들거나 로그인해 주세요. 열람은
+            자유입니다.
+          </p>
         </section>
       )}
 
@@ -290,8 +298,8 @@ export function CommunityPostDetail({
           </form>
         ) : (
           <div className="community-auth-inline">
-            <p className="empty">댓글을 쓰려면 로그인해 주세요.</p>
-            <GoogleSignInButton next={`/community/${post.id}`} />
+            <p className="empty">댓글을 쓰려면 아이디를 만들거나 로그인해 주세요.</p>
+            <CommunityAuthPanel next={`/community/${post.id}`} />
           </div>
         )}
       </section>

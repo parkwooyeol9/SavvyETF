@@ -43,15 +43,18 @@ Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 | `SUPABASE_SERVICE_ROLE_KEY` | optional — admin delete of others’ posts |
 | `COMMUNITY_ADMIN_EMAILS` | optional comma-separated Google emails |
 
-### Community setup (Google login + board)
+### Community setup (anonymous ID + optional Google)
 
 1. Create a free [Supabase](https://supabase.com) project.
-2. **Authentication → Providers → Google**: enable and paste Google OAuth Client ID/Secret.
-3. In Google Cloud Console, add authorized redirect URI:  
-   `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
-4. Run `webapp/supabase/schema.sql` in Supabase **SQL Editor**.
-5. Set Vercel env vars above and redeploy.
-6. Open `https://savvyetf.vercel.app/community` → **Google로 계속하기**.
+2. **Authentication → Providers → Email**: enable, set **Confirm email = OFF**  
+   (required so anonymous username/password accounts can sign in immediately).
+3. Run `webapp/supabase/schema.sql` in Supabase **SQL Editor**.
+4. Set Vercel env vars above and redeploy.
+5. Open `https://savvyetf.vercel.app/community` → **익명 아이디 만들기**.
+6. *(Optional)* Enable **Google** provider and add redirect  
+   `https://<PROJECT_REF>.supabase.co/auth/v1/callback` for Google login.
+
+Anonymous accounts use synthetic emails `username@anon.savvyetf.community` (not real mailboxes).
 
 Without Supabase env vars the `/community` page shows setup instructions and does not break the dashboard.
 
