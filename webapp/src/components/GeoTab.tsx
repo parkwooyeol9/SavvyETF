@@ -74,11 +74,6 @@ export default function GeoTab() {
       <section className="feature-block">
         <div className="feature-head">
           <h2 className="feature-title">지정학 · 매크로 레이더</h2>
-          <p className="feature-lead">
-            World Monitor식 맵 전체가 아니라, 투자자가 바로 보는{" "}
-            <strong>유가·금·VIX·방산·EM·해운</strong> 시세와 글로벌 헤드라인만
-            가볍게 모았습니다. 저장 없이 실시간 조회(캐시 ~2–5분).
-          </p>
         </div>
 
         {loading && !data ? <p className="empty">시그널 불러오는 중…</p> : null}
