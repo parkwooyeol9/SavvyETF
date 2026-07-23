@@ -145,7 +145,11 @@ function SeriesChart({
   );
 }
 
-export default function EsgCarbonTab() {
+export default function EsgCarbonTab({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const [data, setData] = useState<EsgCarbonPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -171,21 +175,29 @@ export default function EsgCarbonTab() {
   }, [load]);
 
   return (
-    <div className="kr-tab esg-carbon-tab">
-      <div className="kr-hero">
-        <div>
-          <h2 className="kr-hero-title">탄소배출권 모니터</h2>
-          <p className="kr-hero-sub">
-            국내 KAU(KRX)와 해외 탄소배출권 ETF(KRBN) 가격·거래량 추이를
-            라이브로 봅니다.
-          </p>
+    <div className={`kr-tab esg-carbon-tab ${embedded ? "embedded" : ""}`}>
+      {!embedded ? (
+        <div className="kr-hero">
+          <div>
+            <h2 className="kr-hero-title">탄소배출권 모니터</h2>
+            <p className="kr-hero-sub">
+              국내 KAU(KRX)와 해외 탄소배출권 ETF(KRBN) 가격·거래량 추이를
+              라이브로 봅니다.
+            </p>
+          </div>
+          <div className="kr-hero-actions">
+            <button type="button" className="ghost-btn" onClick={() => void load()}>
+              새로고침
+            </button>
+          </div>
         </div>
-        <div className="kr-hero-actions">
+      ) : (
+        <div className="kr-hero-actions" style={{ marginBottom: "0.55rem" }}>
           <button type="button" className="ghost-btn" onClick={() => void load()}>
-            새로고침
+            탄소 시황 새로고침
           </button>
         </div>
-      </div>
+      )}
 
       {loading && !data ? <p className="empty">탄소배출권 시황 불러오는 중…</p> : null}
       {data && !data.ok ? (

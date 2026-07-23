@@ -967,15 +967,18 @@ def format_esg_overview_telegram(profile: dict[str, Any]) -> str:
 
 
 ESG_HELP = """\
-<b>🧭 /esg — ESG·거버넌스 + Climate Risk</b>
+<b>🧭 /esg — ESG 중요도 프레임</b>
+1) 전력·그리드·에너지 안보 (구조적 기회) — 웹 ESG 레이더
+2) 물리적 기후위험·적응 (포트폴리오 하방) — <code>/esg monitor</code>
+3) 거버넌스·AI·사이버 (기업 품질 스크린) — overview / own / accident
 
-<code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진 차트)
-<code>/esg 삼성전자</code> — 허브 요약
+<code>/esg monitor</code> — 물리적 기후위험 (유럽 이상기후·지진)
+<code>/esg 삼성전자</code> — 거버넌스 허브 요약
 <code>/esg fin 삼성전자</code> — 실적·현금흐름·건전성
 <code>/esg div 삼성전자</code> — 3년 배당 (DPS·성향·시가배당률)
 <code>/esg own 삼성전자</code> — 소유구조 + 5% 대량보유 신호
 <code>/esg return 삼성전자</code> — 자사주·주주환원 공시 타임라인
-<code>/esg accident</code> — 최근 90일 중대재해 공시 스크리닝
+<code>/esg accident</code> — 최근 90일 중대재해·안전 공시
 <code>/esg accident 기업</code> — 특정 기업만
 
 종목코드도 가능: <code>/esg 005930</code>

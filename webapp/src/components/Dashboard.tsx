@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
-import EsgCarbonTab from "@/components/EsgCarbonTab";
+import EsgThemesTab from "@/components/EsgThemesTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import SimulateTab from "@/components/SimulateTab";
@@ -229,9 +229,13 @@ export default function Dashboard() {
         </>
       ) : tab === "esg" ? (
         <>
-          <EsgCarbonTab />
+          <EsgThemesTab />
           <section className="panel kr-briefs">
             <h2 className="kr-briefs-title">ESG 시황 브리프</h2>
+            <p className="kr-note">
+              브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 →
+              중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요.
+            </p>
             {!slots.length ? (
               <p className="empty">
                 ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동

@@ -9,7 +9,7 @@ Tabs:
 | 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |
-| ESG시황 | `esg_accident`, `esg_overview` |
+| ESG시황 | 우선순위 레이더(전력·기후·거버넌스) + `esg_monitor`, `esg_overview`, `esg_accident` |
 
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.
 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다.
