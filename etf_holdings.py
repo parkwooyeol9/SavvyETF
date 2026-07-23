@@ -17,9 +17,7 @@ exports Excel. Primary path: iShares (+ Wayback fallback). KR path: Naver + cach
 
 from __future__ import annotations
 
-import io
 import json
-import os
 import re
 import time
 from dataclasses import dataclass
