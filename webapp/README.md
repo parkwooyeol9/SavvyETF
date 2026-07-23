@@ -10,6 +10,7 @@ Tabs:
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |
 | ESG시황 | 우선순위 레이더(전력·기후·거버넌스) + `esg_monitor`, `esg_overview`, `esg_accident` |
+| **커뮤니티** | `/community` — Google 로그인 + 질문/아이디어/피드백 게시판 (Supabase) |
 
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.
 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다.
@@ -37,6 +38,22 @@ Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 | `R2_PUBLIC_BASE_URL` | optional `https://pub-….r2.dev` (else media proxy) |
 | `RENDER_BOT_URL` | `https://savvyetf-bot.onrender.com` (optional) |
 | `BLOB_READ_WRITE_TOKEN` | **optional legacy** — not required if R2 is set |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (community) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | optional — admin delete of others’ posts |
+| `COMMUNITY_ADMIN_EMAILS` | optional comma-separated Google emails |
+
+### Community setup (Google login + board)
+
+1. Create a free [Supabase](https://supabase.com) project.
+2. **Authentication → Providers → Google**: enable and paste Google OAuth Client ID/Secret.
+3. In Google Cloud Console, add authorized redirect URI:  
+   `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
+4. Run `webapp/supabase/schema.sql` in Supabase **SQL Editor**.
+5. Set Vercel env vars above and redeploy.
+6. Open `https://savvyetf.vercel.app/community` → **Google로 계속하기**.
+
+Without Supabase env vars the `/community` page shows setup instructions and does not break the dashboard.
 
 ### R2 setup (≈ $0 / month for this app)
 

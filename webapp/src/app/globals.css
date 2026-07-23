@@ -129,6 +129,12 @@ a {
   background: rgba(255, 255, 255, 0.04);
 }
 
+a.tab-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .tab-btn.active {
   color: var(--text);
   background: var(--panel);
@@ -2290,5 +2296,233 @@ a.geo-choke-hl:hover {
 
   .etf-chip {
     min-width: calc(50% - 0.25rem);
+  }
+}
+
+/* Community board */
+.community-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.community-panel {
+  padding: 1.15rem 1.2rem 1.35rem;
+}
+
+.community-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.community-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.45rem;
+}
+
+.community-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  max-width: 42rem;
+}
+
+.community-userbox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-end;
+  min-width: 12rem;
+}
+
+.community-user {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.community-avatar {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.community-nick-form {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.community-nick-form input,
+.community-compose input,
+.community-compose select,
+.community-compose textarea {
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(10, 15, 22, 0.65);
+  color: var(--text);
+  font: inherit;
+}
+
+.community-nick-form input {
+  width: 8.5rem;
+}
+
+.community-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.35rem;
+}
+
+.community-compose label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.community-submit,
+.community-google-btn {
+  appearance: none;
+  border: 1px solid rgba(77, 163, 255, 0.45);
+  background: rgba(77, 163, 255, 0.16);
+  color: #dbeafe;
+  font: inherit;
+  font-weight: 650;
+  padding: 0.6rem 0.95rem;
+  border-radius: 10px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.community-google-btn:hover,
+.community-submit:hover {
+  background: rgba(77, 163, 255, 0.28);
+}
+
+.community-section-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.community-post-list,
+.community-comment-list,
+.community-setup {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.community-setup {
+  list-style: decimal;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+
+.community-setup code {
+  color: #c7ddf8;
+  font-size: 0.82rem;
+}
+
+.community-post-item {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(43, 54, 72, 0.8);
+}
+
+.community-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.community-cat {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(77, 163, 255, 0.16);
+  color: #93c5fd;
+}
+
+.community-post-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-decoration: none;
+}
+
+.community-post-title:hover {
+  color: var(--accent);
+}
+
+.community-post-excerpt,
+.community-body {
+  margin: 0.4rem 0 0.55rem;
+  color: var(--muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.community-body {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.community-comment-list li {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(43, 54, 72, 0.65);
+}
+
+.community-comment-list p {
+  margin: 0.25rem 0 0;
+  line-height: 1.45;
+}
+
+.community-back {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+
+.danger-btn {
+  color: #fca5a5 !important;
+}
+
+.community-nav-link {
+  margin-left: auto;
+}
+
+.community-filters {
+  margin-top: 1rem;
+}
+
+.community-filters .chip {
+  text-decoration: none;
+}
+
+@media (max-width: 720px) {
+  .community-userbox {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .community-nav-link {
+    margin-left: 0;
   }
 }
