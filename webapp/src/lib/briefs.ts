@@ -1,13 +1,16 @@
 import { head, put } from "@vercel/blob";
 
+import { botBaseUrl, fetchBotJson } from "./bot";
 import {
   type AllBriefs,
   type BriefImage,
   type BriefSlot,
   type TabBriefs,
   type TabId,
+  emptyAllBriefs,
   emptyTab,
   isTabId,
+  TAB_IDS,
 } from "./types";
 import { sanitizeBriefHtml, sanitizeDocumentHtml } from "./sanitizeHtml";
 
@@ -20,10 +23,22 @@ function safeKeyPart(value: string, fallback: string): string {
   return cleaned.slice(0, 64) || fallback;
 }
 
-async function readTab(tab: TabId): Promise<TabBriefs> {
+type TabReadResult = {
+  tab: TabBriefs;
+  error?: string;
+};
+
+function slotCount(briefs: AllBriefs): number {
+  return TAB_IDS.reduce(
+    (sum, id) => sum + Object.keys(briefs[id]?.slots || {}).length,
+    0,
+  );
+}
+
+async function readTab(tab: TabId): Promise<TabReadResult> {
   try {
     const meta = await head(blobPath(tab));
-    if (!meta?.url) return emptyTab(tab);
+    if (!meta?.url) return { tab: emptyTab(tab) };
     // Prefer downloadUrl / cache-bust — public blob URLs are CDN-cached and
     // can serve stale JSON right after overwrite.
     const uploadedMs = meta.uploadedAt
@@ -35,31 +50,128 @@ async function readTab(tab: TabId): Promise<TabBriefs> {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
     });
-    if (!res.ok) return emptyTab(tab);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      const detail = body.slice(0, 120) || res.statusText;
+      return {
+        tab: emptyTab(tab),
+        error: `blob ${res.status}: ${detail}`,
+      };
+    }
     const parsed = (await res.json()) as TabBriefs;
-    if (!parsed || typeof parsed.slots !== "object") return emptyTab(tab);
+    if (!parsed || typeof parsed.slots !== "object") {
+      return { tab: emptyTab(tab) };
+    }
     return {
-      tab,
-      updated_at: parsed.updated_at ?? null,
-      slots: parsed.slots ?? {},
+      tab: {
+        tab,
+        updated_at: parsed.updated_at ?? null,
+        slots: parsed.slots ?? {},
+      },
     };
-  } catch {
-    return emptyTab(tab);
+  } catch (exc) {
+    const message = exc instanceof Error ? exc.message : String(exc);
+    return { tab: emptyTab(tab), error: message };
   }
 }
 
-export async function loadTabBriefs(tab: TabId): Promise<TabBriefs> {
-  return readTab(tab);
+async function loadBriefsFromRender(): Promise<{
+  briefs: AllBriefs;
+  error?: string;
+}> {
+  try {
+    const data = await fetchBotJson<{
+      ok?: boolean;
+      briefs?: AllBriefs;
+      error?: string;
+    }>("/api/web-briefs", { timeoutMs: 20_000 });
+    if (!data?.ok || !data.briefs) {
+      return {
+        briefs: emptyAllBriefs(),
+        error: data?.error || "Render briefs unavailable",
+      };
+    }
+    const briefs = emptyAllBriefs();
+    for (const id of TAB_IDS) {
+      const tab = data.briefs[id];
+      if (tab && typeof tab.slots === "object") {
+        briefs[id] = {
+          tab: id,
+          updated_at: tab.updated_at ?? null,
+          slots: tab.slots ?? {},
+        };
+      }
+    }
+    return { briefs };
+  } catch (exc) {
+    const message = exc instanceof Error ? exc.message : String(exc);
+    return { briefs: emptyAllBriefs(), error: message };
+  }
 }
 
-export async function loadAllBriefs(): Promise<AllBriefs> {
-  const [kr, us, etf, esg] = await Promise.all([
-    readTab("kr"),
-    readTab("us"),
-    readTab("etf"),
-    readTab("esg"),
-  ]);
-  return { kr, us, etf, esg };
+export type BriefsLoadResult = {
+  briefs: AllBriefs;
+  source: "blob" | "render-fallback" | "empty";
+  warning?: string;
+};
+
+export async function loadTabBriefs(tab: TabId): Promise<TabBriefs> {
+  const fromBlob = await readTab(tab);
+  if (Object.keys(fromBlob.tab.slots).length) return fromBlob.tab;
+  const fromRender = await loadBriefsFromRender();
+  return fromRender.briefs[tab] || emptyTab(tab);
+}
+
+export async function loadAllBriefs(): Promise<BriefsLoadResult> {
+  const results = await Promise.all(TAB_IDS.map((id) => readTab(id)));
+  const blobBriefs: AllBriefs = {
+    kr: results[0].tab,
+    us: results[1].tab,
+    etf: results[2].tab,
+    esg: results[3].tab,
+  };
+  const blobErrors = results.map((r) => r.error).filter(Boolean) as string[];
+  const blobBlocked = blobErrors.some((e) =>
+    /store is blocked|blob 403/i.test(e),
+  );
+
+  if (slotCount(blobBriefs) > 0 && !blobBlocked) {
+    return { briefs: blobBriefs, source: "blob" };
+  }
+
+  const fallback = await loadBriefsFromRender();
+  if (slotCount(fallback.briefs) > 0) {
+    const warning = blobBlocked
+      ? "Vercel Blob store is blocked — showing Render fallback"
+      : blobErrors[0]
+        ? `Blob read failed (${blobErrors[0]}) — showing Render fallback`
+        : "Blob empty — showing Render fallback";
+    return {
+      briefs: fallback.briefs,
+      source: "render-fallback",
+      warning,
+    };
+  }
+
+  const warning = blobBlocked
+    ? "Vercel Blob store is blocked. Create/unblock a Blob store and update BLOB_READ_WRITE_TOKEN."
+    : fallback.error || blobErrors[0] || "No brief snapshots yet";
+  return {
+    briefs: emptyAllBriefs(),
+    source: "empty",
+    warning,
+  };
+}
+
+/** @deprecated kept for callers that only need the map */
+export async function loadAllBriefsMap(): Promise<AllBriefs> {
+  const result = await loadAllBriefs();
+  return result.briefs;
+}
+
+/** Public bot base — used for CSP / diagnostics. */
+export function briefsFallbackOrigin(): string {
+  return botBaseUrl();
 }
 
 export type IngestImage = {
@@ -144,7 +256,7 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     throw new Error("Missing generated_at or title");
   }
 
-  const current = await readTab(body.tab);
+  const current = (await readTab(body.tab)).tab;
   const now = new Date().toISOString();
   const uploadedImages = await uploadImages(body.tab, slotKey, body.images);
   const sections = (body.sections || []).map((section) => ({
