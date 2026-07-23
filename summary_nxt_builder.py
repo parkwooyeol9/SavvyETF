@@ -522,7 +522,7 @@ def render_summary_nxt_html(summary: dict, public_url: str = "") -> str:
         linear-gradient(180deg, var(--nx-bg0), var(--nx-bg1) 40%, #0d171b);
       min-height: 100vh;
     }}
-    .wrap {{ max-width: 1120px; margin: 0 auto; padding: 28px 18px 64px; }}
+    .wrap {{ max-width: none; width: 100%; margin: 0 auto; padding: 18px 12px 40px; box-sizing: border-box; }}
     .brand {{
       font-weight: 700; letter-spacing: .02em; display: flex; gap: 10px; align-items: center;
       margin-bottom: 1.25rem;
@@ -545,7 +545,7 @@ def render_summary_nxt_html(summary: dict, public_url: str = "") -> str:
       font-size: clamp(1.7rem, 3vw, 2.35rem);
       margin: 0 0 .45rem; font-weight: 600;
     }}
-    .hero .lead {{ color: var(--nx-mute); margin: 0 0 1rem; max-width: 46rem; line-height: 1.5; }}
+    .hero .lead {{ color: var(--nx-mute); margin: 0 0 1rem; max-width: none; line-height: 1.5; }}
     .pills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
     .pill {{
       font-size: .78rem; padding: 5px 10px; border-radius: 999px;
