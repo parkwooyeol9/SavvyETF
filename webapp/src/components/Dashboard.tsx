@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import MainTab from "@/components/MainTab";
@@ -203,9 +202,6 @@ export default function Dashboard() {
             {SHELL_TAB_LABELS[id]}
           </button>
         ))}
-        <Link href="/community" className="tab-btn community-nav-link">
-          커뮤니티
-        </Link>
       </nav>
 
       {tab === "main" ? (

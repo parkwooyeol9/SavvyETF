@@ -10,7 +10,7 @@ Tabs:
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |
 | ESG시황 | 우선순위 레이더(전력·기후·거버넌스) + `esg_monitor`, `esg_overview`, `esg_accident` |
-| **커뮤니티** | `/community` — Google 로그인 + 질문/아이디어/피드백 게시판 (Supabase) |
+| **커뮤니티** | `/community` — 닉네임 게시판 (R2). 홈 네비에는 잠시 숨김 |
 
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.
 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다.
@@ -43,20 +43,13 @@ Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 | `SUPABASE_SERVICE_ROLE_KEY` | optional — admin delete of others’ posts |
 | `COMMUNITY_ADMIN_EMAILS` | optional comma-separated Google emails |
 
-### Community setup (anonymous ID + optional Google)
+### Community board (live, no login)
 
-1. Create a free [Supabase](https://supabase.com) project.
-2. **Authentication → Providers → Email**: enable, set **Confirm email = OFF**  
-   (required so anonymous username/password accounts can sign in immediately).
-3. Run `webapp/supabase/schema.sql` in Supabase **SQL Editor**.
-4. Set Vercel env vars above and redeploy.
-5. Open `https://savvyetf.vercel.app/community` → **익명 아이디 만들기**.
-6. *(Optional)* Enable **Google** provider and add redirect  
-   `https://<PROJECT_REF>.supabase.co/auth/v1/callback` for Google login.
-
-Anonymous accounts use synthetic emails `username@anon.savvyetf.community` (not real mailboxes).
-
-Without Supabase env vars the `/community` page shows setup instructions and does not break the dashboard.
+- URL: `https://savvyetf.vercel.app/community` (hidden from homepage nav for now)
+- Storage: same Cloudflare R2 bucket (`community/board.json`)
+- Posting: nickname only (no Google / Supabase required)
+- Author delete: delete key kept in the writer’s browser `localStorage`
+- Optional admin delete: `COMMUNITY_ADMIN_SECRET` in env + API body `admin_secret`
 
 ### R2 setup (≈ $0 / month for this app)
 

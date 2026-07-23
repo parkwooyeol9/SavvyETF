@@ -4,10 +4,13 @@ export default function SiteChrome({
   active,
   children,
   meta,
+  showCommunityNav = false,
 }: {
   active: "dashboard" | "community";
   children: React.ReactNode;
   meta?: string;
+  /** Keep false on public homepage; community is reached by direct URL for now. */
+  showCommunityNav?: boolean;
 }) {
   return (
     <div className="shell">
@@ -31,12 +34,14 @@ export default function SiteChrome({
         >
           대시보드
         </Link>
-        <Link
-          href="/community"
-          className={`tab-btn ${active === "community" ? "active" : ""}`}
-        >
-          커뮤니티
-        </Link>
+        {showCommunityNav ? (
+          <Link
+            href="/community"
+            className={`tab-btn ${active === "community" ? "active" : ""}`}
+          >
+            커뮤니티
+          </Link>
+        ) : null}
       </nav>
 
       {children}
