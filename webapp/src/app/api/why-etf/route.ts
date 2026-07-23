@@ -29,22 +29,6 @@ const PRESETS = [
     weights: [1],
     benchmark: "SPY",
   },
-  {
-    id: "sixty_forty",
-    title: "주식 100% vs 60/40 배분",
-    blurb: "채권(TLT)을 섞으면 수익률은 낮아질 수 있지만 낙폭(MDD)을 줄이는 배분 효과가 납니다.",
-    tickers: ["SPY", "TLT"],
-    weights: [0.6, 0.4],
-    benchmark: "SPY",
-  },
-  {
-    id: "global",
-    title: "미국 + 해외 분산",
-    blurb: "미국(VTI)과 해외(VXUS)를 함께 담으면 지역 편중 리스크를 낮출 수 있습니다.",
-    tickers: ["VTI", "VXUS"],
-    weights: [0.7, 0.3],
-    benchmark: "VTI",
-  },
 ];
 
 export async function GET() {
