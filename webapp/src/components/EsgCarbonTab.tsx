@@ -176,7 +176,7 @@ export default function EsgCarbonTab() {
         <div>
           <h2 className="kr-hero-title">탄소배출권 모니터</h2>
           <p className="kr-hero-sub">
-            국내 KAU 가격·거래량(KRX)과 해외 탄소배출권 ETF(KRBN·KEUA) 추이를
+            국내 KAU(KRX)와 해외 탄소배출권 ETF(KRBN) 가격·거래량 추이를
             라이브로 봅니다.
           </p>
         </div>
@@ -197,25 +197,24 @@ export default function EsgCarbonTab() {
           {data.note ? <p className="kr-note">{data.note}</p> : null}
 
           <section className="esg-carbon-section">
-            <h3 className="esg-carbon-section-title">국내 배출권 (KRX)</h3>
-            {data.domestic ? (
-              <SeriesChart series={data.domestic} priceDigits={0} />
-            ) : (
-              <p className="empty">국내 배출권 데이터를 불러오지 못했습니다.</p>
-            )}
-          </section>
-
-          <section className="esg-carbon-section">
-            <h3 className="esg-carbon-section-title">해외 배출권 (ETF 프록시)</h3>
-            {data.global?.length ? (
-              <div className="kr-grid-2">
-                {data.global.map((s) => (
-                  <SeriesChart key={s.symbol} series={s} priceDigits={2} />
-                ))}
+            <div className="kr-grid-2 esg-carbon-pair">
+              <div>
+                <h3 className="esg-carbon-section-title">국내 배출권 (KRX)</h3>
+                {data.domestic ? (
+                  <SeriesChart series={data.domestic} priceDigits={0} />
+                ) : (
+                  <p className="empty">국내 배출권 데이터를 불러오지 못했습니다.</p>
+                )}
               </div>
-            ) : (
-              <p className="empty">해외 탄소 ETF 데이터를 불러오지 못했습니다.</p>
-            )}
+              <div>
+                <h3 className="esg-carbon-section-title">해외 배출권 (KRBN)</h3>
+                {data.global?.[0] ? (
+                  <SeriesChart series={data.global[0]} priceDigits={2} />
+                ) : (
+                  <p className="empty">해외 탄소 ETF 데이터를 불러오지 못했습니다.</p>
+                )}
+              </div>
+            </div>
           </section>
 
           <p className="kr-foot">
