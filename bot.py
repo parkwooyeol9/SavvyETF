@@ -120,6 +120,9 @@ What each command returns:
 /idx
 → MSCI ACWI/World/EM country top5 → major markets index/futures/FX returns
 
+/idx rule
+→ MSCI·FTSE·UCITS 등 지수/펀드 편입비 한도 비교 (차트+표)
+
 /event [keyword]
 → Event study (US/JP/KR/CN indices) + impact comment + PDF
 
@@ -175,6 +178,7 @@ def build_help_messages() -> list[dict]:
 
 <b>🌍 글로벌 · 매크로 · 이벤트</b>
 <code>/idx</code> — MSCI 국가비중 → 주요국 지수·선물·FX
+<code>/idx rule</code> — MSCI·FTSE·UCITS 편입비 한도 비교 (차트+표)
 <code>/macro</code> — 매크로 리스크 대시보드
 <code>/event</code> — 과거 유사 이벤트 스터디 (미·일·한·중, PDF)
 <code>/adr TSM</code> — ADR 상장 영향 분석
@@ -1453,9 +1457,19 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/idx"):
         try:
+            from idx_rules import is_idx_rule_command, run_idx_rules
+
+            if is_idx_rule_command(normalized):
+                replies: list[dict] = [
+                    {"text": "📐 Building index / fund weight-cap comparison…"}
+                ]
+                result = run_idx_rules()
+                replies.extend(result.get("telegram_messages") or [])
+                return replies
+
             from idx_pipeline import run_idx_dashboard
 
-            replies: list[dict] = [
+            replies = [
                 {"text": "🌍 Building MSCI country / major-market dashboard…"}
             ]
             result = run_idx_dashboard()
