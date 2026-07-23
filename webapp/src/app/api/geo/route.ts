@@ -4,8 +4,11 @@ import {
   GEO_RELATED_ETFS,
   GEO_SIGNAL_SPECS,
   computeComposite,
+  parseGeoRange,
   type GeoHeadline,
   type GeoPayload,
+  type GeoPoint,
+  type GeoRange,
   type GeoSignal,
 } from "@/lib/geo";
 
@@ -30,7 +33,17 @@ type ChartPayload = {
   };
 };
 
-async function fetchYahooSignal(spec: (typeof GEO_SIGNAL_SPECS)[number]): Promise<GeoSignal> {
+function downsample(points: GeoPoint[], maxPoints: number): GeoPoint[] {
+  if (points.length <= maxPoints) return points;
+  const step = Math.ceil(points.length / maxPoints);
+  const out = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+  return out;
+}
+
+async function fetchYahooSignal(
+  spec: (typeof GEO_SIGNAL_SPECS)[number],
+  range: GeoRange,
+): Promise<GeoSignal> {
   const base: GeoSignal = {
     id: spec.id,
     symbol: spec.symbol,
@@ -40,12 +53,13 @@ async function fetchYahooSignal(spec: (typeof GEO_SIGNAL_SPECS)[number]): Promis
     price: null,
     change_1d_pct: null,
     change_5d_pct: null,
+    change_range_pct: null,
   };
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(spec.symbol)}?range=5d&interval=1d&includePrePost=false`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(spec.symbol)}?range=${range}&interval=1d&includePrePost=false`;
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
-      next: { revalidate: 300 },
+      next: { revalidate: 180 },
     });
     if (!res.ok) {
       return { ...base, error: `HTTP ${res.status}` };
@@ -54,25 +68,42 @@ async function fetchYahooSignal(spec: (typeof GEO_SIGNAL_SPECS)[number]): Promis
     const result = payload.chart?.result?.[0];
     if (!result) return { ...base, error: "no data" };
 
-    const closes = (result.indicators?.quote?.[0]?.close || []).filter(
-      (v): v is number => v != null && Number.isFinite(v),
-    );
-    if (!closes.length) return { ...base, error: "no closes" };
+    const timestamps = result.timestamp || [];
+    const rawCloses = result.indicators?.quote?.[0]?.close || [];
+    const points: GeoPoint[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const close = rawCloses[i];
+      if (close == null || !Number.isFinite(close)) continue;
+      points.push({
+        date: new Date(timestamps[i] * 1000).toISOString().slice(0, 10),
+        close: Math.round(close * 1000) / 1000,
+      });
+    }
+    if (!points.length) return { ...base, error: "no closes" };
 
+    const closes = points.map((p) => p.close);
     const last = closes[closes.length - 1];
     const prev = closes.length >= 2 ? closes[closes.length - 2] : null;
     const first = closes[0];
+    const fiveAgo = closes.length >= 6 ? closes[closes.length - 6] : first;
+
     const change_1d_pct =
       prev && prev !== 0 ? Math.round(((last / prev - 1) * 100) * 100) / 100 : null;
     const change_5d_pct =
+      fiveAgo && fiveAgo !== 0
+        ? Math.round(((last / fiveAgo - 1) * 100) * 100) / 100
+        : null;
+    const change_range_pct =
       first && first !== 0 ? Math.round(((last / first - 1) * 100) * 100) / 100 : null;
 
     return {
       ...base,
-      price: Math.round(last * 1000) / 1000,
+      price: last,
       change_1d_pct,
       change_5d_pct,
+      change_range_pct,
       currency: result.meta?.currency || "USD",
+      series: downsample(points, 120),
     };
   } catch (exc) {
     return {
@@ -124,7 +155,10 @@ async function fetchHeadlines(): Promise<GeoHeadline[]> {
     feeds.map(async (feed) => {
       try {
         const res = await fetch(feed.url, {
-          headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" },
+          headers: {
+            "User-Agent": UA,
+            Accept: "application/rss+xml, application/xml, text/xml",
+          },
           next: { revalidate: 600 },
         });
         if (!res.ok) return;
@@ -135,7 +169,6 @@ async function fetchHeadlines(): Promise<GeoHeadline[]> {
       }
     }),
   );
-  // Prefer geopolitics-ish keywords first, then fill
   const keywords =
     /war|israel|gaza|ukraine|russia|china|taiwan|iran|oil|sanction|nato|military|strike|missile|conflict|middle east|red sea|suez|hormuz|트럼프|중동|우크라|대만|중국|제재|원유/i;
   const ranked = [
@@ -154,10 +187,13 @@ async function fetchHeadlines(): Promise<GeoHeadline[]> {
   return unique;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const range = parseGeoRange(searchParams.get("range"));
+
   try {
     const [signals, headlines] = await Promise.all([
-      Promise.all(GEO_SIGNAL_SPECS.map((spec) => fetchYahooSignal(spec))),
+      Promise.all(GEO_SIGNAL_SPECS.map((spec) => fetchYahooSignal(spec, range))),
       fetchHeadlines(),
     ]);
     const composite = computeComposite(signals);
@@ -165,14 +201,17 @@ export async function GET() {
       ok: true,
       generated_at: new Date().toISOString(),
       note:
-        "시험 탭: Yahoo 시세 + 공개 RSS만 사용합니다. 지도·원문 아카이브는 저장하지 않으며, 투자 조언이 아닙니다.",
+        "Yahoo 일봉 시계열 + 공개 RSS. 투자 조언이 아니며 별도 DB 저장 없음.",
+      range,
       composite,
       signals,
       headlines,
       related_etfs: GEO_RELATED_ETFS,
     };
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300" },
+      headers: {
+        "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
+      },
     });
   } catch (exc) {
     return NextResponse.json(
@@ -180,6 +219,7 @@ export async function GET() {
         ok: false,
         generated_at: new Date().toISOString(),
         note: "",
+        range,
         composite: { score: 0, label: "n/a", drivers: [] },
         signals: [],
         headlines: [],

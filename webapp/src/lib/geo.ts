@@ -3,6 +3,11 @@
  * Quotes come from Yahoo (no persistent storage); headlines from public RSS.
  */
 
+export type GeoPoint = {
+  date: string;
+  close: number;
+};
+
 export type GeoSignal = {
   id: string;
   symbol: string;
@@ -12,7 +17,9 @@ export type GeoSignal = {
   price: number | null;
   change_1d_pct: number | null;
   change_5d_pct: number | null;
+  change_range_pct: number | null;
   currency?: string;
+  series?: GeoPoint[];
   error?: string;
 };
 
@@ -23,10 +30,13 @@ export type GeoHeadline = {
   published?: string;
 };
 
+export type GeoRange = "1mo" | "3mo" | "6mo" | "1y";
+
 export type GeoPayload = {
   ok: boolean;
   generated_at: string;
   note: string;
+  range: GeoRange;
   composite: {
     score: number; // 0–100 rough risk-off pressure
     label: string;
@@ -37,6 +47,18 @@ export type GeoPayload = {
   related_etfs: Array<{ symbol: string; name: string; angle: string }>;
   error?: string;
 };
+
+export const GEO_RANGES: Array<{ id: GeoRange; label: string }> = [
+  { id: "1mo", label: "1개월" },
+  { id: "3mo", label: "3개월" },
+  { id: "6mo", label: "6개월" },
+  { id: "1y", label: "1년" },
+];
+
+export function parseGeoRange(value: string | null | undefined): GeoRange {
+  if (value === "1mo" || value === "6mo" || value === "1y") return value;
+  return "3mo";
+}
 
 export const GEO_SIGNAL_SPECS: Array<{
   id: string;
