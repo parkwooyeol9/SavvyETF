@@ -209,14 +209,34 @@ a {
   word-break: break-word;
   font-size: 0.92rem;
   line-height: 1.55;
-  color: var(--text);
+  color: #e8eef5;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.8rem 0.9rem;
+  padding: 0.85rem 1rem;
 }
 
-.section-body :global(a) {
+.section-body b,
+.section-body strong {
+  color: #f1f5f9;
+  font-weight: 650;
+}
+
+.section-body i,
+.section-body em {
+  color: #c5d0e0;
+}
+
+.section-body code {
+  color: #93c5fd;
+  background: rgba(10, 15, 22, 0.55);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.86em;
+}
+
+.section-body :global(a),
+.section-body a {
   color: var(--accent);
 }
 

@@ -7,6 +7,7 @@ import EducationTab from "@/components/EducationTab";
 import EsgCarbonTab from "@/components/EsgCarbonTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import SimulateTab from "@/components/SimulateTab";
+import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
 import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
 import {
   type AllBriefs,
@@ -57,9 +58,7 @@ function formatWhen(value?: string | null): string {
 function SlotView({ slot }: { slot: BriefSlot }) {
   const srcDoc = useMemo(() => {
     if (!slot.html) return null;
-    const trimmed = slot.html.trim();
-    if (/^<!DOCTYPE|^<html/i.test(trimmed)) return trimmed;
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>body{margin:12px;font-family:system-ui,sans-serif;background:#0a0f16;color:#e8eef5;line-height:1.5}a{color:#4da3ff}</style></head><body>${trimmed}</body></html>`;
+    return prepareBriefSrcDoc(slot.html);
   }, [slot.html]);
 
   return (
