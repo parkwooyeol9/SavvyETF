@@ -13,6 +13,7 @@ import {
 
 import {
   GEO_RANGES,
+  type GeoChokepoint,
   type GeoPayload,
   type GeoPoint,
   type GeoRange,
@@ -49,11 +50,48 @@ function groupLabel(group: GeoSignal["group"]): string {
       return "금속·원자재";
     case "risk":
       return "리스크·운임";
+    case "region":
+      return "지역·국가 ETF";
     case "etf":
       return "관련 ETF";
     default:
       return group;
   }
+}
+
+function chokeStatusClass(status: string): string {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL|HIGH/.test(s)) return "severe";
+  if (/ELEVATED/.test(s)) return "elevated";
+  if (/WATCH|MONITORING/.test(s)) return "monitoring";
+  return "normal";
+}
+
+function chokeStatusKo(status: string): string {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL/.test(s)) return "심각";
+  if (/HIGH/.test(s)) return "높음";
+  if (/ELEVATED/.test(s)) return "경계";
+  if (/WATCH|MONITORING/.test(s)) return "주시";
+  if (/NORMAL|LOW/.test(s)) return "정상";
+  return status;
+}
+
+function statusRank(status: string): number {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL/.test(s)) return 0;
+  if (/HIGH/.test(s)) return 1;
+  if (/ELEVATED/.test(s)) return 2;
+  if (/WATCH|MONITORING/.test(s)) return 3;
+  return 4;
+}
+
+function sortChokepoints(list: GeoChokepoint[]): GeoChokepoint[] {
+  return [...list].sort(
+    (a, b) =>
+      statusRank(a.status) - statusRank(b.status) ||
+      b.high_alerts_24h - a.high_alerts_24h,
+  );
 }
 
 function chartStroke(change?: number | null): string {
@@ -172,8 +210,18 @@ export default function GeoTab() {
     return data.signals.find((s) => s.id === selectedId) || data.signals[0];
   }, [data, selectedId]);
 
-  const groups: GeoSignal["group"][] = ["energy", "metals", "risk", "etf"];
+  const groups: GeoSignal["group"][] = [
+    "energy",
+    "metals",
+    "risk",
+    "region",
+    "etf",
+  ];
   const rangeLabel = GEO_RANGES.find((r) => r.id === range)?.label || range;
+  const chokepoints = useMemo(
+    () => sortChokepoints(data?.chokepoints || []),
+    [data?.chokepoints],
+  );
 
   return (
     <div className="geo-tab">
@@ -226,6 +274,63 @@ export default function GeoTab() {
                 </p>
               </div>
             </div>
+
+            {chokepoints.length ? (
+              <section className="geo-section">
+                <div className="geo-section-head">
+                  <h3 className="geo-section-title">해운 병목 (Chokepoints)</h3>
+                  {data.chokepoint_source ? (
+                    <p className="meta-soft geo-choke-attr">
+                      데이터{" "}
+                      <a
+                        href={data.chokepoint_source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {data.chokepoint_source.name}
+                      </a>{" "}
+                      (CC BY 4.0)
+                    </p>
+                  ) : null}
+                </div>
+                <div className="geo-choke-grid">
+                  {chokepoints.map((c) => (
+                    <article
+                      key={c.id}
+                      className={`geo-choke-card ${chokeStatusClass(c.status)}`}
+                    >
+                      <div className="geo-choke-top">
+                        <strong>{c.name}</strong>
+                        <span className="geo-choke-badge">
+                          {chokeStatusKo(c.status)}
+                        </span>
+                      </div>
+                      <div className="geo-choke-stats">
+                        <span>24h 시그널 {c.signals_24h}</span>
+                        <span>고위험 {c.high_alerts_24h}</span>
+                        <span>7일 {c.signals_7d}</span>
+                      </div>
+                      {c.latest_headline ? (
+                        c.page_url ? (
+                          <a
+                            className="geo-choke-hl"
+                            href={c.page_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {c.latest_headline}
+                          </a>
+                        ) : (
+                          <p className="geo-choke-hl">{c.latest_headline}</p>
+                        )
+                      ) : (
+                        <p className="geo-choke-hl muted">최근 고위험 헤드라인 없음</p>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {selected ? (
               <section className="geo-section geo-featured">
