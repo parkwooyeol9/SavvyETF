@@ -342,18 +342,17 @@ def save_known_chat(chat_id: int) -> None:
 
 
 def register_delivery_chat(chat_id: int) -> None:
-    """Remember chat for soft-block clearing.
+    """Clear soft-block; persist known_chats only for pinned/allowlisted chats.
 
-    In allowlist mode, strangers are never persisted to known_chats (broadcast safety).
+    Public channel readers never hit this. Strangers using /help are not stored
+    as broadcast targets (schedules use env channel IDs only anyway).
     """
-    from bot_access import access_mode, is_interaction_allowed
+    from bot_access import access_mode, env_allowed_chat_ids
 
-    if access_mode() == "allowlist" and not is_interaction_allowed(
-        chat_id=chat_id,
-        user_id=None,
-        pinned_chat_ids=_all_pinned_chat_ids(),
-    ):
-        return
+    if access_mode() == "allowlist":
+        allowed = env_allowed_chat_ids() | _all_pinned_chat_ids()
+        if chat_id not in allowed:
+            return
     unblock_chat(chat_id)
     save_known_chat(chat_id)
 
@@ -773,17 +772,19 @@ def process_telegram_update(token: str, update: dict) -> None:
         check_heavy_cooldown,
         denied_access_message,
         is_interaction_allowed,
-        access_mode,
     )
 
     if not is_interaction_allowed(
         chat_id=chat_id,
         user_id=user_id_int,
         pinned_chat_ids=_all_pinned_chat_ids(),
+        command_text=command_text,
     ):
         send_text(token, chat_id, denied_access_message())
         return
 
+    # Persist only allowlisted / pinned chats for broadcast safety; public light
+    # users can still run /help without being added to known_chats.
     register_delivery_chat(chat_id)
     if chat_type != "channel":
         maybe_send_deferred_startup_guide(token, chat_id)
@@ -868,27 +869,17 @@ def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) 
 
     Only private 1:1 chats (positive ids) get the startup guide — never channels
     or groups. Scheduled briefs still go to TELEGRAM_CHAT_ID_* channels as usual.
+    Public channel join is unrestricted (Telegram); this is DM-only notice.
     """
-    from bot_access import access_mode, is_interaction_allowed
-
     chat_ids = startup_chat_ids()
     if extra_chat_ids:
         chat_ids |= extra_chat_ids
 
     private_ids = {c for c in chat_ids if _is_private_chat_id(c)}
-    if access_mode() == "allowlist":
-        pinned = _all_pinned_chat_ids()
-        private_ids = {
-            c
-            for c in private_ids
-            if is_interaction_allowed(
-                chat_id=c, user_id=None, pinned_chat_ids=pinned
-            )
-        }
     skipped = len(chat_ids) - len(private_ids)
     if skipped:
         print(
-            f"Startup guide: skipping {skipped} channel/group/unauthorized chat(s); "
+            f"Startup guide: skipping {skipped} channel/group chat(s); "
             f"private DMs only."
         )
 
@@ -897,7 +888,6 @@ def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) 
         print("It will be sent the next time you message the bot in a 1:1 chat.")
         return False
 
-    # One redeploy → one notice per known private chat (not per channel).
     sent_any = False
     for chat_id in sorted(private_ids):
         if send_startup_guide_to_chat(token, chat_id):
