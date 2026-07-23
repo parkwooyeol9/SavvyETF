@@ -470,7 +470,7 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
   {css_link}
   <style>
     body {{ margin: 0; }}
-    .summary-wrap {{ max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }}
+    .summary-wrap {{ max-width: none; width: 100%; margin: 0 auto; padding: 18px 12px 40px; box-sizing: border-box; }}
     .summary-hero {{
       margin-bottom: 2rem; padding: 1.5rem; border: 1px solid var(--border, #2b3648);
       border-radius: var(--radius, 14px); background: var(--panel, #141d2b);

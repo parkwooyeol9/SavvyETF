@@ -39,6 +39,25 @@ table { color: var(--text); border-color: var(--border); }
 .pos { color: var(--accent-2) !important; }
 .neg { color: #ff6b6b !important; }
 img { max-width: 100%; height: auto; }
+/* Widen Telegram brief layouts inside dashboard iframe */
+:root {
+  --container: min(100%, calc(100% - 0.75rem)) !important;
+}
+.summary-wrap,
+.wrap,
+.container {
+  max-width: none !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0.65rem !important;
+  padding-right: 0.65rem !important;
+  box-sizing: border-box !important;
+}
+.hero .lead,
+.feature-lead {
+  max-width: none !important;
+}
 `.trim();
 
 const THEME_STYLE_TAG = `<style id="savvyetf-brief-theme">${BRIEF_THEME_CSS}</style>`;

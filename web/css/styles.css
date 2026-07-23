@@ -9,7 +9,7 @@
   --warn: #fbbf24;
   --border: #2b3648;
   --radius: 14px;
-  --container: min(1080px, calc(100% - 2rem));
+  --container: min(100%, calc(100% - 1rem));
   --sans: "DM Sans", system-ui, sans-serif;
   --serif: "Instrument Serif", Georgia, serif;
 }
