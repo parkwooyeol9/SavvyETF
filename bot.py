@@ -63,6 +63,9 @@ What each command returns:
 /etf_sector
 → Sector rotation by last completed daily return + chart (XL* + themes vs SPY)
 
+/etf_holdings EEM 005930
+→ ETF 내 특정 종목 편입비 시계열 차트 + 표 + Excel (iShares/Naver)
+
 /etfcheck
 → ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
 
@@ -159,6 +162,7 @@ def build_help_messages() -> list[dict]:
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/etf_sector</code> — 섹터 로테이션 (전일 수익률 + 차트, XL*/테마 vs SPY)
+<code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
@@ -198,6 +202,7 @@ def build_help_messages() -> list[dict]:
 <code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
+<code>/etf_holdings EEM 005930</code> — ETF 내 종목 편입비 시계열 + Excel
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
 <code>/coin BTC</code> — 코인 차트
@@ -1438,6 +1443,33 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Heatmap failed: {exc}"}]
 
+    from etf_holdings import is_etf_holdings_command
+
+    if is_etf_holdings_command(normalized):
+        try:
+            from etf_holdings import parse_etf_holdings_query, run_etf_holdings
+
+            etf, holding = parse_etf_holdings_query(normalized)
+            replies: list[dict] = [
+                {"text": f"ETF 편입비 시계열 조회 중: {etf} / {holding}…"}
+            ]
+            result = run_etf_holdings(etf, holding)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /etf_holdings <ETF> <holding>\n"
+                        "Example: /etf_holdings EEM 005930\n"
+                        "Example: /etf holdings EEM 삼성전자\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"/etf_holdings failed: {exc}"}]
+
     from etf_sector import is_etf_sector_command
 
     if is_etf_sector_command(normalized):
@@ -1692,9 +1724,21 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": f"Korea intraday ranking failed: {exc}"}]
 
     if lower.startswith(("/etf", "/sp", "/nas", "/kospi", "/kosdaq")) and not lower.startswith(
-        ("/etf_pre", "/sp_pre", "/nas_pre", "/etfcheck", "/kospi_intra", "/kosdaq_intra")
+        (
+            "/etf_pre",
+            "/sp_pre",
+            "/nas_pre",
+            "/etfcheck",
+            "/etf_holdings",
+            "/etfholdings",
+            "/etf_holding",
+            "/etf_sector",
+            "/kospi_intra",
+            "/kosdaq_intra",
+        )
     ):
         # Avoid matching /etf_pre etc.; require command token exactly
+        # (`/etf holdings` is handled earlier by is_etf_holdings_command)
         first = lower.split()[0]
         if first not in {"/etf", "/sp", "/nas", "/kospi", "/kosdaq"}:
             return [{"text": HELP_TEXT_SHORT}]
