@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { loadAllBriefs } from "@/lib/briefs";
+import { loadAllBriefs, remoteStoreConfigured } from "@/lib/briefs";
 import { emptyAllBriefs } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET() {
     const result = await loadAllBriefs();
     return NextResponse.json({
       ok: true,
-      configured: Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim()),
+      configured: remoteStoreConfigured(),
       source: result.source,
       warning: result.warning,
       briefs: result.briefs,

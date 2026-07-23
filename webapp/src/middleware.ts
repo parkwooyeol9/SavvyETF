@@ -26,7 +26,7 @@ export function middleware(request: NextRequest) {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com",
+      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com",
       "font-src 'self' data:",
       "connect-src 'self' https://*.onrender.com",
       "frame-src 'self' blob:",

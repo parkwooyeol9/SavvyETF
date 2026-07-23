@@ -2,7 +2,7 @@ import { timingSafeEqual } from "crypto";
 
 import { NextResponse } from "next/server";
 
-import { upsertBriefSlot, type IngestBody } from "@/lib/briefs";
+import { remoteStoreConfigured, upsertBriefSlot, type IngestBody } from "@/lib/briefs";
 import { sanitizeBriefHtml, sanitizeDocumentHtml } from "@/lib/sanitizeHtml";
 
 export const runtime = "nodejs";
@@ -40,8 +40,11 @@ export async function POST(request: Request) {
     return unauthorized();
   }
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
+  if (!remoteStoreConfigured()) {
+    return NextResponse.json(
+      { error: "Service unavailable (configure R2_* or BLOB_READ_WRITE_TOKEN)" },
+      { status: 503 },
+    );
   }
 
   const raw = await request.arrayBuffer();

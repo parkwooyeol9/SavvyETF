@@ -169,7 +169,7 @@ export default function Dashboard() {
     if (error) return `동기화 오류: ${error}`;
     if (warning) return warning;
     if (configured === false) {
-      return "Blob 미설정 — 봇 publish 후 데이터가 표시됩니다";
+      return "원격 스토어 미설정 — R2 또는 봇 로컬 publish 후 표시됩니다";
     }
     return `갱신 ${formatWhen(fetchedAt)} · 탭 ${formatWhen(current?.updated_at)}`;
   })();
