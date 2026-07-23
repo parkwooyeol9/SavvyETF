@@ -175,10 +175,6 @@ export default function MainTab() {
       <section className="feature-block">
         <div className="feature-head">
           <h2 className="feature-title">ETF 히트맵</h2>
-          <p className="feature-lead">
-            시가총액·AUM 기준 상위 종목의 하루 수익률을 Finviz 스타일로 보여줍니다. Yahoo
-            일봉으로 실시간 갱신됩니다.
-          </p>
         </div>
 
         <div className="chip-row" role="tablist" aria-label="히트맵 유니버스">

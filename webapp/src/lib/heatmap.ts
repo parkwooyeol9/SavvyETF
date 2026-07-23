@@ -31,7 +31,13 @@ export type HeatmapPayload = {
   cells?: HeatmapCell[];
 };
 
-type UniverseMember = { ticker: string; name: string; size: number };
+type UniverseMember = {
+  ticker: string;
+  name: string;
+  size: number;
+  /** Same-benchmark ETFs share an id; heatmap keeps the largest AUM only. */
+  benchmark?: string;
+};
 
 const META: Record<
   HeatmapUniverse,
@@ -42,39 +48,74 @@ const META: Record<
   nas: { label: "NASDAQ 100", size_label: "Market cap", short: "NASDAQ 100" },
 };
 
-/** Approximate relative sizes for tile area (billions USD). */
+/**
+ * Approximate relative sizes for tile area (billions USD).
+ * Duplicate-benchmark tickers are listed for clarity; buildLocalHeatmap
+ * keeps only the largest AUM per `benchmark` for the ETF universe.
+ */
 const ETF_UNIVERSE: UniverseMember[] = [
-  { ticker: "SPY", name: "S&P 500", size: 580 },
-  { ticker: "IVV", name: "iShares Core S&P 500", size: 520 },
-  { ticker: "VOO", name: "Vanguard S&P 500", size: 500 },
-  { ticker: "VTI", name: "Total Stock Market", size: 420 },
-  { ticker: "QQQ", name: "Nasdaq-100", size: 300 },
-  { ticker: "VEA", name: "Developed Markets", size: 140 },
-  { ticker: "IEFA", name: "Core MSCI EAFE", size: 130 },
-  { ticker: "VUG", name: "Growth", size: 125 },
-  { ticker: "AGG", name: "US Aggregate Bond", size: 120 },
-  { ticker: "BND", name: "Total Bond Market", size: 115 },
-  { ticker: "IWF", name: "Russell 1000 Growth", size: 100 },
-  { ticker: "VTV", name: "Value", size: 95 },
-  { ticker: "VXUS", name: "Total Intl Stock", size: 85 },
-  { ticker: "GLD", name: "Gold", size: 80 },
-  { ticker: "IEMG", name: "Emerging Markets", size: 75 },
-  { ticker: "VGT", name: "Information Technology", size: 70 },
-  { ticker: "XLK", name: "Technology", size: 65 },
-  { ticker: "IWM", name: "Russell 2000", size: 60 },
-  { ticker: "TLT", name: "20+ Year Treasury", size: 55 },
-  { ticker: "SCHD", name: "US Dividend Equity", size: 55 },
-  { ticker: "XLF", name: "Financials", size: 50 },
-  { ticker: "VNQ", name: "Real Estate", size: 40 },
-  { ticker: "SMH", name: "Semiconductors", size: 28 },
-  { ticker: "XLE", name: "Energy", size: 35 },
-  { ticker: "XLV", name: "Health Care", size: 38 },
-  { ticker: "ARKK", name: "Innovation", size: 6 },
-  { ticker: "EEM", name: "Emerging Markets", size: 18 },
-  { ticker: "HYG", name: "High Yield Corp", size: 16 },
-  { ticker: "LQD", name: "Investment Grade Corp", size: 30 },
-  { ticker: "IAU", name: "Gold Trust", size: 30 },
+  // S&P 500 (cap-weight) — SPY largest
+  { ticker: "SPY", name: "S&P 500", size: 580, benchmark: "sp500" },
+  { ticker: "IVV", name: "iShares Core S&P 500", size: 520, benchmark: "sp500" },
+  { ticker: "VOO", name: "Vanguard S&P 500", size: 500, benchmark: "sp500" },
+  { ticker: "VTI", name: "Total Stock Market", size: 420, benchmark: "us_total" },
+  { ticker: "QQQ", name: "Nasdaq-100", size: 300, benchmark: "ndx" },
+  // Developed ex-US — VEA largest among close substitutes
+  { ticker: "VEA", name: "Developed Markets", size: 140, benchmark: "developed_ex_us" },
+  { ticker: "IEFA", name: "Core MSCI EAFE", size: 130, benchmark: "developed_ex_us" },
+  { ticker: "VUG", name: "Growth", size: 125, benchmark: "crsp_growth" },
+  // US Aggregate Bond — AGG largest
+  { ticker: "AGG", name: "US Aggregate Bond", size: 120, benchmark: "us_agg_bond" },
+  { ticker: "BND", name: "Total Bond Market", size: 115, benchmark: "us_agg_bond" },
+  { ticker: "IWF", name: "Russell 1000 Growth", size: 100, benchmark: "r1000_growth" },
+  { ticker: "VTV", name: "Value", size: 95, benchmark: "crsp_value" },
+  { ticker: "VXUS", name: "Total Intl Stock", size: 85, benchmark: "intl_total" },
+  // Gold — GLD largest
+  { ticker: "GLD", name: "Gold", size: 80, benchmark: "gold" },
+  { ticker: "IAU", name: "Gold Trust", size: 30, benchmark: "gold" },
+  // MSCI Emerging Markets — IEMG largest
+  { ticker: "IEMG", name: "Emerging Markets", size: 75, benchmark: "msci_em" },
+  { ticker: "EEM", name: "Emerging Markets", size: 18, benchmark: "msci_em" },
+  { ticker: "VGT", name: "Information Technology", size: 70, benchmark: "msci_it" },
+  { ticker: "XLK", name: "Technology", size: 65, benchmark: "sp_tech" },
+  { ticker: "IWM", name: "Russell 2000", size: 60, benchmark: "r2000" },
+  { ticker: "TLT", name: "20+ Year Treasury", size: 55, benchmark: "long_treasury" },
+  { ticker: "SCHD", name: "US Dividend Equity", size: 55, benchmark: "dow_div" },
+  { ticker: "XLF", name: "Financials", size: 50, benchmark: "sp_fin" },
+  { ticker: "VNQ", name: "Real Estate", size: 40, benchmark: "msci_reit" },
+  { ticker: "XLV", name: "Health Care", size: 38, benchmark: "sp_hc" },
+  { ticker: "XLE", name: "Energy", size: 35, benchmark: "sp_energy" },
+  { ticker: "LQD", name: "Investment Grade Corp", size: 30, benchmark: "ig_corp" },
+  { ticker: "SMH", name: "Semiconductors", size: 28, benchmark: "semi" },
+  { ticker: "HYG", name: "High Yield Corp", size: 16, benchmark: "hy_corp" },
+  { ticker: "ARKK", name: "Innovation", size: 6, benchmark: "arkk" },
+  // Unique benchmarks to keep map breadth after de-dupe
+  { ticker: "DIA", name: "Dow Jones", size: 35, benchmark: "djia" },
+  { ticker: "IJH", name: "S&P MidCap 400", size: 90, benchmark: "sp400" },
+  { ticker: "RSP", name: "S&P 500 Equal Weight", size: 55, benchmark: "sp500_ew" },
+  { ticker: "XLI", name: "Industrials", size: 22, benchmark: "sp_indu" },
+  { ticker: "XLY", name: "Consumer Discretionary", size: 20, benchmark: "sp_cdisc" },
+  { ticker: "XLP", name: "Consumer Staples", size: 18, benchmark: "sp_cstap" },
+  { ticker: "XLU", name: "Utilities", size: 16, benchmark: "sp_util" },
+  { ticker: "VGK", name: "Europe", size: 25, benchmark: "ftse_europe" },
+  { ticker: "EWJ", name: "Japan", size: 15, benchmark: "msci_japan" },
 ];
+
+/** Keep one ETF per benchmark (largest size / AUM). Members without benchmark stay. */
+export function dedupeByBenchmark(members: UniverseMember[]): UniverseMember[] {
+  const best = new Map<string, UniverseMember>();
+  const unique: UniverseMember[] = [];
+  for (const m of members) {
+    const key = m.benchmark;
+    if (!key) {
+      unique.push(m);
+      continue;
+    }
+    const prev = best.get(key);
+    if (!prev || m.size > prev.size) best.set(key, m);
+  }
+  return [...unique, ...best.values()].sort((a, b) => b.size - a.size);
+}
 
 const SP_UNIVERSE: UniverseMember[] = [
   { ticker: "NVDA", name: "NVIDIA", size: 3400 },
@@ -179,7 +220,9 @@ export async function buildLocalHeatmap(
   topN = 30,
 ): Promise<HeatmapPayload> {
   const meta = META[universe];
-  const members = UNIVERSES[universe]
+  const pool =
+    universe === "etf" ? dedupeByBenchmark(UNIVERSES[universe]) : UNIVERSES[universe];
+  const members = pool
     .slice()
     .sort((a, b) => b.size - a.size)
     .slice(0, Math.max(5, Math.min(50, topN)));
