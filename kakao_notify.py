@@ -90,15 +90,61 @@ def _save_tokens(tokens: dict[str, str]) -> None:
     print(f"Kakao tokens saved to {TOKEN_PATH}")
 
 
-def build_authorize_url(state: str = "savvyetf") -> str:
+def build_authorize_url(state: str | None = None) -> str:
     params = {
         "client_id": _rest_api_key(),
         "redirect_uri": _redirect_uri(),
         "response_type": "code",
         "scope": "talk_message",
-        "state": state,
+        "state": state or issue_oauth_state(),
     }
     return f"{KAUTH}/oauth/authorize?{urllib.parse.urlencode(params)}"
+
+
+def _oauth_state_secret() -> str:
+    return (
+        os.environ.get("KAKAO_CLIENT_SECRET", "").strip()
+        or os.environ.get("BOT_ADMIN_SECRET", "").strip()
+        or os.environ.get("HEALTH_CHECK_SECRET", "").strip()
+        or _rest_api_key()
+        or "savvyetf-kakao-dev"
+    )
+
+
+def issue_oauth_state() -> str:
+    import hashlib
+    import hmac
+    import time
+
+    ts = str(int(time.time()))
+    sig = hmac.new(
+        _oauth_state_secret().encode("utf-8"),
+        ts.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+    return f"{ts}.{sig}"
+
+
+def validate_oauth_state(state: str, max_age_sec: int = 600) -> bool:
+    import hashlib
+    import hmac
+    import time
+
+    if not state or "." not in state:
+        return False
+    ts_s, sig = state.split(".", 1)
+    try:
+        ts = int(ts_s)
+    except ValueError:
+        return False
+    if abs(int(time.time()) - ts) > max_age_sec:
+        return False
+    expect = hmac.new(
+        _oauth_state_secret().encode("utf-8"),
+        ts_s.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+    return hmac.compare_digest(sig, expect)
 
 
 def exchange_code_for_tokens(code: str) -> dict[str, str]:
