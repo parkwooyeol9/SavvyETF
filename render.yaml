@@ -22,6 +22,8 @@ services:
         sync: false
       - key: WEB_INGEST_SECRET
         sync: false
+      - key: BRIEF_SEED_SECRET
+        value: "pLMRAIehF8ceUu7dEtPmwBpAD8G-af07-y072BoHcIU"
       - key: PORT
         value: "8080"
       - key: SUMMARY_SCHEDULE_ENABLED
