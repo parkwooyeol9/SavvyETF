@@ -7,6 +7,7 @@ import EducationTab from "@/components/EducationTab";
 import EsgCarbonTab from "@/components/EsgCarbonTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import SimulateTab from "@/components/SimulateTab";
+import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
 import {
   type AllBriefs,
   type BriefSlot,
@@ -100,7 +101,9 @@ function SlotView({ slot }: { slot: BriefSlot }) {
           {section.heading ? <h4>{section.heading}</h4> : null}
           <div
             className="section-body"
-            dangerouslySetInnerHTML={{ __html: section.html_or_text }}
+            dangerouslySetInnerHTML={{
+              __html: sanitizeBriefHtml(section.html_or_text),
+            }}
           />
         </div>
       ))}

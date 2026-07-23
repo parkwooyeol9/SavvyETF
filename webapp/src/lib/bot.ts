@@ -5,6 +5,17 @@ export function botBaseUrl(): string {
   return "https://savvyetf-bot.onrender.com";
 }
 
+function botWebHeaders(extra?: HeadersInit): HeadersInit {
+  const secret = (process.env.BOT_WEB_API_SECRET || "").trim();
+  return {
+    Accept: "application/json",
+    ...(secret
+      ? { Authorization: `Bearer ${secret}`, "X-Bot-Web-Key": secret }
+      : {}),
+    ...(extra || {}),
+  };
+}
+
 export async function fetchBotJson<T>(
   path: string,
   init?: RequestInit & { timeoutMs?: number },
@@ -16,10 +27,7 @@ export async function fetchBotJson<T>(
     const res = await fetch(`${botBaseUrl()}${path}`, {
       ...init,
       signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        ...(init?.headers || {}),
-      },
+      headers: botWebHeaders(init?.headers),
       cache: "no-store",
     });
     const data = (await res.json()) as T;

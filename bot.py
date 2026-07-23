@@ -342,7 +342,18 @@ def save_known_chat(chat_id: int) -> None:
 
 
 def register_delivery_chat(chat_id: int) -> None:
-    """Remember chat for broadcasts and clear any prior soft-block."""
+    """Remember chat for soft-block clearing.
+
+    In allowlist mode, strangers are never persisted to known_chats (broadcast safety).
+    """
+    from bot_access import access_mode, is_interaction_allowed
+
+    if access_mode() == "allowlist" and not is_interaction_allowed(
+        chat_id=chat_id,
+        user_id=None,
+        pinned_chat_ids=_all_pinned_chat_ids(),
+    ):
+        return
     unblock_chat(chat_id)
     save_known_chat(chat_id)
 
@@ -358,11 +369,12 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
     """
     Resolve scheduled-delivery recipients.
 
-    - us / default: /summary, /summary_pre, /reddit → TELEGRAM_CHAT_ID_US
-      (falls back to TELEGRAM_CHAT_ID + known chats, excluding dedicated channels)
+    - us / default: /summary, /summary_pre, /reddit → TELEGRAM_CHAT_ID_US only
     - kor: /summary_kor*, /summary_nxt → TELEGRAM_CHAT_ID_KOR only
     - legacy / etf: /etfcheck, /etf_sector → TELEGRAM_CHAT_ID only
     - esg: /esg schedules → TELEGRAM_CHAT_ID_ESG only (SavvyESG)
+
+    Never falls back to known_chats (strangers who DM'd the bot).
     """
     us = env_chat_ids_us()
     kor = env_chat_ids_kor()
@@ -398,13 +410,15 @@ def broadcast_targets(*, audience: str = "default") -> set[int]:
         blocked = load_blocked_chats() - legacy
         return legacy - blocked
 
-    # US / general schedules
-    if us:
+    # US / general schedules — env pin only (no known_chats fallback)
+    if audience in {"us", "default"}:
+        if not us:
+            print(
+                "US broadcast skipped: set TELEGRAM_CHAT_ID_US to the US channel id."
+            )
+            return set()
         blocked = load_blocked_chats() - us
         return us - blocked
-    if audience in {"us", "default"}:
-        # Legacy fallback when TELEGRAM_CHAT_ID_US is unset.
-        return startup_chat_ids() - kor - esg
     return set()
 
 
@@ -748,10 +762,36 @@ def process_telegram_update(token: str, update: dict) -> None:
     chat_id = message["chat"]["id"]
     chat_type = message["chat"].get("type", "private")
     command_text = normalize_command_text(message["text"])
+    from_user = message.get("from") or {}
+    user_id = from_user.get("id")
+    try:
+        user_id_int = int(user_id) if user_id is not None else None
+    except (TypeError, ValueError):
+        user_id_int = None
+
+    from bot_access import (
+        check_heavy_cooldown,
+        denied_access_message,
+        is_interaction_allowed,
+        access_mode,
+    )
+
+    if not is_interaction_allowed(
+        chat_id=chat_id,
+        user_id=user_id_int,
+        pinned_chat_ids=_all_pinned_chat_ids(),
+    ):
+        send_text(token, chat_id, denied_access_message())
+        return
 
     register_delivery_chat(chat_id)
     if chat_type != "channel":
         maybe_send_deferred_startup_guide(token, chat_id)
+
+    cooldown_msg = check_heavy_cooldown(chat_id, command_text)
+    if cooldown_msg:
+        send_text(token, chat_id, cooldown_msg)
+        return
 
     replies = handle_telegram_message(command_text, chat_id)
     if not isinstance(replies, list):
@@ -776,7 +816,11 @@ def _run_telegram_update(token: str, update: dict, chat_id: int | None) -> None:
     except Exception as exc:
         print(f"Update handler error (update={update_id}, chat={chat_id}): {exc}")
         if chat_id is not None:
-            send_text(token, chat_id, f"Command failed: {exc}")
+            send_text(
+                token,
+                chat_id,
+                "Command failed. Please try again later.",
+            )
     finally:
         if chat_id is not None:
             with _chat_inflight_lock:
@@ -825,15 +869,26 @@ def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) 
     Only private 1:1 chats (positive ids) get the startup guide — never channels
     or groups. Scheduled briefs still go to TELEGRAM_CHAT_ID_* channels as usual.
     """
+    from bot_access import access_mode, is_interaction_allowed
+
     chat_ids = startup_chat_ids()
     if extra_chat_ids:
         chat_ids |= extra_chat_ids
 
     private_ids = {c for c in chat_ids if _is_private_chat_id(c)}
+    if access_mode() == "allowlist":
+        pinned = _all_pinned_chat_ids()
+        private_ids = {
+            c
+            for c in private_ids
+            if is_interaction_allowed(
+                chat_id=c, user_id=None, pinned_chat_ids=pinned
+            )
+        }
     skipped = len(chat_ids) - len(private_ids)
     if skipped:
         print(
-            f"Startup guide: skipping {skipped} channel/group chat(s); "
+            f"Startup guide: skipping {skipped} channel/group/unauthorized chat(s); "
             f"private DMs only."
         )
 
@@ -1971,6 +2026,41 @@ def start_web_server():
             self.end_headers()
             self.wfile.write(body)
 
+        def _admin_secret_ok(self) -> bool:
+            secret = (
+                os.environ.get("BOT_ADMIN_SECRET", "").strip()
+                or os.environ.get("HEALTH_CHECK_SECRET", "").strip()
+            )
+            if not secret:
+                return False
+            auth = self.headers.get("Authorization", "")
+            bearer = (
+                auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            )
+            qs = parse_qs(urlparse(self.path).query)
+            token_q = (qs.get("token") or [""])[0]
+            return bearer == secret or token_q == secret
+
+        def _bot_web_api_ok(self) -> bool:
+            secret = os.environ.get("BOT_WEB_API_SECRET", "").strip()
+            if not secret:
+                return True
+            auth = self.headers.get("Authorization", "")
+            bearer = (
+                auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            )
+            qs = parse_qs(urlparse(self.path).query)
+            token_q = (qs.get("token") or [""])[0]
+            header_key = (self.headers.get("X-Bot-Web-Key") or "").strip()
+            return bearer == secret or token_q == secret or header_key == secret
+
+        def _reject_unauthorized(self, cors: bool = False) -> None:
+            body = b'{"ok":false,"error":"Unauthorized"}'
+            if cors:
+                self._send_cors_json(body, status=401)
+            else:
+                self._send(body, "application/json; charset=utf-8", 401)
+
         def do_HEAD(self):
             # Render / proxies sometimes probe with HEAD; BaseHTTP 501 kills health.
             path = urlparse(self.path).path
@@ -1993,15 +2083,38 @@ def start_web_server():
                 from scheduler_grace import past_startup_grace, startup_grace_status
                 from summary_scheduler import _load_state
 
+                health_secret = os.environ.get("HEALTH_CHECK_SECRET", "").strip()
+                if health_secret:
+                    auth = self.headers.get("Authorization", "")
+                    qs = parse_qs(urlparse(self.path).query)
+                    token_q = (qs.get("token") or [""])[0]
+                    bearer = (
+                        auth[7:].strip()
+                        if auth.lower().startswith("bearer ")
+                        else ""
+                    )
+                    if token_q != health_secret and bearer != health_secret:
+                        self.send_response(401)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(b'{"ok":false,"error":"Unauthorized"}')
+                        return
+
                 kor_spec = importlib.util.find_spec("summary_kor_builder")
                 state = _load_state()
                 env_ids = env_chat_ids()
                 env_chat = bool(env_ids)
                 chat_count = len(startup_chat_ids())
                 thread_names = {t.name for t in _threading.enumerate()}
+                from bot_access import access_mode, env_allowed_chat_ids, env_allowed_user_ids
+
                 payload = {
                     "ok": True,
                     "summary_kor_builder": kor_spec is not None,
+                    "access_mode": access_mode(),
+                    "allowlist_configured": bool(
+                        env_allowed_chat_ids() or env_allowed_user_ids()
+                    ),
                     "scheduler": {
                         "past_startup_grace": past_startup_grace(),
                         "startup_grace": startup_grace_status(),
@@ -2014,12 +2127,17 @@ def start_web_server():
                         "broadcast_env_esg_count": len(env_chat_ids_esg()),
                         "broadcast_known_count": len(load_known_chats()),
                         "broadcast_blocked_count": len(load_blocked_chats()),
-                        "broadcast_targets_us": sorted(broadcast_targets(audience="us")),
-                        "broadcast_targets_kor": sorted(broadcast_targets(audience="kor")),
-                        "broadcast_targets_legacy": sorted(
+                        # Counts only — never expose raw chat IDs publicly
+                        "broadcast_targets_us_count": len(
+                            broadcast_targets(audience="us")
+                        ),
+                        "broadcast_targets_kor_count": len(
+                            broadcast_targets(audience="kor")
+                        ),
+                        "broadcast_targets_legacy_count": len(
                             broadcast_targets(audience="legacy")
                         ),
-                        "broadcast_targets_esg": sorted(
+                        "broadcast_targets_esg_count": len(
                             broadcast_targets(audience="esg")
                         ),
                         "broadcast_chat_kinds": {
@@ -2409,7 +2527,11 @@ def start_web_server():
                 return
 
             if path in {"/kakao", "/kakao/"}:
-                from kakao_notify import status_payload
+                from kakao_notify import kakao_notify_enabled, status_payload
+
+                if not kakao_notify_enabled() or not self._admin_secret_ok():
+                    self._reject_unauthorized()
+                    return
 
                 st = status_payload()
                 auth = html.escape(st.get("authorize_url") or "")
@@ -2438,8 +2560,11 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             if path == "/kakao/auth":
-                from kakao_notify import build_authorize_url, _rest_api_key
+                from kakao_notify import build_authorize_url, _rest_api_key, kakao_notify_enabled
 
+                if not kakao_notify_enabled() or not self._admin_secret_ok():
+                    self._reject_unauthorized()
+                    return
                 if not _rest_api_key():
                     self._send(b"KAKAO_REST_API_KEY not set", "text/plain; charset=utf-8", 400)
                     return
@@ -2449,11 +2574,19 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             if path == "/kakao/callback":
-                from kakao_notify import exchange_code_for_tokens
+                from kakao_notify import (
+                    exchange_code_for_tokens,
+                    kakao_notify_enabled,
+                    validate_oauth_state,
+                )
 
+                if not kakao_notify_enabled():
+                    self._reject_unauthorized()
+                    return
                 query = parse_qs(urlparse(self.path).query)
                 code = (query.get("code") or [""])[0]
                 err = (query.get("error") or [""])[0]
+                state = (query.get("state") or [""])[0]
                 if err:
                     self._send(
                         f"Kakao auth error: {err}".encode("utf-8"),
@@ -2461,14 +2594,18 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                         400,
                     )
                     return
+                if not validate_oauth_state(state):
+                    self._send(b"Invalid OAuth state", "text/plain; charset=utf-8", 400)
+                    return
                 if not code:
                     self._send(b"Missing code", "text/plain; charset=utf-8", 400)
                     return
                 try:
                     exchange_code_for_tokens(code)
                 except Exception as exc:
+                    print(f"Kakao token exchange failed: {exc}")
                     self._send(
-                        f"Token exchange failed: {exc}".encode("utf-8"),
+                        b"Token exchange failed",
                         "text/plain; charset=utf-8",
                         500,
                     )
@@ -2480,8 +2617,11 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             if path == "/kakao/status":
-                from kakao_notify import status_payload
+                from kakao_notify import kakao_notify_enabled, status_payload
 
+                if not kakao_notify_enabled() or not self._admin_secret_ok():
+                    self._reject_unauthorized()
+                    return
                 body = json.dumps(status_payload(), ensure_ascii=False, indent=2).encode("utf-8")
                 self._send(body, "application/json; charset=utf-8")
                 return
@@ -2489,12 +2629,8 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
             if path == "/kakao/test":
                 from kakao_notify import kakao_notify_enabled, send_scheduled_summary_to_kakao
 
-                if not kakao_notify_enabled():
-                    self._send(
-                        b"KAKAO_NOTIFY_ENABLED is false or KAKAO_REST_API_KEY missing",
-                        "text/plain; charset=utf-8",
-                        400,
-                    )
+                if not kakao_notify_enabled() or not self._admin_secret_ok():
+                    self._reject_unauthorized()
                     return
                 # Minimal payload for a live smoke test
                 summary = {
@@ -2513,6 +2649,11 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             # --- Vercel dashboard APIs ---
+            if path.startswith("/api/web/"):
+                if not self._bot_web_api_ok():
+                    self._reject_unauthorized(cors=True)
+                    return
+
             if path == "/api/web/catalog":
                 from web_api import etf_catalog_payload
 
@@ -2597,9 +2738,20 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
         def do_POST(self):
             path = urlparse(self.path).path
             if path == "/api/web/simulate":
+                if not self._bot_web_api_ok():
+                    self._reject_unauthorized(cors=True)
+                    return
                 from web_api import simulate_allocation
 
                 length = int(self.headers.get("Content-Length") or 0)
+                if length > 64_000:
+                    self._send_cors_json(
+                        json.dumps(
+                            {"ok": False, "error": "Request body too large"}
+                        ).encode("utf-8"),
+                        status=413,
+                    )
+                    return
                 raw = self.rfile.read(length) if length else b"{}"
                 try:
                     req = json.loads(raw.decode("utf-8") or "{}")
@@ -2625,9 +2777,12 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             if path == "/kakao/skill":
-                from kakao_notify import build_skill_response
+                from kakao_notify import build_skill_response, kakao_notify_enabled
                 from summary_builder import SUMMARY_META_PATH, resolve_summary_public_url
 
+                if not kakao_notify_enabled() or not self._admin_secret_ok():
+                    self._reject_unauthorized()
+                    return
                 length = int(self.headers.get("Content-Length") or 0)
                 if length:
                     self.rfile.read(length)  # body unused for this lightweight skill
@@ -2677,6 +2832,20 @@ def start_telegram_bot(token: str):
         print(f"Bot username: @{_bot_username}")
 
     print("Starting Telegram bot (async command workers)...")
+    from bot_access import access_mode, env_allowed_chat_ids, env_allowed_user_ids
+
+    mode = access_mode()
+    print(
+        f"Telegram access_mode={mode} "
+        f"(allowed_chats={len(env_allowed_chat_ids())}, "
+        f"allowed_users={len(env_allowed_user_ids())})"
+    )
+    if mode == "open":
+        print(
+            "WARNING: TELEGRAM_ACCESS_MODE=open — anyone can run commands. "
+            "For public launch set TELEGRAM_ACCESS_MODE=allowlist and "
+            "TELEGRAM_ALLOWED_CHAT_IDS / TELEGRAM_ALLOWED_USER_IDS."
+        )
     # Pin env recipients so channels/1:1 survive blocked_chats leftovers + redeploys.
     for chat_id in _all_pinned_chat_ids():
         register_delivery_chat(chat_id)
