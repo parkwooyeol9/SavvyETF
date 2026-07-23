@@ -1,8 +1,9 @@
 """Lightweight ETF CHECK (etfcheck.co.kr) HTTP client — no Selenium/Playwright.
 
-The site gates APIs with a SHA-256 ``checkclient`` header derived from a
-time-bucketed salt. Responses are small JSON; keep request concurrency at 1
-so Render Starter (512MB) stays stable.
+The site gates APIs with a SHA-256 ``Checkclient`` header derived from a
+time-bucketed key (see ``/js/build.js`` axios interceptor). The key is rotated
+occasionally by the site — update ``_CHECK_KEY`` when 403s return with an empty
+body despite a valid-looking token.
 """
 
 from __future__ import annotations
@@ -14,18 +15,30 @@ from typing import Any
 import requests
 
 BASE_URL = "https://www.etfcheck.co.kr"
-_CHECK_SALT = "#$dser#GVEWS329@"
+# From webpack module in /js/build.js (`t.exports={key:"…"}`). Rotated by site.
+_CHECK_KEY = "vfSddfdv"
 _USER_AGENT = (
-    "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
 
-def checkclient_token(now_ms: int | None = None) -> str:
-    """Mirror the site's axios interceptor (SHA-256 of salt-indexed time bucket)."""
+def checkclient_token(now_ms: int | None = None, *, key: str = _CHECK_KEY) -> str:
+    """Mirror the site's axios interceptor (SHA-256 of key-indexed time bucket).
+
+    JS: ``r += n[a[i] - "0"]`` — out-of-range indexes become the string
+    ``\"undefined\"`` (key length is often < 10).
+    """
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     bucket = str(now_ms // 30_000)
-    material = "".join(_CHECK_SALT[int(digit)] for digit in bucket)
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    parts: list[str] = []
+    for digit in bucket:
+        idx = ord(digit) - ord("0")
+        if 0 <= idx < len(key):
+            parts.append(key[idx])
+        else:
+            parts.append("undefined")
+    return hashlib.sha256("".join(parts).encode("utf-8")).hexdigest()
 
 
 class EtfCheckClient:
@@ -39,11 +52,14 @@ class EtfCheckClient:
                 "User-Agent": _USER_AGENT,
                 "Accept": "application/json, text/plain, */*",
                 "Referer": f"{BASE_URL}/",
+                "Origin": BASE_URL,
             }
         )
 
     def _refresh_auth_headers(self) -> None:
         token = checkclient_token()
+        # Site sets ``Checkclient``; keep lowercase aliases for compatibility.
+        self.session.headers["Checkclient"] = token
         self.session.headers["checkclient"] = token
         self.session.headers["etfcheckclient"] = token
 
