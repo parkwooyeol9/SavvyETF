@@ -41,6 +41,7 @@ data/dart_corp_codes.json
 data/kakao_tokens.json
 data/etf_memb/
 data/etf_holdings/
+data/etf_memb_us/
 data/web_briefs/
 fonts/*.ttf
 data/fonts/
