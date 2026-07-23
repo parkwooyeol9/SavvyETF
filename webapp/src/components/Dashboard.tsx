@@ -26,6 +26,8 @@ type BriefsResponse = {
   configured?: boolean;
   briefs?: AllBriefs;
   error?: string;
+  warning?: string;
+  source?: string;
 };
 
 function orderedSlots(tab: TabId, slots: Record<string, BriefSlot>): BriefSlot[] {
@@ -122,6 +124,7 @@ export default function Dashboard() {
   const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -133,6 +136,7 @@ export default function Dashboard() {
       }
       setBriefs(data.briefs || emptyAllBriefs());
       setConfigured(Boolean(data.configured));
+      setWarning(data.warning || null);
       setError(null);
       setFetchedAt(new Date().toISOString());
     } catch (exc) {
@@ -159,9 +163,12 @@ export default function Dashboard() {
     if (tab === "main" || tab === "simulate" || tab === "education") {
       return error
         ? `시황 동기화 참고: ${error}`
-        : `시황 갱신 ${formatWhen(fetchedAt)}`;
+        : warning
+          ? warning
+          : `시황 갱신 ${formatWhen(fetchedAt)}`;
     }
     if (error) return `동기화 오류: ${error}`;
+    if (warning) return warning;
     if (configured === false) {
       return "Blob 미설정 — 봇 publish 후 데이터가 표시됩니다";
     }

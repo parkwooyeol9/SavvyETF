@@ -9,16 +9,35 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      // Still try Render — local bot cache does not need Blob.
+      const result = await loadAllBriefs();
       return NextResponse.json({
         ok: true,
         configured: false,
-        briefs: emptyAllBriefs(),
+        source: result.source,
+        warning:
+          result.warning ||
+          "BLOB_READ_WRITE_TOKEN unset — using Render fallback when available",
+        briefs: result.briefs,
       });
     }
-    const briefs = await loadAllBriefs();
-    return NextResponse.json({ ok: true, configured: true, briefs });
+    const result = await loadAllBriefs();
+    return NextResponse.json({
+      ok: true,
+      configured: true,
+      source: result.source,
+      warning: result.warning,
+      briefs: result.briefs,
+    });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : "Failed to load briefs";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+        briefs: emptyAllBriefs(),
+      },
+      { status: 500 },
+    );
   }
 }

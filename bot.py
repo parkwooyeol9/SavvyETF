@@ -2065,6 +2065,57 @@ def start_web_server():
         def do_GET(self):
             path = urlparse(self.path).path
 
+            if path == "/api/web-briefs":
+                try:
+                    from web_briefs_store import load_all_briefs
+
+                    briefs = load_all_briefs()
+                    body = json.dumps(
+                        {
+                            "ok": True,
+                            "source": "render-local",
+                            "briefs": briefs,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(body, "application/json; charset=utf-8")
+                except Exception as exc:
+                    err = json.dumps(
+                        {"ok": False, "error": str(exc)[:400]},
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header(
+                        "Content-Type", "application/json; charset=utf-8"
+                    )
+                    self.send_header("Content-Length", str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
+                return
+
+            if path.startswith("/api/web-briefs/images/"):
+                parts = [p for p in path.split("/") if p]
+                # api web-briefs images {tab} {slot} {file}
+                if len(parts) == 6 and parts[5].endswith(".png"):
+                    tab, slot, fname = parts[3], parts[4], parts[5]
+                    image_id = fname[:-4]
+                    try:
+                        from web_briefs_store import load_image_bytes
+
+                        raw = load_image_bytes(tab, slot, image_id)
+                    except Exception:
+                        raw = None
+                    if raw:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "image/png")
+                        self.send_header("Cache-Control", "public, max-age=60")
+                        self.send_header("Content-Length", str(len(raw)))
+                        self.end_headers()
+                        self.wfile.write(raw)
+                        return
+                self.send_error(404)
+                return
+
             if path == "/health":
                 import importlib.util
                 import threading as _threading
@@ -2245,6 +2296,13 @@ def start_web_server():
                     from web_publish import publish_configured
 
                     pub_url = (os.environ.get("WEB_PUBLISH_URL") or "").strip()
+                    last_pub = None
+                    try:
+                        from web_briefs_store import last_publish_status
+
+                        last_pub = last_publish_status()
+                    except Exception:
+                        last_pub = None
                     payload["web_publish"] = {
                         "configured": publish_configured(),
                         "url_set": bool(pub_url),
@@ -2257,6 +2315,8 @@ def start_web_server():
                         "url_path": (
                             _urlparse(pub_url).path if pub_url else None
                         ),
+                        "local_fallback": True,
+                        "last": last_pub,
                     }
                 except Exception as pub_diag_exc:
                     payload["web_publish"] = {
