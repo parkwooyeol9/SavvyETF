@@ -35,7 +35,14 @@ function slotCount(briefs: AllBriefs): number {
   );
 }
 
+function blobConfigured(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+}
+
 async function readTab(tab: TabId): Promise<TabReadResult> {
+  if (!blobConfigured()) {
+    return { tab: emptyTab(tab) };
+  }
   try {
     const meta = await head(blobPath(tab));
     if (!meta?.url) return { tab: emptyTab(tab) };
@@ -111,18 +118,35 @@ async function loadBriefsFromRender(): Promise<{
 
 export type BriefsLoadResult = {
   briefs: AllBriefs;
-  source: "blob" | "render-fallback" | "empty";
+  source: "blob" | "render" | "render-fallback" | "empty";
   warning?: string;
 };
 
 export async function loadTabBriefs(tab: TabId): Promise<TabBriefs> {
-  const fromBlob = await readTab(tab);
-  if (Object.keys(fromBlob.tab.slots).length) return fromBlob.tab;
+  if (blobConfigured()) {
+    const fromBlob = await readTab(tab);
+    if (Object.keys(fromBlob.tab.slots).length) return fromBlob.tab;
+  }
   const fromRender = await loadBriefsFromRender();
   return fromRender.briefs[tab] || emptyTab(tab);
 }
 
 export async function loadAllBriefs(): Promise<BriefsLoadResult> {
+  // No Blob token → Render is the primary store (no scary "token" warning).
+  if (!blobConfigured()) {
+    const fromRender = await loadBriefsFromRender();
+    if (slotCount(fromRender.briefs) > 0) {
+      return { briefs: fromRender.briefs, source: "render" };
+    }
+    return {
+      briefs: emptyAllBriefs(),
+      source: "empty",
+      warning:
+        fromRender.error ||
+        "시황 스냅샷이 아직 없습니다. 텔레그램 스케줄 후 자동으로 채워집니다.",
+    };
+  }
+
   const results = await Promise.all(TAB_IDS.map((id) => readTab(id)));
   const blobBriefs: AllBriefs = {
     kr: results[0].tab,
@@ -132,7 +156,7 @@ export async function loadAllBriefs(): Promise<BriefsLoadResult> {
   };
   const blobErrors = results.map((r) => r.error).filter(Boolean) as string[];
   const blobBlocked = blobErrors.some((e) =>
-    /store is blocked|blob 403/i.test(e),
+    /store is blocked|blob 403|no token found/i.test(e),
   );
 
   if (slotCount(blobBriefs) > 0 && !blobBlocked) {
@@ -141,11 +165,13 @@ export async function loadAllBriefs(): Promise<BriefsLoadResult> {
 
   const fallback = await loadBriefsFromRender();
   if (slotCount(fallback.briefs) > 0) {
-    const warning = blobBlocked
-      ? "Vercel Blob store is blocked — showing Render fallback"
-      : blobErrors[0]
-        ? `Blob read failed (${blobErrors[0]}) — showing Render fallback`
-        : "Blob empty — showing Render fallback";
+    // Prefer quiet Render success when Blob is unavailable.
+    if (blobBlocked || /no token found/i.test(blobErrors[0] || "")) {
+      return { briefs: fallback.briefs, source: "render" };
+    }
+    const warning = blobErrors[0]
+      ? `Blob read failed — showing Render copy`
+      : undefined;
     return {
       briefs: fallback.briefs,
       source: "render-fallback",
@@ -154,7 +180,7 @@ export async function loadAllBriefs(): Promise<BriefsLoadResult> {
   }
 
   const warning = blobBlocked
-    ? "Vercel Blob store is blocked. Create/unblock a Blob store and update BLOB_READ_WRITE_TOKEN."
+    ? "Blob unavailable and Render has no snapshots yet."
     : fallback.error || blobErrors[0] || "No brief snapshots yet";
   return {
     briefs: emptyAllBriefs(),
