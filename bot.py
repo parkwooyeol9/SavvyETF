@@ -63,6 +63,9 @@ What each command returns:
 /etf_sector
 → Sector rotation by last completed daily return + chart (XL* + themes vs SPY)
 
+/etf memb EEM
+→ US ETF current holdings Top10 chart + Excel (Yahoo; iShares full CU when available)
+
 /etf_holdings EEM 005930
 → ETF 내 특정 종목 편입비 시계열 차트 + 표 + Excel (iShares/Naver)
 
@@ -162,6 +165,7 @@ def build_help_messages() -> list[dict]:
 <b>📊 시장 · 랭킹</b>
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/etf_sector</code> — 섹터 로테이션 (전일 수익률 + 차트, XL*/테마 vs SPY)
+<code>/etf memb EEM</code> — 미국 ETF 편입비중 Top10 + Excel
 <code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
@@ -202,6 +206,7 @@ def build_help_messages() -> list[dict]:
 <code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
+<code>/etf memb EEM</code> — 미국 ETF 현재 편입비중 Top10 + Excel
 <code>/etf_holdings EEM 005930</code> — ETF 내 종목 편입비 시계열 + Excel
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
@@ -1487,6 +1492,33 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": f"Invalid heatmap command: {exc}\n\nUsage: /heatmap sp | /heatmap nas 20 | /heatmap etf 30"}]
         except Exception as exc:
             return [{"text": f"Heatmap failed: {exc}"}]
+
+    from etf_memb_us import is_etf_memb_command
+
+    if is_etf_memb_command(normalized):
+        try:
+            from etf_memb_us import parse_etf_memb_query, run_etf_memb_us
+
+            ticker = parse_etf_memb_query(normalized)
+            replies: list[dict] = [
+                {"text": f"US ETF 편입비중 조회 중: {ticker}…"}
+            ]
+            result = run_etf_memb_us(ticker)
+            replies.extend(result["telegram_messages"])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /etf memb <TICKER>\n"
+                        "Example: /etf memb EEM\n"
+                        "Example: /etf_memb QQQ\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"/etf memb failed: {exc}"}]
 
     from etf_holdings import is_etf_holdings_command
 
