@@ -545,7 +545,7 @@ def render_summary_nxt_html(summary: dict, public_url: str = "") -> str:
       font-size: clamp(1.7rem, 3vw, 2.35rem);
       margin: 0 0 .45rem; font-weight: 600;
     }}
-    .hero .lead {{ color: var(--nx-mute); margin: 0 0 1rem; max-width: 46rem; line-height: 1.5; }}
+    .hero .lead {{ color: var(--nx-mute); margin: 0 0 1rem; max-width: none; line-height: 1.5; }}
     .pills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
     .pill {{
       font-size: .78rem; padding: 5px 10px; border-radius: 999px;
