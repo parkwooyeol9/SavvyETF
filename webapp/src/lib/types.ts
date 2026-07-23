@@ -38,11 +38,11 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "main",
   "simulate",
   "education",
-  "geo",
   "kr",
   "us",
   "etf",
   "esg",
+  "geo",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
