@@ -2791,7 +2791,9 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
             if path == "/api/web-briefs":
                 # Seed/upsert local brief store (same secret as Vercel ingest).
                 ingest_secret = (os.environ.get("WEB_INGEST_SECRET") or "").strip()
-                if not ingest_secret:
+                seed_secret = (os.environ.get("BRIEF_SEED_SECRET") or "").strip()
+                allowed = {s for s in (ingest_secret, seed_secret) if s}
+                if not allowed:
                     self._send(
                         b'{"ok":false,"error":"WEB_INGEST_SECRET unset"}',
                         "application/json; charset=utf-8",
@@ -2802,7 +2804,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 bearer = (
                     auth[7:].strip() if auth.lower().startswith("bearer ") else ""
                 )
-                if bearer != ingest_secret:
+                if bearer not in allowed:
                     self._reject_unauthorized()
                     return
                 length = int(self.headers.get("Content-Length") or 0)
