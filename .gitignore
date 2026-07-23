@@ -40,5 +40,6 @@ data/scheduler_state.json
 data/dart_corp_codes.json
 data/kakao_tokens.json
 data/etf_memb/
+data/etf_holdings/
 fonts/*.ttf
 data/fonts/
