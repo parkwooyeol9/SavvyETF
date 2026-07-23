@@ -424,6 +424,135 @@ a {
   color: var(--accent);
 }
 
+.geo-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.geo-section-head .geo-section-title {
+  margin-bottom: 0;
+}
+
+.geo-choke-attr {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.geo-choke-attr a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.geo-choke-attr a:hover {
+  text-decoration: underline;
+}
+
+.geo-choke-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.55rem;
+}
+
+.geo-choke-card {
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(20, 29, 43, 0.72);
+  border-left-width: 3px;
+}
+
+.geo-choke-card.severe {
+  border-left-color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.geo-choke-card.elevated {
+  border-left-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.07);
+}
+
+.geo-choke-card.monitoring {
+  border-left-color: #4da3ff;
+  background: rgba(77, 163, 255, 0.07);
+}
+
+.geo-choke-card.normal {
+  border-left-color: #3dd68c;
+}
+
+.geo-choke-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.geo-choke-top strong {
+  font-size: 0.92rem;
+}
+
+.geo-choke-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(143, 163, 184, 0.18);
+  color: var(--muted);
+}
+
+.geo-choke-card.severe .geo-choke-badge {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fca5a5;
+}
+
+.geo-choke-card.elevated .geo-choke-badge {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+}
+
+.geo-choke-card.monitoring .geo-choke-badge {
+  background: rgba(77, 163, 255, 0.2);
+  color: #93c5fd;
+}
+
+.geo-choke-card.normal .geo-choke-badge {
+  background: rgba(61, 214, 140, 0.18);
+  color: #86efac;
+}
+
+.geo-choke-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.geo-choke-hl {
+  display: block;
+  margin: 0.5rem 0 0;
+  color: #c7ddf8;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+a.geo-choke-hl:hover {
+  color: var(--accent);
+}
+
+.geo-choke-hl.muted {
+  color: var(--muted);
+}
+
 .geo-signal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

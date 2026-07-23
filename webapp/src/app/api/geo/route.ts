@@ -5,6 +5,7 @@ import {
   GEO_SIGNAL_SPECS,
   computeComposite,
   parseGeoRange,
+  type GeoChokepoint,
   type GeoHeadline,
   type GeoPayload,
   type GeoPoint,
@@ -145,6 +146,60 @@ function parseRssItems(xml: string, source: string, limit: number): GeoHeadline[
   return items;
 }
 
+type EagleChokepointRaw = {
+  chokepoint?: string;
+  name?: string;
+  status?: string;
+  signalsLast24h?: number;
+  highAlertsLast24h?: number;
+  signalsLast7d?: number;
+  latestHighHeadline?: string | null;
+  pageUrl?: string;
+  lastUpdated?: string;
+};
+
+type EaglePayload = {
+  source?: string;
+  url?: string;
+  chokepoints?: EagleChokepointRaw[];
+};
+
+async function fetchChokepoints(): Promise<{
+  chokepoints: GeoChokepoint[];
+  source?: { name: string; url: string };
+}> {
+  try {
+    const res = await fetch("https://eagleintelmari.com/api/chokepoint-status", {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return { chokepoints: [] };
+    const payload = (await res.json()) as EaglePayload;
+    const chokepoints: GeoChokepoint[] = (payload.chokepoints || [])
+      .filter((c) => c.chokepoint && c.name)
+      .map((c) => ({
+        id: String(c.chokepoint),
+        name: String(c.name),
+        status: String(c.status || "UNKNOWN").toUpperCase(),
+        signals_24h: Number(c.signalsLast24h) || 0,
+        high_alerts_24h: Number(c.highAlertsLast24h) || 0,
+        signals_7d: Number(c.signalsLast7d) || 0,
+        latest_headline: c.latestHighHeadline || null,
+        page_url: c.pageUrl,
+        last_updated: c.lastUpdated,
+      }));
+    return {
+      chokepoints,
+      source: {
+        name: payload.source || "Eagle Intelligence",
+        url: payload.url || "https://eagleintelmari.com",
+      },
+    };
+  } catch {
+    return { chokepoints: [] };
+  }
+}
+
 async function fetchHeadlines(): Promise<GeoHeadline[]> {
   const feeds: Array<{ url: string; source: string }> = [
     { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC World" },
@@ -192,18 +247,21 @@ export async function GET(request: Request) {
   const range = parseGeoRange(searchParams.get("range"));
 
   try {
-    const [signals, headlines] = await Promise.all([
+    const [signals, headlines, choke] = await Promise.all([
       Promise.all(GEO_SIGNAL_SPECS.map((spec) => fetchYahooSignal(spec, range))),
       fetchHeadlines(),
+      fetchChokepoints(),
     ]);
-    const composite = computeComposite(signals);
+    const composite = computeComposite(signals, choke.chokepoints);
     const payload: GeoPayload = {
       ok: true,
       generated_at: new Date().toISOString(),
       note:
-        "Yahoo 일봉 시계열 + 공개 RSS. 투자 조언이 아니며 별도 DB 저장 없음.",
+        "Yahoo 일봉 + Eagle 해운 병목 + 공개 RSS. 투자 조언이 아니며 별도 DB 저장 없음.",
       range,
       composite,
+      chokepoints: choke.chokepoints,
+      chokepoint_source: choke.source,
       signals,
       headlines,
       related_etfs: GEO_RELATED_ETFS,
@@ -221,6 +279,7 @@ export async function GET(request: Request) {
         note: "",
         range,
         composite: { score: 0, label: "n/a", drivers: [] },
+        chokepoints: [],
         signals: [],
         headlines: [],
         related_etfs: GEO_RELATED_ETFS,
