@@ -49,9 +49,23 @@ a {
 }
 
 .shell {
-  width: min(1120px, calc(100% - 2rem));
+  /* Fill most of the viewport — avoid large side gutters on wide screens */
+  width: min(1680px, calc(100% - 1.25rem));
   margin: 0 auto;
-  padding: 1.25rem 0 3rem;
+  padding: 1rem 0 2.5rem;
+}
+
+@media (min-width: 1800px) {
+  .shell {
+    width: min(1760px, calc(100% - 1.5rem));
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: calc(100% - 0.85rem);
+    padding: 0.85rem 0 2rem;
+  }
 }
 
 .topbar {
