@@ -53,24 +53,96 @@ export type SingleStockLevMeta = {
   structure: "spot" | "fut";
 };
 
-export type SingleStockLevRow = {
-  code: string;
-  name: string;
+/** Aggregated single-stock lev/inv buckets (product names matter less than type). */
+export type LevGroupKey =
+  | "samsung_lev"
+  | "samsung_inv"
+  | "hynix_inv"
+  | "hynix_lev";
+
+export type LevGroupMeta = {
+  key: LevGroupKey;
+  label: string;
   underlying: "samsung" | "hynix";
   direction: "lev" | "inv";
-  structure: "spot" | "fut";
-  last: number;
-  change: number;
-  change_pct: number;
-  volume: number;
-  value: number; // KRW
-  value_eok: number; // 억원
-  foreign_net: number | null; // shares (latest session)
-  institution_net: number | null;
-  individual_net: number | null;
-  trend_date?: string | null;
-  market_status?: string;
+  color: string;
 };
+
+export type LevGroupPoint = {
+  date: string; // YYYY-MM-DD
+  aum_eok: number;
+  value_eok: number;
+  value_cum_eok: number;
+};
+
+export type LevGroupSeries = {
+  key: LevGroupKey;
+  label: string;
+  underlying: "samsung" | "hynix";
+  direction: "lev" | "inv";
+  color: string;
+  product_count: number;
+  latest_aum_eok: number;
+  latest_value_eok: number;
+  value_cum_eok: number;
+  series: LevGroupPoint[];
+};
+
+export type SingleStockLevBoard = {
+  listing_date: string;
+  groups: LevGroupSeries[];
+  total_aum_eok: number;
+  total_value_eok: number;
+  total_value_cum_eok: number;
+  as_of?: string;
+  note?: string;
+};
+
+/** Listing date of the Samsung/Hynix single-stock 2X / -2X ETF cohort. */
+export const SINGLE_STOCK_LEV_LISTING_DATE = "2026-05-27";
+export const SINGLE_STOCK_LEV_LISTING_YMD = "20260527";
+
+/** Display order: 전자 2x → 전자 -2x → 닉스 -2x → 닉스 2x */
+export const LEV_GROUP_METAS: LevGroupMeta[] = [
+  {
+    key: "samsung_lev",
+    label: "전자 2x",
+    underlying: "samsung",
+    direction: "lev",
+    color: "#3b82f6",
+  },
+  {
+    key: "samsung_inv",
+    label: "전자 -2x",
+    underlying: "samsung",
+    direction: "inv",
+    color: "#f59e0b",
+  },
+  {
+    key: "hynix_inv",
+    label: "닉스 -2x",
+    underlying: "hynix",
+    direction: "inv",
+    color: "#ef4444",
+  },
+  {
+    key: "hynix_lev",
+    label: "닉스 2x",
+    underlying: "hynix",
+    direction: "lev",
+    color: "#10b981",
+  },
+];
+
+export function levGroupKey(
+  underlying: "samsung" | "hynix",
+  direction: "lev" | "inv",
+): LevGroupKey {
+  if (underlying === "samsung") {
+    return direction === "lev" ? "samsung_lev" : "samsung_inv";
+  }
+  return direction === "lev" ? "hynix_lev" : "hynix_inv";
+}
 
 /** 2026-05-27 listed Samsung/Hynix single-stock leverage·inverse ETFs (16). */
 export const SINGLE_STOCK_LEV_ETFS: SingleStockLevMeta[] = [
@@ -134,11 +206,7 @@ export type KrMarketPayload = {
     latest?: KrCreditRow | null;
     credit_ratio_proxy?: number | null;
   };
-  single_stock_lev?: {
-    rows: SingleStockLevRow[];
-    total_value_eok: number;
-    as_of?: string;
-  };
+  single_stock_lev?: SingleStockLevBoard;
 };
 
 export function sma(values: number[], period: number): number | null {

@@ -1092,6 +1092,25 @@ a.geo-choke-hl:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.kr-lev-group-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.kr-lev-group-summary em {
+  display: block;
+  margin-top: 0.2rem;
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .kr-lev-group-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .kr-credit-kpis {
   display: flex;
   flex-wrap: wrap;
