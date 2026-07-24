@@ -82,6 +82,12 @@ services:
         value: "9:45"
       - key: ESG_SCHEDULE_OVERVIEW_QUERIES
         value: "삼성전자"
+      - key: ESG_BRIEF_SCHEDULE_ENABLED
+        value: "true"
+      - key: ESG_BRIEF_SCHEDULE_KST
+        value: "11:00"
+      - key: WEBAPP_PUBLIC_URL
+        value: "https://savvyetf.vercel.app"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY
