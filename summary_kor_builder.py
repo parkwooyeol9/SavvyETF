@@ -12,7 +12,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ai_briefing import _strip_disclaimer
-from data_briefing import generate_data_briefing_from_kor_summary
+from data_briefing import (
+    brief_paragraphs_html,
+    format_brief_paragraphs,
+    generate_data_briefing_from_kor_summary,
+)
 from kr_names import format_kr_ticker_label, kr_code_from_yahoo
 from naver_news import fetch_naver_news_for_tickers
 from stock_crawler import (
@@ -401,7 +405,7 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
 
 def _format_kor_data_briefing_telegram(summary: dict) -> list[dict]:
     ai = summary.get("ai_analysis") or {}
-    brief_ko = _strip_disclaimer(str(ai.get("market_brief_ko") or "").strip())
+    brief_ko = format_brief_paragraphs(str(ai.get("market_brief_ko") or ""), blank_lines=2)
     if not brief_ko:
         return []
     source = ai.get("source", "ai")
@@ -418,17 +422,7 @@ def _render_kor_data_briefing_html(summary: dict) -> str:
     brief_ko = _strip_disclaimer(str(ai.get("market_brief_ko") or "").strip())
     if not brief_ko:
         return ""
-    paras = "".join(
-        f"<p>{html.escape(line)}</p>"
-        for line in re.split(r"\n\s*\n", brief_ko)
-        if line.strip()
-    )
-    if not paras:
-        paras = "".join(
-            f"<p>{html.escape(line)}</p>"
-            for line in brief_ko.split("\n")
-            if line.strip()
-        )
+    paras = brief_paragraphs_html(brief_ko, esc=html.escape)
     source = html.escape(str(ai.get("source") or ""))
     article_count = ai.get("article_count", 0)
     return f"""
@@ -707,6 +701,8 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
       width: 100%; border-radius: 8px; border: 1px solid var(--border, #2b3648);
     }}
     .dart-card {{ background: rgba(255,255,255,0.02); border: 1px solid var(--border, #2b3648); border-radius: 10px; padding: 12px; }}
+    .ai-brief p.brief-para {{ margin: 0 0 1.25rem; line-height: 1.65; }}
+    .ai-brief p.brief-para:last-child {{ margin-bottom: 0; }}
     .summary-footer {{
       margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border, #2b3648);
       color: var(--muted, #8fa3b8); font-size: 0.85rem;

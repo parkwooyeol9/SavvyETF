@@ -660,7 +660,7 @@ def _render_ai_closing_page(
 
     if brief:
         _draw_section_chip(draw, _MARGIN, y, "AI", WARN)
-        draw.text((_MARGIN + 64, y + 2), "AI 시장 브리핑", font=_load_font(24), fill=TEXT)
+        draw.text((_MARGIN + 64, y + 2), "데이터 브리핑", font=_load_font(24), fill=TEXT)
         y += 34
         meta = f"source: {_safe(ai.get('source', 'ai'))}  ·  articles: {ai.get('article_count', 0)}"
         draw.text((_MARGIN, y), meta, font=_load_font(12), fill=MUTED)

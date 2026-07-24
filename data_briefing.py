@@ -153,6 +153,32 @@ def _normalize_three_paragraphs(brief: str) -> str:
     return ""
 
 
+def format_brief_paragraphs(brief: str, *, blank_lines: int = 2) -> str:
+    """Join paragraphs with extra blank lines for Telegram / plain-text display."""
+    text = _strip_disclaimer(brief).strip()
+    if not text:
+        return ""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paras) <= 1:
+        paras = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    sep = "\n" * (max(1, blank_lines) + 1)
+    return sep.join(paras)
+
+
+def brief_paragraphs_html(brief: str, *, esc=None) -> str:
+    """Render briefing paragraphs as spaced HTML ``<p>`` blocks."""
+    escape = esc or (lambda s: s)
+    text = _strip_disclaimer(brief).strip()
+    if not text:
+        return ""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paras) <= 1:
+        paras = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    return "".join(
+        f'<p class="brief-para">{escape(p)}</p>' for p in paras
+    )
+
+
 def _truncate(text: str, limit: int = MAX_CONTEXT_CHARS) -> str:
     if len(text) <= limit:
         return text
@@ -425,12 +451,117 @@ def generate_data_briefing_from_kor_summary(
     return generate_data_briefing(payload)
 
 
+def pack_us_summary_context(summary: dict, chart_notes_ko: dict | None = None) -> dict[str, Any]:
+    """Build a briefing payload from the US ``/summary`` market dict."""
+    from news_crawler import _display_ticker_label
+
+    chart_notes_ko = chart_notes_ko or (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
+    board_lines: list[str] = []
+    for universe in summary.get("universes") or []:
+        ukey = universe.get("key") or ""
+        name = universe.get("name") or ukey
+        board_lines.append(f"[{name}]")
+        boards = universe.get("boards") or {}
+        for mode, title in (
+            ("surge", "Price up + volume surge"),
+            ("dropvol", "Price down + volume surge"),
+        ):
+            rows = (boards.get(mode) or {}).get("top") or []
+            board_lines.append(f"  {title}:")
+            if not rows:
+                board_lines.append("    (empty)")
+                continue
+            for idx, row in enumerate(rows[:8], start=1):
+                if isinstance(row, (list, tuple)) and len(row) >= 2:
+                    ticker, metric = row[0], row[1]
+                else:
+                    ticker, metric = row, ""
+                label = _display_ticker_label(str(ticker), ukey if ukey == "etf" else None)
+                board_lines.append(f"    {idx}. {label}  {metric}")
+        leader = universe.get("leader_ticker")
+        if leader:
+            board_lines.append(
+                f"  leader: {_display_ticker_label(str(leader), ukey if ukey == 'etf' else None)}"
+            )
+        note = (chart_notes_ko.get(ukey) or "").strip()
+        if note:
+            board_lines.append(f"  chart_note: {note}")
+        board_lines.append("")
+
+    news_items: list[dict[str, str]] = []
+    ticker_universe = summary.get("ticker_universe") or {}
+    for ticker, headlines in (summary.get("news_by_ticker") or {}).items():
+        ukey = ticker_universe.get(ticker)
+        label = _display_ticker_label(str(ticker), ukey if ukey == "etf" else None)
+        for item in (headlines or [])[:3]:
+            title = (item.get("title") or "").strip()
+            if not title:
+                continue
+            news_items.append(
+                {
+                    "ticker": label,
+                    "title": title,
+                    "source": str(item.get("source") or item.get("publisher") or ""),
+                    "date": str(item.get("date") or item.get("published") or ""),
+                }
+            )
+
+    extra_parts = [
+        f"ticker_count: {summary.get('ticker_count', 0)}",
+        f"universes: {', '.join(u.get('key', '') for u in (summary.get('universes') or []))}",
+    ]
+    heatmap = summary.get("heatmap_sp") or {}
+    if heatmap.get("caption"):
+        extra_parts.append(f"heatmap: {heatmap.get('caption')}")
+    elif heatmap.get("error"):
+        extra_parts.append(f"heatmap_error: {heatmap.get('error')}")
+
+    macro = summary.get("macro") or {}
+    if macro.get("caption"):
+        extra_parts.append(f"macro: {macro.get('caption')}")
+    if macro.get("ai_comment") or macro.get("macro_brief_ko"):
+        extra_parts.append(
+            f"macro_ai: {macro.get('ai_comment') or macro.get('macro_brief_ko')}"
+        )
+    if macro.get("error"):
+        extra_parts.append(f"macro_error: {macro.get('error')}")
+
+    crypto = summary.get("crypto") or {}
+    for symbol in ("BTC", "ETH"):
+        entry = crypto.get(symbol) or {}
+        if entry.get("label") or entry.get("chart_error"):
+            extra_parts.append(
+                f"crypto_{symbol}: {entry.get('label') or symbol}"
+                + (f" ({entry.get('chart_error')})" if entry.get("chart_error") else "")
+            )
+
+    return {
+        "market": "us",
+        "title": "미국 시황 (/summary)",
+        "generated_at": str(summary.get("generated_at_display") or summary.get("generated_at") or ""),
+        "boards_text": "\n".join(board_lines).strip(),
+        "chart_notes": chart_notes_ko,
+        "news_items": news_items,
+        "extra_context": "\n".join(extra_parts),
+    }
+
+
+def generate_data_briefing_from_us_summary(
+    summary: dict,
+    *,
+    chart_notes_ko: dict | None = None,
+) -> dict[str, Any]:
+    """Convenience wrapper used at the end of ``/summary``."""
+    payload = pack_us_summary_context(summary, chart_notes_ko=chart_notes_ko)
+    return generate_data_briefing(payload)
+
+
 def format_data_briefing_telegram(
     briefing: dict[str, Any],
     *,
     include_meta: bool = True,
 ) -> list[dict]:
-    brief_ko = _strip_disclaimer(str(briefing.get("market_brief_ko", "")).strip())
+    brief_ko = format_brief_paragraphs(str(briefing.get("market_brief_ko", "")), blank_lines=2)
     if not brief_ko:
         return [{"text": "데이터 브리핑을 생성하지 못했습니다 (빈 결과)."}]
 
