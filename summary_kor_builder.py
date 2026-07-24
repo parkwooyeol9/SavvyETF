@@ -6,10 +6,13 @@ import base64
 import html
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from ai_briefing import _strip_disclaimer
+from data_briefing import generate_data_briefing_from_kor_summary
 from kr_names import format_kr_ticker_label, kr_code_from_yahoo
 from naver_news import fetch_naver_news_for_tickers
 from stock_crawler import (
@@ -392,7 +395,49 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
     ]
     for universe in summary.get("universes") or []:
         messages.extend(_format_universe_telegram(universe, summary))
+    messages.extend(_format_kor_data_briefing_telegram(summary))
     return messages
+
+
+def _format_kor_data_briefing_telegram(summary: dict) -> list[dict]:
+    ai = summary.get("ai_analysis") or {}
+    brief_ko = _strip_disclaimer(str(ai.get("market_brief_ko") or "").strip())
+    if not brief_ko:
+        return []
+    source = ai.get("source", "ai")
+    article_count = ai.get("article_count", 0)
+    header = "📝 데이터 브리핑 · 국내시황\n"
+    if ai.get("error") and source == "rules":
+        header += "(Gemini unavailable — data fallback)\n"
+    header += f"출처: {source} | 참고 뉴스 {article_count}건\n\n"
+    return [{"text": header + brief_ko}]
+
+
+def _render_kor_data_briefing_html(summary: dict) -> str:
+    ai = summary.get("ai_analysis") or {}
+    brief_ko = _strip_disclaimer(str(ai.get("market_brief_ko") or "").strip())
+    if not brief_ko:
+        return ""
+    paras = "".join(
+        f"<p>{html.escape(line)}</p>"
+        for line in re.split(r"\n\s*\n", brief_ko)
+        if line.strip()
+    )
+    if not paras:
+        paras = "".join(
+            f"<p>{html.escape(line)}</p>"
+            for line in brief_ko.split("\n")
+            if line.strip()
+        )
+    source = html.escape(str(ai.get("source") or ""))
+    article_count = ai.get("article_count", 0)
+    return f"""
+    <section class="appendix-section ai-brief">
+      <h2>📝 데이터 브리핑 · 국내시황</h2>
+      <p class="meta">보드·차트 노트·네이버 뉴스 기반 · {article_count}건 참고 ({source})</p>
+      {paras}
+    </section>
+    """
 
 
 def resolve_summary_kor_public_url(public_url: str = "", *, intraday: bool = False) -> str:
@@ -687,6 +732,7 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
       </div>
     </section>
     {''.join(sections_html)}
+    {_render_kor_data_briefing_html(summary)}
     {_render_kor_leaders_html(summary)}
     {_render_kor_dart_html(summary)}
     <footer class="summary-footer">
@@ -711,6 +757,10 @@ def save_summary_kor(summary: dict, html_content: str) -> None:
         "news_source": summary.get("news_source", "naver"),
         "intraday": intraday,
         "kind": summary.get("kind"),
+        "data_briefing_source": (summary.get("ai_analysis") or {}).get("source"),
+        "has_data_briefing": bool(
+            ((summary.get("ai_analysis") or {}).get("market_brief_ko") or "").strip()
+        ),
     }
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
@@ -775,13 +825,22 @@ def generate_summary_kor(
         summary = build_kor_market_summary(intraday=False)
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
-    summary["ai_analysis"] = {
-        "chart_notes_ko": generate_chart_notes(summary, leader_charts),
-        "market_brief_ko": "",
-        "source": "rules",
-        "article_count": 0,
-    }
+    chart_notes = generate_chart_notes(summary, leader_charts)
     summary["dart_by_universe"] = _attach_dart_for_leaders(summary)
+
+    # Final stage: Gemini (or rules fallback) 3-paragraph briefing from boards/notes/news/DART.
+    briefing = generate_data_briefing_from_kor_summary(
+        summary,
+        chart_notes_ko=chart_notes,
+    )
+    summary["ai_analysis"] = {
+        "chart_notes_ko": chart_notes,
+        "market_brief_ko": briefing.get("market_brief_ko") or "",
+        "source": briefing.get("source") or "rules",
+        "article_count": briefing.get("article_count") or 0,
+        "briefing_market": briefing.get("market") or "kr",
+        "error": briefing.get("error"),
+    }
     _freeze_summary_charts(summary)
     _freeze_dart_charts(summary)
 

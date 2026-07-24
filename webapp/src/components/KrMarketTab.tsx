@@ -20,10 +20,8 @@ import {
   fmtKrwEok,
   fmtNum,
   fmtPct,
-  fmtShares,
   fmtValueEok,
   type KrMarketPayload,
-  type SingleStockLevRow,
 } from "@/lib/krMarket";
 
 type ChartMode = "intraday" | "daily";
@@ -406,181 +404,214 @@ function CreditPanel({ credit }: { credit: NonNullable<KrMarketPayload["credit"]
   );
 }
 
-function underlyingLabel(u: SingleStockLevRow["underlying"]): string {
-  return u === "samsung" ? "삼성전자" : "SK하이닉스";
-}
-
-function directionLabel(d: SingleStockLevRow["direction"]): string {
-  return d === "lev" ? "레버" : "인버스";
-}
-
 function SingleStockLevPanel({
   board,
 }: {
   board: NonNullable<KrMarketPayload["single_stock_lev"]>;
 }) {
-  const [filter, setFilter] = useState<"all" | "samsung" | "hynix">("all");
-  const rows = useMemo(() => {
-    if (filter === "all") return board.rows;
-    return board.rows.filter((r) => r.underlying === filter);
-  }, [board.rows, filter]);
+  const [valueMode, setValueMode] = useState<"cum" | "daily">("cum");
 
-  const totals = useMemo(() => {
-    const value = rows.reduce((s, r) => s + r.value_eok, 0);
-    const foreign = rows.reduce((s, r) => s + (r.foreign_net || 0), 0);
-    const institution = rows.reduce((s, r) => s + (r.institution_net || 0), 0);
-    const individual = rows.reduce((s, r) => s + (r.individual_net || 0), 0);
-    return { value, foreign, institution, individual };
-  }, [rows]);
+  const aumChart = useMemo(() => {
+    const byDate = new Map<string, Record<string, number | string>>();
+    for (const g of board.groups) {
+      for (const pt of g.series) {
+        const row = byDate.get(pt.date) || { t: pt.date.slice(5) };
+        row[g.key] = Math.round(pt.aum_eok);
+        byDate.set(pt.date, row);
+      }
+    }
+    return [...byDate.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, row]) => row);
+  }, [board.groups]);
 
-  const barData = useMemo(
-    () =>
-      [...rows]
-        .sort((a, b) => b.value_eok - a.value_eok)
-        .slice(0, 10)
-        .map((r) => ({
-          name: r.name.replace("단일종목", "").replace("레버리지", "L").replace("인버스2X", "I"),
-          대금: Math.round(r.value_eok),
-          code: r.code,
-        })),
-    [rows],
-  );
+  const valueChart = useMemo(() => {
+    const byDate = new Map<string, Record<string, number | string>>();
+    for (const g of board.groups) {
+      for (const pt of g.series) {
+        const row = byDate.get(pt.date) || { t: pt.date.slice(5) };
+        row[g.key] = Math.round(
+          valueMode === "cum" ? pt.value_cum_eok : pt.value_eok,
+        );
+        byDate.set(pt.date, row);
+      }
+    }
+    return [...byDate.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, row]) => row);
+  }, [board.groups, valueMode]);
 
   return (
     <article className="kr-card">
       <div className="kr-card-head">
         <div>
-          <h3 className="kr-card-title">단일종목 레버리지 ETF (16)</h3>
+          <h3 className="kr-card-title">단일종목 레버리지 · 4유형 합산</h3>
           <p className="kr-card-sub">
-            삼전·닉스 2X · 거래대금·수급 한눈에
+            전자 2x · 전자 -2x · 닉스 -2x · 닉스 2x · {board.listing_date} 상장~
+            누적 AUM·거래대금 추이
             {board.as_of
               ? ` · ${new Date(board.as_of).toLocaleString("ko-KR", { hour12: false })}`
               : ""}
           </p>
         </div>
-        <div className="kr-toggles">
-          <div className="seg">
-            <button
-              type="button"
-              className={filter === "all" ? "active" : ""}
-              onClick={() => setFilter("all")}
-            >
-              전체
-            </button>
-            <button
-              type="button"
-              className={filter === "samsung" ? "active" : ""}
-              onClick={() => setFilter("samsung")}
-            >
-              삼성전자
-            </button>
-            <button
-              type="button"
-              className={filter === "hynix" ? "active" : ""}
-              onClick={() => setFilter("hynix")}
-            >
-              SK하이닉스
-            </button>
+      </div>
+
+      <div className="kr-flow-summary kr-lev-group-summary">
+        {board.groups.map((g) => (
+          <div key={g.key}>
+            <span style={{ color: g.color }}>{g.label}</span>
+            <strong>{fmtValueEok(g.latest_aum_eok)}</strong>
+            <em>
+              당일 {fmtValueEok(g.latest_value_eok)} · 누적{" "}
+              {fmtValueEok(g.value_cum_eok)}
+            </em>
           </div>
-        </div>
+        ))}
       </div>
 
       <div className="kr-flow-summary">
         <div>
-          <span>합산 거래대금</span>
-          <strong>{fmtValueEok(totals.value)}</strong>
+          <span>합산 AUM</span>
+          <strong>{fmtValueEok(board.total_aum_eok)}</strong>
         </div>
-        <div className={toneClass(totals.foreign)}>
-          <span>외인 순매수(주)</span>
-          <strong>{fmtShares(totals.foreign)}</strong>
+        <div>
+          <span>당일 거래대금</span>
+          <strong>{fmtValueEok(board.total_value_eok)}</strong>
         </div>
-        <div className={toneClass(totals.institution)}>
-          <span>기관 순매수(주)</span>
-          <strong>{fmtShares(totals.institution)}</strong>
-        </div>
-        <div className={toneClass(totals.individual)}>
-          <span>개인 순매수(주)</span>
-          <strong>{fmtShares(totals.individual)}</strong>
+        <div>
+          <span>상장일~ 누적 거래대금</span>
+          <strong>{fmtValueEok(board.total_value_cum_eok)}</strong>
         </div>
       </div>
 
-      <div className="kr-chart" style={{ height: 220 }}>
+      <div className="kr-card-head" style={{ marginTop: 8 }}>
+        <div>
+          <h4 className="kr-card-title" style={{ fontSize: 14 }}>
+            유형별 AUM 추이
+          </h4>
+          <p className="kr-card-sub">좌축 2x · 우축 -2x (단위: 억)</p>
+        </div>
+      </div>
+      <div className="kr-chart" style={{ height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={barData}
-            layout="vertical"
-            margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
-          >
+          <LineChart data={aumChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
             <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-            <XAxis type="number" tick={{ fill: "#8fa3b8", fontSize: 10 }} />
+            <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
             <YAxis
-              type="category"
-              dataKey="name"
-              width={128}
-              tick={{ fill: "#8fa3b8", fontSize: 9 }}
+              yAxisId="left"
+              tick={{ fill: "#8fa3b8", fontSize: 10 }}
+              width={52}
+              tickFormatter={(v: number) =>
+                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
+              }
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fill: "#c4a574", fontSize: 10 }}
+              width={48}
+              tickFormatter={(v: number) =>
+                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
+              }
             />
             <Tooltip
               contentStyle={tooltipStyle}
-              formatter={(value: number) => [`${value.toLocaleString("ko-KR")}억`, "거래대금"]}
+              formatter={(value: number, name: string) => {
+                const g = board.groups.find((x) => x.key === name);
+                return [`${Number(value).toLocaleString("ko-KR")}억`, g?.label || name];
+              }}
             />
-            <Bar dataKey="대금" fill="#60a5fa" radius={[0, 4, 4, 0]} />
-          </BarChart>
+            <Legend
+              formatter={(value: string) =>
+                board.groups.find((g) => g.key === value)?.label || value
+              }
+            />
+            {board.groups.map((g) => (
+              <Line
+                key={g.key}
+                yAxisId={g.direction === "inv" ? "right" : "left"}
+                type="monotone"
+                dataKey={g.key}
+                stroke={g.color}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="kr-table-wrap">
-        <table className="kr-table">
-          <thead>
-            <tr>
-              <th>종목</th>
-              <th>기초</th>
-              <th>현재가</th>
-              <th>등락</th>
-              <th>거래대금</th>
-              <th>외인</th>
-              <th>기관</th>
-              <th>개인</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.code}>
-                <td>
-                  <div className="kr-etf-name">{r.name}</div>
-                  <div className="kr-etf-meta">
-                    <code>{r.code}</code>
-                    <span className={`kr-chip ${r.direction}`}>
-                      {directionLabel(r.direction)}
-                    </span>
-                    <span className="kr-chip muted">
-                      {r.structure === "spot" ? "현물" : "선물"}
-                    </span>
-                  </div>
-                </td>
-                <td>{underlyingLabel(r.underlying)}</td>
-                <td className="num">{fmtNum(r.last, 0)}</td>
-                <td className={`num ${toneClass(r.change_pct)}`}>
-                  {fmtPct(r.change_pct)}
-                </td>
-                <td className="num">{fmtValueEok(r.value_eok)}</td>
-                <td className={`num ${toneClass(r.foreign_net)}`}>
-                  {fmtShares(r.foreign_net)}
-                </td>
-                <td className={`num ${toneClass(r.institution_net)}`}>
-                  {fmtShares(r.institution_net)}
-                </td>
-                <td className={`num ${toneClass(r.individual_net)}`}>
-                  {fmtShares(r.individual_net)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="kr-table-note">
-          수급은 직전 거래일 순매수 수량 기준 · 거래대금은 당일 누적
-          {rows[0]?.trend_date ? ` (수급 ${rows[0].trend_date})` : ""}
-        </p>
+      <div className="kr-card-head" style={{ marginTop: 12 }}>
+        <h4 className="kr-card-title" style={{ fontSize: 14 }}>
+          유형별 거래대금 추이
+        </h4>
+        <div className="kr-toggles">
+          <div className="seg">
+            <button
+              type="button"
+              className={valueMode === "cum" ? "active" : ""}
+              onClick={() => setValueMode("cum")}
+            >
+              누적
+            </button>
+            <button
+              type="button"
+              className={valueMode === "daily" ? "active" : ""}
+              onClick={() => setValueMode("daily")}
+            >
+              일별
+            </button>
+          </div>
+        </div>
       </div>
+      <div className="kr-chart" style={{ height: 260 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={valueChart} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+            <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
+            <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
+            <YAxis
+              tick={{ fill: "#8fa3b8", fontSize: 10 }}
+              width={52}
+              tickFormatter={(v: number) =>
+                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
+              }
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(value: number, name: string) => {
+                const g = board.groups.find((x) => x.key === name);
+                const label = valueMode === "cum" ? "누적 거래대금" : "일별 거래대금";
+                return [
+                  `${Number(value).toLocaleString("ko-KR")}억`,
+                  `${g?.label || name} ${label}`,
+                ];
+              }}
+            />
+            <Legend
+              formatter={(value: string) =>
+                board.groups.find((g) => g.key === value)?.label || value
+              }
+            />
+            {board.groups.map((g) => (
+              <Line
+                key={g.key}
+                type="monotone"
+                dataKey={g.key}
+                stroke={g.color}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <p className="kr-table-note">
+        {board.note ||
+          "16개 상품을 4유형으로 합산한 추이입니다. AUM은 시가총액 기준입니다."}
+      </p>
     </article>
   );
 }

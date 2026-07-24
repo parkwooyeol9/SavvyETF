@@ -45,10 +45,12 @@ def run_climate_monitor(*, publish: bool = True) -> dict[str, Any]:
             publish_brief(
                 "esg",
                 "esg_monitor",
-                title="ESG 시황 /esg monitor — Climate Risk",
+                title="물리적 기후위험 · /esg monitor",
                 generated_at=bundle.get("generated_at_display")
                 or bundle.get("generated_at"),
-                sections=section_from_html(text, heading="Climate Risk Monitor"),
+                sections=section_from_html(
+                    text, heading="Physical climate risk & adaptation"
+                ),
                 images=[
                     chart_to_image_payload(
                         chart_web,

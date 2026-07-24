@@ -5,7 +5,9 @@ import {
   GEO_SIGNAL_SPECS,
   computeComposite,
   parseGeoRange,
+  type GeoChokepoint,
   type GeoHeadline,
+  type GeoHormuzCrisis,
   type GeoPayload,
   type GeoPoint,
   type GeoRange,
@@ -145,35 +147,276 @@ function parseRssItems(xml: string, source: string, limit: number): GeoHeadline[
   return items;
 }
 
-async function fetchHeadlines(): Promise<GeoHeadline[]> {
-  const feeds: Array<{ url: string; source: string }> = [
-    { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC World" },
-    { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera" },
+type EagleChokepointRaw = {
+  chokepoint?: string;
+  name?: string;
+  status?: string;
+  signalsLast24h?: number;
+  highAlertsLast24h?: number;
+  signalsLast7d?: number;
+  latestHighHeadline?: string | null;
+  pageUrl?: string;
+  lastUpdated?: string;
+};
+
+type EaglePayload = {
+  source?: string;
+  url?: string;
+  chokepoints?: EagleChokepointRaw[];
+};
+
+async function fetchChokepoints(): Promise<{
+  chokepoints: GeoChokepoint[];
+  source?: { name: string; url: string };
+}> {
+  try {
+    const res = await fetch("https://eagleintelmari.com/api/chokepoint-status", {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return { chokepoints: [] };
+    const payload = (await res.json()) as EaglePayload;
+    const chokepoints: GeoChokepoint[] = (payload.chokepoints || [])
+      .filter((c) => c.chokepoint && c.name)
+      .map((c) => ({
+        id: String(c.chokepoint),
+        name: String(c.name),
+        status: String(c.status || "UNKNOWN").toUpperCase(),
+        signals_24h: Number(c.signalsLast24h) || 0,
+        high_alerts_24h: Number(c.highAlertsLast24h) || 0,
+        signals_7d: Number(c.signalsLast7d) || 0,
+        latest_headline: c.latestHighHeadline || null,
+        page_url: c.pageUrl,
+        last_updated: c.lastUpdated,
+      }));
+    return {
+      chokepoints,
+      source: {
+        name: payload.source || "Eagle Intelligence",
+        url: payload.url || "https://eagleintelmari.com",
+      },
+    };
+  } catch {
+    return { chokepoints: [] };
+  }
+}
+
+type HormuzRaw = {
+  asOf?: string;
+  status?: string;
+  brent?: number;
+  wti?: number;
+  aisConcurrentInZone?: number;
+  verdict?: { short?: string; long?: string; status?: string };
+  transits?: {
+    count?: number;
+    baseline?: number;
+    throughputPct?: number;
+    asOfDate?: string;
+  };
+  dailyTransits?: { nTotal?: number; nTanker?: number; date?: string };
+  insurance?: {
+    multiple?: number;
+    vlccPremiumLow?: number;
+    vlccPremiumHigh?: number;
+  };
+  hormuzIndex?: {
+    crisisPressure?: { value?: number; band?: string };
+    escalationProbability?: { value?: number; band?: string };
+  };
+  iranRate?: {
+    midRial?: number;
+    deltaDayPct?: number;
+    delta7dPct?: number;
+  };
+  tradeImpact?: {
+    worldOilAtRiskPct?: number;
+    worldLngAtRiskPct?: number;
+    dailyEconomicCostUsd?: number;
+    alternativeRouteExtraDays?: number;
+  };
+  carrierSuspensions?: Array<{ carrier?: string; notes?: string }>;
+  chokepoints?: Array<{
+    key?: string;
+    label?: string;
+    date?: string;
+    nTotal?: number;
+    baselineMedian?: number;
+    preCrisisBaselineMedian?: number;
+    deltaDay?: number;
+  }>;
+  events?: Array<{ title?: string; occurredAt?: string; severity?: string }>;
+  predictionMarkets?: Array<{
+    title?: string;
+    question?: string;
+    probability?: number;
+    venue?: string;
+    sourceUrl?: string;
+  }>;
+};
+
+function num(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function fetchHormuzCrisis(): Promise<GeoHormuzCrisis | null> {
+  const urls = [
+    "https://cdn.jsdelivr.net/gh/jasonhjohnson/strait-of-hormuz-data@main/data/status.json",
+    "https://raw.githubusercontent.com/jasonhjohnson/strait-of-hormuz-data/main/data/status.json",
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        next: { revalidate: 180 },
+      });
+      if (!res.ok) continue;
+      const raw = (await res.json()) as HormuzRaw;
+      if (!raw || (!raw.verdict && !raw.status && raw.brent == null)) continue;
+
+      const carriers = (raw.carrierSuspensions || [])
+        .filter((c) => c.carrier)
+        .slice(0, 8)
+        .map((c) => ({
+          name: String(c.carrier),
+          notes: c.notes ? String(c.notes).slice(0, 160) : undefined,
+        }));
+
+      const lanes = (raw.chokepoints || [])
+        .filter((c) => c.key && c.label)
+        .map((c) => ({
+          id: String(c.key),
+          name: String(c.label),
+          date: c.date,
+          n_total: num(c.nTotal),
+          baseline: num(c.baselineMedian),
+          pre_crisis_baseline: num(c.preCrisisBaselineMedian),
+          delta_day: num(c.deltaDay),
+        }));
+
+      const events = (raw.events || [])
+        .filter((e) => e.title)
+        .slice(0, 8)
+        .map((e) => ({
+          title: String(e.title),
+          occurred_at: e.occurredAt,
+          severity: e.severity,
+        }));
+
+      const markets = (raw.predictionMarkets || [])
+        .filter((m) => m.title || m.question)
+        .slice(0, 4)
+        .map((m) => ({
+          title: String(m.title || m.question),
+          probability:
+            m.probability == null ? null : Math.round(m.probability * 1000) / 10,
+          venue: m.venue,
+          url: m.sourceUrl,
+        }));
+
+      return {
+        as_of: raw.asOf,
+        status: raw.status,
+        verdict_short: raw.verdict?.short,
+        verdict_long: raw.verdict?.long,
+        verdict_status: raw.verdict?.status,
+        brent: num(raw.brent),
+        wti: num(raw.wti),
+        ais_in_zone: num(raw.aisConcurrentInZone),
+        transit_count: num(raw.transits?.count ?? raw.dailyTransits?.nTotal),
+        transit_baseline: num(raw.transits?.baseline),
+        transit_throughput_pct: num(raw.transits?.throughputPct),
+        transit_as_of: raw.transits?.asOfDate || raw.dailyTransits?.date,
+        tanker_count: num(raw.dailyTransits?.nTanker),
+        insurance_multiple: num(raw.insurance?.multiple),
+        vlcc_premium_low: num(raw.insurance?.vlccPremiumLow),
+        vlcc_premium_high: num(raw.insurance?.vlccPremiumHigh),
+        crisis_pressure: num(raw.hormuzIndex?.crisisPressure?.value),
+        crisis_band: raw.hormuzIndex?.crisisPressure?.band || null,
+        escalation: num(raw.hormuzIndex?.escalationProbability?.value),
+        escalation_band: raw.hormuzIndex?.escalationProbability?.band || null,
+        iran_usd_mid: num(raw.iranRate?.midRial),
+        iran_delta_1d_pct:
+          raw.iranRate?.deltaDayPct == null
+            ? null
+            : Math.round(raw.iranRate.deltaDayPct * 100) / 100,
+        iran_delta_7d_pct:
+          raw.iranRate?.delta7dPct == null
+            ? null
+            : Math.round(raw.iranRate.delta7dPct * 100) / 100,
+        world_oil_at_risk_pct: num(raw.tradeImpact?.worldOilAtRiskPct),
+        world_lng_at_risk_pct: num(raw.tradeImpact?.worldLngAtRiskPct),
+        daily_cost_usd: num(raw.tradeImpact?.dailyEconomicCostUsd),
+        alt_route_extra_days: num(raw.tradeImpact?.alternativeRouteExtraDays),
+        carriers,
+        lanes,
+        events,
+        markets,
+        source: {
+          name: "straits.live",
+          url: "https://straits.live",
+          mirror:
+            "https://github.com/jasonhjohnson/strait-of-hormuz-data",
+        },
+      };
+    } catch {
+      // try next mirror
+    }
+  }
+  return null;
+}
+
+async function fetchHeadlines(
+  hormuzEvents: GeoHormuzCrisis["events"] = [],
+): Promise<GeoHeadline[]> {
+  const feeds: Array<{ url: string; source: string; limit: number }> = [
+    { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC World", limit: 8 },
+    { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera", limit: 8 },
+    {
+      url: "https://news.google.com/rss/search?q=Iran+OR+Hormuz+OR+%22Strait+of+Hormuz%22+when:2d&hl=en-US&gl=US&ceid=US:en",
+      source: "Google News",
+      limit: 10,
+    },
   ];
   const out: GeoHeadline[] = [];
+
+  for (const e of hormuzEvents.slice(0, 5)) {
+    out.push({
+      title: e.title,
+      source: "Hormuz live",
+      published: e.occurred_at,
+    });
+  }
+
   await Promise.all(
     feeds.map(async (feed) => {
       try {
         const res = await fetch(feed.url, {
           headers: {
             "User-Agent": UA,
-            Accept: "application/rss+xml, application/xml, text/xml",
+            Accept: "application/rss+xml, application/xml, text/xml,*/*",
           },
           next: { revalidate: 600 },
         });
         if (!res.ok) return;
         const xml = await res.text();
-        out.push(...parseRssItems(xml, feed.source, 6));
+        out.push(...parseRssItems(xml, feed.source, feed.limit));
       } catch {
         // ignore individual feed failures
       }
     }),
   );
+
+  const iranFocus =
+    /iran|hormuz|tehran|irgc|strait of hormuz|persian gulf|hezbollah|houthi|red sea|israel.?iran|중동|이란|호르무즈/i;
   const keywords =
     /war|israel|gaza|ukraine|russia|china|taiwan|iran|oil|sanction|nato|military|strike|missile|conflict|middle east|red sea|suez|hormuz|트럼프|중동|우크라|대만|중국|제재|원유/i;
+
   const ranked = [
-    ...out.filter((h) => keywords.test(h.title)),
-    ...out.filter((h) => !keywords.test(h.title)),
+    ...out.filter((h) => iranFocus.test(h.title)),
+    ...out.filter((h) => keywords.test(h.title) && !iranFocus.test(h.title)),
+    ...out.filter((h) => !keywords.test(h.title) && !iranFocus.test(h.title)),
   ];
   const seen = new Set<string>();
   const unique: GeoHeadline[] = [];
@@ -182,7 +425,7 @@ async function fetchHeadlines(): Promise<GeoHeadline[]> {
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(h);
-    if (unique.length >= 10) break;
+    if (unique.length >= 12) break;
   }
   return unique;
 }
@@ -192,18 +435,23 @@ export async function GET(request: Request) {
   const range = parseGeoRange(searchParams.get("range"));
 
   try {
-    const [signals, headlines] = await Promise.all([
+    const [signals, choke, hormuz] = await Promise.all([
       Promise.all(GEO_SIGNAL_SPECS.map((spec) => fetchYahooSignal(spec, range))),
-      fetchHeadlines(),
+      fetchChokepoints(),
+      fetchHormuzCrisis(),
     ]);
-    const composite = computeComposite(signals);
+    const headlines = await fetchHeadlines(hormuz?.events || []);
+    const composite = computeComposite(signals, choke.chokepoints, hormuz);
     const payload: GeoPayload = {
       ok: true,
       generated_at: new Date().toISOString(),
       note:
-        "Yahoo 일봉 시계열 + 공개 RSS. 투자 조언이 아니며 별도 DB 저장 없음.",
+        "이란·호르무즈(straits.live) + Eagle 해운경보 + Yahoo/RSS. 투자 조언 아님 · DB 저장 없음.",
       range,
       composite,
+      hormuz,
+      chokepoints: choke.chokepoints,
+      chokepoint_source: choke.source,
       signals,
       headlines,
       related_etfs: GEO_RELATED_ETFS,
@@ -221,6 +469,8 @@ export async function GET(request: Request) {
         note: "",
         range,
         composite: { score: 0, label: "n/a", drivers: [] },
+        hormuz: null,
+        chokepoints: [],
         signals: [],
         headlines: [],
         related_etfs: GEO_RELATED_ETFS,

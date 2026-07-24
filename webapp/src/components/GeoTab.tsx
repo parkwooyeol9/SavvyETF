@@ -13,6 +13,8 @@ import {
 
 import {
   GEO_RANGES,
+  type GeoChokepoint,
+  type GeoHormuzCrisis,
   type GeoPayload,
   type GeoPoint,
   type GeoRange,
@@ -49,11 +51,272 @@ function groupLabel(group: GeoSignal["group"]): string {
       return "금속·원자재";
     case "risk":
       return "리스크·운임";
+    case "region":
+      return "지역·국가 ETF";
     case "etf":
       return "관련 ETF";
     default:
       return group;
   }
+}
+
+function chokeStatusClass(status: string): string {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL|HIGH/.test(s)) return "severe";
+  if (/ELEVATED/.test(s)) return "elevated";
+  if (/WATCH|MONITORING/.test(s)) return "monitoring";
+  return "normal";
+}
+
+function chokeStatusKo(status: string): string {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL/.test(s)) return "심각";
+  if (/HIGH/.test(s)) return "높음";
+  if (/ELEVATED/.test(s)) return "경계";
+  if (/WATCH|MONITORING/.test(s)) return "주시";
+  if (/NORMAL|LOW/.test(s)) return "정상";
+  return status;
+}
+
+function statusRank(status: string): number {
+  const s = status.toUpperCase();
+  if (/SEVERE|CRITICAL/.test(s)) return 0;
+  if (/HIGH/.test(s)) return 1;
+  if (/ELEVATED/.test(s)) return 2;
+  if (/WATCH|MONITORING/.test(s)) return 3;
+  return 4;
+}
+
+function sortChokepoints(list: GeoChokepoint[]): GeoChokepoint[] {
+  return [...list].sort(
+    (a, b) =>
+      statusRank(a.status) - statusRank(b.status) ||
+      b.high_alerts_24h - a.high_alerts_24h,
+  );
+}
+
+function fmtCompactUsd(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function fmtRial(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${Math.round(n / 10).toLocaleString("en-US")} 토만/$`;
+}
+
+function hormuzLevel(h: GeoHormuzCrisis): "closed" | "restricted" | "open" {
+  if (/closed/i.test(h.verdict_status || "")) return "closed";
+  if (/restricted|disrupted|elevated/i.test(h.status || "")) return "restricted";
+  return "open";
+}
+
+function HormuzPanel({ hormuz }: { hormuz: GeoHormuzCrisis }) {
+  const level = hormuzLevel(hormuz);
+  return (
+    <section className="geo-section">
+      <div className="geo-section-head">
+        <h3 className="geo-section-title">이란 · 호르무즈 위기 모니터</h3>
+        <p className="meta-soft geo-choke-attr">
+          데이터{" "}
+          <a href={hormuz.source.url} target="_blank" rel="noopener noreferrer">
+            {hormuz.source.name}
+          </a>
+          {hormuz.source.mirror ? (
+            <>
+              {" "}
+              ·{" "}
+              <a
+                href={hormuz.source.mirror}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                공개 미러
+              </a>
+            </>
+          ) : null}
+          {hormuz.as_of
+            ? ` · ${new Date(hormuz.as_of).toLocaleString("ko-KR", { hour12: false })}`
+            : null}
+        </p>
+      </div>
+
+      <div className={`geo-hormuz-hero ${level}`}>
+        <div className="geo-hormuz-verdict">
+          <span className="geo-hormuz-badge">
+            {level === "closed"
+              ? "사실상 봉쇄"
+              : level === "restricted"
+                ? "통항 제한"
+                : "통항 가능"}
+          </span>
+          <h4>
+            {hormuz.verdict_short
+              ? `통항 가능? ${hormuz.verdict_short}`
+              : `상태: ${hormuz.status || "—"}`}
+          </h4>
+          <p>{hormuz.verdict_long || "호르무즈 해협 상태 스냅샷"}</p>
+        </div>
+        <div className="geo-hormuz-metrics">
+          <div>
+            <span>위기압</span>
+            <strong>
+              {hormuz.crisis_pressure ?? "—"}
+              {hormuz.crisis_band ? (
+                <em> {hormuz.crisis_band}</em>
+              ) : null}
+            </strong>
+          </div>
+          <div>
+            <span>고조 확률</span>
+            <strong>
+              {hormuz.escalation ?? "—"}
+              {hormuz.escalation_band ? <em> {hormuz.escalation_band}</em> : null}
+            </strong>
+          </div>
+          <div>
+            <span>일일 통항</span>
+            <strong>
+              {hormuz.transit_count ?? "—"}
+              {hormuz.transit_baseline != null
+                ? ` / 기준 ${hormuz.transit_baseline}`
+                : ""}
+            </strong>
+          </div>
+          <div>
+            <span>처리량</span>
+            <strong>
+              {hormuz.transit_throughput_pct != null
+                ? `${hormuz.transit_throughput_pct}%`
+                : "—"}
+            </strong>
+          </div>
+          <div>
+            <span>탱커</span>
+            <strong>{hormuz.tanker_count ?? "—"}척</strong>
+          </div>
+          <div>
+            <span>전쟁보험</span>
+            <strong>
+              {hormuz.insurance_multiple != null
+                ? `×${hormuz.insurance_multiple}`
+                : "—"}
+            </strong>
+          </div>
+          <div>
+            <span>세계 원유 위험</span>
+            <strong>
+              {hormuz.world_oil_at_risk_pct != null
+                ? `${hormuz.world_oil_at_risk_pct}%`
+                : "—"}
+            </strong>
+          </div>
+          <div>
+            <span>추정 일일 비용</span>
+            <strong>{fmtCompactUsd(hormuz.daily_cost_usd)}</strong>
+          </div>
+          <div>
+            <span>이란 리알</span>
+            <strong>
+              {fmtRial(hormuz.iran_usd_mid)}
+              {hormuz.iran_delta_1d_pct != null ? (
+                <em className={retClass(hormuz.iran_delta_1d_pct)}>
+                  {" "}
+                  1D {fmtPct(hormuz.iran_delta_1d_pct)}
+                </em>
+              ) : null}
+            </strong>
+          </div>
+          <div>
+            <span>AIS 존 내 선박</span>
+            <strong>{hormuz.ais_in_zone ?? "—"}</strong>
+          </div>
+          <div>
+            <span>우회 추가일</span>
+            <strong>
+              {hormuz.alt_route_extra_days != null
+                ? `+${hormuz.alt_route_extra_days}일`
+                : "—"}
+            </strong>
+          </div>
+          <div>
+            <span>VLCC 프리미엄</span>
+            <strong>
+              {hormuz.vlcc_premium_low != null && hormuz.vlcc_premium_high != null
+                ? `${fmtCompactUsd(hormuz.vlcc_premium_low)}–${fmtCompactUsd(hormuz.vlcc_premium_high)}`
+                : "—"}
+            </strong>
+          </div>
+        </div>
+      </div>
+
+      {hormuz.lanes.length ? (
+        <div className="geo-hormuz-lanes">
+          {hormuz.lanes.map((lane) => {
+            const pct =
+              lane.pre_crisis_baseline && lane.n_total != null
+                ? Math.round((lane.n_total / lane.pre_crisis_baseline) * 100)
+                : null;
+            return (
+              <article key={lane.id} className="geo-lane-card">
+                <strong>{lane.name}</strong>
+                <div className="geo-lane-nums">
+                  <span>{lane.n_total ?? "—"}척</span>
+                  {pct != null ? <span>위기전 대비 {pct}%</span> : null}
+                  {lane.delta_day != null ? (
+                    <span className={retClass(lane.delta_day)}>
+                      Δ1D {lane.delta_day > 0 ? "+" : ""}
+                      {lane.delta_day}
+                    </span>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {hormuz.carriers.length ? (
+        <div className="geo-hormuz-carriers">
+          <h4 className="geo-subhead">선사 우회·중단</h4>
+          <ul>
+            {hormuz.carriers.map((c) => (
+              <li key={c.name}>
+                <strong>{c.name}</strong>
+                {c.notes ? <span>{c.notes}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {hormuz.markets.length ? (
+        <div className="geo-hormuz-markets">
+          <h4 className="geo-subhead">예측시장 (이란 관련)</h4>
+          <div className="geo-market-row">
+            {hormuz.markets.map((m) => (
+              <div key={m.title} className="geo-market-chip">
+                {m.url ? (
+                  <a href={m.url} target="_blank" rel="noopener noreferrer">
+                    {m.title}
+                  </a>
+                ) : (
+                  <span>{m.title}</span>
+                )}
+                <strong>
+                  {m.probability != null ? `${m.probability}%` : "—"}
+                </strong>
+                {m.venue ? <em>{m.venue}</em> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function chartStroke(change?: number | null): string {
@@ -172,14 +435,24 @@ export default function GeoTab() {
     return data.signals.find((s) => s.id === selectedId) || data.signals[0];
   }, [data, selectedId]);
 
-  const groups: GeoSignal["group"][] = ["energy", "metals", "risk", "etf"];
+  const groups: GeoSignal["group"][] = [
+    "energy",
+    "metals",
+    "risk",
+    "region",
+    "etf",
+  ];
   const rangeLabel = GEO_RANGES.find((r) => r.id === range)?.label || range;
+  const chokepoints = useMemo(
+    () => sortChokepoints(data?.chokepoints || []),
+    [data?.chokepoints],
+  );
 
   return (
     <div className="geo-tab">
       <section className="feature-block">
         <div className="feature-head geo-head-row">
-          <h2 className="feature-title">지정학 · 매크로 레이더</h2>
+          <h2 className="feature-title">지정학 · 이란 전쟁 레이더</h2>
           <div className="chip-row geo-range-chips" role="group" aria-label="차트 기간">
             {GEO_RANGES.map((r) => (
               <button
@@ -226,6 +499,65 @@ export default function GeoTab() {
                 </p>
               </div>
             </div>
+
+            {data.hormuz ? <HormuzPanel hormuz={data.hormuz} /> : null}
+
+            {chokepoints.length ? (
+              <section className="geo-section">
+                <div className="geo-section-head">
+                  <h3 className="geo-section-title">해운 병목 (Chokepoints)</h3>
+                  {data.chokepoint_source ? (
+                    <p className="meta-soft geo-choke-attr">
+                      데이터{" "}
+                      <a
+                        href={data.chokepoint_source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {data.chokepoint_source.name}
+                      </a>{" "}
+                      (CC BY 4.0)
+                    </p>
+                  ) : null}
+                </div>
+                <div className="geo-choke-grid">
+                  {chokepoints.map((c) => (
+                    <article
+                      key={c.id}
+                      className={`geo-choke-card ${chokeStatusClass(c.status)}`}
+                    >
+                      <div className="geo-choke-top">
+                        <strong>{c.name}</strong>
+                        <span className="geo-choke-badge">
+                          {chokeStatusKo(c.status)}
+                        </span>
+                      </div>
+                      <div className="geo-choke-stats">
+                        <span>24h 시그널 {c.signals_24h}</span>
+                        <span>고위험 {c.high_alerts_24h}</span>
+                        <span>7일 {c.signals_7d}</span>
+                      </div>
+                      {c.latest_headline ? (
+                        c.page_url ? (
+                          <a
+                            className="geo-choke-hl"
+                            href={c.page_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {c.latest_headline}
+                          </a>
+                        ) : (
+                          <p className="geo-choke-hl">{c.latest_headline}</p>
+                        )
+                      ) : (
+                        <p className="geo-choke-hl muted">최근 고위험 헤드라인 없음</p>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {selected ? (
               <section className="geo-section geo-featured">

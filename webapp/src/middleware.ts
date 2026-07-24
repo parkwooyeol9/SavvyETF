@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { updateSession } from "@/lib/supabase/middleware";
 
 const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/simulate": { limit: 12, windowMs: 60_000 },
@@ -9,12 +10,14 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/heatmap": { limit: 20, windowMs: 60_000 },
   "/api/kr-market": { limit: 20, windowMs: 60_000 },
   "/api/esg-carbon": { limit: 20, windowMs: 60_000 },
+  "/api/esg-themes": { limit: 30, windowMs: 60_000 },
   "/api/fx": { limit: 40, windowMs: 60_000 },
   "/api/geo": { limit: 30, windowMs: 60_000 },
   "/api/ingest": { limit: 60, windowMs: 60_000 },
+  "/api/community/posts": { limit: 30, windowMs: 60_000 },
 };
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const rule = HEAVY_PATHS[pathname];
   const responseHeaders = new Headers();
@@ -25,14 +28,14 @@ export function middleware(request: NextRequest) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com",
+      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com https://*.googleusercontent.com https://*.supabase.co",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.onrender.com",
-      "frame-src 'self' blob:",
+      "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com",
+      "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://accounts.google.com https://*.supabase.co",
     ].join("; "),
   );
 
@@ -53,8 +56,11 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const res = NextResponse.next();
+  let res = NextResponse.next({
+    request: { headers: request.headers },
+  });
   responseHeaders.forEach((value, key) => res.headers.set(key, value));
+  res = await updateSession(request, res);
   return res;
 }
 

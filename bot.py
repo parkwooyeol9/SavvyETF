@@ -31,6 +31,7 @@ from stock_crawler import (
     warmup_startup_caches,
 )
 from etf_sector_scheduler import start_etf_sector_scheduler
+from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
 from esg_scheduler import start_esg_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -65,6 +66,9 @@ What each command returns:
 
 /etf memb EEM
 → US ETF current holdings Top10 chart + Excel (Yahoo; iShares full CU when available)
+
+/etf_us_new
+→ 미국 신규 상장 ETF (Nasdaq + Yahoo inception) + 구성 Top holdings
 
 /etf_holdings EEM 005930
 → ETF 내 특정 종목 편입비 시계열 차트 + 표 + Excel (iShares/Naver)
@@ -111,6 +115,9 @@ What each command returns:
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
+/data_briefing [kor]
+→ Gemini 3-paragraph briefing from latest boards/notes/news (kor first; us/etf/esg later)
+
 /reddit
 → WSB hot topics + Gemini KR + /financial for top 2 tickers (web + PDF)
 
@@ -148,7 +155,7 @@ What each command returns:
 Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
   /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
-  /etf_sector 07:00 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /etf_sector 07:00 · /etf_us_new 07:20 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
 
 Type /help for the full command list.
@@ -166,6 +173,7 @@ def build_help_messages() -> list[dict]:
 <code>/etf</code> <code>/sp</code> <code>/nas</code> — ETF·S&P500·NASDAQ100 등락+거래량 상위
 <code>/etf_sector</code> — 섹터 로테이션 (전일 수익률 + 차트, XL*/테마 vs SPY)
 <code>/etf memb EEM</code> — 미국 ETF 편입비중 Top10 + Excel
+<code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
@@ -191,9 +199,11 @@ def build_help_messages() -> list[dict]:
 <code>/summary_kor_intra</code> 11:00 — 한국 장중 (Korea 채널)
 <code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
 <code>/etf_sector</code> 07:00 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
+<code>/etf_us_new</code> 07:20 — 미국 신규 상장 ETF (레거시 ETF 채널, 미국 휴장 제외)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
+<code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (국내 우선)
 
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
@@ -207,6 +217,7 @@ def build_help_messages() -> list[dict]:
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/etf memb EEM</code> — 미국 ETF 현재 편입비중 Top10 + Excel
+<code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 내 종목 편입비 시계열 + Excel
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
@@ -1175,6 +1186,87 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"Error generating AI briefing: {exc}"}]
 
+    if (
+        lower in {"/data_briefing", "/databriefing", "/data_brief"}
+        or lower.startswith("/data_briefing ")
+        or lower.startswith("/databriefing ")
+    ):
+        try:
+            parts = normalized.split()
+            market = (parts[1] if len(parts) > 1 else "kor").strip().lower()
+            market_aliases = {
+                "kor": "kr",
+                "korea": "kr",
+                "kr": "kr",
+                "국내": "kr",
+                "us": "us",
+                "usa": "us",
+                "미국": "us",
+                "etf": "etf",
+                "esg": "esg",
+            }
+            market_key = market_aliases.get(market)
+            if market_key is None:
+                return [
+                    {
+                        "text": (
+                            "Usage: /data_briefing [kor|us|etf|esg]\n"
+                            "Currently supported: kor (국내시황)."
+                        )
+                    }
+                ]
+            if market_key != "kr":
+                return [
+                    {
+                        "text": (
+                            f"/data_briefing {market} is reserved for later wiring.\n"
+                            "지금은 국내시황만 지원합니다 → /data_briefing kor"
+                        )
+                    }
+                ]
+
+            from data_briefing import (
+                format_data_briefing_telegram,
+                generate_data_briefing_from_kor_summary,
+            )
+            from summary_analyst import collect_leader_charts, generate_chart_notes
+            from summary_kor_builder import (
+                build_kor_market_summary,
+                ensure_kor_caches,
+                _attach_dart_for_leaders,
+            )
+
+            replies: list[dict] = [
+                {
+                    "text": (
+                        "📝 Building Korea data briefing from boards / chart notes / Naver news…"
+                    )
+                }
+            ]
+            missing = ensure_kor_caches(force=False)
+            if missing:
+                return [
+                    {
+                        "text": (
+                            "Korea caches not ready. Run /summary_kor first, "
+                            "then retry /data_briefing kor."
+                        )
+                    }
+                ]
+            summary = build_kor_market_summary(intraday=False)
+            leader_charts = collect_leader_charts(summary)
+            summary["leader_charts"] = leader_charts
+            chart_notes = generate_chart_notes(summary, leader_charts)
+            summary["dart_by_universe"] = _attach_dart_for_leaders(summary)
+            briefing = generate_data_briefing_from_kor_summary(
+                summary,
+                chart_notes_ko=chart_notes,
+            )
+            replies.extend(format_data_briefing_telegram(briefing))
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error generating data briefing: {exc}"}]
+
     if lower in {"/reddit", "/wsb"} or lower.startswith("/reddit "):
         try:
             from reddit_builder import generate_and_save_reddit_brief
@@ -1492,6 +1584,21 @@ def handle_telegram_message(message, chat_id: int):
             return [{"text": f"Invalid heatmap command: {exc}\n\nUsage: /heatmap sp | /heatmap nas 20 | /heatmap etf 30"}]
         except Exception as exc:
             return [{"text": f"Heatmap failed: {exc}"}]
+
+    from etf_us_new import is_etf_us_new_command
+
+    if is_etf_us_new_command(normalized):
+        try:
+            from etf_us_new import run_etf_us_new
+
+            replies: list[dict] = [
+                {"text": "미국 신규 상장 ETF 조회 중 (Nasdaq + Yahoo)…"}
+            ]
+            result = run_etf_us_new()
+            replies.extend(result["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"/etf_us_new failed: {exc}"}]
 
     from etf_memb_us import is_etf_memb_command
 
@@ -3166,6 +3273,7 @@ if __name__ == "__main__":
         public_url=summary_public_url(),
     )
     start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_etf_us_new_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)

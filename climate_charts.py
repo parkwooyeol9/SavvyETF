@@ -313,7 +313,7 @@ def format_climate_monitor_telegram(bundle: dict[str, Any]) -> str:
         )
 
     lines = [
-        "<b>🌍 Climate Risk Monitor</b>",
+        "<b>🌍 Physical climate risk · adaptation</b>",
         f"<i>{esc(bundle.get('generated_at_display', ''))}</i>",
         (
             f"Risk <b>{risk.get('score', 'n/a')}</b> · "

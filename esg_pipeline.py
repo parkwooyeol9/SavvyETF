@@ -141,9 +141,9 @@ def run_esg(
 
             slot = "esg_accident" if mode == "accident" else "esg_overview"
             title = (
-                "ESG 시황 /esg accident"
+                "거버넌스·안전 공시 · /esg accident"
                 if mode == "accident"
-                else f"ESG 시황 /esg {query or 'overview'}"
+                else f"거버넌스 품질 스크린 · /esg {query or 'overview'}"
             )
             publish_brief(
                 "esg",

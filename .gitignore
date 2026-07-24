@@ -42,6 +42,7 @@ data/kakao_tokens.json
 data/etf_memb/
 data/etf_holdings/
 data/etf_memb_us/
+data/etf_us_new/
 data/web_briefs/
 fonts/*.ttf
 data/fonts/

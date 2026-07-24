@@ -82,7 +82,8 @@ const TELEGRAM_CHANNELS = [
     accent: "etf",
     lines: [
       "07:00 — 미국 업종·테마 ETF",
-      "15:40 — 신규 ETF·수급",
+      "07:20 — 미국 신규 상장 ETF",
+      "15:40 — 국내 신규 ETF·수급",
       "수시 — ETF 정기변경·편입비",
     ],
   },
@@ -93,8 +94,9 @@ const TELEGRAM_CHANNELS = [
     href: "https://t.me/SavvyESG",
     accent: "esg",
     lines: [
-      "유럽 이상기후·지진 모니터",
-      "DART 기반 기업 ESG 모니터",
+      "전력·그리드 · 물리적 기후 · 거버넌스/AI/사이버",
+      "09:00 — 물리적 기후위험 모니터",
+      "DART 기반 거버넌스·안전 공시",
     ],
   },
 ] as const;
@@ -175,10 +177,6 @@ export default function MainTab() {
       <section className="feature-block">
         <div className="feature-head">
           <h2 className="feature-title">ETF 히트맵</h2>
-          <p className="feature-lead">
-            시가총액·AUM 기준 상위 종목의 하루 수익률을 Finviz 스타일로 보여줍니다. Yahoo
-            일봉으로 실시간 갱신됩니다.
-          </p>
         </div>
 
         <div className="chip-row" role="tablist" aria-label="히트맵 유니버스">
