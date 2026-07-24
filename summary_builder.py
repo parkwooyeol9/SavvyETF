@@ -10,7 +10,12 @@ from zoneinfo import ZoneInfo
 
 from news_crawler import _display_ticker_label, fetch_crypto_news, fetch_news_for_tickers
 from heatmap import plot_market_heatmap
-from ai_briefing import _strip_disclaimer, generate_ai_briefing
+from ai_briefing import _strip_disclaimer
+from data_briefing import (
+    brief_paragraphs_html,
+    format_brief_paragraphs,
+    generate_data_briefing_from_us_summary,
+)
 from summary_analyst import collect_leader_charts, generate_chart_notes
 from stock_crawler import (
     DEFAULT_TOP_N,
@@ -166,37 +171,32 @@ def _render_ai_html(summary: dict) -> str:
     brief_ko = _strip_disclaimer(ai_analysis.get("market_brief_ko", "").strip())
     if not brief_ko:
         return ""
-    ai_lines = "".join(f"<p>{_esc(line)}</p>" for line in brief_ko.split("\n") if line.strip())
+    ai_lines = brief_paragraphs_html(brief_ko, esc=_esc)
     source = ai_analysis.get("source", "")
     article_count = ai_analysis.get("article_count", 0)
-    articles_html = ""
-    for item in (ai_analysis.get("articles") or [])[:8]:
-        articles_html += (
-            f"<li><strong>{_esc(item.get('title', ''))}</strong>"
-            f"<span class='meta'>{_esc(item.get('source', ''))}</span></li>"
-        )
-    articles_block = f"<ul>{articles_html}</ul>" if articles_html else ""
     return f"""
     <section class="ai-brief">
-      <h2>🤖 AI 시장 브리핑</h2>
-      <p class="meta">트렌딩 뉴스 {article_count}건 분석 ({_esc(source)})</p>
+      <h2>📝 데이터 브리핑 · 미국시황</h2>
+      <p class="meta">보드·차트 노트·뉴스 기반 · 참고 {article_count}건 ({_esc(source)})</p>
       {ai_lines}
-      {articles_block}
     </section>
     """
 
 
 def _format_ai_telegram(summary: dict) -> list[dict]:
     ai_analysis = summary.get("ai_analysis") or {}
-    brief_ko = _strip_disclaimer(ai_analysis.get("market_brief_ko", "").strip())
+    brief_ko = format_brief_paragraphs(
+        str(ai_analysis.get("market_brief_ko") or ""),
+        blank_lines=2,
+    )
     if not brief_ko:
         return []
     source = ai_analysis.get("source", "ai")
     article_count = ai_analysis.get("article_count", 0)
-    ai_header = "🤖 AI 시장 브리핑 (한국어)\n"
+    ai_header = "📝 데이터 브리핑 · 미국시황\n"
     if ai_analysis.get("error") and source == "rules":
-        ai_header += "(Gemini unavailable — headline-based fallback)\n"
-    ai_header += f"출처: {source} | 분석 기사 {article_count}건\n\n"
+        ai_header += "(Gemini unavailable — data fallback)\n"
+    ai_header += f"출처: {source} | 참고 뉴스 {article_count}건\n\n"
     return [{"text": ai_header + brief_ko}]
 
 
@@ -520,6 +520,8 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     }}
     .ai-brief {{ border-left: 4px solid var(--accent, #4da3ff); }}
     .ai-brief p, .macro-line {{ margin: 0.55rem 0; line-height: 1.65; }}
+    .ai-brief p.brief-para {{ margin: 0 0 1.25rem; }}
+    .ai-brief p.brief-para:last-child {{ margin-bottom: 0; }}
     .leader-grid, .crypto-grid {{ display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
     .leader-card, .crypto-card img, .appendix-section img {{
       width: 100%; border-radius: 8px; border: 1px solid var(--border, #2b3648);
@@ -902,9 +904,7 @@ def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False
     summary = build_market_summary()
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
-    ai_brief = generate_ai_briefing()
-    ai_brief["chart_notes_ko"] = generate_chart_notes(summary, leader_charts)
-    summary["ai_analysis"] = ai_brief
+    chart_notes = generate_chart_notes(summary, leader_charts)
     try:
         heatmap_buf, heatmap_caption, _ = plot_market_heatmap("sp")
         summary["heatmap_sp"] = {"chart": heatmap_buf, "caption": heatmap_caption}
@@ -913,6 +913,22 @@ def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False
 
     summary["macro"] = _build_macro_appendix(force=force_macro)
     summary["crypto"] = _build_crypto_appendix()
+
+    # Final stage: data briefing from boards / notes / news / macro extras
+    # (replaces the previous trending-news AI briefing).
+    briefing = generate_data_briefing_from_us_summary(
+        summary,
+        chart_notes_ko=chart_notes,
+    )
+    summary["ai_analysis"] = {
+        "chart_notes_ko": chart_notes,
+        "market_brief_ko": briefing.get("market_brief_ko") or "",
+        "source": briefing.get("source") or "rules",
+        "article_count": briefing.get("article_count") or 0,
+        "briefing_market": briefing.get("market") or "us",
+        "error": briefing.get("error"),
+    }
+
     # Freeze to raw bytes BEFORE any consumer (PDF/HTML/Telegram) touches charts.
     _freeze_summary_charts(summary)
 

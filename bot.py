@@ -115,8 +115,8 @@ What each command returns:
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
-/data_briefing [kor]
-→ Gemini 3-paragraph briefing from latest boards/notes/news (kor first; us/etf/esg later)
+/data_briefing [kor|us]
+→ Gemini 3-paragraph briefing from latest boards/notes/news (etf/esg later)
 
 /reddit
 → WSB hot topics + Gemini KR + /financial for top 2 tickers (web + PDF)
@@ -203,7 +203,7 @@ def build_help_messages() -> list[dict]:
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
-<code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (국내 우선)
+<code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us)
 
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
@@ -1202,6 +1202,7 @@ def handle_telegram_message(message, chat_id: int):
                 "us": "us",
                 "usa": "us",
                 "미국": "us",
+                "summary": "us",
                 "etf": "etf",
                 "esg": "esg",
             }
@@ -1211,57 +1212,86 @@ def handle_telegram_message(message, chat_id: int):
                     {
                         "text": (
                             "Usage: /data_briefing [kor|us|etf|esg]\n"
-                            "Currently supported: kor (국내시황)."
+                            "Currently supported: kor, us."
                         )
                     }
                 ]
-            if market_key != "kr":
+            if market_key not in {"kr", "us"}:
                 return [
                     {
                         "text": (
                             f"/data_briefing {market} is reserved for later wiring.\n"
-                            "지금은 국내시황만 지원합니다 → /data_briefing kor"
+                            "지금은 kor / us 만 지원합니다."
                         )
                     }
                 ]
 
-            from data_briefing import (
-                format_data_briefing_telegram,
-                generate_data_briefing_from_kor_summary,
-            )
+            from data_briefing import format_data_briefing_telegram
             from summary_analyst import collect_leader_charts, generate_chart_notes
-            from summary_kor_builder import (
-                build_kor_market_summary,
-                ensure_kor_caches,
-                _attach_dart_for_leaders,
-            )
 
-            replies: list[dict] = [
-                {
-                    "text": (
-                        "📝 Building Korea data briefing from boards / chart notes / Naver news…"
-                    )
-                }
-            ]
-            missing = ensure_kor_caches(force=False)
-            if missing:
-                return [
+            if market_key == "kr":
+                from data_briefing import generate_data_briefing_from_kor_summary
+                from summary_kor_builder import (
+                    build_kor_market_summary,
+                    ensure_kor_caches,
+                    _attach_dart_for_leaders,
+                )
+
+                replies: list[dict] = [
                     {
                         "text": (
-                            "Korea caches not ready. Run /summary_kor first, "
-                            "then retry /data_briefing kor."
+                            "📝 Building Korea data briefing from boards / chart notes / Naver news…"
                         )
                     }
                 ]
-            summary = build_kor_market_summary(intraday=False)
-            leader_charts = collect_leader_charts(summary)
-            summary["leader_charts"] = leader_charts
-            chart_notes = generate_chart_notes(summary, leader_charts)
-            summary["dart_by_universe"] = _attach_dart_for_leaders(summary)
-            briefing = generate_data_briefing_from_kor_summary(
-                summary,
-                chart_notes_ko=chart_notes,
-            )
+                missing = ensure_kor_caches(force=False)
+                if missing:
+                    return [
+                        {
+                            "text": (
+                                "Korea caches not ready. Run /summary_kor first, "
+                                "then retry /data_briefing kor."
+                            )
+                        }
+                    ]
+                summary = build_kor_market_summary(intraday=False)
+                leader_charts = collect_leader_charts(summary)
+                summary["leader_charts"] = leader_charts
+                chart_notes = generate_chart_notes(summary, leader_charts)
+                summary["dart_by_universe"] = _attach_dart_for_leaders(summary)
+                briefing = generate_data_briefing_from_kor_summary(
+                    summary,
+                    chart_notes_ko=chart_notes,
+                )
+            else:
+                from data_briefing import generate_data_briefing_from_us_summary
+                from summary_builder import build_market_summary, caches_ready
+
+                replies = [
+                    {
+                        "text": (
+                            "📝 Building US data briefing from boards / chart notes / news…"
+                        )
+                    }
+                ]
+                if not caches_ready():
+                    return [
+                        {
+                            "text": (
+                                "US ranking caches not ready. Run /summary first, "
+                                "then retry /data_briefing us."
+                            )
+                        }
+                    ]
+                summary = build_market_summary()
+                leader_charts = collect_leader_charts(summary)
+                summary["leader_charts"] = leader_charts
+                chart_notes = generate_chart_notes(summary, leader_charts)
+                briefing = generate_data_briefing_from_us_summary(
+                    summary,
+                    chart_notes_ko=chart_notes,
+                )
+
             replies.extend(format_data_briefing_telegram(briefing))
             return replies
         except Exception as exc:
