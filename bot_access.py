@@ -41,6 +41,9 @@ HEAVY_COMMAND_TOKENS = {
     "/financial",
     "/macro",
     "/aibriefing",
+    "/data_briefing",
+    "/databriefing",
+    "/data_brief",
     "/esg",
     "/port",
 }

@@ -115,6 +115,9 @@ What each command returns:
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
 
+/data_briefing [kor]
+→ Gemini 3-paragraph briefing from latest boards/notes/news (kor first; us/etf/esg later)
+
 /reddit
 → WSB hot topics + Gemini KR + /financial for top 2 tickers (web + PDF)
 
@@ -200,6 +203,7 @@ def build_help_messages() -> list[dict]:
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
+<code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (국내 우선)
 
 <b>🔬 종목 · ETF 분석</b>
 <code>/financial AAPL</code> — S&P500 펀더멘털
@@ -1181,6 +1185,87 @@ def handle_telegram_message(message, chat_id: int):
             return format_ai_briefing_telegram(briefing, include_sources=True)
         except Exception as exc:
             return [{"text": f"Error generating AI briefing: {exc}"}]
+
+    if (
+        lower in {"/data_briefing", "/databriefing", "/data_brief"}
+        or lower.startswith("/data_briefing ")
+        or lower.startswith("/databriefing ")
+    ):
+        try:
+            parts = normalized.split()
+            market = (parts[1] if len(parts) > 1 else "kor").strip().lower()
+            market_aliases = {
+                "kor": "kr",
+                "korea": "kr",
+                "kr": "kr",
+                "국내": "kr",
+                "us": "us",
+                "usa": "us",
+                "미국": "us",
+                "etf": "etf",
+                "esg": "esg",
+            }
+            market_key = market_aliases.get(market)
+            if market_key is None:
+                return [
+                    {
+                        "text": (
+                            "Usage: /data_briefing [kor|us|etf|esg]\n"
+                            "Currently supported: kor (국내시황)."
+                        )
+                    }
+                ]
+            if market_key != "kr":
+                return [
+                    {
+                        "text": (
+                            f"/data_briefing {market} is reserved for later wiring.\n"
+                            "지금은 국내시황만 지원합니다 → /data_briefing kor"
+                        )
+                    }
+                ]
+
+            from data_briefing import (
+                format_data_briefing_telegram,
+                generate_data_briefing_from_kor_summary,
+            )
+            from summary_analyst import collect_leader_charts, generate_chart_notes
+            from summary_kor_builder import (
+                build_kor_market_summary,
+                ensure_kor_caches,
+                _attach_dart_for_leaders,
+            )
+
+            replies: list[dict] = [
+                {
+                    "text": (
+                        "📝 Building Korea data briefing from boards / chart notes / Naver news…"
+                    )
+                }
+            ]
+            missing = ensure_kor_caches(force=False)
+            if missing:
+                return [
+                    {
+                        "text": (
+                            "Korea caches not ready. Run /summary_kor first, "
+                            "then retry /data_briefing kor."
+                        )
+                    }
+                ]
+            summary = build_kor_market_summary(intraday=False)
+            leader_charts = collect_leader_charts(summary)
+            summary["leader_charts"] = leader_charts
+            chart_notes = generate_chart_notes(summary, leader_charts)
+            summary["dart_by_universe"] = _attach_dart_for_leaders(summary)
+            briefing = generate_data_briefing_from_kor_summary(
+                summary,
+                chart_notes_ko=chart_notes,
+            )
+            replies.extend(format_data_briefing_telegram(briefing))
+            return replies
+        except Exception as exc:
+            return [{"text": f"Error generating data briefing: {exc}"}]
 
     if lower in {"/reddit", "/wsb"} or lower.startswith("/reddit "):
         try:
