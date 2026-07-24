@@ -372,6 +372,42 @@ def _rule_based_brief(payload: dict[str, Any]) -> str:
             themes.append(str(item)[:80])
 
     boards = (payload.get("boards_text") or "").strip()
+    notes = payload.get("chart_notes") or {}
+
+    if market == "esg":
+        climate_hint = ""
+        if isinstance(notes, dict) and notes.get("climate"):
+            climate_hint = str(notes["climate"])
+        elif "Climate Risk" in boards:
+            for line in boards.splitlines():
+                if "score=" in line:
+                    climate_hint = line.strip()
+                    break
+        geo_hint = ""
+        if isinstance(notes, dict) and notes.get("geo_composite"):
+            geo_hint = str(notes["geo_composite"])
+        elif isinstance(notes, dict) and notes.get("hormuz"):
+            geo_hint = f"Hormuz {notes['hormuz']}"
+
+        p1 = (
+            f"{label} 기준으로 보면 물리적 기후위험 모니터와 ESG 테마 수급이 동시에 움직이는 구간입니다."
+            + (f" ({climate_hint})" if climate_hint else "")
+        )
+        p2 = (
+            "지정학 측면에서는 "
+            + (f"{geo_hint} 등 신호와 함께 " if geo_hint else "")
+            + (
+                (", ".join(themes[:3]) + " 등 헤드라인이 리스크 프리미엄을 자극하고 있습니다.")
+                if themes
+                else "호르무즈·주요 해상 병목 이슈를 중심으로 에너지·운임 관련 변동성이 커질 수 있습니다."
+            )
+        )
+        p3 = (
+            "기후·지정학 민감 섹터는 추격보다 이벤트 강도와 수급이 겹치는 구간만 선별하고, "
+            "포트폴리오 차원에서는 변동성 버퍼를 유지하는 접근이 필요해 보입니다."
+        )
+        return "\n\n".join([p1, p2, p3])
+
     mover_hint = ""
     for line in boards.splitlines():
         stripped = line.strip()
