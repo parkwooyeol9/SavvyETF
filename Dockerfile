@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Cache-bust marker so Render rebuilds app layers after feature drops.
+ARG APP_BUILD_ID=esg-brief-20260724
+ENV APP_BUILD_ID=${APP_BUILD_ID}
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6 \
     tzdata \
