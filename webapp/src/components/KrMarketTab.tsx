@@ -485,18 +485,31 @@ function SingleStockLevPanel({
       </div>
 
       <div className="kr-card-head" style={{ marginTop: 8 }}>
-        <h4 className="kr-card-title" style={{ fontSize: 14 }}>
-          유형별 AUM 추이
-        </h4>
+        <div>
+          <h4 className="kr-card-title" style={{ fontSize: 14 }}>
+            유형별 AUM 추이
+          </h4>
+          <p className="kr-card-sub">좌축 2x · 우축 -2x (단위: 억)</p>
+        </div>
       </div>
       <div className="kr-chart" style={{ height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={aumChart} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+          <LineChart data={aumChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
             <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
             <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
             <YAxis
+              yAxisId="left"
               tick={{ fill: "#8fa3b8", fontSize: 10 }}
               width={52}
+              tickFormatter={(v: number) =>
+                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
+              }
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fill: "#c4a574", fontSize: 10 }}
+              width={48}
               tickFormatter={(v: number) =>
                 v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
               }
@@ -516,6 +529,7 @@ function SingleStockLevPanel({
             {board.groups.map((g) => (
               <Line
                 key={g.key}
+                yAxisId={g.direction === "inv" ? "right" : "left"}
                 type="monotone"
                 dataKey={g.key}
                 stroke={g.color}
