@@ -2345,6 +2345,10 @@ def start_web_server():
 
                 payload = {
                     "ok": True,
+                    "build_id": os.environ.get("RENDER_GIT_COMMIT")
+                    or os.environ.get("GIT_COMMIT")
+                    or "esg-brief-20260724",
+                    "data_briefing_markets": ["kor", "us", "esg"],
                     "summary_kor_builder": kor_spec is not None,
                     "access_mode": access_mode(),
                     "allowlist_configured": bool(
@@ -2400,6 +2404,7 @@ def start_web_server():
                                 "etf-sector-scheduler" in thread_names
                             ),
                             "esg-scheduler": "esg-scheduler" in thread_names,
+                            "esg-brief-scheduler": "esg-brief-scheduler" in thread_names,
                         },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
@@ -2414,6 +2419,7 @@ def start_web_server():
                         "last_esg_monitor_slot": state.get("last_esg_monitor_slot"),
                         "last_esg_accident_slot": state.get("last_esg_accident_slot"),
                         "last_esg_overview_slot": state.get("last_esg_overview_slot"),
+                        "last_esg_brief_slot": state.get("last_esg_brief_slot"),
                         "last_summary_error": state.get("last_summary_error"),
                         "last_summary_nxt_error": state.get("last_summary_nxt_error"),
                         "last_summary_kor_intra_error": state.get(
@@ -2422,6 +2428,7 @@ def start_web_server():
                         "last_etfcheck_error": state.get("last_etfcheck_error"),
                         "last_etf_sector_error": state.get("last_etf_sector_error"),
                         "last_esg_monitor_error": state.get("last_esg_monitor_error"),
+                        "last_esg_brief_error": state.get("last_esg_brief_error"),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
                         "last_esg_overview_error": state.get("last_esg_overview_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
@@ -2477,6 +2484,9 @@ def start_web_server():
                         ),
                         "esg_overview_kst": os.environ.get(
                             "ESG_OVERVIEW_SCHEDULE_KST", "9:45"
+                        ),
+                        "esg_brief_kst": os.environ.get(
+                            "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
