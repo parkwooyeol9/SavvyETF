@@ -4,13 +4,13 @@
  * True “수급 계정”은 공개되지 않으므로, 업계 표준 추정식을 사용합니다:
  *   flow_t ≈ NAV_{t-1} × Δshares_outstanding_t
  *
- * 국내 ETF는 Naver 외국인 보유주수/보유율로 상장좌수를 역산하고,
- * 종가를 NAV 대용으로 사용합니다(프리미엄·디스카운트는 통상 작음).
- * 미국 ETF는 일별 shares outstanding 히스토리가 무료로 안정 제공되지 않아
- * 1차 범위에서 제외합니다.
+ * 국내: Naver 외국인 보유주수/보유율로 상장좌수 역산, 종가≈NAV 대용.
+ * 미국: State Street (SSGA) 공개 navhist(xlsx)의 NAV·Shares Outstanding 사용.
  */
 
 export type EtfFlowBucket = "country" | "sector" | "theme";
+export type EtfFlowMarket = "kr" | "us";
+export type EtfFlowUnit = "krw_eok" | "usd_mn";
 
 export type EtfFlowMeta = {
   code: string;
@@ -22,6 +22,7 @@ export type EtfFlowMeta = {
 
 export type EtfFlowDayPoint = {
   date: string; // YYYY-MM-DD
+  /** Amount in payload.unit (KRW 억 or USD million). */
   flow_eok: number;
   flow_cum_eok: number;
   aum_eok: number;
@@ -43,6 +44,8 @@ export type EtfFlowPayload = {
   ok: boolean;
   error?: string;
   generated_at?: string;
+  market?: EtfFlowMarket;
+  unit?: EtfFlowUnit;
   note?: string;
   source?: string;
   formula?: string;
@@ -82,6 +85,38 @@ export const ETF_FLOW_UNIVERSE: EtfFlowMeta[] = [
   { code: "161510", name: "PLUS 고배당주", bucket: "theme", label: "배당", color: "#eab308" },
 ];
 
+/**
+ * Curated US-listed SPDRs with public daily NAV + shares outstanding
+ * from State Street navhist spreadsheets.
+ */
+export const ETF_FLOW_US_UNIVERSE: EtfFlowMeta[] = [
+  // Country / region
+  { code: "SPY", name: "SPDR S&P 500", bucket: "country", label: "미국", color: "#60a5fa" },
+  { code: "MDY", name: "SPDR S&P MidCap 400", bucket: "country", label: "미국", color: "#60a5fa" },
+  { code: "SPDW", name: "SPDR Portfolio Developed World ex-US", bucket: "country", label: "선진국", color: "#38bdf8" },
+  { code: "FEZ", name: "SPDR EURO STOXX 50", bucket: "country", label: "선진국", color: "#38bdf8" },
+  { code: "SPEM", name: "SPDR Portfolio Emerging Markets", bucket: "country", label: "신흥국", color: "#a78bfa" },
+  { code: "EWX", name: "SPDR S&P Emerging Markets Small Cap", bucket: "country", label: "신흥국", color: "#a78bfa" },
+  { code: "GXC", name: "SPDR S&P China", bucket: "country", label: "중국", color: "#ef4444" },
+
+  // Sector (Select Sector SPDRs)
+  { code: "XLK", name: "Technology Select Sector SPDR", bucket: "sector", label: "기술", color: "#6366f1" },
+  { code: "XLF", name: "Financial Select Sector SPDR", bucket: "sector", label: "금융", color: "#10b981" },
+  { code: "XLE", name: "Energy Select Sector SPDR", bucket: "sector", label: "에너지", color: "#f97316" },
+  { code: "XLV", name: "Health Care Select Sector SPDR", bucket: "sector", label: "헬스케어", color: "#ec4899" },
+  { code: "XLI", name: "Industrial Select Sector SPDR", bucket: "sector", label: "산업재", color: "#94a3b8" },
+  { code: "XLC", name: "Communication Services Select Sector SPDR", bucket: "sector", label: "커뮤니케이션", color: "#22d3ee" },
+  { code: "XLY", name: "Consumer Discretionary Select Sector SPDR", bucket: "sector", label: "임의소비", color: "#fb7185" },
+
+  // Theme
+  { code: "XSD", name: "SPDR S&P Semiconductor", bucket: "theme", label: "반도체", color: "#06b6d4" },
+  { code: "XBI", name: "SPDR S&P Biotech", bucket: "theme", label: "바이오", color: "#d946ef" },
+  { code: "XAR", name: "SPDR S&P Aerospace & Defense", bucket: "theme", label: "항공·방산", color: "#64748b" },
+  { code: "GLD", name: "SPDR Gold Shares", bucket: "theme", label: "금", color: "#eab308" },
+  { code: "XOP", name: "SPDR S&P Oil & Gas Exploration", bucket: "theme", label: "에너지탐험", color: "#ea580c" },
+  { code: "XSW", name: "SPDR S&P Software & Services", bucket: "theme", label: "소프트웨어", color: "#8b5cf6" },
+];
+
 export const ETF_FLOW_BUCKET_LABELS: Record<EtfFlowBucket, string> = {
   country: "국가·지역",
   sector: "업종",
@@ -103,4 +138,157 @@ export function fmtAumEok(n?: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
   if (Math.abs(n) >= 10000) return `${(n / 10000).toFixed(2)}조`;
   return `${Math.round(n).toLocaleString("ko-KR")}억`;
+}
+
+/** Format USD millions (payload unit usd_mn). */
+export function fmtFlowUsdMn(n?: number | null, digits = 0): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(2)}B`;
+  return `${sign}$${abs.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  })}M`;
+}
+
+export function fmtAumUsdMn(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1000) return `$${(abs / 1000).toFixed(2)}B`;
+  return `$${Math.round(abs).toLocaleString("en-US")}M`;
+}
+
+export function fmtFlowByUnit(
+  unit: EtfFlowUnit | undefined,
+  n?: number | null,
+  digits = 0,
+): string {
+  return unit === "usd_mn" ? fmtFlowUsdMn(n, digits) : fmtFlowEok(n, digits);
+}
+
+export function fmtAumByUnit(unit: EtfFlowUnit | undefined, n?: number | null): string {
+  return unit === "usd_mn" ? fmtAumUsdMn(n) : fmtAumEok(n);
+}
+
+export function unitAxisLabel(unit: EtfFlowUnit | undefined): string {
+  return unit === "usd_mn" ? "USD mn" : "억 원";
+}
+
+export function formatAxisByUnit(unit: EtfFlowUnit | undefined, v: number): string {
+  const abs = Math.abs(v);
+  if (unit === "usd_mn") {
+    if (abs >= 1000) return `${(v / 1000).toFixed(1)}B`;
+    return `${Math.round(v)}`;
+  }
+  if (abs >= 10000) return `${(v / 10000).toFixed(1)}조`;
+  return `${v}`;
+}
+
+export type NavShareDay = {
+  date: string;
+  nav: number;
+  shares: number;
+  aum: number;
+};
+
+/** flow_t ≈ NAV_{t-1} × Δshares; values scaled into display unit. */
+export function flowsFromNavShares(
+  days: NavShareDay[],
+  scale: number,
+): EtfFlowDayPoint[] {
+  const out: EtfFlowDayPoint[] = [];
+  let cum = 0;
+  for (let i = 0; i < days.length; i++) {
+    const cur = days[i];
+    let flow = 0;
+    if (i > 0) {
+      const prev = days[i - 1];
+      flow = prev.nav * (cur.shares - prev.shares);
+    }
+    cum += flow;
+    out.push({
+      date: cur.date,
+      flow_eok: flow / scale,
+      flow_cum_eok: cum / scale,
+      aum_eok: cur.aum / scale,
+    });
+  }
+  return out;
+}
+
+export function aggregateEtfFlowGroups(
+  perCode: Array<{
+    meta: EtfFlowMeta;
+    series: EtfFlowDayPoint[];
+  }>,
+): EtfFlowGroupSeries[] {
+  const groupMap = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      bucket: EtfFlowBucket;
+      color: string;
+      members: Array<{ code: string; name: string }>;
+      byDate: Map<string, { flow: number; aum: number }>;
+    }
+  >();
+
+  for (const item of perCode) {
+    const gkey = `${item.meta.bucket}:${item.meta.label}`;
+    let g = groupMap.get(gkey);
+    if (!g) {
+      g = {
+        key: gkey,
+        label: item.meta.label,
+        bucket: item.meta.bucket,
+        color: item.meta.color,
+        members: [],
+        byDate: new Map(),
+      };
+      groupMap.set(gkey, g);
+    }
+    g.members.push({ code: item.meta.code, name: item.meta.name });
+    for (const pt of item.series) {
+      const cur = g.byDate.get(pt.date) || { flow: 0, aum: 0 };
+      cur.flow += pt.flow_eok;
+      cur.aum += pt.aum_eok;
+      g.byDate.set(pt.date, cur);
+    }
+  }
+
+  const bucketOrder: EtfFlowBucket[] = ["country", "sector", "theme"];
+  return [...groupMap.values()]
+    .sort((a, b) => {
+      const bi = bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket);
+      if (bi !== 0) return bi;
+      return a.label.localeCompare(b.label, "ko");
+    })
+    .map((g) => {
+      const dates = [...g.byDate.keys()].sort();
+      let cum = 0;
+      const series: EtfFlowDayPoint[] = dates.map((date) => {
+        const row = g.byDate.get(date)!;
+        cum += row.flow;
+        return {
+          date,
+          flow_eok: row.flow,
+          flow_cum_eok: cum,
+          aum_eok: row.aum,
+        };
+      });
+      const latest = series[series.length - 1];
+      return {
+        key: g.key,
+        label: `${ETF_FLOW_BUCKET_LABELS[g.bucket]} · ${g.label}`,
+        bucket: g.bucket,
+        color: g.color,
+        members: g.members,
+        latest_flow_eok: latest?.flow_eok ?? 0,
+        latest_aum_eok: latest?.aum_eok ?? 0,
+        flow_cum_eok: latest?.flow_cum_eok ?? 0,
+        series,
+      };
+    });
 }
