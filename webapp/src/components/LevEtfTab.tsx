@@ -259,10 +259,10 @@ export default function LevEtfTab() {
     <div className="kr-tab lev-etf-tab">
       <header className="kr-hero">
         <div>
-          <h2 className="kr-hero-title">레버리지 ETF · 시장 레버리지</h2>
+          <h2 className="kr-hero-title">레버리지 ETF · 거래원·수급</h2>
           <p className="kr-hero-sub">
-            신용융자·프로그램매매 등 시장 레버리지와 16개 단일종목 레버 ETF
-            합산·거래원·수급을 모았습니다. 네이버 증권 기준입니다.
+            16개 단일종목 레버 ETF 거래원·수급을 먼저 보고, 아래에 신용융자·프로그램매매
+            등 시장 레버리지 지표를 이어서 봅니다. 네이버 증권 기준입니다.
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -318,13 +318,7 @@ export default function LevEtfTab() {
         </div>
       </header>
 
-      <MarketLeveragePanels
-        data={mkt}
-        loading={mktLoading}
-        error={mktError}
-      />
-
-      <div className="kr-card-head" style={{ margin: "20px 0 8px" }}>
+      <div className="kr-card-head" style={{ margin: "0 0 8px" }}>
         <div>
           <h3 className="kr-card-title">단일종목 레버 ETF · 거래원·수급</h3>
           <p className="kr-card-sub">
@@ -748,6 +742,21 @@ export default function LevEtfTab() {
           </div>
         </article>
       ) : null}
+
+      <div className="kr-card-head" style={{ margin: "24px 0 8px" }}>
+        <div>
+          <h3 className="kr-card-title">시장 레버리지 현황</h3>
+          <p className="kr-card-sub">
+            신용융자·증시자금 · 프로그램매매 · 단일종목 레버리지 ETF 합산
+          </p>
+        </div>
+      </div>
+
+      <MarketLeveragePanels
+        data={mkt}
+        loading={mktLoading}
+        error={mktError}
+      />
     </div>
   );
 }
