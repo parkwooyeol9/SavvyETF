@@ -201,12 +201,6 @@ export type KrMarketPayload = {
     kosdaq_daily: KrFlowDay[];
     as_of?: string;
   };
-  credit?: {
-    rows: KrCreditRow[];
-    latest?: KrCreditRow | null;
-    credit_ratio_proxy?: number | null;
-  };
-  single_stock_lev?: SingleStockLevBoard;
 };
 
 export function sma(values: number[], period: number): number | null {

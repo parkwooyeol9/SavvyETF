@@ -9,7 +9,6 @@ import {
   ComposedChart,
   Legend,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -20,7 +19,6 @@ import {
   fmtKrwEok,
   fmtNum,
   fmtPct,
-  fmtValueEok,
   type KrMarketPayload,
 } from "@/lib/krMarket";
 
@@ -298,324 +296,6 @@ function FlowPanel({
   );
 }
 
-function CreditPanel({ credit }: { credit: NonNullable<KrMarketPayload["credit"]> }) {
-  const chartData = useMemo(
-    () =>
-      credit.rows.slice(-30).map((r) => ({
-        t: r.date.slice(5),
-        예탁금: r.customer_deposit,
-        신용잔고: r.credit_balance,
-      })),
-    [credit.rows],
-  );
-  const latest = credit.latest;
-
-  return (
-    <article className="kr-card">
-      <div className="kr-card-head">
-        <div>
-          <h3 className="kr-card-title">신용 · 증시자금</h3>
-          <p className="kr-card-sub">
-            좌축 고객예탁금 · 우축 신용잔고 (억원) — 단위 차이 반영
-          </p>
-        </div>
-        {latest ? (
-          <div className="kr-credit-kpis">
-            <div>
-              <span>예탁금</span>
-              <strong>{fmtKrwEok(latest.customer_deposit).replace("+", "")}</strong>
-            </div>
-            <div>
-              <span>신용잔고</span>
-              <strong>{fmtKrwEok(latest.credit_balance).replace("+", "")}</strong>
-            </div>
-            <div>
-              <span>신용/예탁</span>
-              <strong>{fmtPct(credit.credit_ratio_proxy, 2)}</strong>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="kr-chart" style={{ height: 260 }}>
-        {!chartData.length ? (
-          <p className="empty">신용 데이터가 없습니다.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-              <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={28} />
-              <YAxis
-                yAxisId="left"
-                orientation="left"
-                tick={{ fill: "#a78bfa", fontSize: 10 }}
-                width={58}
-                tickFormatter={(v: number) =>
-                  v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${Math.round(v / 1000)}천`
-                }
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: "#f472b6", fontSize: 10 }}
-                width={52}
-                tickFormatter={(v: number) => `${Math.round(v / 1000)}천`}
-              />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number, name: string) => [
-                  `${Number(value).toLocaleString("ko-KR")}억`,
-                  name === "예탁금" ? "예탁금 (좌)" : "신용잔고 (우)",
-                ]}
-              />
-              <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="예탁금"
-                name="예탁금 (좌)"
-                stroke="#a78bfa"
-                strokeWidth={2.2}
-                dot={false}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="신용잔고"
-                name="신용잔고 (우)"
-                stroke="#f472b6"
-                strokeWidth={2.2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {latest ? (
-        <div className="kr-fund-row">
-          <span>주식형 펀드 {fmtKrwEok(latest.fund_stock).replace("+", "")}</span>
-          <span>혼합형 {fmtKrwEok(latest.fund_mixed).replace("+", "")}</span>
-          <span>채권형 {fmtKrwEok(latest.fund_bond).replace("+", "")}</span>
-          <span>기준일 {latest.date}</span>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function SingleStockLevPanel({
-  board,
-}: {
-  board: NonNullable<KrMarketPayload["single_stock_lev"]>;
-}) {
-  const [valueMode, setValueMode] = useState<"cum" | "daily">("cum");
-
-  const aumChart = useMemo(() => {
-    const byDate = new Map<string, Record<string, number | string>>();
-    for (const g of board.groups) {
-      for (const pt of g.series) {
-        const row = byDate.get(pt.date) || { t: pt.date.slice(5) };
-        row[g.key] = Math.round(pt.aum_eok);
-        byDate.set(pt.date, row);
-      }
-    }
-    return [...byDate.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([, row]) => row);
-  }, [board.groups]);
-
-  const valueChart = useMemo(() => {
-    const byDate = new Map<string, Record<string, number | string>>();
-    for (const g of board.groups) {
-      for (const pt of g.series) {
-        const row = byDate.get(pt.date) || { t: pt.date.slice(5) };
-        row[g.key] = Math.round(
-          valueMode === "cum" ? pt.value_cum_eok : pt.value_eok,
-        );
-        byDate.set(pt.date, row);
-      }
-    }
-    return [...byDate.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([, row]) => row);
-  }, [board.groups, valueMode]);
-
-  return (
-    <article className="kr-card">
-      <div className="kr-card-head">
-        <div>
-          <h3 className="kr-card-title">단일종목 레버리지 · 4유형 합산</h3>
-          <p className="kr-card-sub">
-            전자 2x · 전자 -2x · 닉스 -2x · 닉스 2x · {board.listing_date} 상장~
-            누적 AUM·거래대금 추이
-            {board.as_of
-              ? ` · ${new Date(board.as_of).toLocaleString("ko-KR", { hour12: false })}`
-              : ""}
-          </p>
-        </div>
-      </div>
-
-      <div className="kr-flow-summary kr-lev-group-summary">
-        {board.groups.map((g) => (
-          <div key={g.key}>
-            <span style={{ color: g.color }}>{g.label}</span>
-            <strong>{fmtValueEok(g.latest_aum_eok)}</strong>
-            <em>
-              당일 {fmtValueEok(g.latest_value_eok)} · 누적{" "}
-              {fmtValueEok(g.value_cum_eok)}
-            </em>
-          </div>
-        ))}
-      </div>
-
-      <div className="kr-flow-summary">
-        <div>
-          <span>합산 AUM</span>
-          <strong>{fmtValueEok(board.total_aum_eok)}</strong>
-        </div>
-        <div>
-          <span>당일 거래대금</span>
-          <strong>{fmtValueEok(board.total_value_eok)}</strong>
-        </div>
-        <div>
-          <span>상장일~ 누적 거래대금</span>
-          <strong>{fmtValueEok(board.total_value_cum_eok)}</strong>
-        </div>
-      </div>
-
-      <div className="kr-card-head" style={{ marginTop: 8 }}>
-        <div>
-          <h4 className="kr-card-title" style={{ fontSize: 14 }}>
-            유형별 AUM 추이
-          </h4>
-          <p className="kr-card-sub">좌축 2x · 우축 -2x (단위: 억)</p>
-        </div>
-      </div>
-      <div className="kr-chart" style={{ height: 260 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={aumChart} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-            <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
-            <YAxis
-              yAxisId="left"
-              tick={{ fill: "#8fa3b8", fontSize: 10 }}
-              width={52}
-              tickFormatter={(v: number) =>
-                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
-              }
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              tick={{ fill: "#c4a574", fontSize: 10 }}
-              width={48}
-              tickFormatter={(v: number) =>
-                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
-              }
-            />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(value: number, name: string) => {
-                const g = board.groups.find((x) => x.key === name);
-                return [`${Number(value).toLocaleString("ko-KR")}억`, g?.label || name];
-              }}
-            />
-            <Legend
-              formatter={(value: string) =>
-                board.groups.find((g) => g.key === value)?.label || value
-              }
-            />
-            {board.groups.map((g) => (
-              <Line
-                key={g.key}
-                yAxisId={g.direction === "inv" ? "right" : "left"}
-                type="monotone"
-                dataKey={g.key}
-                stroke={g.color}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="kr-card-head" style={{ marginTop: 12 }}>
-        <h4 className="kr-card-title" style={{ fontSize: 14 }}>
-          유형별 거래대금 추이
-        </h4>
-        <div className="kr-toggles">
-          <div className="seg">
-            <button
-              type="button"
-              className={valueMode === "cum" ? "active" : ""}
-              onClick={() => setValueMode("cum")}
-            >
-              누적
-            </button>
-            <button
-              type="button"
-              className={valueMode === "daily" ? "active" : ""}
-              onClick={() => setValueMode("daily")}
-            >
-              일별
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="kr-chart" style={{ height: 260 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={valueChart} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-            <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-            <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
-            <YAxis
-              tick={{ fill: "#8fa3b8", fontSize: 10 }}
-              width={52}
-              tickFormatter={(v: number) =>
-                v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${v}`
-              }
-            />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(value: number, name: string) => {
-                const g = board.groups.find((x) => x.key === name);
-                const label = valueMode === "cum" ? "누적 거래대금" : "일별 거래대금";
-                return [
-                  `${Number(value).toLocaleString("ko-KR")}억`,
-                  `${g?.label || name} ${label}`,
-                ];
-              }}
-            />
-            <Legend
-              formatter={(value: string) =>
-                board.groups.find((g) => g.key === value)?.label || value
-              }
-            />
-            {board.groups.map((g) => (
-              <Line
-                key={g.key}
-                type="monotone"
-                dataKey={g.key}
-                stroke={g.color}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <p className="kr-table-note">
-        {board.note ||
-          "16개 상품을 4유형으로 합산한 추이입니다. AUM은 시가총액 기준입니다."}
-      </p>
-    </article>
-  );
-}
-
 export default function KrMarketTab() {
   const [data, setData] = useState<KrMarketPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -650,7 +330,8 @@ export default function KrMarketTab() {
         <div>
           <h2 className="kr-hero-title">국내 시황 모니터</h2>
           <p className="kr-hero-sub">
-            코스피200 · 코스닥 라이브 차트, 수급, 신용, 기술적 지표를 한눈에 봅니다.
+            코스피200 · 코스닥 라이브 차트, 수급, 기술적 지표를 한눈에 봅니다.
+            신용·단일종목 레버는 레버리지ETF 탭에서 봅니다.
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -754,14 +435,8 @@ export default function KrMarketTab() {
             />
           ) : null}
 
-          {data.credit ? <CreditPanel credit={data.credit} /> : null}
-
-          {data.single_stock_lev ? (
-            <SingleStockLevPanel board={data.single_stock_lev} />
-          ) : null}
-
           <p className="kr-foot">
-            출처: Naver Finance (지수·수급·증시자금·단일종목레버 ETF) · 약 45초마다 갱신 ·{" "}
+            출처: Naver Finance (지수·수급) · 약 45초마다 갱신 ·{" "}
             {data.generated_at
               ? new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })
               : ""}

@@ -26,6 +26,8 @@ import {
 } from "@/lib/levEtf";
 import { downloadLevEtfExcel } from "@/lib/levEtfExcel";
 import type { LevGroupKey } from "@/lib/krMarket";
+import type { MarketLeveragePayload } from "@/lib/marketLeverage";
+import MarketLeveragePanels from "@/components/MarketLeveragePanels";
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -56,12 +58,32 @@ export default function LevEtfTab() {
   const [data, setData] = useState<LevEtfPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mkt, setMkt] = useState<MarketLeveragePayload | null>(null);
+  const [mktLoading, setMktLoading] = useState(true);
+  const [mktError, setMktError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("traders");
   const [group, setGroup] = useState<GroupFilter>("all");
   const [code, setCode] = useState<string>("all");
   const [windowDays, setWindowDays] = useState<TraderWindow>(5);
   const [side, setSide] = useState<Side>("net");
   const [exporting, setExporting] = useState(false);
+
+  const loadMarket = useCallback(async (refresh = false) => {
+    setMktLoading(true);
+    setMktError(null);
+    try {
+      const q = refresh ? "?refresh=1" : "";
+      const res = await fetch(`/api/market-leverage${q}`, { cache: "no-store" });
+      const json = (await res.json()) as MarketLeveragePayload;
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setMkt(json);
+    } catch (exc) {
+      setMktError(exc instanceof Error ? exc.message : "레버리지 지표 실패");
+      setMkt(null);
+    } finally {
+      setMktLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -81,8 +103,9 @@ export default function LevEtfTab() {
   }, []);
 
   useEffect(() => {
+    void loadMarket();
     void load();
-  }, [load]);
+  }, [load, loadMarket]);
 
   const items = useMemo(() => {
     const all = data?.items || [];
@@ -236,10 +259,10 @@ export default function LevEtfTab() {
     <div className="kr-tab lev-etf-tab">
       <header className="kr-hero">
         <div>
-          <h2 className="kr-hero-title">레버리지 ETF · 거래원·수급</h2>
+          <h2 className="kr-hero-title">레버리지 ETF · 시장 레버리지</h2>
           <p className="kr-hero-sub">
-            16개 단일종목 레버리지·인버스 ETF의 회원사(거래원) 상위와 일별
-            외국인·기관 순매매를 모았습니다. 네이버 증권 20분 지연 기준입니다.
+            신용융자·프로그램매매 등 시장 레버리지와 16개 단일종목 레버 ETF
+            합산·거래원·수급을 모았습니다. 네이버 증권 기준입니다.
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -264,10 +287,13 @@ export default function LevEtfTab() {
           <button
             type="button"
             className="ghost-btn"
-            onClick={() => void load(true)}
-            disabled={loading}
+            onClick={() => {
+              void loadMarket(true);
+              void load(true);
+            }}
+            disabled={loading || mktLoading}
           >
-            {loading ? "수집 중…" : "새로고침"}
+            {loading || mktLoading ? "수집 중…" : "새로고침"}
           </button>
           <button
             type="button"
@@ -291,6 +317,21 @@ export default function LevEtfTab() {
           </button>
         </div>
       </header>
+
+      <MarketLeveragePanels
+        data={mkt}
+        loading={mktLoading}
+        error={mktError}
+      />
+
+      <div className="kr-card-head" style={{ margin: "20px 0 8px" }}>
+        <div>
+          <h3 className="kr-card-title">단일종목 레버 ETF · 거래원·수급</h3>
+          <p className="kr-card-sub">
+            종목별 회원사 상위·일별 외국인·기관·개인(추정) 순매매
+          </p>
+        </div>
+      </div>
 
       {data?.note ? <p className="kr-note">{data.note}</p> : null}
       {data?.source ? (
