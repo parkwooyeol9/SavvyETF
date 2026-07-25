@@ -7,6 +7,7 @@ import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
+import LevEtfTab from "@/components/LevEtfTab";
 import SimulateTab from "@/components/SimulateTab";
 import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
 import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
@@ -160,7 +161,13 @@ export default function Dashboard() {
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
 
   const metaText = (() => {
-    if (tab === "main" || tab === "simulate" || tab === "education" || tab === "geo") {
+    if (
+      tab === "main" ||
+      tab === "simulate" ||
+      tab === "education" ||
+      tab === "geo" ||
+      tab === "lev"
+    ) {
       return error
         ? `시황 동기화 참고: ${error}`
         : warning
@@ -227,6 +234,8 @@ export default function Dashboard() {
             )}
           </section>
         </>
+      ) : tab === "lev" ? (
+        <LevEtfTab />
       ) : tab === "esg" ? (
         <>
           <EsgThemesTab />
