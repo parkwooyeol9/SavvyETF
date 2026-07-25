@@ -33,12 +33,26 @@ export type InvestorDay = {
   close: number;
   change: number;
   change_pct: number;
+  /** Total traded shares (개인+기관+외국인 등 전체 체결). */
   volume: number;
   institution_net: number;
   foreign_net: number;
+  /**
+   * 개인 순매매 추정: -(외국인+기관).
+   * 네이버 표가 개인·기관·외국인 삼분법일 때 성립(기타법인이 분리되면 오차 가능).
+   */
+  individual_net: number;
   foreign_shares: number | null;
   foreign_ratio: number | null;
 };
+
+/** 개인 ≈ -(외국인 + 기관) under the portal's 3-way investor split. */
+export function individualNetFrom(
+  foreignNet: number,
+  institutionNet: number,
+): number {
+  return -(foreignNet + institutionNet);
+}
 
 export type LevEtfItem = {
   code: string;

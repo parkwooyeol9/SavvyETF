@@ -135,13 +135,20 @@ export default function LevEtfTab() {
         volume: d.volume,
         foreign: d.foreign_net,
         institution: d.institution_net,
+        individual: d.individual_net,
         close: d.close,
       }));
     }
     // Aggregate across selected universe by date
     const byDate = new Map<
       string,
-      { volume: number; foreign: number; institution: number; n: number }
+      {
+        volume: number;
+        foreign: number;
+        institution: number;
+        individual: number;
+        n: number;
+      }
     >();
     for (const item of activeItems) {
       for (const d of item.investors) {
@@ -149,11 +156,13 @@ export default function LevEtfTab() {
           volume: 0,
           foreign: 0,
           institution: 0,
+          individual: 0,
           n: 0,
         };
         cur.volume += d.volume;
         cur.foreign += d.foreign_net;
         cur.institution += d.institution_net;
+        cur.individual += d.individual_net;
         cur.n += 1;
         byDate.set(d.date, cur);
       }
@@ -166,6 +175,7 @@ export default function LevEtfTab() {
         volume: v.volume,
         foreign: v.foreign,
         institution: v.institution,
+        individual: v.individual,
         close: null as number | null,
       }));
   }, [activeItems, code]);
@@ -490,13 +500,16 @@ export default function LevEtfTab() {
         <article className="kr-card">
           <div className="kr-card-head">
             <div>
-              <h3 className="kr-card-title">일별 거래량 · 외국인·기관 순매매</h3>
+              <h3 className="kr-card-title">
+                일별 거래량 · 외국인·기관·개인 순매매
+              </h3>
               <p className="kr-card-sub">
                 {code === "all"
                   ? "선택 그룹 합산"
                   : activeItems[0]
                     ? shortName(activeItems[0].name)
                     : ""}
+                {" · 개인 = -(외국인+기관)"}
               </p>
             </div>
           </div>
@@ -544,6 +557,8 @@ export default function LevEtfTab() {
                     if (name === "foreign") return [fmtNet(Number(value)), "외국인"];
                     if (name === "institution")
                       return [fmtNet(Number(value)), "기관"];
+                    if (name === "individual")
+                      return [fmtNet(Number(value)), "개인"];
                     return [value, name];
                   }}
                 />
@@ -571,6 +586,16 @@ export default function LevEtfTab() {
                   dataKey="institution"
                   name="institution"
                   stroke="#fbbf24"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  yAxisId="net"
+                  type="monotone"
+                  dataKey="individual"
+                  name="individual"
+                  stroke="#a78bfa"
                   strokeWidth={2}
                   dot={false}
                   isAnimationActive={false}
@@ -645,8 +670,9 @@ export default function LevEtfTab() {
                   <th>종가</th>
                   <th>등락률</th>
                   <th>거래량</th>
-                  <th>기관</th>
                   <th>외국인</th>
+                  <th>기관</th>
+                  <th>개인(추정)</th>
                   <th>외인보유율</th>
                 </tr>
               </thead>
@@ -662,11 +688,14 @@ export default function LevEtfTab() {
                       {fmtPct(r.change_pct)}
                     </td>
                     <td className="num">{r.volume.toLocaleString("ko-KR")}</td>
+                    <td className={`num ${toneClass(r.foreign_net)}`}>
+                      {fmtNet(r.foreign_net)}
+                    </td>
                     <td className={`num ${toneClass(r.institution_net)}`}>
                       {fmtNet(r.institution_net)}
                     </td>
-                    <td className={`num ${toneClass(r.foreign_net)}`}>
-                      {fmtNet(r.foreign_net)}
+                    <td className={`num ${toneClass(r.individual_net)}`}>
+                      {fmtNet(r.individual_net)}
                     </td>
                     <td className="num">
                       {r.foreign_ratio != null ? `${r.foreign_ratio.toFixed(2)}%` : "—"}

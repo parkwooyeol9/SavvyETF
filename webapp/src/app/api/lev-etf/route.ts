@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   LEV_ETF_UNIVERSE,
   TRADER_WINDOWS,
+  individualNetFrom,
   metaToGroup,
   type InvestorDay,
   type LevEtfItem,
@@ -159,6 +160,7 @@ function parseInvestorDays(html: string): InvestorDay[] {
       volume,
       institution_net,
       foreign_net,
+      individual_net: individualNetFrom(foreign_net, institution_net),
       foreign_shares,
       foreign_ratio,
     });
@@ -261,9 +263,8 @@ async function buildPayload(): Promise<LevEtfPayload> {
     source: "Naver Finance item/frgn (거래원 20분 지연 · 일별 투자자 순매매)",
     note:
       "16개 단일종목 레버리지·인버스 ETF. 거래원은 당일/5/20/60일 누적 상위 5개 회원사, " +
-      "투자자별은 일별 거래량·기관·외국인 순매매량입니다. " +
-      "증권사 합산 차트는 종목별 TOP5만 합산(전 회원사 아님). " +
-      "거래원 하단 외국인 수치는 상위 5개 회원사 기반 추정치라 일별 외국인 순매매와 다를 수 있습니다. " +
+      "투자자별은 일별 거래량·기관·외국인 순매매이며 개인은 -(외국인+기관)으로 추정합니다. " +
+      "증권사 합산은 종목별 TOP5만(전 회원사 아님). 거래원 일별 시계열은 원천에 없어 창(당일~60일) 기준으로 제공합니다. " +
       "원천: KRX 집계의 네이버 재배포(20분 지연)." +
       (errors ? ` · ${errors}종목 수집 실패` : ""),
     items,
