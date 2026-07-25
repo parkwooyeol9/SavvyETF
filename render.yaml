@@ -70,6 +70,10 @@ services:
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
         value: "15:40"
+      - key: LEV_ETF_SCHEDULE_ENABLED
+        value: "true"
+      - key: LEV_ETF_SCHEDULE_KST
+        value: "16:00"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_MONITOR_SCHEDULE_ENABLED

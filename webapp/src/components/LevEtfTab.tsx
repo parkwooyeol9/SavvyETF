@@ -22,6 +22,7 @@ import {
   fmtVol,
   type InvestorDay,
   type LevEtfPayload,
+  type LevEtfTraderDayArchive,
   type TraderWindow,
 } from "@/lib/levEtf";
 import { downloadLevEtfExcel } from "@/lib/levEtfExcel";
@@ -36,7 +37,7 @@ const tooltipStyle = {
   color: "#e8eef5",
 };
 
-type Panel = "traders" | "investors" | "table";
+type Panel = "traders" | "investors" | "history" | "table";
 type GroupFilter = "all" | LevGroupKey;
 type Side = "buy" | "sell" | "net";
 
@@ -67,13 +68,19 @@ export default function LevEtfTab() {
   const [windowDays, setWindowDays] = useState<TraderWindow>(5);
   const [side, setSide] = useState<Side>("net");
   const [exporting, setExporting] = useState(false);
+  const [histDates, setHistDates] = useState<string[]>([]);
+  const [histDate, setHistDate] = useState<string>("");
+  const [hist, setHist] = useState<LevEtfTraderDayArchive | null>(null);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histError, setHistError] = useState<string | null>(null);
 
-  const loadMarket = useCallback(async (refresh = false) => {
+  const loadMarket = useCallback(async () => {
     setMktLoading(true);
     setMktError(null);
     try {
-      const q = refresh ? "?refresh=1" : "";
-      const res = await fetch(`/api/market-leverage${q}`, { cache: "no-store" });
+      const res = await fetch("/api/market-leverage?refresh=1", {
+        cache: "no-store",
+      });
       const json = (await res.json()) as MarketLeveragePayload;
       if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setMkt(json);
@@ -85,12 +92,11 @@ export default function LevEtfTab() {
     }
   }, []);
 
-  const load = useCallback(async (refresh = false) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const q = refresh ? "?refresh=1" : "";
-      const res = await fetch(`/api/lev-etf${q}`, { cache: "no-store" });
+      const res = await fetch("/api/lev-etf?refresh=1", { cache: "no-store" });
       const json = (await res.json()) as LevEtfPayload;
       if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setData(json);
@@ -102,10 +108,54 @@ export default function LevEtfTab() {
     }
   }, []);
 
+  const loadHistDates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/lev-etf/history", { cache: "no-store" });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        dates?: string[];
+        error?: string;
+      };
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      const dates = json.dates || [];
+      setHistDates(dates);
+      if (!histDate && dates[0]) setHistDate(dates[0]);
+    } catch {
+      setHistDates([]);
+    }
+  }, [histDate]);
+
+  const loadHistDay = useCallback(async (date: string) => {
+    if (!date) return;
+    setHistLoading(true);
+    setHistError(null);
+    try {
+      const res = await fetch(
+        `/api/lev-etf/history?date=${encodeURIComponent(date)}`,
+        { cache: "no-store" },
+      );
+      const json = (await res.json()) as LevEtfTraderDayArchive & {
+        error?: string;
+      };
+      if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setHist(json);
+    } catch (exc) {
+      setHistError(exc instanceof Error ? exc.message : "히스토리 실패");
+      setHist(null);
+    } finally {
+      setHistLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadMarket();
     void load();
-  }, [load, loadMarket]);
+    void loadHistDates();
+  }, [load, loadMarket, loadHistDates]);
+
+  useEffect(() => {
+    if (panel === "history" && histDate) void loadHistDay(histDate);
+  }, [panel, histDate, loadHistDay]);
 
   const items = useMemo(() => {
     const all = data?.items || [];
@@ -261,8 +311,8 @@ export default function LevEtfTab() {
         <div>
           <h2 className="kr-hero-title">레버리지 ETF · 거래원·수급</h2>
           <p className="kr-hero-sub">
-            16개 단일종목 레버 ETF 거래원·수급을 먼저 보고, 아래에 신용융자·프로그램매매
-            등 시장 레버리지 지표를 이어서 봅니다. 네이버 증권 기준입니다.
+            KRX 거래일 오후 4시에 한 번 수집·DB(R2) 적재합니다. 페이지를 열 때마다
+            실시간 스크랩하지 않으며, 거래원 당일 TOP5는 일간 히스토리로 쌓입니다.
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -271,6 +321,7 @@ export default function LevEtfTab() {
               [
                 ["traders", "거래원"],
                 ["investors", "투자자 일별"],
+                ["history", "일간 히스토리"],
                 ["table", "테이블"],
               ] as const
             ).map(([id, label]) => (
@@ -288,12 +339,13 @@ export default function LevEtfTab() {
             type="button"
             className="ghost-btn"
             onClick={() => {
-              void loadMarket(true);
-              void load(true);
+              void loadMarket();
+              void load();
+              void loadHistDates();
             }}
             disabled={loading || mktLoading}
           >
-            {loading || mktLoading ? "수집 중…" : "새로고침"}
+            {loading || mktLoading ? "불러오는 중…" : "저장본 다시 불러오기"}
           </button>
           <button
             type="button"
@@ -328,15 +380,17 @@ export default function LevEtfTab() {
       </div>
 
       {data?.note ? <p className="kr-note">{data.note}</p> : null}
-      {data?.source ? (
+      {data?.source || data?.as_of ? (
         <p className="etf-flow-meta">
-          <span>출처: {data.source}</span>
-          {data.generated_at ? (
+          {data.as_of ? <span>스냅샷 기준일 {data.as_of}</span> : null}
+          {data.source ? <span>출처: {data.source}</span> : null}
+          {data.stored_at || data.generated_at ? (
             <span>
-              갱신{" "}
-              {new Date(data.generated_at).toLocaleString("ko-KR", {
-                hour12: false,
-              })}
+              적재{" "}
+              {new Date(data.stored_at || data.generated_at || "").toLocaleString(
+                "ko-KR",
+                { hour12: false },
+              )}
             </span>
           ) : null}
         </p>
@@ -382,7 +436,7 @@ export default function LevEtfTab() {
 
       {error ? <p className="empty">{error}</p> : null}
       {loading && !data ? (
-        <p className="empty">16종목 거래원·투자자 데이터를 수집하는 중…</p>
+        <p className="empty">저장된 레버리지ETF 스냅샷을 불러오는 중…</p>
       ) : null}
 
       {!loading && data && panel === "traders" ? (
@@ -638,6 +692,119 @@ export default function LevEtfTab() {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+        </article>
+      ) : null}
+
+      {panel === "history" ? (
+        <article className="kr-card">
+          <div className="kr-card-head">
+            <div>
+              <h3 className="kr-card-title">거래원 일간 히스토리</h3>
+              <p className="kr-card-sub">
+                매일 16:00에 적재한 당일(window=1) TOP5. 웹에서 과거 일별 거래원을
+                다시 볼 수 있습니다.
+              </p>
+            </div>
+            <select
+              className="lev-select"
+              value={histDate}
+              onChange={(e) => setHistDate(e.target.value)}
+              disabled={!histDates.length}
+            >
+              {!histDates.length ? (
+                <option value="">적재된 일자 없음</option>
+              ) : (
+                histDates.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          {histLoading ? <p className="empty">히스토리 불러오는 중…</p> : null}
+          {histError ? <p className="empty">{histError}</p> : null}
+          {!histLoading && hist ? (
+            <>
+              <p className="etf-flow-meta">
+                <span>기준일 {hist.as_of}</span>
+                {hist.generated_at ? (
+                  <span>
+                    적재{" "}
+                    {new Date(hist.generated_at).toLocaleString("ko-KR", {
+                      hour12: false,
+                    })}
+                  </span>
+                ) : null}
+              </p>
+              <div className="kr-table-wrap">
+                <table className="kr-table">
+                  <thead>
+                    <tr>
+                      <th>종목</th>
+                      <th>구분</th>
+                      <th>증권사</th>
+                      <th>거래량</th>
+                      <th>외인순매매</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hist.items
+                      .filter((i) => group === "all" || i.group === group)
+                      .filter((i) => code === "all" || i.code === code)
+                      .flatMap((item) => {
+                        const rows: Array<{
+                          key: string;
+                          etf: string;
+                          side: string;
+                          broker: string;
+                          volume: number;
+                          foreign: number | null;
+                        }> = [];
+                        item.trader.sell_top.forEach((r, idx) =>
+                          rows.push({
+                            key: `${item.code}-s-${idx}`,
+                            etf: shortName(item.name),
+                            side: "매도",
+                            broker: r.broker,
+                            volume: r.volume,
+                            foreign: item.trader.foreign_net,
+                          }),
+                        );
+                        item.trader.buy_top.forEach((r, idx) =>
+                          rows.push({
+                            key: `${item.code}-b-${idx}`,
+                            etf: shortName(item.name),
+                            side: "매수",
+                            broker: r.broker,
+                            volume: r.volume,
+                            foreign: item.trader.foreign_net,
+                          }),
+                        );
+                        return rows;
+                      })
+                      .map((r) => (
+                        <tr key={r.key}>
+                          <td>{r.etf}</td>
+                          <td>{r.side}</td>
+                          <td>{r.broker}</td>
+                          <td className="num">
+                            {r.volume.toLocaleString("ko-KR")}
+                          </td>
+                          <td className={`num ${toneClass(r.foreign)}`}>
+                            {fmtNet(r.foreign)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="kr-table-note">
+                {hist.note ||
+                  "당일 거래원 TOP5만 저장됩니다. 전 회원사 전체 체결은 아닙니다."}
+              </p>
+            </>
+          ) : null}
         </article>
       ) : null}
 

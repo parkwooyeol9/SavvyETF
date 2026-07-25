@@ -27,6 +27,9 @@ export type MarketLeveragePayload = {
   generated_at?: string;
   source?: string;
   note?: string;
+  as_of?: string;
+  stored_at?: string;
+  from_store?: boolean;
   credit?: {
     rows: KrCreditRowEx[];
     latest?: KrCreditRowEx | null;

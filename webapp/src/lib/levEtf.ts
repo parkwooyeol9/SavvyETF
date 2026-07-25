@@ -73,6 +73,33 @@ export type LevEtfPayload = {
   source?: string;
   note?: string;
   items?: LevEtfItem[];
+  /** KST trading date of the R2 snapshot (YYYY-MM-DD). */
+  as_of?: string;
+  stored_at?: string;
+  from_store?: boolean;
+};
+
+/** Compact daily archive of window=1 trader tops (R2 lev-etf/traders/YYYY-MM-DD). */
+export type LevEtfTraderDayItem = {
+  code: string;
+  name: string;
+  underlying: "samsung" | "hynix";
+  direction: "lev" | "inv";
+  structure: "spot" | "fut";
+  group: LevGroupKey;
+  trader: TraderSnapshot;
+  investor: InvestorDay | null;
+  error?: string;
+};
+
+export type LevEtfTraderDayArchive = {
+  ok: boolean;
+  error?: string;
+  as_of: string;
+  generated_at: string;
+  source?: string;
+  note?: string;
+  items: LevEtfTraderDayItem[];
 };
 
 export const LEV_ETF_UNIVERSE: SingleStockLevMeta[] = SINGLE_STOCK_LEV_ETFS;

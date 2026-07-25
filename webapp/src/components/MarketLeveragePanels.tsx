@@ -544,7 +544,8 @@ export default function MarketLeveragePanels({
         <div>
           <h3 className="kr-card-title">시장 레버리지 현황</h3>
           <p className="kr-card-sub">
-            신용융자·증시자금 · 프로그램매매 · 단일종목 레버리지 ETF 합산
+            신용융자·증시자금 · 프로그램매매 · 단일종목 레버리지 ETF 합산 · KRX
+            거래일 16:00 스냅샷
           </p>
         </div>
       </div>
