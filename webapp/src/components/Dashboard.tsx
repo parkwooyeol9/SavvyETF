@@ -7,6 +7,7 @@ import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
+import EtfFlowTab from "@/components/EtfFlowTab";
 import LevEtfTab from "@/components/LevEtfTab";
 import SimulateTab from "@/components/SimulateTab";
 import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
@@ -236,6 +237,21 @@ export default function Dashboard() {
         </>
       ) : tab === "lev" ? (
         <LevEtfTab />
+      ) : tab === "etf" ? (
+        <>
+          <EtfFlowTab />
+          <section className="panel kr-briefs">
+            <h2 className="kr-briefs-title">ETF 시황 브리프</h2>
+            {!slots.length ? (
+              <p className="empty">
+                ETF 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
+                명령 후 자동으로 채워집니다.
+              </p>
+            ) : (
+              slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+            )}
+          </section>
+        </>
       ) : tab === "esg" ? (
         <>
           <EsgThemesTab />

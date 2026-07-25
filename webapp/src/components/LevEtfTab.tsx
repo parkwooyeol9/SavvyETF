@@ -743,20 +743,13 @@ export default function LevEtfTab() {
         </article>
       ) : null}
 
-      <div className="kr-card-head" style={{ margin: "24px 0 8px" }}>
-        <div>
-          <h3 className="kr-card-title">시장 레버리지 현황</h3>
-          <p className="kr-card-sub">
-            신용융자·증시자금 · 프로그램매매 · 단일종목 레버리지 ETF 합산
-          </p>
-        </div>
+      <div style={{ marginTop: 24 }}>
+        <MarketLeveragePanels
+          data={mkt}
+          loading={mktLoading}
+          error={mktError}
+        />
       </div>
-
-      <MarketLeveragePanels
-        data={mkt}
-        loading={mktLoading}
-        error={mktError}
-      />
     </div>
   );
 }
