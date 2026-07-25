@@ -14,20 +14,43 @@ function sheetName(raw: string): string {
   return raw.replace(/[\\/?*[\]:]/g, "_").slice(0, 31);
 }
 
+type BrokerSideMaps = {
+  buy: Map<string, number>;
+  sell: Map<string, number>;
+  net: Map<string, number>;
+};
+
+function brokerSidesForWindow(
+  item: LevEtfItem,
+  window: TraderWindow,
+): BrokerSideMaps {
+  const snap = item.traders.find((t) => t.window === window);
+  const buy = new Map<string, number>();
+  const sell = new Map<string, number>();
+  const net = new Map<string, number>();
+  if (!snap) return { buy, sell, net };
+  for (const r of snap.buy_top) {
+    buy.set(r.broker, (buy.get(r.broker) || 0) + r.volume);
+    net.set(r.broker, (net.get(r.broker) || 0) + r.volume);
+  }
+  for (const r of snap.sell_top) {
+    sell.set(r.broker, (sell.get(r.broker) || 0) + r.volume);
+    net.set(r.broker, (net.get(r.broker) || 0) - r.volume);
+  }
+  return { buy, sell, net };
+}
+
 function brokerNetForWindow(
   item: LevEtfItem,
   window: TraderWindow,
 ): Map<string, number> {
-  const snap = item.traders.find((t) => t.window === window);
-  const net = new Map<string, number>();
-  if (!snap) return net;
-  for (const r of snap.buy_top) {
-    net.set(r.broker, (net.get(r.broker) || 0) + r.volume);
+  return brokerSidesForWindow(item, window).net;
+}
+
+function addMaps(into: Map<string, number>, from: Map<string, number>) {
+  for (const [broker, v] of from) {
+    into.set(broker, (into.get(broker) || 0) + v);
   }
-  for (const r of snap.sell_top) {
-    net.set(r.broker, (net.get(r.broker) || 0) - r.volume);
-  }
-  return net;
 }
 
 function collectBrokers(items: LevEtfItem[]): string[] {
@@ -104,7 +127,12 @@ export async function downloadLevEtfExcel(
     {
       field: "broker_timeseries_note",
       value:
-        "거래원 일별 시계열은 원천에 없음. broker_* 시트는 창(당일/5/20/60일)을 시간축으로 한 TOP5 기반 net(매수−매도).",
+        "거래원 일별 시계열은 원천에 없음. broker_* 시트는 창(당일/5/20/60일)을 시간축으로 한 TOP5 기반 수량.",
+    },
+    {
+      field: "broker_agg_window_note",
+      value:
+        "broker_agg_window: 유니버스 합산. metric=buy|sell|net (net=buy−sell). 창×metric 행, 열=증권사.",
     },
     {
       field: "chart_tip_investors",
@@ -114,7 +142,7 @@ export async function downloadLevEtfExcel(
     {
       field: "chart_tip_brokers",
       value:
-        "broker_net_wide: A열=종목코드, B열=창, 이후 열=증권사 net. 또는 broker_ts_<code>에서 창×증권사 차트.",
+        "broker_net_wide: 종목×창 행, 열=증권사 net. broker_agg_window: metric 필터로 buy/sell/net 분리 차트.",
     },
   ];
 
@@ -181,23 +209,35 @@ export async function downloadLevEtfExcel(
     }
   }
 
-  // Broker universe aggregate by window (columns = brokers)
+  // Broker universe aggregate by window × metric (buy / sell / net)
   const brokerAggWide: Array<Record<string, string | number | null>> = [];
   for (const w of TRADER_WINDOWS) {
-    const nets = new Map<string, number>();
+    const buy = new Map<string, number>();
+    const sell = new Map<string, number>();
+    const net = new Map<string, number>();
     for (const item of items) {
-      for (const [broker, v] of brokerNetForWindow(item, w)) {
-        nets.set(broker, (nets.get(broker) || 0) + v);
+      const sides = brokerSidesForWindow(item, w);
+      addMaps(buy, sides.buy);
+      addMaps(sell, sides.sell);
+      addMaps(net, sides.net);
+    }
+    for (const [metric, map] of [
+      ["buy", buy],
+      ["sell", sell],
+      ["net", net],
+    ] as const) {
+      const row: Record<string, string | number | null> = {
+        window_days: w,
+        window_label: windowLabel(w),
+        metric,
+        metric_label:
+          metric === "buy" ? "매수" : metric === "sell" ? "매도" : "순매수",
+      };
+      for (const broker of brokers) {
+        row[broker] = map.has(broker) ? map.get(broker)! : null;
       }
+      brokerAggWide.push(row);
     }
-    const row: Record<string, string | number | null> = {
-      window_days: w,
-      window_label: windowLabel(w),
-    };
-    for (const broker of brokers) {
-      row[broker] = nets.has(broker) ? nets.get(broker)! : null;
-    }
-    brokerAggWide.push(row);
   }
 
   // Per-ETF broker "time" series: rows = window, columns = brokers
