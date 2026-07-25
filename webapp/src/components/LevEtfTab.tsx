@@ -21,10 +21,10 @@ import {
   fmtPct,
   fmtVol,
   type InvestorDay,
-  type LevEtfItem,
   type LevEtfPayload,
   type TraderWindow,
 } from "@/lib/levEtf";
+import { downloadLevEtfExcel } from "@/lib/levEtfExcel";
 import type { LevGroupKey } from "@/lib/krMarket";
 
 const tooltipStyle = {
@@ -61,6 +61,7 @@ export default function LevEtfTab() {
   const [code, setCode] = useState<string>("all");
   const [windowDays, setWindowDays] = useState<TraderWindow>(5);
   const [side, setSide] = useState<Side>("net");
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -257,6 +258,26 @@ export default function LevEtfTab() {
             disabled={loading}
           >
             {loading ? "수집 중…" : "새로고침"}
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={!data?.items?.length || exporting}
+            onClick={() => {
+              if (!data?.items?.length) return;
+              setExporting(true);
+              void downloadLevEtfExcel(data.items, data.generated_at)
+                .catch((exc) => {
+                  setError(
+                    exc instanceof Error
+                      ? `엑셀 저장 실패: ${exc.message}`
+                      : "엑셀 저장 실패",
+                  );
+                })
+                .finally(() => setExporting(false));
+            }}
+          >
+            {exporting ? "엑셀 작성 중…" : "엑셀 다운로드"}
           </button>
         </div>
       </header>
