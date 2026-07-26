@@ -7,6 +7,8 @@ import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
+import EtfFlowTab from "@/components/EtfFlowTab";
+import LevEtfTab from "@/components/LevEtfTab";
 import SimulateTab from "@/components/SimulateTab";
 import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
 import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
@@ -160,7 +162,13 @@ export default function Dashboard() {
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
 
   const metaText = (() => {
-    if (tab === "main" || tab === "simulate" || tab === "education" || tab === "geo") {
+    if (
+      tab === "main" ||
+      tab === "simulate" ||
+      tab === "education" ||
+      tab === "geo" ||
+      tab === "lev"
+    ) {
       return error
         ? `시황 동기화 참고: ${error}`
         : warning
@@ -220,6 +228,23 @@ export default function Dashboard() {
             {!slots.length ? (
               <p className="empty">
                 국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
+                명령 후 자동으로 채워집니다.
+              </p>
+            ) : (
+              slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+            )}
+          </section>
+        </>
+      ) : tab === "lev" ? (
+        <LevEtfTab />
+      ) : tab === "etf" ? (
+        <>
+          <EtfFlowTab />
+          <section className="panel kr-briefs">
+            <h2 className="kr-briefs-title">ETF 시황 브리프</h2>
+            {!slots.length ? (
+              <p className="empty">
+                ETF 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
                 명령 후 자동으로 채워집니다.
               </p>
             ) : (

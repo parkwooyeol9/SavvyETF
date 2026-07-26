@@ -33,6 +33,7 @@ from stock_crawler import (
 from etf_sector_scheduler import start_etf_sector_scheduler
 from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
+from lev_etf_scheduler import start_lev_etf_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -3340,6 +3341,7 @@ if __name__ == "__main__":
     start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_us_new_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_lev_etf_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)
