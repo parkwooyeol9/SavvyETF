@@ -44,5 +44,6 @@ data/etf_holdings/
 data/etf_memb_us/
 data/etf_us_new/
 data/web_briefs/
+data/etf_db/
 fonts/*.ttf
 data/fonts/

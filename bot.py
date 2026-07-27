@@ -33,6 +33,7 @@ from stock_crawler import (
 from etf_sector_scheduler import start_etf_sector_scheduler
 from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
+from etf_db_scheduler import start_etf_db_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -76,6 +77,9 @@ What each command returns:
 
 /etfcheck
 → ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
+
+/etfdb
+→ 국내 ETF DB: 유형·국가·업종 분류, AUM 합, NAV×Δ설정좌수 수급 (/etfdb 웹)
 
 /sp   (or /nas)
 → Same rankings for S&P 500 / NASDAQ 100
@@ -157,6 +161,7 @@ Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
   /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
   /etf_sector 07:00 · /etf_us_new 07:20 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
   /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
   ESG·지정학 data briefing 11:00 daily  → SavvyESG channel
 
@@ -178,6 +183,7 @@ def build_help_messages() -> list[dict]:
 <code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
+<code>/etfdb</code> — 국내 ETF DB (유형·국가·업종 AUM·수급, 웹 /etfdb)
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
 <code>/etf_pre</code> <code>/sp_pre</code> <code>/nas_pre</code> — 프리마켓 등락률
@@ -1792,6 +1798,28 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"/etfcheck failed: {exc}"}]
 
+    from etf_db import is_etfdb_command
+
+    if is_etfdb_command(normalized):
+        try:
+            from etf_db import (
+                build_etf_db,
+                format_etfdb_telegram,
+                parse_etfdb_dimension,
+            )
+
+            dimension = parse_etfdb_dimension(normalized)
+            payload = build_etf_db(force_fetch=True)
+            public = os.environ.get("SUMMARY_PUBLIC_URL", "").rstrip("/")
+            text = format_etfdb_telegram(payload, dimension=dimension)
+            if public:
+                text += f'\n<a href="{public}/etfdb">웹 ETF DB 열기</a>'
+            return [{"text": text, "parse_mode": "HTML"}]
+        except ValueError as exc:
+            return [{"text": str(exc)}]
+        except Exception as exc:
+            return [{"text": f"/etfdb failed: {exc}"}]
+
     if lower.startswith("/macro"):
         try:
             from macro_data import macro_cache_ready
@@ -2635,6 +2663,40 @@ def start_web_server():
                 self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
                 return
 
+            if path == "/etfdb":
+                from etf_db import ensure_etf_db, load_etfdb_html
+
+                body_text = None
+                try:
+                    ensure_etf_db()
+                    body_text = load_etfdb_html()
+                except Exception as exc:
+                    body_text = load_etfdb_html()
+                    if not body_text:
+                        body_text = (
+                            "<html><body><p>ETF DB build failed: "
+                            f"{exc}</p></body></html>"
+                        )
+                if not body_text:
+                    body_text = (
+                        "<html><body><p>ETF DB not generated yet. "
+                        "Use /etfdb in Telegram first.</p></body></html>"
+                    )
+                self._send(body_text.encode("utf-8"), "text/html; charset=utf-8")
+                return
+
+            if path == "/etfdb.json":
+                from etf_db import ensure_etf_db, load_latest
+
+                try:
+                    payload = load_latest() or ensure_etf_db(max_age_hours=24)
+                    # Drop full rows from JSON endpoint? Keep for API consumers.
+                    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                except Exception as exc:
+                    data = json.dumps({"error": str(exc)}).encode("utf-8")
+                self._send(data, "application/json; charset=utf-8")
+                return
+
             if path == "/summary.pdf":
                 from summary_pdf import SUMMARY_PDF_PATH
 
@@ -3340,6 +3402,7 @@ if __name__ == "__main__":
     start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_us_new_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_etf_db_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)
