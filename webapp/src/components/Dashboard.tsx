@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
+import EtfDbTab from "@/components/EtfDbTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import SimulateTab from "@/components/SimulateTab";
@@ -160,7 +161,7 @@ export default function Dashboard() {
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
 
   const metaText = (() => {
-    if (tab === "main" || tab === "simulate" || tab === "education" || tab === "geo") {
+    if (tab === "main" || tab === "simulate" || tab === "education" || tab === "geo" || tab === "etfdb") {
       return error
         ? `시황 동기화 참고: ${error}`
         : warning
@@ -210,6 +211,8 @@ export default function Dashboard() {
         <SimulateTab />
       ) : tab === "education" ? (
         <EducationTab />
+      ) : tab === "etfdb" ? (
+        <EtfDbTab />
       ) : tab === "geo" ? (
         <GeoTab />
       ) : tab === "kr" ? (

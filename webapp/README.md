@@ -6,6 +6,7 @@ Tabs:
 |-----|----------|
 | **메인** | ETF/S&P/Nasdaq 히트맵 + “왜 ETF인가” 실데이터 비교 차트 |
 | **교육** | 한국 투자자 세금·계좌·환율 + 원/달러 차트 |
+| **ETF DB** | 국내 상장 ETF 전종목 — 유형·국가·업종 AUM · NAV×Δ설정좌수 수급 |
 | 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
 | 미국시황 | `summary`, `summary_pre`, `reddit` |
 | ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |

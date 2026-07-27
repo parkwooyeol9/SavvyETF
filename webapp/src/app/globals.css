@@ -2583,3 +2583,171 @@ a.geo-choke-hl:hover {
     margin-left: 0;
   }
 }
+
+/* —— ETF DB tab —— */
+.etfdb-panel {
+  padding-top: 1.1rem;
+}
+
+.etfdb-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.etfdb-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.etfdb-stat-k {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.etfdb-stat-v {
+  font-size: 1.2rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+}
+
+.etfdb-dim-tabs {
+  margin: 0.5rem 0 1rem;
+}
+
+.etfdb-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.etfdb-cats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 640px;
+  overflow: auto;
+}
+
+.etfdb-cat {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0.55rem 0.5rem;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.etfdb-cat:hover,
+.etfdb-cat.active {
+  background: rgba(77, 163, 255, 0.08);
+  border-color: var(--border);
+}
+
+.etfdb-cat-name {
+  display: block;
+  font-weight: 600;
+}
+
+.etfdb-cat-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.etfdb-bar {
+  display: block;
+  height: 3px;
+  margin-top: 0.35rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.etfdb-bar > i {
+  display: block;
+  height: 100%;
+  background: #3a7bd5;
+}
+
+.etfdb-chart {
+  min-height: 220px;
+  margin-bottom: 0.85rem;
+}
+
+.etfdb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.etfdb-detail-title {
+  margin: 0;
+  font-size: 1.05rem;
+  flex: 1 1 auto;
+}
+
+.etfdb-search {
+  background: #0f1622;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  border-radius: 8px;
+  min-width: 140px;
+}
+
+.etfdb-table-wrap {
+  max-height: 480px;
+  overflow: auto;
+}
+
+.etfdb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.etfdb-table th,
+.etfdb-table td {
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.etfdb-table th {
+  color: var(--muted);
+  font-weight: 550;
+  position: sticky;
+  top: 0;
+  background: #121a27;
+}
+
+.etfdb-table .num {
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .etfdb-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .etfdb-stats {
+    grid-template-columns: 1fr;
+  }
+}
