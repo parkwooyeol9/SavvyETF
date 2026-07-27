@@ -44,10 +44,11 @@ async function fetchNaverUniverse(): Promise<unknown[]> {
   return items;
 }
 
-async function fetchBotFlowOverlay(): Promise<{
+async function fetchBotOverlay(): Promise<{
   flowByCode: Record<string, number>;
   prevAsOf: string | null;
   flowHistory: EtfDbPayload["flow_history"] | undefined;
+  aumHistory: EtfDbPayload["aum_history"] | undefined;
 }> {
   try {
     const res = await fetch(`${botBaseUrl()}/etfdb.json`, {
@@ -55,11 +56,19 @@ async function fetchBotFlowOverlay(): Promise<{
       cache: "no-store",
       signal: AbortSignal.timeout(12_000),
     });
-    if (!res.ok) return { flowByCode: {}, prevAsOf: null, flowHistory: undefined };
+    if (!res.ok) {
+      return {
+        flowByCode: {},
+        prevAsOf: null,
+        flowHistory: undefined,
+        aumHistory: undefined,
+      };
+    }
     const data = (await res.json()) as {
       prev_as_of?: string | null;
       rows?: Array<{ code?: string; flow_eok?: number | null }>;
       flow_history?: EtfDbPayload["flow_history"];
+      aum_history?: EtfDbPayload["aum_history"];
     };
     const flowByCode: Record<string, number> = {};
     for (const row of data.rows || []) {
@@ -71,9 +80,15 @@ async function fetchBotFlowOverlay(): Promise<{
       flowByCode,
       prevAsOf: data.prev_as_of ?? null,
       flowHistory: data.flow_history,
+      aumHistory: data.aum_history,
     };
   } catch {
-    return { flowByCode: {}, prevAsOf: null, flowHistory: undefined };
+    return {
+      flowByCode: {},
+      prevAsOf: null,
+      flowHistory: undefined,
+      aumHistory: undefined,
+    };
   }
 }
 
@@ -81,13 +96,17 @@ export async function GET() {
   try {
     const [items, overlay] = await Promise.all([
       fetchNaverUniverse(),
-      fetchBotFlowOverlay(),
+      fetchBotOverlay(),
     ]);
-    const payload = buildPayloadFromNaver(items as Parameters<typeof buildPayloadFromNaver>[0], {
-      flowByCode: overlay.flowByCode,
-      prevAsOf: overlay.prevAsOf,
-      flowHistory: overlay.flowHistory,
-    });
+    const payload = buildPayloadFromNaver(
+      items as Parameters<typeof buildPayloadFromNaver>[0],
+      {
+        flowByCode: overlay.flowByCode,
+        prevAsOf: overlay.prevAsOf,
+        flowHistory: overlay.flowHistory,
+        aumHistory: overlay.aumHistory,
+      },
+    );
     return NextResponse.json(payload);
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);

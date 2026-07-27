@@ -64,23 +64,33 @@ COUNTRY_RULES: list[tuple[str, list[str]]] = [
     ("글로벌", ["글로벌", "세계", "월드", "ACWI", "선진국", "MSCI월드"]),
 ]
 
-SECTOR_RULES: list[tuple[str, list[str]]] = [
-    ("반도체/AI", ["AI반도체", "반도체", "필라델피아반도체", "칩", "HBM"]),
-    ("2차전지", ["2차전지", "배터리", "리튬", "전기차"]),
-    ("바이오/헬스케어", ["바이오", "헬스케어", "의료", "제약"]),
-    ("방산/우주", ["방산", "우주", "항공"]),
-    ("자동차", ["자동차", "자율주행"]),
-    ("금융", ["은행", "증권", "보험", "금융", "고배당금융"]),
-    ("에너지/유틸", ["에너지", "원전", "전력", "유틸", "태양광", "풍력", "천연가스", "원유"]),
-    ("소비/유통", ["소비", "유통", "화장품", "필수소비", "리테일"]),
-    ("미디어/게임", ["미디어", "게임", "엔터", "콘텐츠", "인터넷"]),
-    ("건설/인프라", ["건설", "인프라", "철강", "조선", "해운"]),
-    ("부동산/리츠", ["리츠", "부동산", "REITs", "KODEX 부동산"]),
-    ("배당", ["고배당", "배당", "월배당", "커버드콜", "인컴"]),
+# Style overlays (name match) — checked before GICS
+STYLE_SECTOR_RULES: list[tuple[str, list[str]]] = [
+    ("커버드콜", ["커버드콜"]),
+    ("액티브", ["액티브"]),
+    ("배당", ["고배당", "월배당", "배당", "인컴"]),
+]
+
+# GICS 11 sectors (+ Korean ETF name heuristics)
+GICS_SECTOR_RULES: list[tuple[str, list[str]]] = [
+    ("헬스케어", ["헬스케어", "바이오", "의료", "제약", "HEALTH"]),
+    ("에너지", ["에너지", "원유", "천연가스", "WTI", "석유", "가스"]),
+    ("소재", ["소재", "철강", "구리", "리튬", "화학", "금현물", "금선물", "은선물", "은현물", "골드", "원자재", "농산물"]),
+    ("산업재", ["산업재", "방산", "우주", "항공", "조선", "해운", "건설", "인프라", "운송", "기계"]),
+    ("경기소비재", ["자동차", "자율주행", "화장품", "유통", "리테일", "게임", "엔터", "소비재"]),
+    ("필수소비재", ["필수소비"]),
+    ("금융", ["금융", "은행", "증권", "보험", "고배당금융"]),
+    ("IT", ["반도체", "AI반도체", "필라델피아반도체", "HBM", "칩", "소프트웨어", "테크", "IT", "기술"]),
+    ("커뮤니케이션", ["통신", "인터넷", "미디어", "콘텐츠", "SNS"]),
+    ("유틸리티", ["유틸", "전력", "원전", "태양광", "풍력", "그리드"]),
+    ("부동산", ["리츠", "부동산", "REIT"]),
+]
+
+# Non-GICS fallbacks after style + GICS
+SECTOR_FALLBACK_RULES: list[tuple[str, list[str]]] = [
     ("레버리지/인버스", ["레버리지", "인버스", "2X", "선물인버스"]),
-    ("채권/금리", ["채권", "국채", "회사채", "CD금리", "KOFR", "머니마켓", "단기채", "중장기", "금리"]),
-    ("원자재", ["금", "은", "구리", "원유", "농산물", "원자재", "골드", "은선물"]),
-    ("시장지수", ["200", "코스피", "코스닥", "KRX", "MSCI Korea", "KOSPI", "KOSDAQ"]),
+    ("채권", ["채권", "국채", "회사채", "CD금리", "KOFR", "머니마켓", "단기채", "중장기", "금리"]),
+    ("시장지수", ["200", "코스피", "코스닥", "KRX", "MSCI Korea", "KOSPI", "KOSDAQ", "S&P500", "나스닥100"]),
 ]
 
 MAX_SNAPSHOTS = 90
@@ -148,6 +158,23 @@ def _match_label(name: str, rules: list[tuple[str, list[str]]]) -> str | None:
     return None
 
 
+def classify_sector(name: str, tab: int) -> str:
+    """Style overlays (커버드콜/액티브/배당) → GICS → fallbacks."""
+    for rules in (STYLE_SECTOR_RULES, GICS_SECTOR_RULES, SECTOR_FALLBACK_RULES):
+        hit = _match_label(name, rules)
+        if hit:
+            return hit
+    return {
+        1: "시장지수",
+        2: "기타",
+        3: "레버리지/인버스",
+        4: "기타",
+        5: "소재",
+        6: "채권",
+        7: "기타",
+    }.get(tab, "기타")
+
+
 def classify_etf(item: dict[str, Any]) -> dict[str, Any]:
     code = str(item.get("itemcode") or "").strip()
     name = str(item.get("itemname") or "").strip()
@@ -169,17 +196,7 @@ def classify_etf(item: dict[str, Any]) -> dict[str, Any]:
         else:
             country = "기타"
 
-    sector = _match_label(name, SECTOR_RULES)
-    if sector is None:
-        sector = {
-            1: "시장지수",
-            2: "국내테마(기타)",
-            3: "레버리지/인버스",
-            4: "해외주식(기타)",
-            5: "원자재",
-            6: "채권/금리",
-            7: "기타",
-        }.get(tab, "기타")
+    sector = classify_sector(name, tab)
 
     nav = _as_float(item.get("nav"))
     price = _as_float(item.get("nowVal"))
@@ -337,6 +354,77 @@ def aggregate(
     return out
 
 
+def aum_history_by_dimension(
+    dimension: str,
+    *,
+    limit_days: int = 60,
+    live_rows: list[dict[str, Any]] | None = None,
+    live_day: str | None = None,
+) -> dict[str, Any]:
+    """Daily category AUM sums from snapshots, optionally overlaying live Naver totals."""
+    days = list_snapshot_days()[-limit_days:]
+    dates: list[str] = []
+    series: dict[str, list[float | None]] = {"전체": []}
+
+    for day in days:
+        snap = load_snapshot(day)
+        if not snap:
+            continue
+        rows = snap.get("rows") or []
+        aggs = aggregate(rows, dimension=dimension, flows={})
+        dates.append(day)
+        seen: set[str] = {"전체"}
+        total = 0.0
+        for a in aggs:
+            label = a["label"]
+            seen.add(label)
+            total += float(a["aum_eok"] or 0)
+            if label not in series:
+                series[label] = [None] * (len(dates) - 1)
+            series[label].append(float(a["aum_eok"] or 0))
+        for label in list(series.keys()):
+            if label not in seen:
+                series[label].append(None)
+        series["전체"].append(total)
+
+    if live_rows is not None and live_day:
+        live_aggs = aggregate(live_rows, dimension=dimension, flows={})
+        live_total = sum(float(a["aum_eok"] or 0) for a in live_aggs)
+        if dates and dates[-1] == live_day:
+            series["전체"][-1] = live_total
+            seen = {"전체"}
+            for a in live_aggs:
+                label = a["label"]
+                seen.add(label)
+                if label not in series:
+                    series[label] = [None] * len(dates)
+                series[label][-1] = float(a["aum_eok"] or 0)
+            for label in series:
+                if label not in seen and label != "전체":
+                    series[label][-1] = None
+        else:
+            dates.append(live_day)
+            for label in series:
+                series[label].append(None)
+            series["전체"][-1] = live_total
+            for a in live_aggs:
+                label = a["label"]
+                if label not in series:
+                    series[label] = [None] * (len(dates) - 1) + [float(a["aum_eok"] or 0)]
+                else:
+                    series[label][-1] = float(a["aum_eok"] or 0)
+    ranked = sorted(
+        (k for k in series if k != "전체"),
+        key=lambda lab: -sum(v or 0 for v in series[lab][-10:]),
+    )
+    keep = ["전체", *ranked[:12]]
+    return {
+        "dimension": dimension,
+        "dates": dates,
+        "series": {k: series[k] for k in keep if k in series},
+    }
+
+
 def flow_history_by_dimension(
     dimension: str,
     *,
@@ -448,6 +536,11 @@ def build_etf_db(*, force_fetch: bool = True) -> dict[str, Any]:
             "type": flow_history_by_dimension("type"),
             "country": flow_history_by_dimension("country"),
             "sector": flow_history_by_dimension("sector"),
+        },
+        "aum_history": {
+            "type": aum_history_by_dimension("type", live_rows=rows, live_day=day),
+            "country": aum_history_by_dimension("country", live_rows=rows, live_day=day),
+            "sector": aum_history_by_dimension("sector", live_rows=rows, live_day=day),
         },
         "rows": rows,
     }
@@ -590,6 +683,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
         "total_aum_eok": payload.get("total_aum_eok"),
         "aggregates": payload.get("aggregates"),
         "flow_history": payload.get("flow_history"),
+        "aum_history": payload.get("aum_history"),
         "rows": client_rows,
     }
     data_json = json.dumps(client, ensure_ascii=False).replace("</", "<\\/")
@@ -939,9 +1033,10 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
       el.textContent = fmtSignedEok(tf);
       el.className = "v " + clsSigned(tf);
     }}
-    document.getElementById("flowNote").textContent = DATA.prev_as_of
-      ? `수급: ${{DATA.prev_as_of}} → ${{DATA.as_of}} 스냅샷 기준 (NAV × 설정좌수 변화). 설정좌수 = AUM/NAV 추정.`
-      : "수급 시계열은 일별 스냅샷이 2일 이상 쌓인 뒤 표시됩니다. /etfdb 로 갱신하면 당일 스냅샷이 저장됩니다.";
+    document.getElementById("flowNote").textContent = "AUM 시계열: 일별 스냅샷 + 당일 라이브 합산. 업종=GICS(+헬스케어·배당·커버드콜·액티브). "
+      + (DATA.prev_as_of
+        ? `수급: ${{DATA.prev_as_of}} → ${{DATA.as_of}} (NAV×Δ설정좌수).`
+        : "수급은 스냅샷 2일분 축적 후 표시.");
   }}
 
   function filteredRows() {{
@@ -984,7 +1079,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
   function drawChart() {{
     const canvas = document.getElementById("flowChart");
     const ctx = canvas.getContext("2d");
-    const hist = (DATA.flow_history && DATA.flow_history[dim]) || {{ dates: [], series: {{}} }};
+    const hist = (DATA.aum_history && DATA.aum_history[dim]) || {{ dates: [], series: {{}} }};
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || 800;
     const h = canvas.clientHeight || 220;
@@ -997,23 +1092,24 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
 
     let dates = hist.dates || [];
     let series = hist.series || {{}};
-    if (selected && series[selected]) {{
-      series = {{ [selected]: series[selected] }};
+    if (selected) {{
+      series = series[selected] ? {{ [selected]: series[selected] }} : {{}};
+    }} else if (series["전체"]) {{
+      series = {{ "전체": series["전체"] }};
     }}
     const labels = Object.keys(series);
     if (!dates.length || !labels.length) {{
-      ctx.fillText("수급 히스토리 없음 (스냅샷 축적 필요)", 16, h/2);
+      ctx.fillText("AUM 시계열 없음", 16, h/2);
       return;
     }}
-    // If selected has no history series, synthesize from single-day aggregate N/A
     const allVals = [];
     labels.forEach(lab => (series[lab] || []).forEach(v => {{ if (v != null) allVals.push(v); }}));
     if (!allVals.length) {{
-      ctx.fillText("표시할 수급 값이 없습니다", 16, h/2);
+      ctx.fillText("표시할 AUM 값이 없습니다", 16, h/2);
       return;
     }}
-    const minV = Math.min(0, ...allVals);
-    const maxV = Math.max(0, ...allVals);
+    const minV = Math.min(...allVals) * 0.98;
+    const maxV = Math.max(...allVals) * 1.02;
     const pad = {{ t: 16, r: 12, b: 28, l: 48 }};
     const iw = w - pad.l - pad.r;
     const ih = h - pad.t - pad.b;
@@ -1022,11 +1118,12 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
 
     ctx.strokeStyle = "#2b3648";
     ctx.beginPath();
-    ctx.moveTo(pad.l, yScale(0));
-    ctx.lineTo(pad.l + iw, yScale(0));
+    ctx.moveTo(pad.l, pad.t);
+    ctx.lineTo(pad.l, pad.t + ih);
+    ctx.lineTo(pad.l + iw, pad.t + ih);
     ctx.stroke();
 
-    const palette = ["#4da3ff","#3dd68c","#fbbf24","#ff6b6b","#a78bfa","#22d3ee","#fb7185","#84cc16","#e879f9","#38bdf8","#f97316","#94a3b8"];
+    const palette = ["#4da3ff","#3dd68c","#fbbf24","#ff6b6b","#a78bfa","#22d3ee","#fb7185","#84cc16"];
     labels.slice(0, 8).forEach((lab, li) => {{
       const vals = series[lab] || [];
       ctx.strokeStyle = palette[li % palette.length];

@@ -24,7 +24,7 @@ import {
 const DIM_LABEL: Record<EtfDbDimension, string> = {
   type: "유형",
   country: "국가",
-  sector: "업종",
+  sector: "업종(GICS)",
 };
 
 const COLORS = [
@@ -52,8 +52,8 @@ export default function EtfDbTab() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"aum" | "flow" | "name">("aum");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/etf-db", { cache: "no-store" });
       const json = (await res.json()) as EtfDbPayload;
@@ -65,12 +65,14 @@ export default function EtfDbTab() {
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : "로드 실패");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+    const id = window.setInterval(() => void load(true), 60_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
   const aggregates: EtfDbAggregate[] = data?.aggregates?.[dim] || [];
@@ -80,6 +82,11 @@ export default function EtfDbTab() {
     if (!aggregates.some((a) => a.flow_available)) return null;
     return aggregates.reduce((s, a) => s + (a.flow_eok || 0), 0);
   }, [aggregates]);
+
+  const selectedAum = useMemo(() => {
+    if (!selected) return data?.total_aum_eok ?? null;
+    return aggregates.find((a) => a.label === selected)?.aum_eok ?? null;
+  }, [selected, aggregates, data]);
 
   const filteredRows: EtfDbRow[] = useMemo(() => {
     let rows = data?.rows || [];
@@ -101,26 +108,18 @@ export default function EtfDbTab() {
   }, [data, selected, dim, query, sort]);
 
   const chartData = useMemo(() => {
-    const hist = data?.flow_history?.[dim];
+    const hist = data?.aum_history?.[dim];
     if (!hist?.dates?.length) return [];
-    const labels = selected
-      ? hist.series[selected]
-        ? [selected]
-        : []
-      : Object.keys(hist.series).slice(0, 6);
-    return hist.dates.map((date, i) => {
-      const point: Record<string, string | number | null> = { date };
-      for (const lab of labels) {
-        point[lab] = hist.series[lab]?.[i] ?? null;
-      }
-      return point;
-    });
+    const key = selected || "전체";
+    const vals = hist.series[key];
+    if (!vals) return [];
+    return hist.dates.map((date, i) => ({
+      date,
+      [key]: vals[i] ?? null,
+    }));
   }, [data, dim, selected]);
 
-  const chartKeys = useMemo(() => {
-    if (!chartData.length) return [] as string[];
-    return Object.keys(chartData[0]).filter((k) => k !== "date");
-  }, [chartData]);
+  const chartKey = selected || "전체";
 
   return (
     <section className="panel etfdb-panel">
@@ -128,8 +127,8 @@ export default function EtfDbTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB</h2>
           <p className="kr-note">
-            국내 상장 ETF 전종목 · 유형/국가/업종 분류 · AUM 합 · 수급(NAV×Δ설정좌수
-            추정)
+            국내 상장 ETF 전종목 · 유형/국가/GICS 업종(+헬스케어·배당·커버드콜·액티브) ·
+            AUM 합산 시계열(라이브) · 수급(NAV×Δ설정좌수)
           </p>
         </div>
         <button type="button" className="tab-btn" onClick={() => void load()}>
@@ -150,8 +149,10 @@ export default function EtfDbTab() {
               </div>
             </div>
             <div>
-              <div className="etfdb-stat-k">AUM 합계</div>
-              <div className="etfdb-stat-v">{fmtEok(data.total_aum_eok)}</div>
+              <div className="etfdb-stat-k">
+                {selected ? `${selected} AUM` : "AUM 합계"}
+              </div>
+              <div className="etfdb-stat-v">{fmtEok(selectedAum)}</div>
             </div>
             <div>
               <div className="etfdb-stat-k">추정 수급</div>
@@ -165,10 +166,10 @@ export default function EtfDbTab() {
             </div>
           </div>
           <p className="kr-note">
-            {data.generated_at_display}
+            {data.generated_at_display} · AUM 차트 60초 라이브 갱신
             {data.prev_as_of
               ? ` · 수급 기준 전일 스냅샷 ${data.prev_as_of}`
-              : " · 수급은 Render 봇 일별 스냅샷(16:05) 축적 후 표시"}
+              : " · 수급은 Render 봇 일별 스냅샷 축적 후 표시"}
           </p>
 
           <div className="tabs etfdb-dim-tabs" role="tablist" aria-label="분류">
@@ -224,9 +225,12 @@ export default function EtfDbTab() {
             </aside>
 
             <div className="etfdb-main">
+              <h3 className="etfdb-detail-title" style={{ marginBottom: "0.5rem" }}>
+                AUM 시계열 · {chartKey}
+              </h3>
               <div className="etfdb-chart">
-                {chartData.length && chartKeys.length ? (
-                  <ResponsiveContainer width="100%" height={220}>
+                {chartData.length ? (
+                  <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={chartData}>
                       <CartesianGrid stroke="rgba(43,54,72,0.8)" strokeDasharray="3 3" />
                       <XAxis dataKey="date" tick={{ fill: "#8fa3b8", fontSize: 11 }} />
@@ -234,32 +238,29 @@ export default function EtfDbTab() {
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
                         tickFormatter={(v) => fmtEok(Number(v))}
                         width={56}
+                        domain={["auto", "auto"]}
                       />
                       <Tooltip
-                        formatter={(v) => fmtSignedEok(typeof v === "number" ? v : null)}
+                        formatter={(v) => fmtEok(typeof v === "number" ? v : null)}
                         contentStyle={{
                           background: "#141d2b",
                           border: "1px solid #2b3648",
                         }}
                       />
                       <Legend />
-                      {chartKeys.map((key, i) => (
-                        <Line
-                          key={key}
-                          type="monotone"
-                          dataKey={key}
-                          stroke={COLORS[i % COLORS.length]}
-                          dot={false}
-                          strokeWidth={2}
-                          connectNulls
-                        />
-                      ))}
+                      <Line
+                        type="monotone"
+                        dataKey={chartKey}
+                        name={`${chartKey} AUM`}
+                        stroke={COLORS[0]}
+                        dot={{ r: 2 }}
+                        strokeWidth={2}
+                        connectNulls
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="empty">
-                    수급 히스토리 없음 — 봇 스냅샷이 2일분 쌓이면 표시됩니다.
-                  </p>
+                  <p className="empty">AUM 시계열을 준비 중입니다…</p>
                 )}
               </div>
 
