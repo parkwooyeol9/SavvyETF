@@ -2616,6 +2616,38 @@ a.geo-choke-hl:hover {
   margin-bottom: 0.85rem;
 }
 
+.etfdb-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.etfdb-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.etfdb-toggle input {
+  accent-color: var(--accent);
+}
+
+.etfdb-chart-mode {
+  margin-left: 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 550;
+  color: var(--accent);
+  border: 1px solid rgba(77, 163, 255, 0.35);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
 .etfdb-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

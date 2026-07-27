@@ -41,6 +41,7 @@ export type EtfDbPayload = {
   total_aum_eok: number;
   prev_as_of: string | null;
   as_of?: string | null;
+  equity_only?: boolean;
   aggregates: Record<EtfDbDimension, EtfDbAggregate[]>;
   flow_history: Record<EtfDbDimension, EtfDbHistory>;
   aum_history: Record<EtfDbDimension, EtfDbHistory>;
@@ -57,6 +58,16 @@ export const TYPE_BY_TAB: Record<number, string> = {
   6: "채권",
   7: "기타",
 };
+
+/** Equity ETFs only — Naver tabs 1–4 (excludes 채권·원자재·기타). */
+export const EQUITY_TAB_CODES = new Set([1, 2, 3, 4]);
+
+export function isEquityEtf(row: Pick<EtfDbRow, "tab_code" | "type" | "sector">): boolean {
+  if (!EQUITY_TAB_CODES.has(Number(row.tab_code) || 0)) return false;
+  if (row.type === "채권" || row.type === "원자재" || row.type === "기타") return false;
+  if (row.sector === "채권") return false;
+  return true;
+}
 
 const COUNTRY_RULES: Array<[string, string[]]> = [
   ["미국", ["미국", "S&P", "나스닥", "NASDAQ", "필라델피아", "다우", "러셀", "러셀2000", "QQQ"]],
@@ -280,7 +291,9 @@ export function mergeLiveAumHistory(
       const sb = series[b].slice(-10).reduce<number>((s, v) => s + (v ?? 0), 0);
       return sb - sa;
     });
-  const keep = ["전체", ...ranked.slice(0, 12)];
+  // Keep top series + every live label so category clicks always have a series key.
+  const liveLabels = liveAggs.map((a) => a.label);
+  const keep = Array.from(new Set(["전체", ...ranked.slice(0, 12), ...liveLabels]));
   return {
     dates,
     series: Object.fromEntries(keep.filter((k) => series[k]).map((k) => [k, series[k]])),
@@ -294,10 +307,11 @@ export function buildPayloadFromNaver(
     prevAsOf?: string | null;
     flowHistory?: EtfDbPayload["flow_history"];
     aumHistory?: EtfDbPayload["aum_history"];
+    equityOnly?: boolean;
   },
 ): EtfDbPayload {
   const flowByCode = opts?.flowByCode || {};
-  const rows = items
+  let rows = items
     .map(classifyNaverItem)
     .map((row) => {
       const flow = flowByCode[row.code];
@@ -305,6 +319,9 @@ export function buildPayloadFromNaver(
     })
     .sort((a, b) => (b.aum_eok || 0) - (a.aum_eok || 0));
 
+  if (opts?.equityOnly) {
+    rows = rows.filter(isEquityEtf);
+  }
   const now = new Date();
   const display = new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul",
@@ -325,9 +342,21 @@ export function buildPayloadFromNaver(
   };
 
   const aum_history = {
-    type: mergeLiveAumHistory(opts?.aumHistory?.type, aggregates.type, day),
-    country: mergeLiveAumHistory(opts?.aumHistory?.country, aggregates.country, day),
-    sector: mergeLiveAumHistory(opts?.aumHistory?.sector, aggregates.sector, day),
+    type: mergeLiveAumHistory(
+      opts?.equityOnly ? undefined : opts?.aumHistory?.type,
+      aggregates.type,
+      day,
+    ),
+    country: mergeLiveAumHistory(
+      opts?.equityOnly ? undefined : opts?.aumHistory?.country,
+      aggregates.country,
+      day,
+    ),
+    sector: mergeLiveAumHistory(
+      opts?.equityOnly ? undefined : opts?.aumHistory?.sector,
+      aggregates.sector,
+      day,
+    ),
   };
 
   return {
@@ -339,6 +368,7 @@ export function buildPayloadFromNaver(
     count: rows.length,
     total_aum_eok: rows.reduce((s, r) => s + (r.aum_eok || 0), 0),
     prev_as_of: opts?.prevAsOf ?? null,
+    equity_only: Boolean(opts?.equityOnly),
     aggregates,
     flow_history: opts?.flowHistory || {
       type: emptyHist,

@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Legend,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -27,20 +27,18 @@ const DIM_LABEL: Record<EtfDbDimension, string> = {
   sector: "업종(GICS)",
 };
 
-const COLORS = [
-  "#4da3ff",
-  "#3dd68c",
-  "#fbbf24",
-  "#ff6b6b",
-  "#a78bfa",
-  "#22d3ee",
-  "#fb7185",
-  "#84cc16",
-];
-
 function signedClass(n?: number | null): string {
   if (n == null || n === 0) return "";
   return n > 0 ? "up" : "down";
+}
+
+function nowClock(): string {
+  return new Date().toLocaleTimeString("ko-KR", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export default function EtfDbTab() {
@@ -51,29 +49,41 @@ export default function EtfDbTab() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"aum" | "flow" | "name">("aum");
+  const [equityOnly, setEquityOnly] = useState(true);
+  const [intraday, setIntraday] = useState<Array<{ t: string; aum: number }>>([]);
+  const seriesKeyRef = useRef("");
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const res = await fetch("/api/etf-db", { cache: "no-store" });
-      const json = (await res.json()) as EtfDbPayload;
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const qs = equityOnly ? "?equity=1" : "";
+        const res = await fetch(`/api/etf-db${qs}`, { cache: "no-store" });
+        const json = (await res.json()) as EtfDbPayload;
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || `HTTP ${res.status}`);
+        }
+        setData(json);
+        setError(null);
+      } catch (exc) {
+        setError(exc instanceof Error ? exc.message : "로드 실패");
+      } finally {
+        if (!silent) setLoading(false);
       }
-      setData(json);
-      setError(null);
-    } catch (exc) {
-      setError(exc instanceof Error ? exc.message : "로드 실패");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+    },
+    [equityOnly],
+  );
 
   useEffect(() => {
     void load();
     const id = window.setInterval(() => void load(true), 60_000);
     return () => window.clearInterval(id);
   }, [load]);
+
+  // Reset category selection when universe filter changes.
+  useEffect(() => {
+    setSelected(null);
+  }, [equityOnly]);
 
   const aggregates: EtfDbAggregate[] = data?.aggregates?.[dim] || [];
   const maxAum = Math.max(...aggregates.map((a) => a.aum_eok || 0), 1);
@@ -87,6 +97,26 @@ export default function EtfDbTab() {
     if (!selected) return data?.total_aum_eok ?? null;
     return aggregates.find((a) => a.label === selected)?.aum_eok ?? null;
   }, [selected, aggregates, data]);
+
+  const chartKey = selected || "전체";
+  const seriesKey = `${equityOnly ? "eq" : "all"}|${dim}|${chartKey}`;
+
+  // Intraday live buffer — builds a real time series even with 1 daily snapshot.
+  useEffect(() => {
+    if (selectedAum == null || Number.isNaN(selectedAum)) return;
+    if (seriesKeyRef.current !== seriesKey) {
+      seriesKeyRef.current = seriesKey;
+      setIntraday([{ t: nowClock(), aum: selectedAum }]);
+      return;
+    }
+    setIntraday((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && Math.abs(last.aum - selectedAum) < 1e-6) {
+        return prev;
+      }
+      return [...prev, { t: nowClock(), aum: selectedAum }].slice(-180);
+    });
+  }, [selectedAum, seriesKey]);
 
   const filteredRows: EtfDbRow[] = useMemo(() => {
     let rows = data?.rows || [];
@@ -107,19 +137,46 @@ export default function EtfDbTab() {
     return rows;
   }, [data, selected, dim, query, sort]);
 
-  const chartData = useMemo(() => {
+  const chartMode = useMemo<"daily" | "intraday">(() => {
     const hist = data?.aum_history?.[dim];
-    if (!hist?.dates?.length) return [];
-    const key = selected || "전체";
-    const vals = hist.series[key];
-    if (!vals) return [];
-    return hist.dates.map((date, i) => ({
-      date,
-      [key]: vals[i] ?? null,
-    }));
-  }, [data, dim, selected]);
+    const vals = hist?.series?.[chartKey] || [];
+    const nonempty = vals.filter((v) => v != null).length;
+    if ((hist?.dates?.length || 0) >= 2 && nonempty >= 2) return "daily";
+    return "intraday";
+  }, [data, dim, chartKey]);
 
-  const chartKey = selected || "전체";
+  const chartData = useMemo(() => {
+    if (chartMode === "intraday") {
+      const pts =
+        intraday.length > 0
+          ? intraday
+          : selectedAum != null
+            ? [{ t: nowClock(), aum: selectedAum }]
+            : [];
+      return pts.map((p) => ({ label: p.t, aum: p.aum }));
+    }
+
+    const hist = data?.aum_history?.[dim];
+    const dates = hist?.dates || [];
+    const vals = hist?.series?.[chartKey] || [];
+    const today = data?.as_of;
+    const points = dates.map((date, i) => ({
+      label: date,
+      aum: vals[i] ?? null,
+    }));
+
+    if (selectedAum != null && today) {
+      if (points.length && points[points.length - 1].label === today) {
+        points[points.length - 1].aum = selectedAum;
+      } else {
+        points.push({ label: today, aum: selectedAum });
+      }
+    } else if (selectedAum != null && !points.length) {
+      points.push({ label: today || "live", aum: selectedAum });
+    }
+
+    return points;
+  }, [chartMode, intraday, selectedAum, data, dim, chartKey]);
 
   return (
     <section className="panel etfdb-panel">
@@ -127,13 +184,23 @@ export default function EtfDbTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB</h2>
           <p className="kr-note">
-            국내 상장 ETF 전종목 · 유형/국가/GICS 업종(+헬스케어·배당·커버드콜·액티브) ·
-            AUM 합산 시계열(라이브) · 수급(NAV×Δ설정좌수)
+            국내 상장 ETF · 유형/국가/GICS 업종(+헬스케어·배당·커버드콜·액티브) · AUM 합산
+            라이브 차트 · 수급(NAV×Δ설정좌수)
           </p>
         </div>
-        <button type="button" className="tab-btn" onClick={() => void load()}>
-          새로고침
-        </button>
+        <div className="etfdb-hero-actions">
+          <label className="etfdb-toggle">
+            <input
+              type="checkbox"
+              checked={equityOnly}
+              onChange={(e) => setEquityOnly(e.target.checked)}
+            />
+            주식형 ETF만
+          </label>
+          <button type="button" className="tab-btn" onClick={() => void load()}>
+            새로고침
+          </button>
+        </div>
       </div>
 
       {loading && !data ? <p className="empty">ETF 전종목 불러오는 중…</p> : null}
@@ -143,7 +210,9 @@ export default function EtfDbTab() {
         <>
           <div className="etfdb-stats">
             <div>
-              <div className="etfdb-stat-k">상장 ETF</div>
+              <div className="etfdb-stat-k">
+                {equityOnly ? "주식형 ETF" : "상장 ETF"}
+              </div>
               <div className="etfdb-stat-v">
                 {data.count.toLocaleString("ko-KR")}종
               </div>
@@ -166,10 +235,13 @@ export default function EtfDbTab() {
             </div>
           </div>
           <p className="kr-note">
-            {data.generated_at_display} · AUM 차트 60초 라이브 갱신
-            {data.prev_as_of
-              ? ` · 수급 기준 전일 스냅샷 ${data.prev_as_of}`
-              : " · 수급은 Render 봇 일별 스냅샷 축적 후 표시"}
+            {data.generated_at_display}
+            {equityOnly ? " · 주식형만 (채권·원자재·기타 제외)" : " · 전체 ETF"}
+            {" · "}
+            {chartMode === "intraday"
+              ? "AUM 분·초 라이브 시계열"
+              : "AUM 일별 시계열 + 당일 라이브"}
+            {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : ""}
           </p>
 
           <div className="tabs etfdb-dim-tabs" role="tablist" aria-label="분류">
@@ -226,18 +298,27 @@ export default function EtfDbTab() {
 
             <div className="etfdb-main">
               <h3 className="etfdb-detail-title" style={{ marginBottom: "0.5rem" }}>
-                AUM 시계열 · {chartKey}
+                AUM 합산 · {chartKey}
+                <span className="etfdb-chart-mode">
+                  {chartMode === "intraday" ? "라이브" : "일별"}
+                </span>
               </h3>
               <div className="etfdb-chart">
                 {chartData.length ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={chartData}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart data={chartData}>
+                      <defs>
+                        <linearGradient id="aumFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#4da3ff" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#4da3ff" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid stroke="rgba(43,54,72,0.8)" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fill: "#8fa3b8", fontSize: 11 }} />
+                      <XAxis dataKey="label" tick={{ fill: "#8fa3b8", fontSize: 11 }} minTickGap={28} />
                       <YAxis
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
                         tickFormatter={(v) => fmtEok(Number(v))}
-                        width={56}
+                        width={58}
                         domain={["auto", "auto"]}
                       />
                       <Tooltip
@@ -248,19 +329,20 @@ export default function EtfDbTab() {
                         }}
                       />
                       <Legend />
-                      <Line
+                      <Area
                         type="monotone"
-                        dataKey={chartKey}
+                        dataKey="aum"
                         name={`${chartKey} AUM`}
-                        stroke={COLORS[0]}
-                        dot={{ r: 2 }}
+                        stroke="#4da3ff"
+                        fill="url(#aumFill)"
                         strokeWidth={2}
+                        dot={{ r: chartData.length < 3 ? 4 : 2 }}
                         connectNulls
                       />
-                    </LineChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="empty">AUM 시계열을 준비 중입니다…</p>
+                  <p className="empty">AUM 데이터를 불러오는 중…</p>
                 )}
               </div>
 

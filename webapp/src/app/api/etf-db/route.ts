@@ -92,8 +92,9 @@ async function fetchBotOverlay(): Promise<{
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
     const [items, overlay] = await Promise.all([
       fetchNaverUniverse(),
       fetchBotOverlay(),
@@ -103,8 +104,9 @@ export async function GET() {
       {
         flowByCode: overlay.flowByCode,
         prevAsOf: overlay.prevAsOf,
-        flowHistory: overlay.flowHistory,
-        aumHistory: overlay.aumHistory,
+        flowHistory: equityOnly ? undefined : overlay.flowHistory,
+        aumHistory: equityOnly ? undefined : overlay.aumHistory,
+        equityOnly,
       },
     );
     return NextResponse.json(payload);

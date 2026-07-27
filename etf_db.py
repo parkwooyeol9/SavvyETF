@@ -417,11 +417,17 @@ def aum_history_by_dimension(
         (k for k in series if k != "전체"),
         key=lambda lab: -sum(v or 0 for v in series[lab][-10:]),
     )
-    keep = ["전체", *ranked[:12]]
+    live_labels: list[str] = []
+    if live_rows is not None:
+        live_labels = [a["label"] for a in aggregate(live_rows, dimension=dimension, flows={})]
+    keep = []
+    for label in ["전체", *ranked[:12], *live_labels]:
+        if label in series and label not in keep:
+            keep.append(label)
     return {
         "dimension": dimension,
         "dates": dates,
-        "series": {k: series[k] for k in keep if k in series},
+        "series": {k: series[k] for k in keep},
     }
 
 
