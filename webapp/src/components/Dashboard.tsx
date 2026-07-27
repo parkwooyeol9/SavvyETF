@@ -14,13 +14,15 @@ import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
 import {
   type AllBriefs,
   type BriefSlot,
+  type NavGroupId,
   type ShellTabId,
-  SHELL_TAB_IDS,
+  NAV_GROUPS,
   SHELL_TAB_LABELS,
   TAB_LABELS,
   TAB_SLOT_ORDER,
   emptyAllBriefs,
   isBriefTabId,
+  navGroupForTab,
   type TabId,
 } from "@/lib/types";
 
@@ -120,6 +122,30 @@ function SlotView({ slot }: { slot: BriefSlot }) {
   );
 }
 
+function BriefSlotsPanel({
+  title,
+  note,
+  emptyText,
+  slots,
+}: {
+  title: string;
+  note?: string;
+  emptyText: string;
+  slots: BriefSlot[];
+}) {
+  return (
+    <section className="panel kr-briefs">
+      <h2 className="kr-briefs-title">{title}</h2>
+      {note ? <p className="kr-note">{note}</p> : null}
+      {!slots.length ? (
+        <p className="empty">{emptyText}</p>
+      ) : (
+        slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+      )}
+    </section>
+  );
+}
+
 export default function Dashboard() {
   const [tab, setTab] = useState<ShellTabId>("main");
   const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
@@ -127,6 +153,10 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+
+  const groupId: NavGroupId = navGroupForTab(tab);
+  const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
+  const showSubNav = activeGroup.tabs.length > 1;
 
   const load = useCallback(async () => {
     try {
@@ -161,7 +191,14 @@ export default function Dashboard() {
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
 
   const metaText = (() => {
-    if (tab === "main" || tab === "simulate" || tab === "education" || tab === "geo" || tab === "etfdb") {
+    if (
+      tab === "main" ||
+      tab === "simulate" ||
+      tab === "education" ||
+      tab === "geo" ||
+      tab === "etfdb" ||
+      tab === "leverage"
+    ) {
       return error
         ? `시황 동기화 참고: ${error}`
         : warning
@@ -175,6 +212,13 @@ export default function Dashboard() {
     }
     return `갱신 ${formatWhen(fetchedAt)} · 탭 ${formatWhen(current?.updated_at)}`;
   })();
+
+  function selectGroup(nextGroup: NavGroupId) {
+    const group = NAV_GROUPS.find((g) => g.id === nextGroup);
+    if (!group) return;
+    if (group.tabs.includes(tab)) return;
+    setTab(group.tabs[0]);
+  }
 
   return (
     <div className="shell">
@@ -192,18 +236,33 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <nav className="tabs" aria-label="대시보드 탭">
-        {SHELL_TAB_IDS.map((id) => (
+      <nav className="tabs tabs-primary" aria-label="대시보드 대분류">
+        {NAV_GROUPS.map((group) => (
           <button
-            key={id}
+            key={group.id}
             type="button"
-            className={`tab-btn ${tab === id ? "active" : ""}`}
-            onClick={() => setTab(id)}
+            className={`tab-btn ${groupId === group.id ? "active" : ""}`}
+            onClick={() => selectGroup(group.id)}
           >
-            {SHELL_TAB_LABELS[id]}
+            {group.label}
           </button>
         ))}
       </nav>
+
+      {showSubNav ? (
+        <nav className="tabs tabs-secondary" aria-label={`${activeGroup.label} 하위 탭`}>
+          {activeGroup.tabs.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`tab-btn sub ${tab === id ? "active" : ""}`}
+              onClick={() => setTab(id)}
+            >
+              {SHELL_TAB_LABELS[id]}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       {tab === "main" ? (
         <MainTab />
@@ -213,41 +272,28 @@ export default function Dashboard() {
         <EducationTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
+      ) : tab === "leverage" ? (
+        <KrMarketTab variant="leverage" />
       ) : tab === "geo" ? (
         <GeoTab />
       ) : tab === "kr" ? (
         <>
-          <KrMarketTab />
-          <section className="panel kr-briefs">
-            <h2 className="kr-briefs-title">시황 브리프</h2>
-            {!slots.length ? (
-              <p className="empty">
-                국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
-                명령 후 자동으로 채워집니다.
-              </p>
-            ) : (
-              slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
-            )}
-          </section>
+          <KrMarketTab variant="market" />
+          <BriefSlotsPanel
+            title="시황 브리프"
+            emptyText="국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
+            slots={slots}
+          />
         </>
       ) : tab === "esg" ? (
         <>
           <EsgThemesTab />
-          <section className="panel kr-briefs">
-            <h2 className="kr-briefs-title">ESG 시황 브리프</h2>
-            <p className="kr-note">
-              브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 →
-              중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요.
-            </p>
-            {!slots.length ? (
-              <p className="empty">
-                ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동
-                명령 후 자동으로 채워집니다.
-              </p>
-            ) : (
-              slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
-            )}
-          </section>
+          <BriefSlotsPanel
+            title="ESG 시황 브리프"
+            note="브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 → 중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요."
+            emptyText="ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
+            slots={slots}
+          />
         </>
       ) : (
         <section className="panel">

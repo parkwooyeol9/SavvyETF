@@ -6,7 +6,10 @@ export type ShellTabId =
   | "education"
   | "geo"
   | "etfdb"
+  | "leverage"
   | TabId;
+
+export type NavGroupId = "main" | "market" | "etf" | "esg";
 
 export type BriefSection = {
   heading?: string;
@@ -42,12 +45,13 @@ export const TAB_IDS: TabId[] = ["kr", "us", "etf", "esg"];
 
 export const SHELL_TAB_IDS: ShellTabId[] = [
   "main",
-  "simulate",
-  "education",
-  "etfdb",
   "kr",
   "us",
+  "education",
+  "simulate",
   "etf",
+  "leverage",
+  "etfdb",
   "esg",
   "geo",
 ];
@@ -64,9 +68,33 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   simulate: "ETF 배분",
   education: "교육",
   etfdb: "ETF DB",
+  leverage: "레버리지 ETF",
   geo: "지정학",
   ...TAB_LABELS,
 };
+
+/** Top-level groups with nested content tabs. */
+export const NAV_GROUPS: Array<{
+  id: NavGroupId;
+  label: string;
+  tabs: ShellTabId[];
+}> = [
+  { id: "main", label: "메인", tabs: ["main"] },
+  { id: "market", label: "시황", tabs: ["kr", "us"] },
+  {
+    id: "etf",
+    label: "ETF",
+    tabs: ["education", "simulate", "etf", "leverage", "etfdb"],
+  },
+  { id: "esg", label: "ESG", tabs: ["esg", "geo"] },
+];
+
+export function navGroupForTab(tab: ShellTabId): NavGroupId {
+  for (const group of NAV_GROUPS) {
+    if (group.tabs.includes(tab)) return group.id;
+  }
+  return "main";
+}
 
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_kor_intra", "summary_nxt"],
@@ -82,6 +110,10 @@ export function isTabId(value: string): value is TabId {
 
 export function isBriefTabId(value: string): value is TabId {
   return isTabId(value);
+}
+
+export function isShellTabId(value: string): value is ShellTabId {
+  return (SHELL_TAB_IDS as string[]).includes(value);
 }
 
 export function emptyTab(tab: TabId): TabBriefs {

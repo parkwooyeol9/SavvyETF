@@ -110,6 +110,17 @@ a {
   padding-bottom: 0.75rem;
 }
 
+.tabs-primary {
+  margin-bottom: 0.55rem;
+}
+
+.tabs-secondary {
+  margin-top: -0.25rem;
+  margin-bottom: 1.1rem;
+  border-bottom-style: dashed;
+  padding-bottom: 0.65rem;
+}
+
 .tab-btn {
   appearance: none;
   border: 1px solid transparent;
@@ -122,6 +133,13 @@ a {
   border-radius: 999px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-btn.sub {
+  font-size: 0.86rem;
+  font-weight: 550;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
 }
 
 .tab-btn:hover {

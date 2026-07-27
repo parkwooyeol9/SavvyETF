@@ -120,7 +120,19 @@ def parse_etfdb_dimension(command: str) -> str:
 def fetch_naver_etf_universe() -> list[dict[str, Any]]:
     response = requests.get(NAVER_ETF_LIST_URL, headers=NAVER_HEADERS, timeout=45)
     response.raise_for_status()
-    payload = response.json()
+    # Naver returns charset=EUC-KR; requests may mis-decode as ISO-8859-1/UTF-8.
+    raw = response.content
+    text: str
+    for encoding in ("euc-kr", "cp949", "utf-8"):
+        try:
+            text = raw.decode(encoding)
+            if encoding != "utf-8" or "\ufffd" not in text[:800]:
+                break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="replace")
+    payload = json.loads(text)
     items = ((payload.get("result") or {}).get("etfItemList")) or []
     if not isinstance(items, list) or not items:
         raise RuntimeError("Naver ETF list empty or unexpected shape")

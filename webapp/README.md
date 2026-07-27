@@ -5,12 +5,9 @@ Tabs:
 | Tab | Contents |
 |-----|----------|
 | **메인** | ETF/S&P/Nasdaq 히트맵 + “왜 ETF인가” 실데이터 비교 차트 |
-| **교육** | 한국 투자자 세금·계좌·환율 + 원/달러 차트 |
-| **ETF DB** | 국내 상장 ETF 전종목 — 유형·국가·업종 AUM · NAV×Δ설정좌수 수급 |
-| 국내시황 | `summary_kor`, `summary_kor_intra`, `summary_nxt` |
-| 미국시황 | `summary`, `summary_pre`, `reddit` |
-| ETF시황 | `etf_sector`, `etf_us_new`, `etfcheck`, `etf_memb` |
-| ESG시황 | 우선순위 레이더(전력·기후·거버넌스) + `esg_monitor`, `esg_overview`, `esg_accident` |
+| **시황** | 국내시황 · 미국시황 |
+| **ETF** | 교육 · ETF 배분 · ETF시황 · 레버리지 ETF · ETF DB |
+| **ESG** | ESG시황 · 지정학 |
 | **커뮤니티** | `/community` — 닉네임 게시판 (R2). 홈 네비에는 잠시 숨김 |
 
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.

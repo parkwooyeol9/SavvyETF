@@ -616,7 +616,12 @@ function SingleStockLevPanel({
   );
 }
 
-export default function KrMarketTab() {
+export default function KrMarketTab({
+  variant = "full",
+}: {
+  /** full = market + leverage; market = indices/flows only; leverage = single-stock lev board */
+  variant?: "full" | "market" | "leverage";
+} = {}) {
   const [data, setData] = useState<KrMarketPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartMode, setChartMode] = useState<ChartMode>("intraday");
@@ -644,37 +649,56 @@ export default function KrMarketTab() {
     return () => window.clearInterval(id);
   }, [load]);
 
+  const showMarket = variant === "full" || variant === "market";
+  const showLeverage = variant === "full" || variant === "leverage";
+
   return (
     <div className="kr-tab">
-      <div className="kr-hero">
-        <div>
-          <h2 className="kr-hero-title">국내 시황 모니터</h2>
-          <p className="kr-hero-sub">
-            코스피200 · 코스닥 라이브 차트, 수급, 신용, 기술적 지표를 한눈에 봅니다.
-          </p>
-        </div>
-        <div className="kr-hero-actions">
-          <div className="seg">
-            <button
-              type="button"
-              className={chartMode === "intraday" ? "active" : ""}
-              onClick={() => setChartMode("intraday")}
-            >
-              분봉
-            </button>
-            <button
-              type="button"
-              className={chartMode === "daily" ? "active" : ""}
-              onClick={() => setChartMode("daily")}
-            >
-              일봉
+      {showMarket ? (
+        <div className="kr-hero">
+          <div>
+            <h2 className="kr-hero-title">국내 시황 모니터</h2>
+            <p className="kr-hero-sub">
+              코스피200 · 코스닥 라이브 차트, 수급, 신용, 기술적 지표를 한눈에 봅니다.
+            </p>
+          </div>
+          <div className="kr-hero-actions">
+            <div className="seg">
+              <button
+                type="button"
+                className={chartMode === "intraday" ? "active" : ""}
+                onClick={() => setChartMode("intraday")}
+              >
+                분봉
+              </button>
+              <button
+                type="button"
+                className={chartMode === "daily" ? "active" : ""}
+                onClick={() => setChartMode("daily")}
+              >
+                일봉
+              </button>
+            </div>
+            <button type="button" className="ghost-btn" onClick={() => void load()}>
+              새로고침
             </button>
           </div>
-          <button type="button" className="ghost-btn" onClick={() => void load()}>
-            새로고침
-          </button>
         </div>
-      </div>
+      ) : (
+        <div className="kr-hero">
+          <div>
+            <h2 className="kr-hero-title">레버리지 ETF</h2>
+            <p className="kr-hero-sub">
+              삼성전자·SK하이닉스 단일종목 레버리지/인버스 ETF 4유형 합산 모니터
+            </p>
+          </div>
+          <div className="kr-hero-actions">
+            <button type="button" className="ghost-btn" onClick={() => void load()}>
+              새로고침
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading && !data ? <p className="empty">국내 시황 불러오는 중…</p> : null}
       {data && !data.ok ? (
@@ -683,80 +707,84 @@ export default function KrMarketTab() {
 
       {data?.ok ? (
         <>
-          {data.note ? <p className="kr-note">{data.note}</p> : null}
+          {showMarket ? (
+            <>
+              {data.note ? <p className="kr-note">{data.note}</p> : null}
 
-          <div className="kr-grid-2">
-            {data.kospi200 ? (
-              <IndexCard
-                title="코스피200"
-                subtitle="KPI200 · Naver 실시간"
-                board={data.kospi200}
-                mode={chartMode}
-              />
-            ) : null}
-            {data.kosdaq ? (
-              <IndexCard
-                title="코스닥 종합"
-                subtitle="舊 코스닥100 대체 시황 · 수급 연동"
-                board={data.kosdaq}
-                mode={chartMode}
-              />
-            ) : null}
-          </div>
+              <div className="kr-grid-2">
+                {data.kospi200 ? (
+                  <IndexCard
+                    title="코스피200"
+                    subtitle="KPI200 · Naver 실시간"
+                    board={data.kospi200}
+                    mode={chartMode}
+                  />
+                ) : null}
+                {data.kosdaq ? (
+                  <IndexCard
+                    title="코스닥 종합"
+                    subtitle="舊 코스닥100 대체 시황 · 수급 연동"
+                    board={data.kosdaq}
+                    mode={chartMode}
+                  />
+                ) : null}
+              </div>
 
-          {data.kosdaq150 ? (
-            <article className="kr-card kr-card-compact">
-              <div className="kr-card-head">
-                <div>
-                  <h3 className="kr-card-title">코스닥150 (舊 코스닥100 후속)</h3>
-                  <p className="kr-card-sub">KODEX 코스닥150 ETF 프록시 · 대형주 추세</p>
-                </div>
-                <div className={`kr-quote ${toneClass(data.kosdaq150.quote.change)}`}>
-                  <div className="kr-last">
-                    {fmtNum(data.kosdaq150.quote.last, 0)}원
+              {data.kosdaq150 ? (
+                <article className="kr-card kr-card-compact">
+                  <div className="kr-card-head">
+                    <div>
+                      <h3 className="kr-card-title">코스닥150 (舊 코스닥100 후속)</h3>
+                      <p className="kr-card-sub">KODEX 코스닥150 ETF 프록시 · 대형주 추세</p>
+                    </div>
+                    <div className={`kr-quote ${toneClass(data.kosdaq150.quote.change)}`}>
+                      <div className="kr-last">
+                        {fmtNum(data.kosdaq150.quote.last, 0)}원
+                      </div>
+                      <div className="kr-chg">
+                        {fmtNum(data.kosdaq150.quote.change, 0)} (
+                        {fmtPct(data.kosdaq150.quote.change_pct)})
+                      </div>
+                    </div>
                   </div>
-                  <div className="kr-chg">
-                    {fmtNum(data.kosdaq150.quote.change, 0)} (
-                    {fmtPct(data.kosdaq150.quote.change_pct)})
+                  <div className="kr-ta-grid">
+                    <div>
+                      <span className="kr-ta-label">추세</span>
+                      <strong>{data.kosdaq150.technicals.regime}</strong>
+                    </div>
+                    <div>
+                      <span className="kr-ta-label">RSI</span>
+                      <strong>{fmtNum(data.kosdaq150.technicals.rsi14, 1)}</strong>
+                    </div>
+                    <div>
+                      <span className="kr-ta-label">MACD hist</span>
+                      <strong className={toneClass(data.kosdaq150.technicals.macd_hist)}>
+                        {fmtNum(data.kosdaq150.technicals.macd_hist, 2)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="kr-ta-label">SMA20</span>
+                      <strong>{fmtNum(data.kosdaq150.technicals.sma20, 0)}</strong>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="kr-ta-grid">
-                <div>
-                  <span className="kr-ta-label">추세</span>
-                  <strong>{data.kosdaq150.technicals.regime}</strong>
-                </div>
-                <div>
-                  <span className="kr-ta-label">RSI</span>
-                  <strong>{fmtNum(data.kosdaq150.technicals.rsi14, 1)}</strong>
-                </div>
-                <div>
-                  <span className="kr-ta-label">MACD hist</span>
-                  <strong className={toneClass(data.kosdaq150.technicals.macd_hist)}>
-                    {fmtNum(data.kosdaq150.technicals.macd_hist, 2)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="kr-ta-label">SMA20</span>
-                  <strong>{fmtNum(data.kosdaq150.technicals.sma20, 0)}</strong>
-                </div>
-              </div>
-            </article>
+                </article>
+              ) : null}
+
+              {data.flows ? (
+                <FlowPanel
+                  data={data.flows}
+                  market={flowMarket}
+                  mode={flowMode}
+                  onMarket={setFlowMarket}
+                  onMode={setFlowMode}
+                />
+              ) : null}
+
+              {data.credit ? <CreditPanel credit={data.credit} /> : null}
+            </>
           ) : null}
 
-          {data.flows ? (
-            <FlowPanel
-              data={data.flows}
-              market={flowMarket}
-              mode={flowMode}
-              onMarket={setFlowMarket}
-              onMode={setFlowMode}
-            />
-          ) : null}
-
-          {data.credit ? <CreditPanel credit={data.credit} /> : null}
-
-          {data.single_stock_lev ? (
+          {showLeverage && data.single_stock_lev ? (
             <SingleStockLevPanel board={data.single_stock_lev} />
           ) : null}
 

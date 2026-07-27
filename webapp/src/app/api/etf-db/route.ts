@@ -27,7 +27,16 @@ async function fetchNaverUniverse(): Promise<unknown[]> {
     },
   );
   if (!res.ok) throw new Error(`Naver ETF list HTTP ${res.status}`);
-  const data = (await res.json()) as NaverListResponse;
+  // Naver serves this endpoint as EUC-KR (charset=EUC-KR). Decoding as UTF-8
+  // mojibakes Korean ETF names.
+  const buf = Buffer.from(await res.arrayBuffer());
+  let text: string;
+  try {
+    text = new TextDecoder("euc-kr").decode(buf);
+  } catch {
+    text = buf.toString("utf8");
+  }
+  const data = JSON.parse(text) as NaverListResponse;
   const items = data?.result?.etfItemList;
   if (!Array.isArray(items) || !items.length) {
     throw new Error("Naver ETF list empty");
