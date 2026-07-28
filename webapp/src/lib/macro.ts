@@ -1,6 +1,6 @@
 /**
  * Macro Risk Monitor types & scoring — ports Telegram `/macro` logic for the web 경제 tab.
- * Data: FRED (rates/credit/vol) + Yahoo (markets / yield fallbacks).
+ * Data: FRED (rates/credit/vol/inflation) + Yahoo (markets / yield fallbacks / hyperscalers).
  */
 
 export type MacroPoint = {
@@ -10,10 +10,22 @@ export type MacroPoint = {
 
 export type MacroRange = "1mo" | "3mo" | "6mo" | "1y";
 
+export type HyperscalerRange = "6mo" | "1y" | "2y" | "5y" | "ytd" | "max";
+
 export type MacroMetric = {
   id: string;
   label: string;
-  group: "rates" | "curve" | "credit" | "vol" | "policy" | "market";
+  group:
+    | "rates"
+    | "curve"
+    | "credit"
+    | "vol"
+    | "policy"
+    | "market"
+    | "inflation"
+    | "conditions"
+    | "commodity"
+    | "fx";
   unit: "pct" | "bps" | "index" | "ret";
   value: number | null;
   change_5d: number | null;
@@ -21,6 +33,7 @@ export type MacroMetric = {
   series?: MacroPoint[];
   source?: string;
   note?: string;
+  cadence?: string;
 };
 
 export type MacroAsset = {
@@ -34,6 +47,18 @@ export type MacroAsset = {
   change_5d_pct: number | null;
   change_range_pct: number | null;
   series?: MacroPoint[];
+  error?: string;
+};
+
+export type HyperscalerSeries = {
+  id: string;
+  symbol: string;
+  label: string;
+  color: string;
+  price: number | null;
+  change_1d_pct: number | null;
+  change_range_pct: number | null;
+  series: MacroPoint[];
   error?: string;
 };
 
@@ -61,32 +86,42 @@ export type MacroStress = {
   };
 };
 
+export type MacroSnapshot = {
+  as_of: string;
+  DGS3MO: number | null;
+  DGS2: number | null;
+  DGS10: number | null;
+  DGS30: number | null;
+  T10Y2Y: number | null;
+  T10Y3M: number | null;
+  HY_OAS: number | null;
+  IG_OAS: number | null;
+  VIX: number | null;
+  FED_FUNDS: number | null;
+  SOFR: number | null;
+  MOVE: number | null;
+  T5YIE: number | null;
+  T10YIE: number | null;
+  NFCI: number | null;
+  SPY_5D: number | null;
+  SPY_20D: number | null;
+  HYG_TLT_20D: number | null;
+};
+
 export type MacroPayload = {
   ok: boolean;
   generated_at: string;
   note: string;
+  schedule_note: string;
   range: MacroRange;
   uses_fred: boolean;
-  snapshot: {
-    as_of: string;
-    DGS3MO: number | null;
-    DGS2: number | null;
-    DGS10: number | null;
-    DGS30: number | null;
-    T10Y2Y: number | null;
-    T10Y3M: number | null;
-    HY_OAS: number | null;
-    IG_OAS: number | null;
-    VIX: number | null;
-    FED_FUNDS: number | null;
-    SPY_5D: number | null;
-    SPY_20D: number | null;
-    HYG_TLT_20D: number | null;
-  };
+  snapshot: MacroSnapshot;
   stress: MacroStress;
   yield_curve: Array<{ tenor: string; value: number | null }>;
   metrics: MacroMetric[];
   assets: MacroAsset[];
+  hyperscalers: HyperscalerSeries[];
+  hyperscaler_range: HyperscalerRange;
   calendar: MacroCalendarEvent[];
   error?: string;
 };
@@ -98,9 +133,34 @@ export const MACRO_RANGES: Array<{ id: MacroRange; label: string }> = [
   { id: "1y", label: "1년" },
 ];
 
+export const HYPERSCALER_RANGES: Array<{ id: HyperscalerRange; label: string }> = [
+  { id: "6mo", label: "6개월" },
+  { id: "1y", label: "1년" },
+  { id: "2y", label: "2년" },
+  { id: "5y", label: "5년" },
+  { id: "ytd", label: "YTD" },
+  { id: "max", label: "전체" },
+];
+
 export function parseMacroRange(value: string | null | undefined): MacroRange {
   if (value === "1mo" || value === "6mo" || value === "1y") return value;
   return "3mo";
+}
+
+export function parseHyperscalerRange(
+  value: string | null | undefined,
+): HyperscalerRange {
+  if (
+    value === "6mo" ||
+    value === "1y" ||
+    value === "2y" ||
+    value === "5y" ||
+    value === "ytd" ||
+    value === "max"
+  ) {
+    return value;
+  }
+  return "2y";
 }
 
 export const FRED_SERIES_SPECS: Array<{
@@ -109,8 +169,10 @@ export const FRED_SERIES_SPECS: Array<{
   label: string;
   group: MacroMetric["group"];
   unit: MacroMetric["unit"];
-  snapshotKey: keyof MacroPayload["snapshot"];
+  snapshotKey?: keyof MacroSnapshot;
   yahooSymbol?: string;
+  note?: string;
+  cadence?: string;
 }> = [
   {
     id: "dgs3mo",
@@ -120,6 +182,7 @@ export const FRED_SERIES_SPECS: Array<{
     unit: "pct",
     snapshotKey: "DGS3MO",
     yahooSymbol: "^IRX",
+    cadence: "일간",
   },
   {
     id: "dgs2",
@@ -128,6 +191,7 @@ export const FRED_SERIES_SPECS: Array<{
     group: "rates",
     unit: "pct",
     snapshotKey: "DGS2",
+    cadence: "일간",
   },
   {
     id: "dgs10",
@@ -137,6 +201,7 @@ export const FRED_SERIES_SPECS: Array<{
     unit: "pct",
     snapshotKey: "DGS10",
     yahooSymbol: "^TNX",
+    cadence: "일간",
   },
   {
     id: "dgs30",
@@ -146,6 +211,7 @@ export const FRED_SERIES_SPECS: Array<{
     unit: "pct",
     snapshotKey: "DGS30",
     yahooSymbol: "^TYX",
+    cadence: "일간",
   },
   {
     id: "t10y2y",
@@ -154,6 +220,7 @@ export const FRED_SERIES_SPECS: Array<{
     group: "curve",
     unit: "pct",
     snapshotKey: "T10Y2Y",
+    cadence: "일간",
   },
   {
     id: "t10y3m",
@@ -162,6 +229,7 @@ export const FRED_SERIES_SPECS: Array<{
     group: "curve",
     unit: "pct",
     snapshotKey: "T10Y3M",
+    cadence: "일간",
   },
   {
     id: "hy_oas",
@@ -170,6 +238,8 @@ export const FRED_SERIES_SPECS: Array<{
     group: "credit",
     unit: "pct",
     snapshotKey: "HY_OAS",
+    cadence: "일간",
+    note: "하이일드 신용 스프레드",
   },
   {
     id: "ig_oas",
@@ -178,6 +248,8 @@ export const FRED_SERIES_SPECS: Array<{
     group: "credit",
     unit: "pct",
     snapshotKey: "IG_OAS",
+    cadence: "일간",
+    note: "투자등급 신용 스프레드",
   },
   {
     id: "vix",
@@ -187,6 +259,18 @@ export const FRED_SERIES_SPECS: Array<{
     unit: "index",
     snapshotKey: "VIX",
     yahooSymbol: "^VIX",
+    cadence: "일간",
+  },
+  {
+    id: "move",
+    fredId: "",
+    label: "MOVE",
+    group: "vol",
+    unit: "index",
+    snapshotKey: "MOVE",
+    yahooSymbol: "^MOVE",
+    cadence: "일간",
+    note: "채권 변동성 (ICE BofA · Yahoo)",
   },
   {
     id: "dff",
@@ -195,6 +279,47 @@ export const FRED_SERIES_SPECS: Array<{
     group: "policy",
     unit: "pct",
     snapshotKey: "FED_FUNDS",
+    cadence: "일간",
+  },
+  {
+    id: "sofr",
+    fredId: "SOFR",
+    label: "SOFR",
+    group: "policy",
+    unit: "pct",
+    snapshotKey: "SOFR",
+    cadence: "일간",
+    note: "담보부 오버나이트 금리",
+  },
+  {
+    id: "t5yie",
+    fredId: "T5YIE",
+    label: "5Y 기대인플레",
+    group: "inflation",
+    unit: "pct",
+    snapshotKey: "T5YIE",
+    cadence: "일간",
+    note: "Breakeven 5Y",
+  },
+  {
+    id: "t10yie",
+    fredId: "T10YIE",
+    label: "10Y 기대인플레",
+    group: "inflation",
+    unit: "pct",
+    snapshotKey: "T10YIE",
+    cadence: "일간",
+    note: "Breakeven 10Y",
+  },
+  {
+    id: "nfci",
+    fredId: "NFCI",
+    label: "NFCI",
+    group: "conditions",
+    unit: "index",
+    snapshotKey: "NFCI",
+    cadence: "주간",
+    note: "시카고연준 금융여건 (<0 = 완화)",
   },
 ];
 
@@ -250,9 +375,30 @@ export const MACRO_ASSET_SPECS: Array<{
   {
     id: "uso",
     symbol: "USO",
-    label: "Oil",
+    label: "Oil ETF",
     group: "commodity",
-    thesis: "인플레·지정학 공급 충격",
+    thesis: "원유 ETF 프록시",
+  },
+  {
+    id: "wti",
+    symbol: "CL=F",
+    label: "WTI",
+    group: "commodity",
+    thesis: "인플레·공급 충격",
+  },
+  {
+    id: "brent",
+    symbol: "BZ=F",
+    label: "Brent",
+    group: "commodity",
+    thesis: "글로벌 원유 벤치마크",
+  },
+  {
+    id: "copper",
+    symbol: "HG=F",
+    label: "Copper",
+    group: "commodity",
+    thesis: "경기·중국 수요 민감",
   },
   {
     id: "uup",
@@ -261,7 +407,45 @@ export const MACRO_ASSET_SPECS: Array<{
     group: "fx",
     thesis: "달러 강세 = 글로벌 유동성 긴축",
   },
+  {
+    id: "dxy",
+    symbol: "DX-Y.NYB",
+    label: "DXY",
+    group: "fx",
+    thesis: "달러 인덱스",
+  },
+  {
+    id: "eurusd",
+    symbol: "EURUSD=X",
+    label: "EUR/USD",
+    group: "fx",
+    thesis: "달러 약세/강세 크로스",
+  },
+  {
+    id: "usdkurw",
+    symbol: "KRW=X",
+    label: "USD/KRW",
+    group: "fx",
+    thesis: "원/달러 · 국내 연동",
+  },
 ];
+
+export const HYPERSCALER_SPECS: Array<{
+  id: string;
+  symbol: string;
+  label: string;
+  color: string;
+}> = [
+  { id: "msft", symbol: "MSFT", label: "Microsoft", color: "#60a5fa" },
+  { id: "amzn", symbol: "AMZN", label: "Amazon", color: "#fb923c" },
+  { id: "googl", symbol: "GOOGL", label: "Alphabet", color: "#34d399" },
+  { id: "meta", symbol: "META", label: "Meta", color: "#a78bfa" },
+  { id: "orcl", symbol: "ORCL", label: "Oracle", color: "#f87171" },
+];
+
+/** Recommended refresh cadence shown in the UI. */
+export const MACRO_SCHEDULE_NOTE =
+  "권장 갱신: 평일 08:00 KST (FRED 전일 확정) · 시세·하이퍼스케일러는 페이지 5분 폴링";
 
 function clip(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -393,7 +577,7 @@ function regimeFor(score: number): { regime: string; regime_ko: string } {
 }
 
 /** Port of `macro_scores.compute_macro_stress`. */
-export function computeMacroStress(snapshot: MacroPayload["snapshot"]): MacroStress {
+export function computeMacroStress(snapshot: MacroSnapshot): MacroStress {
   const curve = curveStress(snapshot.T10Y2Y, snapshot.T10Y3M);
   const credit = creditStress(snapshot.HY_OAS, snapshot.IG_OAS);
   const vol = volStress(snapshot.VIX, snapshot.SPY_20D);
@@ -453,4 +637,60 @@ export function deltaOver(
   const end = series[series.length - 1]?.value;
   if (start == null || end == null) return null;
   return end - start;
+}
+
+/** Rebase series so first point on/after startDate equals 100. */
+export function rebaseTo100(
+  series: MacroPoint[],
+  startDate: string,
+): MacroPoint[] {
+  const filtered = series.filter((p) => p.date >= startDate);
+  if (!filtered.length) return [];
+  const base = filtered[0]!.value;
+  if (!base) return [];
+  return filtered.map((p) => ({
+    date: p.date,
+    value: (p.value / base) * 100,
+  }));
+}
+
+/** Equal-weight portfolio of rebased series (average of levels = 100 at start). */
+export function equalWeightRebased(
+  seriesList: MacroPoint[][],
+  startDate: string,
+): MacroPoint[] {
+  const rebased = seriesList
+    .map((s) => rebaseTo100(s, startDate))
+    .filter((s) => s.length > 0);
+  if (!rebased.length) return [];
+
+  const dateSet = new Set(rebased[0]!.map((p) => p.date));
+  for (let i = 1; i < rebased.length; i++) {
+    const dates = new Set(rebased[i]!.map((p) => p.date));
+    for (const d of [...dateSet]) {
+      if (!dates.has(d)) dateSet.delete(d);
+    }
+  }
+  const dates = [...dateSet].sort();
+  const maps = rebased.map((s) => new Map(s.map((p) => [p.date, p.value])));
+  return dates.map((date) => {
+    let sum = 0;
+    let n = 0;
+    for (const m of maps) {
+      const v = m.get(date);
+      if (v != null) {
+        sum += v;
+        n += 1;
+      }
+    }
+    return { date, value: n ? sum / n : 100 };
+  });
+}
+
+export function earliestCommonDate(seriesList: MacroPoint[][]): string | null {
+  const starts = seriesList
+    .map((s) => s[0]?.date)
+    .filter((d): d is string => Boolean(d));
+  if (!starts.length) return null;
+  return starts.sort().at(-1) || null;
 }

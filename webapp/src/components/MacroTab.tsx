@@ -14,8 +14,10 @@ import {
   YAxis,
 } from "recharts";
 
+import HyperscalerPanel from "@/components/HyperscalerPanel";
 import {
   MACRO_RANGES,
+  type HyperscalerRange,
   type MacroAsset,
   type MacroMetric,
   type MacroPayload,
@@ -101,12 +103,13 @@ function MetricChart({
   }
   const data = series.map((p) => ({ date: p.date.slice(5), value: p.value }));
   const stroke = inverted ? "#f87171" : color;
+  const gid = `mg-${stroke.replace("#", "")}-${height}`;
   return (
     <div className="geo-chart-wrap" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id={`mg-${stroke.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
               <stop offset="100%" stopColor={stroke} stopOpacity={0} />
             </linearGradient>
@@ -133,7 +136,7 @@ function MetricChart({
             type="monotone"
             dataKey="value"
             stroke={stroke}
-            fill={`url(#mg-${stroke.replace("#", "")})`}
+            fill={`url(#${gid})`}
             strokeWidth={1.6}
             isAnimationActive={false}
           />
@@ -149,7 +152,9 @@ function YieldCurveChart({
   curve: MacroPayload["yield_curve"];
 }) {
   const data = curve.filter((r) => r.value != null);
-  if (!data.length) return <div className="geo-chart-empty">수익률 곡선 데이터 없음</div>;
+  if (!data.length) {
+    return <div className="geo-chart-empty">수익률 곡선 데이터 없음</div>;
+  }
   return (
     <div className="geo-chart-wrap" style={{ height: 220 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -231,40 +236,113 @@ function metricDelta(m: MacroMetric): string {
     const sign = d > 0 ? "+" : "";
     return `${sign}${(d * 100).toFixed(0)}bp /5d`;
   }
-  return m.change_5d != null ? `${m.change_5d > 0 ? "+" : ""}${m.change_5d.toFixed(2)} /5d` : "—";
+  return m.change_5d != null
+    ? `${m.change_5d > 0 ? "+" : ""}${m.change_5d.toFixed(2)} /5d`
+    : "—";
+}
+
+function MetricGrid({
+  title,
+  metrics,
+  selectedId,
+  onSelect,
+  color,
+  inverted,
+  emptyHint,
+}: {
+  title: string;
+  metrics: MacroMetric[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  color: string;
+  inverted?: boolean;
+  emptyHint?: string;
+}) {
+  if (!metrics.length && !emptyHint) return null;
+  return (
+    <section className="geo-section">
+      <h3 className="geo-section-title">{title}</h3>
+      {!metrics.length && emptyHint ? (
+        <p className="empty warn">{emptyHint}</p>
+      ) : null}
+      <div className="macro-metric-grid">
+        {metrics.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            className={`macro-metric-card ${selectedId === m.id ? "active" : ""}`}
+            onClick={() => onSelect(m.id)}
+          >
+            <div className="macro-metric-top">
+              <strong>{m.label}</strong>
+              <span className={retClass(m.change_5d ?? m.change_20d)}>
+                {m.id === "hyg_tlt"
+                  ? `20D ${fmtPct(m.change_20d)}`
+                  : metricDelta(m)}
+              </span>
+            </div>
+            <div className="macro-metric-val">
+              {m.value == null
+                ? "—"
+                : m.unit === "pct"
+                  ? m.group === "credit"
+                    ? `${fmtNum(m.value)}% · ${fmtBps(m.value)}`
+                    : `${fmtNum(m.value)}%`
+                  : fmtNum(m.value, 2)}
+            </div>
+            {m.cadence ? (
+              <span className="macro-cadence">{m.cadence}</span>
+            ) : null}
+            <MetricChart
+              series={m.series}
+              height={72}
+              color={color}
+              inverted={inverted || m.id === "vix" || m.id === "move"}
+            />
+            {m.note ? <p className="geo-thesis">{m.note}</p> : null}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export default function MacroTab() {
   const [range, setRange] = useState<MacroRange>("3mo");
+  const [hsRange, setHsRange] = useState<HyperscalerRange>("2y");
   const [data, setData] = useState<MacroPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<string>("hy_oas");
 
-  const load = useCallback(async (nextRange: MacroRange) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/macro?range=${nextRange}`, {
-        cache: "no-store",
-      });
-      const json = (await res.json()) as MacroPayload;
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
+  const load = useCallback(
+    async (nextRange: MacroRange, nextHs: HyperscalerRange) => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/macro?range=${nextRange}&hsRange=${nextHs}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as MacroPayload;
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || `HTTP ${res.status}`);
+        }
+        setData(json);
+        setError(null);
+      } catch (exc) {
+        setError(exc instanceof Error ? exc.message : "로드 실패");
+      } finally {
+        setLoading(false);
       }
-      setData(json);
-      setError(null);
-    } catch (exc) {
-      setError(exc instanceof Error ? exc.message : "로드 실패");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
-    void load(range);
-    const id = window.setInterval(() => void load(range), 5 * 60_000);
+    void load(range, hsRange);
+    const id = window.setInterval(() => void load(range, hsRange), 5 * 60_000);
     return () => window.clearInterval(id);
-  }, [load, range]);
+  }, [load, range, hsRange]);
 
   const featured = useMemo(() => {
     if (!data?.metrics?.length) return null;
@@ -275,13 +353,14 @@ export default function MacroTab() {
     );
   }, [data, selectedMetric]);
 
-  const creditMetrics = data?.metrics.filter((m) => m.group === "credit") || [];
-  const rateMetrics = data?.metrics.filter(
-    (m) => m.group === "rates" || m.group === "policy" || m.group === "curve",
-  ) || [];
-  const volMetrics = data?.metrics.filter(
-    (m) => m.group === "vol" || m.group === "market",
-  ) || [];
+  const byGroup = (groups: MacroMetric["group"][]) =>
+    data?.metrics.filter((m) => groups.includes(m.group)) || [];
+
+  const rateMetrics = byGroup(["rates", "policy", "curve"]);
+  const creditMetrics = byGroup(["credit"]);
+  const volMetrics = byGroup(["vol", "market"]);
+  const inflationMetrics = byGroup(["inflation"]);
+  const conditionsMetrics = byGroup(["conditions"]);
   const rangeLabel = MACRO_RANGES.find((r) => r.id === range)?.label || range;
 
   const snapCards = data
@@ -302,9 +381,7 @@ export default function MacroTab() {
           id: "hy",
           label: "HY OAS",
           value:
-            data.snapshot.HY_OAS != null
-              ? fmtBps(data.snapshot.HY_OAS)
-              : "—",
+            data.snapshot.HY_OAS != null ? fmtBps(data.snapshot.HY_OAS) : "—",
           sub:
             data.snapshot.HY_OAS != null
               ? `${fmtNum(data.snapshot.HY_OAS)}%`
@@ -314,9 +391,7 @@ export default function MacroTab() {
           id: "ig",
           label: "IG OAS",
           value:
-            data.snapshot.IG_OAS != null
-              ? fmtBps(data.snapshot.IG_OAS)
-              : "—",
+            data.snapshot.IG_OAS != null ? fmtBps(data.snapshot.IG_OAS) : "—",
           sub:
             data.snapshot.IG_OAS != null
               ? `${fmtNum(data.snapshot.IG_OAS)}%`
@@ -326,7 +401,31 @@ export default function MacroTab() {
           id: "vix",
           label: "VIX",
           value: fmtNum(data.snapshot.VIX, 1),
-          sub: "변동성",
+          sub: "주식 변동성",
+        },
+        {
+          id: "move",
+          label: "MOVE",
+          value: fmtNum(data.snapshot.MOVE, 1),
+          sub: "채권 변동성",
+        },
+        {
+          id: "sofr",
+          label: "SOFR",
+          value: fmtNum(data.snapshot.SOFR),
+          sub: "정책·자금",
+        },
+        {
+          id: "t10yie",
+          label: "10Y BE",
+          value: fmtNum(data.snapshot.T10YIE),
+          sub: "기대 인플레 %",
+        },
+        {
+          id: "nfci",
+          label: "NFCI",
+          value: fmtNum(data.snapshot.NFCI, 3),
+          sub: "금융여건",
         },
         {
           id: "spy20",
@@ -344,11 +443,15 @@ export default function MacroTab() {
           <div>
             <h2 className="feature-title">경제 · Macro Risk Monitor</h2>
             <p className="macro-subhead">
-              FRED 금리·신용 스프레드 · VIX · 크로스에셋 — 텔레그램{" "}
-              <code>/macro</code> 모니터의 웹 버전
+              FRED 금리·신용·기대인플레·금융여건 · 크로스에셋 · Hyperscaler —
+              텔레그램 <code>/macro</code> 확장
             </p>
           </div>
-          <div className="chip-row geo-range-chips" role="group" aria-label="차트 기간">
+          <div
+            className="chip-row geo-range-chips"
+            role="group"
+            aria-label="차트 기간"
+          >
             {MACRO_RANGES.map((r) => (
               <button
                 key={r.id}
@@ -362,11 +465,15 @@ export default function MacroTab() {
           </div>
         </div>
 
-        {loading && !data ? <p className="empty">매크로 데이터 불러오는 중…</p> : null}
+        {loading && !data ? (
+          <p className="empty">매크로 데이터 불러오는 중…</p>
+        ) : null}
         {error ? <p className="empty warn">{error}</p> : null}
 
         {data ? (
           <>
+            <p className="macro-schedule">{data.schedule_note}</p>
+
             <div className="geo-composite macro-stress">
               <div
                 className="geo-score-ring"
@@ -402,7 +509,7 @@ export default function MacroTab() {
               </div>
             </div>
 
-            <div className="macro-snap-grid">
+            <div className="macro-snap-grid macro-snap-grid-wide">
               {snapCards.map((c) => (
                 <article key={c.id} className="macro-snap-card">
                   <span className="macro-snap-label">{c.label}</span>
@@ -412,13 +519,21 @@ export default function MacroTab() {
               ))}
             </div>
 
+            <HyperscalerPanel
+              rows={data.hyperscalers || []}
+              hsRange={hsRange}
+              onRangeChange={setHsRange}
+              loading={loading}
+            />
+
             <div className="macro-two-col">
               <section className="geo-section geo-featured">
                 <h3 className="geo-section-title">국채 수익률 곡선</h3>
                 <YieldCurveChart curve={data.yield_curve} />
                 <p className="meta-soft">
-                  Fed Funds {fmtNum(data.snapshot.FED_FUNDS)}% · 3M{" "}
-                  {fmtNum(data.snapshot.DGS3MO)}% · 2Y {fmtNum(data.snapshot.DGS2)}%
+                  Fed Funds {fmtNum(data.snapshot.FED_FUNDS)}% · SOFR{" "}
+                  {fmtNum(data.snapshot.SOFR)}% · 3M {fmtNum(data.snapshot.DGS3MO)}%
+                  · 2Y {fmtNum(data.snapshot.DGS2)}%
                 </p>
               </section>
 
@@ -440,7 +555,10 @@ export default function MacroTab() {
                     <div className="geo-signal-price">
                       {featured?.unit === "pct"
                         ? `${fmtNum(featured.value)}%`
-                        : fmtNum(featured?.value, featured?.unit === "index" ? 1 : 2)}
+                        : fmtNum(
+                            featured?.value,
+                            featured?.unit === "index" ? 2 : 2,
+                          )}
                     </div>
                     <div className="geo-signal-chgs">
                       <span className={retClass(featured?.change_5d)}>
@@ -457,7 +575,9 @@ export default function MacroTab() {
                       ? "#fb923c"
                       : featured?.group === "vol"
                         ? "#a78bfa"
-                        : "#60a5fa"
+                        : featured?.group === "inflation"
+                          ? "#fbbf24"
+                          : "#60a5fa"
                   }
                   inverted={
                     featured?.group === "credit" || featured?.group === "vol"
@@ -466,117 +586,71 @@ export default function MacroTab() {
               </section>
             </div>
 
-            <section className="geo-section">
-              <h3 className="geo-section-title">금리 · 커브 · 정책</h3>
-              <div className="macro-metric-grid">
-                {rateMetrics.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`macro-metric-card ${
-                      selectedMetric === m.id ? "active" : ""
-                    }`}
-                    onClick={() => setSelectedMetric(m.id)}
-                  >
-                    <div className="macro-metric-top">
-                      <strong>{m.label}</strong>
-                      <span className={retClass(m.change_5d)}>
-                        {metricDelta(m)}
-                      </span>
-                    </div>
-                    <div className="macro-metric-val">
-                      {m.value != null ? `${fmtNum(m.value)}%` : "—"}
-                    </div>
-                    <MetricChart series={m.series} height={72} color="#2dd4bf" />
-                  </button>
-                ))}
-              </div>
-            </section>
+            <MetricGrid
+              title="금리 · 커브 · 정책"
+              metrics={rateMetrics}
+              selectedId={selectedMetric}
+              onSelect={setSelectedMetric}
+              color="#2dd4bf"
+            />
 
-            <section className="geo-section">
-              <h3 className="geo-section-title">신용 스프레드 (HY / IG OAS)</h3>
-              {!data.uses_fred && !creditMetrics.some((m) => m.series?.length) ? (
-                <p className="empty warn">
-                  HY·IG OAS는 FRED 시계열입니다. Vercel에{" "}
-                  <code>FRED_API_KEY</code>를 설정하면 표시됩니다. (무료:{" "}
-                  <a
-                    href="https://fred.stlouisfed.org/docs/api/api_key.html"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    FRED API
-                  </a>
-                  )
-                </p>
-              ) : null}
-              <div className="macro-metric-grid">
-                {creditMetrics.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`macro-metric-card ${
-                      selectedMetric === m.id ? "active" : ""
-                    }`}
-                    onClick={() => setSelectedMetric(m.id)}
-                  >
-                    <div className="macro-metric-top">
-                      <strong>{m.label}</strong>
-                      <span className={retClass(m.change_5d)}>
-                        {metricDelta(m)}
-                      </span>
-                    </div>
-                    <div className="macro-metric-val">
-                      {m.value != null
-                        ? `${fmtNum(m.value)}% · ${fmtBps(m.value)}`
-                        : "—"}
-                    </div>
-                    <MetricChart
-                      series={m.series}
-                      height={72}
-                      color="#fb923c"
-                      inverted
-                    />
-                    {m.note ? <p className="geo-thesis">{m.note}</p> : null}
-                  </button>
-                ))}
-              </div>
-            </section>
+            <MetricGrid
+              title="신용 스프레드 (HY / IG OAS)"
+              metrics={creditMetrics}
+              selectedId={selectedMetric}
+              onSelect={setSelectedMetric}
+              color="#fb923c"
+              inverted
+              emptyHint={
+                !data.uses_fred
+                  ? "HY·IG OAS는 FRED 시계열입니다. Vercel에 FRED_API_KEY를 설정하세요."
+                  : undefined
+              }
+            />
 
-            <section className="geo-section">
-              <h3 className="geo-section-title">변동성 · 리스크 온/오프</h3>
-              <div className="macro-metric-grid">
-                {volMetrics.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`macro-metric-card ${
-                      selectedMetric === m.id ? "active" : ""
-                    }`}
-                    onClick={() => setSelectedMetric(m.id)}
-                  >
-                    <div className="macro-metric-top">
-                      <strong>{m.label}</strong>
-                      <span className={retClass(m.change_5d ?? m.change_20d)}>
-                        {m.id === "hyg_tlt"
-                          ? `20D ${fmtPct(m.change_20d)}`
-                          : metricDelta(m)}
-                      </span>
-                    </div>
-                    <div className="macro-metric-val">{fmtNum(m.value, 2)}</div>
-                    <MetricChart
-                      series={m.series}
-                      height={72}
-                      color="#a78bfa"
-                      inverted={m.id === "vix"}
-                    />
-                    {m.note ? <p className="geo-thesis">{m.note}</p> : null}
-                  </button>
-                ))}
-              </div>
-            </section>
+            <MetricGrid
+              title="기대 인플레 (Breakeven)"
+              metrics={inflationMetrics}
+              selectedId={selectedMetric}
+              onSelect={setSelectedMetric}
+              color="#fbbf24"
+              emptyHint={
+                !data.uses_fred
+                  ? "T5YIE / T10YIE는 FRED_API_KEY가 필요합니다."
+                  : undefined
+              }
+            />
+
+            <MetricGrid
+              title="변동성 · 리스크 온/오프"
+              metrics={volMetrics}
+              selectedId={selectedMetric}
+              onSelect={setSelectedMetric}
+              color="#a78bfa"
+              inverted
+            />
+
+            <MetricGrid
+              title="금융여건 (NFCI)"
+              metrics={conditionsMetrics}
+              selectedId={selectedMetric}
+              onSelect={setSelectedMetric}
+              color="#94a3b8"
+              emptyHint={
+                !data.uses_fred
+                  ? "NFCI는 FRED 주간 시계열입니다."
+                  : undefined
+              }
+            />
 
             {(
-              ["equity", "rates", "credit", "commodity", "fx"] as MacroAsset["group"][]
+              [
+                "equity",
+                "rates",
+                "credit",
+                "commodity",
+                "fx",
+              ] as MacroAsset["group"][]
             ).map((group) => {
               const rows = data.assets.filter((a) => a.group === group);
               if (!rows.length) return null;
@@ -593,7 +667,13 @@ export default function MacroTab() {
                           <code>{a.symbol}</code>
                         </div>
                         <div className="geo-signal-price">
-                          {a.price != null ? a.price.toFixed(2) : "—"}
+                          {a.price != null
+                            ? a.price >= 100
+                              ? a.price.toLocaleString("en-US", {
+                                  maximumFractionDigits: 2,
+                                })
+                              : a.price.toFixed(3)
+                            : "—"}
                         </div>
                         <div className="geo-signal-chgs">
                           <span className={retClass(a.change_1d_pct)}>
@@ -607,7 +687,9 @@ export default function MacroTab() {
                           series={a.series}
                           height={100}
                           color={
-                            (a.change_range_pct ?? 0) >= 0 ? "#34d399" : "#f87171"
+                            (a.change_range_pct ?? 0) >= 0
+                              ? "#34d399"
+                              : "#f87171"
                           }
                         />
                         <p className="geo-thesis">{a.thesis}</p>
@@ -626,8 +708,7 @@ export default function MacroTab() {
               {!data.calendar.length ? (
                 <p className="empty">
                   Finnhub 캘린더가 비어 있거나{" "}
-                  <code>FINNHUB_API_KEY</code>가 없습니다. 텔레그램{" "}
-                  <code>/macro</code>와 동일 키를 Vercel에 넣으면 표시됩니다.
+                  <code>FINNHUB_API_KEY</code>가 없습니다.
                 </p>
               ) : (
                 <div className="macro-cal-table-wrap">
@@ -669,7 +750,7 @@ export default function MacroTab() {
             <button
               type="button"
               className="btn ghost"
-              onClick={() => void load(range)}
+              onClick={() => void load(range, hsRange)}
               disabled={loading}
             >
               {loading ? "새로고침 중…" : "새로고침"}

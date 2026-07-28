@@ -2,23 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   FRED_SERIES_SPECS,
+  HYPERSCALER_SPECS,
   MACRO_ASSET_SPECS,
+  MACRO_SCHEDULE_NOTE,
   computeMacroStress,
   deltaOver,
   lastValue,
+  parseHyperscalerRange,
   parseMacroRange,
   pctChange,
+  type HyperscalerRange,
+  type HyperscalerSeries,
   type MacroAsset,
   type MacroCalendarEvent,
   type MacroMetric,
   type MacroPayload,
   type MacroPoint,
   type MacroRange,
+  type MacroSnapshot,
 } from "@/lib/macro";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
@@ -36,10 +42,6 @@ type YahooChart = {
 type FredObs = {
   observations?: Array<{ date: string; value: string }>;
 };
-
-function rangeToYahoo(range: MacroRange): string {
-  return range;
-}
 
 function fredObservationLimit(range: MacroRange): number {
   switch (range) {
@@ -101,9 +103,10 @@ async function fetchFredSeries(
 
 async function fetchYahooSeries(
   symbol: string,
-  range: MacroRange,
+  range: string,
+  maxPoints = 90,
 ): Promise<{ price: number | null; series: MacroPoint[] }> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${rangeToYahoo(range)}&interval=1d&includePrePost=false`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d&includePrePost=false`;
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     next: { revalidate: 180 },
@@ -127,13 +130,10 @@ async function fetchYahooSeries(
   const price =
     result.meta?.regularMarketPrice ??
     (series.length ? series[series.length - 1]!.value : null);
-  return { price, series: downsample(series, 90) };
+  return { price, series: downsample(series, maxPoints) };
 }
 
-function alignSpread(
-  a: MacroPoint[],
-  b: MacroPoint[],
-): MacroPoint[] {
+function alignSpread(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
   const mapB = new Map(b.map((p) => [p.date, p.value]));
   const out: MacroPoint[] = [];
   for (const p of a) {
@@ -144,10 +144,7 @@ function alignSpread(
   return out;
 }
 
-function ratioSeries(
-  a: MacroPoint[],
-  b: MacroPoint[],
-): MacroPoint[] {
+function ratioSeries(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
   const mapB = new Map(b.map((p) => [p.date, p.value]));
   const out: MacroPoint[] = [];
   for (const p of a) {
@@ -180,11 +177,13 @@ async function fetchCalendar(): Promise<MacroCalendarEvent[]> {
       economicCalendar?: Array<Record<string, unknown>>;
     };
     const rows = payload.economicCalendar || [];
-    const usHigh = rows
+    return rows
       .filter((r) => {
         const country = String(r.country || "").toUpperCase();
         const impact = String(r.impact || "").toLowerCase();
-        return (country === "US" || country === "UNITED STATES") && impact === "high";
+        return (
+          (country === "US" || country === "UNITED STATES") && impact === "high"
+        );
       })
       .slice(0, 18)
       .map((r) => ({
@@ -199,7 +198,6 @@ async function fetchCalendar(): Promise<MacroCalendarEvent[]> {
         estimate: r.estimate != null ? String(r.estimate) : null,
         prev: r.prev != null ? String(r.prev) : null,
       }));
-    return usHigh;
   } catch {
     return [];
   }
@@ -207,11 +205,14 @@ async function fetchCalendar(): Promise<MacroCalendarEvent[]> {
 
 export async function GET(req: NextRequest) {
   const range = parseMacroRange(req.nextUrl.searchParams.get("range"));
+  const hsRange = parseHyperscalerRange(
+    req.nextUrl.searchParams.get("hsRange"),
+  ) as HyperscalerRange;
   const generated_at = new Date().toISOString();
   const usesFred = Boolean(fredApiKey());
   const fredLimit = fredObservationLimit(range);
 
-  const snapshot: MacroPayload["snapshot"] = {
+  const snapshot: MacroSnapshot = {
     as_of: generated_at,
     DGS3MO: null,
     DGS2: null,
@@ -223,6 +224,11 @@ export async function GET(req: NextRequest) {
     IG_OAS: null,
     VIX: null,
     FED_FUNDS: null,
+    SOFR: null,
+    MOVE: null,
+    T5YIE: null,
+    T10YIE: null,
+    NFCI: null,
     SPY_5D: null,
     SPY_20D: null,
     HYG_TLT_20D: null,
@@ -232,13 +238,12 @@ export async function GET(req: NextRequest) {
   const sourceMap = new Map<string, string>();
   const errors: string[] = [];
 
-  // FRED + Yahoo fallbacks for macro series
   await Promise.all(
     FRED_SERIES_SPECS.map(async (spec) => {
       let points: MacroPoint[] = [];
       let source = "FRED";
       try {
-        if (usesFred) {
+        if (usesFred && spec.fredId) {
           points = await fetchFredSeries(spec.fredId, fredLimit);
         }
       } catch (exc) {
@@ -261,12 +266,14 @@ export async function GET(req: NextRequest) {
         seriesMap.set(spec.id, downsample(points, 90));
         sourceMap.set(spec.id, source);
         const latest = lastValue(points);
-        snapshot[spec.snapshotKey] = latest as never;
+        if (spec.snapshotKey && latest != null) {
+          (snapshot as Record<string, string | number | null>)[spec.snapshotKey] =
+            latest;
+        }
       }
     }),
   );
 
-  // Derive curve spreads if missing
   const dgs10 = seriesMap.get("dgs10") || [];
   const dgs2 = seriesMap.get("dgs2") || [];
   const dgs3mo = seriesMap.get("dgs3mo") || [];
@@ -287,41 +294,82 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Market assets
-  const assets: MacroAsset[] = await Promise.all(
-    MACRO_ASSET_SPECS.map(async (spec) => {
-      try {
-        const { price, series } = await fetchYahooSeries(spec.symbol, range);
-        return {
-          id: spec.id,
-          symbol: spec.symbol,
-          label: spec.label,
-          group: spec.group,
-          thesis: spec.thesis,
-          price,
-          change_1d_pct: pctChange(series, 1),
-          change_5d_pct: pctChange(series, 5),
-          change_range_pct: series.length >= 2
-            ? ((series[series.length - 1]!.value / series[0]!.value - 1) * 100)
-            : null,
-          series,
-        };
-      } catch (exc) {
-        return {
-          id: spec.id,
-          symbol: spec.symbol,
-          label: spec.label,
-          group: spec.group,
-          thesis: spec.thesis,
-          price: null,
-          change_1d_pct: null,
-          change_5d_pct: null,
-          change_range_pct: null,
-          error: exc instanceof Error ? exc.message : "fetch fail",
-        };
-      }
-    }),
-  );
+  const [assets, hyperscalers, calendar] = await Promise.all([
+    Promise.all(
+      MACRO_ASSET_SPECS.map(async (spec): Promise<MacroAsset> => {
+        try {
+          const { price, series } = await fetchYahooSeries(spec.symbol, range);
+          return {
+            id: spec.id,
+            symbol: spec.symbol,
+            label: spec.label,
+            group: spec.group,
+            thesis: spec.thesis,
+            price,
+            change_1d_pct: pctChange(series, 1),
+            change_5d_pct: pctChange(series, 5),
+            change_range_pct:
+              series.length >= 2
+                ? ((series[series.length - 1]!.value / series[0]!.value - 1) *
+                    100)
+                : null,
+            series,
+          };
+        } catch (exc) {
+          return {
+            id: spec.id,
+            symbol: spec.symbol,
+            label: spec.label,
+            group: spec.group,
+            thesis: spec.thesis,
+            price: null,
+            change_1d_pct: null,
+            change_5d_pct: null,
+            change_range_pct: null,
+            error: exc instanceof Error ? exc.message : "fetch fail",
+          };
+        }
+      }),
+    ),
+    Promise.all(
+      HYPERSCALER_SPECS.map(async (spec): Promise<HyperscalerSeries> => {
+        try {
+          const { price, series } = await fetchYahooSeries(
+            spec.symbol,
+            hsRange,
+            260,
+          );
+          return {
+            id: spec.id,
+            symbol: spec.symbol,
+            label: spec.label,
+            color: spec.color,
+            price,
+            change_1d_pct: pctChange(series, 1),
+            change_range_pct:
+              series.length >= 2
+                ? ((series[series.length - 1]!.value / series[0]!.value - 1) *
+                    100)
+                : null,
+            series,
+          };
+        } catch (exc) {
+          return {
+            id: spec.id,
+            symbol: spec.symbol,
+            label: spec.label,
+            color: spec.color,
+            price: null,
+            change_1d_pct: null,
+            change_range_pct: null,
+            series: [],
+            error: exc instanceof Error ? exc.message : "fetch fail",
+          };
+        }
+      }),
+    ),
+    fetchCalendar(),
+  ]);
 
   const spy = assets.find((a) => a.id === "spy");
   const hyg = assets.find((a) => a.id === "hyg");
@@ -347,14 +395,15 @@ export async function GET(req: NextRequest) {
       change_20d: deltaOver(series, 20),
       series,
       source: sourceMap.get(spec.id),
+      cadence: spec.cadence,
       note:
-        !series.length && spec.group === "credit"
-          ? "FRED_API_KEY 필요 (HY/IG OAS)"
-          : undefined,
+        spec.note ||
+        (!series.length && (spec.group === "credit" || !spec.yahooSymbol)
+          ? "FRED_API_KEY 필요"
+          : undefined),
     };
   });
 
-  // Add HYG/TLT risk appetite as a market metric
   if (hyg?.series?.length && tlt?.series?.length) {
     const ratio = downsample(ratioSeries(hyg.series, tlt.series), 90);
     metrics.push({
@@ -367,12 +416,12 @@ export async function GET(req: NextRequest) {
       change_20d: pctChange(ratio, 20),
       series: ratio,
       source: "Yahoo",
+      cadence: "일간",
       note: "리스크 온/오프 비율",
     });
   }
 
   const stress = computeMacroStress(snapshot);
-  const calendar = await fetchCalendar();
 
   const noteParts = [
     usesFred ? "FRED 공식 시계열" : "Yahoo 프록시 (FRED_API_KEY 미설정)",
@@ -384,6 +433,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     generated_at,
     note: noteParts.join(" · "),
+    schedule_note: MACRO_SCHEDULE_NOTE,
     range,
     uses_fred: usesFred,
     snapshot,
@@ -396,6 +446,8 @@ export async function GET(req: NextRequest) {
     ],
     metrics,
     assets,
+    hyperscalers,
+    hyperscaler_range: hsRange,
     calendar,
     error: errors.length ? errors.slice(0, 4).join("; ") : undefined,
   };

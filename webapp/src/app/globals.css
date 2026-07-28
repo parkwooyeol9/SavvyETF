@@ -2882,11 +2882,132 @@ a.geo-choke-hl:hover {
   background: #f87171;
 }
 
+.macro-schedule {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+  background: rgba(15, 22, 34, 0.55);
+}
+
 .macro-snap-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.55rem;
   margin: 0.85rem 0 0.25rem;
+}
+
+.macro-snap-grid-wide {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.macro-cadence {
+  display: inline-block;
+  margin-bottom: 0.15rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.macro-hs-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.macro-hs-date {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.macro-hs-date input {
+  background: #0f1622;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+}
+
+.macro-hs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0.35rem;
+}
+
+.macro-hs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(20, 29, 43, 0.7);
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.macro-hs-chip.off {
+  opacity: 0.4;
+}
+
+.macro-hs-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--hs-color, #60a5fa);
+}
+
+.macro-hs-chip strong {
+  font-weight: 650;
+}
+
+.macro-hs-chip em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.macro-hs-rets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.macro-hs-ret-card {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(15, 22, 34, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.macro-hs-ret-card.portfolio {
+  grid-column: 1 / -1;
+  max-width: 280px;
+}
+
+.macro-hs-ret-card strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-hs-ret-card em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
 }
 
 .macro-snap-card {
@@ -2997,17 +3118,24 @@ a.geo-choke-hl:hover {
 }
 
 @media (max-width: 900px) {
-  .macro-snap-grid {
+  .macro-snap-grid,
+  .macro-snap-grid-wide {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .macro-two-col {
     grid-template-columns: 1fr;
   }
+
+  .macro-hs-controls {
+    align-items: stretch;
+    width: 100%;
+  }
 }
 
 @media (max-width: 560px) {
-  .macro-snap-grid {
+  .macro-snap-grid,
+  .macro-snap-grid-wide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
