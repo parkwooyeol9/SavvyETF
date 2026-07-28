@@ -66,8 +66,12 @@ async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
     const text = await r2GetObjectText(storePath(tab));
     if (!text) return { tab: emptyTab(tab) };
     const parsed = JSON.parse(text) as TabBriefs;
-    if (!parsed || typeof parsed.slots !== "object") {
-      return { tab: emptyTab(tab) };
+    if (!parsed || typeof parsed !== "object" || typeof parsed.slots !== "object") {
+      // Object exists but is unusable — fail closed so upsert cannot wipe siblings.
+      return {
+        tab: emptyTab(tab),
+        error: `r2: corrupt briefs/${tab}.json (missing slots object)`,
+      };
     }
     return {
       tab: {
@@ -107,8 +111,11 @@ async function readTabFromBlob(tab: TabId): Promise<TabReadResult> {
       };
     }
     const parsed = (await res.json()) as TabBriefs;
-    if (!parsed || typeof parsed.slots !== "object") {
-      return { tab: emptyTab(tab) };
+    if (!parsed || typeof parsed !== "object" || typeof parsed.slots !== "object") {
+      return {
+        tab: emptyTab(tab),
+        error: `blob: corrupt briefs/${tab}.json (missing slots object)`,
+      };
     }
     return {
       tab: {
@@ -457,7 +464,14 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     throw new Error("Missing generated_at or title");
   }
 
-  const current = (await readTab(body.tab)).tab;
+  // Fail closed: never treat a read error as an empty tab (that wipes sibling slots).
+  const read = await readTab(body.tab);
+  if (read.error) {
+    throw new Error(
+      `Refusing upsert for ${body.tab}/${slotKey}: cannot read existing briefs (${read.error})`,
+    );
+  }
+  const current = read.tab;
   const now = new Date().toISOString();
   const uploadedImages = await uploadImages(body.tab, slotKey, body.images);
   const sections = (body.sections || []).map((section) => ({

@@ -125,6 +125,11 @@ def _public_url(key: str, version: int | str) -> str:
 
 
 def _get_json(client, key: str) -> dict[str, Any] | None:
+    """Return parsed tab JSON, or None if the object is missing.
+
+    Corrupt JSON / unexpected S3 errors raise — callers must not treat those
+    as an empty tab (that would wipe sibling brief slots on the next put).
+    """
     try:
         obj = client.get_object(Bucket=_bucket(), Key=key)
     except client.exceptions.NoSuchKey:
@@ -137,10 +142,10 @@ def _get_json(client, key: str) -> dict[str, Any] | None:
     raw = obj["Body"].read().decode("utf-8")
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Corrupt brief JSON at {key}: {exc}") from exc
     if not isinstance(parsed, dict):
-        return None
+        raise RuntimeError(f"Corrupt brief JSON at {key}: expected object")
     return parsed
 
 
@@ -279,12 +284,19 @@ def upsert_brief_r2(
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     client = _client()
-    current = _get_json(client, _tab_key(tab)) or {
-        "tab": tab,
-        "updated_at": None,
-        "slots": {},
-    }
-    slots = current.get("slots") if isinstance(current.get("slots"), dict) else {}
+    try:
+        current = _get_json(client, _tab_key(tab))
+    except Exception as exc:
+        raise RuntimeError(
+            f"Refusing R2 upsert for {tab}/{slot_key}: cannot read existing briefs ({exc})"
+        ) from exc
+    if current is None:
+        current = {"tab": tab, "updated_at": None, "slots": {}}
+    elif not isinstance(current.get("slots"), dict):
+        raise RuntimeError(
+            f"Refusing R2 upsert for {tab}/{slot_key}: existing slots field is corrupt"
+        )
+    slots = dict(current["slots"])
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     uploaded = _save_images(client, tab, slot_key, images)
 

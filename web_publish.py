@@ -4,8 +4,9 @@ Order:
   1. Always write a local Render copy (homepage fallback after redeploys need reseed).
   2. If Cloudflare R2 is configured, write JSON + PNGs there (primary durable store)
      with stable image keys and orphan PNG GC.
-  3. If WEB_PUBLISH_URL + WEB_INGEST_SECRET are set, POST to Vercel /api/ingest
-     (also writes R2/Blob on the webapp side).
+  3. Only if R2 failed/unavailable and WEB_PUBLISH_URL + WEB_INGEST_SECRET are set,
+     POST to Vercel /api/ingest as a fallback (avoids a second R2 read-modify-write
+     that can wipe sibling slots on a transient read failure).
 
 Local or R2 success is enough for the dashboard; Vercel ingest failures are non-fatal.
 """
@@ -160,6 +161,25 @@ def publish_brief(
     remote_ok: bool | None = None
     http_status: int | None = None
     err: str | None = r2_err
+
+    # R2 is the durable homepage store. When the bot already wrote R2 successfully,
+    # skip Vercel /api/ingest — a second read-modify-write there can wipe sibling
+    # slots if the ingest-side R2 read fails transiently.
+    if r2_ok:
+        try:
+            from web_briefs_store import record_publish_result
+
+            record_publish_result(
+                tab=tab,
+                slot=slot,
+                local_ok=local_ok,
+                remote_ok=True,
+                error=None,
+            )
+        except Exception:
+            pass
+        print(f"web_publish skip ingest ({tab}/{slot}): R2 already authoritative")
+        return True
 
     if not url or not secret:
         if r2_ok is None and not local_ok:
