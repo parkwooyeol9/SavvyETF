@@ -11,6 +11,7 @@ webapp/.vercel/
 webapp/.env.local
 webapp/.env*.local
 data/*.pkl
+data/ff_calendar_cache.json
 data/known_chats.json
 data/blocked_chats.json
 data/summary.html
