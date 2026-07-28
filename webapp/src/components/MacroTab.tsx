@@ -603,7 +603,7 @@ export default function MacroTab() {
               inverted
               emptyHint={
                 !data.uses_fred
-                  ? "HY·IG OAS는 FRED 시계열입니다. Vercel에 FRED_API_KEY를 설정하세요."
+                  ? "HY·IG OAS는 Render 봇 FRED 연동 후 표시됩니다. 봇 배포·콜드스타트를 확인하세요."
                   : undefined
               }
             />
@@ -616,7 +616,7 @@ export default function MacroTab() {
               color="#fbbf24"
               emptyHint={
                 !data.uses_fred
-                  ? "T5YIE / T10YIE는 FRED_API_KEY가 필요합니다."
+                  ? "기대인플레(T5YIE/T10YIE)는 Render 봇 FRED 연동 후 표시됩니다."
                   : undefined
               }
             />
@@ -638,7 +638,7 @@ export default function MacroTab() {
               color="#94a3b8"
               emptyHint={
                 !data.uses_fred
-                  ? "NFCI는 FRED 주간 시계열입니다."
+                  ? "NFCI는 Render 봇 FRED 주간 시계열입니다."
                   : undefined
               }
             />
@@ -707,8 +707,9 @@ export default function MacroTab() {
               <h3 className="geo-section-title">미국 고영향 경제지표 캘린더</h3>
               {!data.calendar.length ? (
                 <p className="empty">
-                  Finnhub 캘린더가 비어 있거나{" "}
-                  <code>FINNHUB_API_KEY</code>가 없습니다.
+                  고영향 캘린더가 비어 있습니다. Render 봇의{" "}
+                  <code>FINNHUB_API_KEY</code>와{" "}
+                  <code>/api/web/macro</code> 배포를 확인하세요.
                 </p>
               ) : (
                 <div className="macro-cal-table-wrap">

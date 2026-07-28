@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { fetchBotJson } from "@/lib/bot";
 import {
   FRED_SERIES_SPECS,
   HYPERSCALER_SPECS,
@@ -32,73 +33,17 @@ const UA =
 type YahooChart = {
   chart?: {
     result?: Array<{
-      meta?: { regularMarketPrice?: number; chartPreviousClose?: number };
+      meta?: { regularMarketPrice?: number };
       timestamp?: number[];
       indicators?: { quote?: Array<{ close?: Array<number | null> }> };
     }>;
   };
 };
 
-type FredObs = {
-  observations?: Array<{ date: string; value: string }>;
-};
-
-function fredObservationLimit(range: MacroRange): number {
-  switch (range) {
-    case "1mo":
-      return 45;
-    case "3mo":
-      return 100;
-    case "6mo":
-      return 200;
-    case "1y":
-      return 400;
-    default:
-      return 100;
-  }
-}
-
 function downsample(points: MacroPoint[], maxPoints: number): MacroPoint[] {
   if (points.length <= maxPoints) return points;
   const step = Math.ceil(points.length / maxPoints);
   return points.filter((_, i) => i % step === 0 || i === points.length - 1);
-}
-
-function fredApiKey(): string {
-  return (process.env.FRED_API_KEY || "").trim();
-}
-
-function finnhubApiKey(): string {
-  return (process.env.FINNHUB_API_KEY || "").trim();
-}
-
-async function fetchFredSeries(
-  seriesId: string,
-  limit: number,
-): Promise<MacroPoint[]> {
-  const apiKey = fredApiKey();
-  if (!apiKey) return [];
-  const url = new URL("https://api.stlouisfed.org/fred/series/observations");
-  url.searchParams.set("series_id", seriesId);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("file_type", "json");
-  url.searchParams.set("sort_order", "desc");
-  url.searchParams.set("limit", String(limit));
-
-  const res = await fetch(url.toString(), {
-    headers: { Accept: "application/json", "User-Agent": UA },
-    next: { revalidate: 1800 },
-  });
-  if (!res.ok) throw new Error(`FRED ${seriesId} HTTP ${res.status}`);
-  const payload = (await res.json()) as FredObs;
-  const points: MacroPoint[] = [];
-  for (const row of payload.observations || []) {
-    if (row.value === "." || row.value === "" || row.value == null) continue;
-    const value = Number(row.value);
-    if (!Number.isFinite(value)) continue;
-    points.push({ date: row.date, value });
-  }
-  return points.reverse();
 }
 
 async function fetchYahooSeries(
@@ -115,7 +60,6 @@ async function fetchYahooSeries(
   const payload = (await res.json()) as YahooChart;
   const result = payload.chart?.result?.[0];
   if (!result) return { price: null, series: [] };
-
   const timestamps = result.timestamp || [];
   const closes = result.indicators?.quote?.[0]?.close || [];
   const series: MacroPoint[] = [];
@@ -133,17 +77,6 @@ async function fetchYahooSeries(
   return { price, series: downsample(series, maxPoints) };
 }
 
-function alignSpread(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
-  const mapB = new Map(b.map((p) => [p.date, p.value]));
-  const out: MacroPoint[] = [];
-  for (const p of a) {
-    const bv = mapB.get(p.date);
-    if (bv == null) continue;
-    out.push({ date: p.date, value: p.value - bv });
-  }
-  return out;
-}
-
 function ratioSeries(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
   const mapB = new Map(b.map((p) => [p.date, p.value]));
   const out: MacroPoint[] = [];
@@ -155,63 +88,12 @@ function ratioSeries(a: MacroPoint[], b: MacroPoint[]): MacroPoint[] {
   return out;
 }
 
-async function fetchCalendar(): Promise<MacroCalendarEvent[]> {
-  const key = finnhubApiKey();
-  if (!key) return [];
-  const today = new Date();
-  const from = new Date(today);
-  from.setDate(from.getDate() - 2);
-  const to = new Date(today);
-  to.setDate(to.getDate() + 7);
-  const url = new URL("https://finnhub.io/api/v1/calendar/economic");
-  url.searchParams.set("from", from.toISOString().slice(0, 10));
-  url.searchParams.set("to", to.toISOString().slice(0, 10));
-  url.searchParams.set("token", key);
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json", "User-Agent": UA },
-      next: { revalidate: 1800 },
-    });
-    if (!res.ok) return [];
-    const payload = (await res.json()) as {
-      economicCalendar?: Array<Record<string, unknown>>;
-    };
-    const rows = payload.economicCalendar || [];
-    return rows
-      .filter((r) => {
-        const country = String(r.country || "").toUpperCase();
-        const impact = String(r.impact || "").toLowerCase();
-        return (
-          (country === "US" || country === "UNITED STATES") && impact === "high"
-        );
-      })
-      .slice(0, 18)
-      .map((r) => ({
-        date: String(r.time || r.date || "").slice(0, 10),
-        time: String(r.time || "").includes("T")
-          ? String(r.time).slice(11, 16)
-          : undefined,
-        country: String(r.country || "US"),
-        event: String(r.event || r.eventName || "Event"),
-        impact: String(r.impact || "high"),
-        actual: r.actual != null ? String(r.actual) : null,
-        estimate: r.estimate != null ? String(r.estimate) : null,
-        prev: r.prev != null ? String(r.prev) : null,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-export async function GET(req: NextRequest) {
-  const range = parseMacroRange(req.nextUrl.searchParams.get("range"));
-  const hsRange = parseHyperscalerRange(
-    req.nextUrl.searchParams.get("hsRange"),
-  ) as HyperscalerRange;
+/** Local Yahoo-only fallback when Render bot is cold/unreachable. */
+async function buildLocalFallback(
+  range: MacroRange,
+  hsRange: HyperscalerRange,
+): Promise<MacroPayload> {
   const generated_at = new Date().toISOString();
-  const usesFred = Boolean(fredApiKey());
-  const fredLimit = fredObservationLimit(range);
-
   const snapshot: MacroSnapshot = {
     as_of: generated_at,
     DGS3MO: null,
@@ -235,66 +117,26 @@ export async function GET(req: NextRequest) {
   };
 
   const seriesMap = new Map<string, MacroPoint[]>();
-  const sourceMap = new Map<string, string>();
-  const errors: string[] = [];
-
   await Promise.all(
     FRED_SERIES_SPECS.map(async (spec) => {
-      let points: MacroPoint[] = [];
-      let source = "FRED";
+      if (!spec.yahooSymbol) return;
       try {
-        if (usesFred && spec.fredId) {
-          points = await fetchFredSeries(spec.fredId, fredLimit);
+        const y = await fetchYahooSeries(spec.yahooSymbol, range);
+        if (y.series.length) {
+          seriesMap.set(spec.id, y.series);
+          if (spec.snapshotKey) {
+            (snapshot as Record<string, string | number | null>)[
+              spec.snapshotKey
+            ] = lastValue(y.series);
+          }
         }
-      } catch (exc) {
-        errors.push(
-          `${spec.fredId}: ${exc instanceof Error ? exc.message : "FRED fail"}`,
-        );
-      }
-      if (!points.length && spec.yahooSymbol) {
-        try {
-          const y = await fetchYahooSeries(spec.yahooSymbol, range);
-          points = y.series;
-          source = "Yahoo";
-        } catch (exc) {
-          errors.push(
-            `${spec.yahooSymbol}: ${exc instanceof Error ? exc.message : "Yahoo fail"}`,
-          );
-        }
-      }
-      if (points.length) {
-        seriesMap.set(spec.id, downsample(points, 90));
-        sourceMap.set(spec.id, source);
-        const latest = lastValue(points);
-        if (spec.snapshotKey && latest != null) {
-          (snapshot as Record<string, string | number | null>)[spec.snapshotKey] =
-            latest;
-        }
+      } catch {
+        /* ignore */
       }
     }),
   );
 
-  const dgs10 = seriesMap.get("dgs10") || [];
-  const dgs2 = seriesMap.get("dgs2") || [];
-  const dgs3mo = seriesMap.get("dgs3mo") || [];
-  if (!seriesMap.get("t10y2y")?.length && dgs10.length && dgs2.length) {
-    const spread = alignSpread(dgs10, dgs2);
-    if (spread.length) {
-      seriesMap.set("t10y2y", downsample(spread, 90));
-      sourceMap.set("t10y2y", "derived");
-      snapshot.T10Y2Y = lastValue(spread);
-    }
-  }
-  if (!seriesMap.get("t10y3m")?.length && dgs10.length && dgs3mo.length) {
-    const spread = alignSpread(dgs10, dgs3mo);
-    if (spread.length) {
-      seriesMap.set("t10y3m", downsample(spread, 90));
-      sourceMap.set("t10y3m", "derived");
-      snapshot.T10Y3M = lastValue(spread);
-    }
-  }
-
-  const [assets, hyperscalers, calendar] = await Promise.all([
+  const [assets, hyperscalers] = await Promise.all([
     Promise.all(
       MACRO_ASSET_SPECS.map(async (spec): Promise<MacroAsset> => {
         try {
@@ -368,7 +210,6 @@ export async function GET(req: NextRequest) {
         }
       }),
     ),
-    fetchCalendar(),
   ]);
 
   const spy = assets.find((a) => a.id === "spy");
@@ -379,8 +220,7 @@ export async function GET(req: NextRequest) {
     snapshot.SPY_20D = pctChange(spy.series, 20);
   }
   if (hyg?.series?.length && tlt?.series?.length) {
-    const ratio = ratioSeries(hyg.series, tlt.series);
-    snapshot.HYG_TLT_20D = pctChange(ratio, 20);
+    snapshot.HYG_TLT_20D = pctChange(ratioSeries(hyg.series, tlt.series), 20);
   }
 
   const metrics: MacroMetric[] = FRED_SERIES_SPECS.map((spec) => {
@@ -394,13 +234,11 @@ export async function GET(req: NextRequest) {
       change_5d: deltaOver(series, 5),
       change_20d: deltaOver(series, 20),
       series,
-      source: sourceMap.get(spec.id),
+      source: series.length ? "Yahoo" : undefined,
       cadence: spec.cadence,
-      note:
-        spec.note ||
-        (!series.length && (spec.group === "credit" || !spec.yahooSymbol)
-          ? "FRED_API_KEY 필요"
-          : undefined),
+      note: !series.length
+        ? "Render 봇 연결 대기 · FRED 전용 지표"
+        : undefined,
     };
   });
 
@@ -422,20 +260,15 @@ export async function GET(req: NextRequest) {
   }
 
   const stress = computeMacroStress(snapshot);
+  const calendar: MacroCalendarEvent[] = [];
 
-  const noteParts = [
-    usesFred ? "FRED 공식 시계열" : "Yahoo 프록시 (FRED_API_KEY 미설정)",
-    finnhubApiKey() ? "Finnhub 캘린더" : null,
-    "텔레그램 /macro 와 동일 스트레스 스코어",
-  ].filter(Boolean);
-
-  const payload: MacroPayload = {
+  return {
     ok: true,
     generated_at,
-    note: noteParts.join(" · "),
+    note: "Render 봇 미응답 — Yahoo 로컬 폴백 (FRED/Finnhub는 Render 키 사용)",
     schedule_note: MACRO_SCHEDULE_NOTE,
     range,
-    uses_fred: usesFred,
+    uses_fred: false,
     snapshot,
     stress,
     yield_curve: [
@@ -449,12 +282,45 @@ export async function GET(req: NextRequest) {
     hyperscalers,
     hyperscaler_range: hsRange,
     calendar,
-    error: errors.length ? errors.slice(0, 4).join("; ") : undefined,
+    error: "Render /api/web/macro unreachable — showing Yahoo fallback",
   };
+}
 
-  return NextResponse.json(payload, {
+export async function GET(req: NextRequest) {
+  const range = parseMacroRange(req.nextUrl.searchParams.get("range"));
+  const hsRange = parseHyperscalerRange(
+    req.nextUrl.searchParams.get("hsRange"),
+  ) as HyperscalerRange;
+  const prefer = req.nextUrl.searchParams.get("prefer") || "render";
+
+  // Primary path: Render bot already has FRED_API_KEY + FINNHUB_API_KEY.
+  if (prefer !== "local") {
+    try {
+      const qs = new URLSearchParams({ range, hsRange });
+      const remote = await fetchBotJson<MacroPayload & { ok?: boolean }>(
+        `/api/web/macro?${qs}`,
+        { timeoutMs: 55_000 },
+      );
+      if (remote?.ok) {
+        return NextResponse.json(
+          { ...remote, source: "render" },
+          {
+            headers: {
+              "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+            },
+          },
+        );
+      }
+    } catch {
+      // fall through to local Yahoo
+    }
+  }
+
+  const local = await buildLocalFallback(range, hsRange);
+  return NextResponse.json(local, {
+    status: local.ok ? 200 : 502,
     headers: {
-      "Cache-Control": "public, s-maxage=120, stale-while-revalidate=600",
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
     },
   });
 }

@@ -2995,6 +2995,19 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/macro":
+                from web_api import macro_web_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                range_key = (query.get("range") or ["3mo"])[0]
+                hs_range = (query.get("hsRange") or ["2y"])[0]
+                force = (query.get("force") or ["0"])[0] in {"1", "true", "yes"}
+                payload = macro_web_payload(range_key, hs_range, force=force)
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/heatmap.png":
                 from web_api import heatmap_png
 
@@ -3226,7 +3239,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/simulate )"
+        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/macro , /api/web/simulate )"
     )
 
 

@@ -23,7 +23,7 @@ DATA_DIR = PROJECT_DIR / "data"
 MACRO_CACHE_PATH = DATA_DIR / "macro_cache.pkl"
 KST = ZoneInfo("Asia/Seoul")
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 CACHE_TTL_SECONDS = 3600
 LOOKBACK_DAYS = 120
 
@@ -38,6 +38,10 @@ FRED_SERIES: dict[str, dict[str, str]] = {
     "BAMLC0A0CM": {"label": "IG OAS", "group": "credit"},
     "VIXCLS": {"label": "VIX", "group": "vol"},
     "DFF": {"label": "Fed Funds", "group": "policy"},
+    "SOFR": {"label": "SOFR", "group": "policy"},
+    "T5YIE": {"label": "5Y Breakeven", "group": "inflation"},
+    "T10YIE": {"label": "10Y Breakeven", "group": "inflation"},
+    "NFCI": {"label": "NFCI", "group": "conditions"},
 }
 
 MARKET_TICKERS = {
@@ -276,10 +280,27 @@ def build_macro_bundle(force: bool = False) -> dict:
         "IG_OAS": _latest(fred.get("BAMLC0A0CM", pd.Series(dtype=float))),
         "VIX": _latest(fred.get("VIXCLS", pd.Series(dtype=float))),
         "FED_FUNDS": _latest(fred.get("DFF", pd.Series(dtype=float))),
+        "SOFR": _latest(fred.get("SOFR", pd.Series(dtype=float))),
+        "T5YIE": _latest(fred.get("T5YIE", pd.Series(dtype=float))),
+        "T10YIE": _latest(fred.get("T10YIE", pd.Series(dtype=float))),
+        "NFCI": _latest(fred.get("NFCI", pd.Series(dtype=float))),
+        "MOVE": None,
         "SPY_5D": _pct_change(market["SPY"], 5) if "SPY" in market.columns else None,
         "SPY_20D": _pct_change(market["SPY"], 20) if "SPY" in market.columns else None,
         "HYG_TLT_20D": _pct_change(market["HYG_TLT"], 20) if "HYG_TLT" in market.columns else None,
     }
+
+    # MOVE is not on free FRED — Yahoo proxy when available
+    try:
+        with _quiet_yfinance():
+            move = yf.Ticker("^MOVE").history(period="6mo", auto_adjust=True)
+        if not move.empty:
+            move_close = move["Close"].dropna()
+            snapshot["MOVE"] = float(move_close.iloc[-1])
+            fred["MOVE"] = move_close.copy()
+            fred["MOVE"].name = "MOVE"
+    except Exception:
+        pass
 
     stooq_snapshot = stooq_bundle.get("snapshot", {})
     if snapshot.get("SPY_20D") is None:

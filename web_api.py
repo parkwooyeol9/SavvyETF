@@ -427,3 +427,398 @@ def why_etf_insights() -> dict[str, Any]:
         ],
         "presets": results,
     }
+
+
+# —— Macro / Economy tab (Vercel proxies here; FRED + Finnhub live on Render) ——
+
+_MACRO_RANGE_LOOKBACK = {
+    "1mo": 45,
+    "3mo": 100,
+    "6mo": 180,
+    "1y": 280,
+}
+
+_MACRO_METRIC_META = [
+    ("dgs3mo", "DGS3MO", "3M Treasury", "rates", "pct", "일간"),
+    ("dgs2", "DGS2", "2Y Treasury", "rates", "pct", "일간"),
+    ("dgs10", "DGS10", "10Y Treasury", "rates", "pct", "일간"),
+    ("dgs30", "DGS30", "30Y Treasury", "rates", "pct", "일간"),
+    ("t10y2y", "T10Y2Y", "10Y−2Y 스프레드", "curve", "pct", "일간"),
+    ("t10y3m", "T10Y3M", "10Y−3M 스프레드", "curve", "pct", "일간"),
+    ("hy_oas", "BAMLH0A0HYM2", "HY OAS", "credit", "pct", "일간"),
+    ("ig_oas", "BAMLC0A0CM", "IG OAS", "credit", "pct", "일간"),
+    ("vix", "VIXCLS", "VIX", "vol", "index", "일간"),
+    ("move", "MOVE", "MOVE", "vol", "index", "일간"),
+    ("dff", "DFF", "Fed Funds", "policy", "pct", "일간"),
+    ("sofr", "SOFR", "SOFR", "policy", "pct", "일간"),
+    ("t5yie", "T5YIE", "5Y 기대인플레", "inflation", "pct", "일간"),
+    ("t10yie", "T10YIE", "10Y 기대인플레", "inflation", "pct", "일간"),
+    ("nfci", "NFCI", "NFCI", "conditions", "index", "주간"),
+]
+
+_MACRO_ASSET_SPECS = [
+    ("spy", "SPY", "S&P 500", "equity", "위험자산 베타 · 매크로 스트레스 대비"),
+    ("qqq", "QQQ", "Nasdaq 100", "equity", "성장·테크 센티먼트"),
+    ("tlt", "TLT", "20Y Treasury", "rates", "장기 금리·듀레이션 리스크"),
+    ("hyg", "HYG", "High Yield", "credit", "HY 신용 리스크 온/오프"),
+    ("lqd", "LQD", "IG Credit", "credit", "투자등급 회사채 스프레드 프록시"),
+    ("gld", "GLD", "Gold", "commodity", "안전자산·실질금리 민감"),
+    ("uso", "USO", "Oil ETF", "commodity", "원유 ETF 프록시"),
+    ("wti", "CL=F", "WTI", "commodity", "인플레·공급 충격"),
+    ("brent", "BZ=F", "Brent", "commodity", "글로벌 원유 벤치마크"),
+    ("copper", "HG=F", "Copper", "commodity", "경기·중국 수요 민감"),
+    ("uup", "UUP", "US Dollar", "fx", "달러 강세 = 글로벌 유동성 긴축"),
+    ("dxy", "DX-Y.NYB", "DXY", "fx", "달러 인덱스"),
+    ("eurusd", "EURUSD=X", "EUR/USD", "fx", "달러 약세/강세 크로스"),
+    ("usdkurw", "KRW=X", "USD/KRW", "fx", "원/달러 · 국내 연동"),
+]
+
+_HYPERSCALER_SPECS = [
+    ("msft", "MSFT", "Microsoft", "#60a5fa"),
+    ("amzn", "AMZN", "Amazon", "#fb923c"),
+    ("googl", "GOOGL", "Alphabet", "#34d399"),
+    ("meta", "META", "Meta", "#a78bfa"),
+    ("orcl", "ORCL", "Oracle", "#f87171"),
+]
+
+_HS_RANGE_PERIOD = {
+    "6mo": "6mo",
+    "1y": "1y",
+    "2y": "2y",
+    "5y": "5y",
+    "ytd": "ytd",
+    "max": "max",
+}
+
+
+def _series_to_points(series: pd.Series, max_points: int = 90) -> list[dict[str, Any]]:
+    clean = series.dropna()
+    if clean.empty:
+        return []
+    if len(clean) > max_points:
+        step = max(1, len(clean) // max_points)
+        clean = clean.iloc[::step]
+        if clean.index[-1] != series.dropna().index[-1]:
+            clean = pd.concat([clean, series.dropna().iloc[[-1]]])
+            clean = clean[~clean.index.duplicated(keep="last")]
+    out: list[dict[str, Any]] = []
+    for ts, val in clean.items():
+        try:
+            date = pd.Timestamp(ts).strftime("%Y-%m-%d")
+            out.append({"date": date, "value": float(val)})
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _delta_over(series: pd.Series, days: int) -> float | None:
+    clean = series.dropna()
+    if len(clean) <= days:
+        return None
+    return float(clean.iloc[-1] - clean.iloc[-days - 1])
+
+
+def _pct_over(series: pd.Series, days: int) -> float | None:
+    clean = series.dropna()
+    if len(clean) <= days:
+        return None
+    start = float(clean.iloc[-days - 1])
+    end = float(clean.iloc[-1])
+    if start == 0:
+        return None
+    return (end / start - 1.0) * 100.0
+
+
+def _yahoo_close_series(symbol: str, period: str) -> pd.Series:
+    import yfinance as yf
+
+    from stock_crawler import _quiet_yfinance
+
+    with _quiet_yfinance():
+        hist = yf.Ticker(symbol).history(period=period, auto_adjust=True)
+    if hist.empty:
+        return pd.Series(dtype=float)
+    return hist["Close"].dropna()
+
+
+def macro_web_payload(
+    range_key: str = "3mo",
+    hs_range: str = "2y",
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """JSON payload for Vercel Economy tab — uses Render FRED/Finnhub keys."""
+    from macro_data import build_macro_bundle
+    from macro_scores import compute_macro_stress
+
+    range_key = range_key if range_key in _MACRO_RANGE_LOOKBACK else "3mo"
+    hs_range = hs_range if hs_range in _HS_RANGE_PERIOD else "2y"
+    lookback = _MACRO_RANGE_LOOKBACK[range_key]
+    yahoo_period = {"1mo": "1mo", "3mo": "3mo", "6mo": "6mo", "1y": "1y"}[range_key]
+
+    try:
+        bundle = build_macro_bundle(force=force)
+    except Exception as exc:
+        return {"ok": False, "error": f"macro bundle failed: {exc}"}
+
+    snap = dict(bundle.get("snapshot") or {})
+    fred: dict[str, pd.Series] = bundle.get("fred") or {}
+    market: pd.DataFrame = bundle.get("market") if isinstance(bundle.get("market"), pd.DataFrame) else pd.DataFrame()
+    finnhub = bundle.get("finnhub") or {}
+    uses_fred_key = bool(bundle.get("uses_fred"))
+    stress = compute_macro_stress(snap, edgar=bundle.get("edgar"), finnhub=finnhub)
+
+    # Tail FRED series to requested chart window
+    def _tail(series: pd.Series) -> pd.Series:
+        clean = series.dropna()
+        if clean.empty:
+            return clean
+        return clean.iloc[-lookback:]
+
+    metrics: list[dict[str, Any]] = []
+    snap_key_for_fred = {
+        "BAMLH0A0HYM2": "HY_OAS",
+        "BAMLC0A0CM": "IG_OAS",
+        "VIXCLS": "VIX",
+        "DFF": "FED_FUNDS",
+        "DGS3MO": "DGS3MO",
+        "DGS2": "DGS2",
+        "DGS10": "DGS10",
+        "DGS30": "DGS30",
+        "T10Y2Y": "T10Y2Y",
+        "T10Y3M": "T10Y3M",
+        "SOFR": "SOFR",
+        "T5YIE": "T5YIE",
+        "T10YIE": "T10YIE",
+        "NFCI": "NFCI",
+        "MOVE": "MOVE",
+    }
+    for mid, fred_id, label, group, unit, cadence in _MACRO_METRIC_META:
+        series = _tail(fred.get(fred_id, pd.Series(dtype=float)))
+        points = _series_to_points(series)
+        if not series.empty:
+            value: float | None = float(series.iloc[-1])
+        else:
+            value = snap.get(snap_key_for_fred.get(fred_id, fred_id))
+        metrics.append(
+            {
+                "id": mid,
+                "label": label,
+                "group": group,
+                "unit": unit,
+                "value": value,
+                "change_5d": _delta_over(series, 5),
+                "change_20d": _delta_over(series, 20),
+                "series": points,
+                "source": (
+                    "Yahoo"
+                    if fred_id == "MOVE"
+                    else ("FRED" if uses_fred_key and points else ("Yahoo" if points else None))
+                ),
+                "cadence": cadence,
+                "note": None if points or value is not None else "데이터 없음",
+            }
+        )
+
+    # HYG/TLT risk appetite
+    if not market.empty and {"HYG", "TLT"}.issubset(market.columns):
+        ratio = (market["HYG"] / market["TLT"]).dropna()
+        ratio = _tail(ratio)
+        metrics.append(
+            {
+                "id": "hyg_tlt",
+                "label": "HYG / TLT",
+                "group": "market",
+                "unit": "index",
+                "value": float(ratio.iloc[-1]) if not ratio.empty else None,
+                "change_5d": _pct_over(ratio, 5),
+                "change_20d": _pct_over(ratio, 20),
+                "series": _series_to_points(ratio),
+                "source": "Yahoo",
+                "cadence": "일간",
+                "note": "리스크 온/오프 비율",
+            }
+        )
+
+    assets: list[dict[str, Any]] = []
+    for aid, symbol, label, group, thesis in _MACRO_ASSET_SPECS:
+        try:
+            series = _yahoo_close_series(symbol, yahoo_period)
+            points = _series_to_points(series, max_points=90)
+            price = float(series.iloc[-1]) if not series.empty else None
+            range_pct = None
+            if len(series) >= 2:
+                range_pct = (float(series.iloc[-1]) / float(series.iloc[0]) - 1.0) * 100.0
+            assets.append(
+                {
+                    "id": aid,
+                    "symbol": symbol,
+                    "label": label,
+                    "group": group,
+                    "thesis": thesis,
+                    "price": price,
+                    "change_1d_pct": _pct_over(series, 1),
+                    "change_5d_pct": _pct_over(series, 5),
+                    "change_range_pct": range_pct,
+                    "series": points,
+                }
+            )
+        except Exception as exc:
+            assets.append(
+                {
+                    "id": aid,
+                    "symbol": symbol,
+                    "label": label,
+                    "group": group,
+                    "thesis": thesis,
+                    "price": None,
+                    "change_1d_pct": None,
+                    "change_5d_pct": None,
+                    "change_range_pct": None,
+                    "series": [],
+                    "error": str(exc),
+                }
+            )
+
+    hyperscalers: list[dict[str, Any]] = []
+    hs_period = _HS_RANGE_PERIOD[hs_range]
+    for hid, symbol, label, color in _HYPERSCALER_SPECS:
+        try:
+            series = _yahoo_close_series(symbol, hs_period)
+            points = _series_to_points(series, max_points=260)
+            price = float(series.iloc[-1]) if not series.empty else None
+            range_pct = None
+            if len(series) >= 2:
+                range_pct = (float(series.iloc[-1]) / float(series.iloc[0]) - 1.0) * 100.0
+            hyperscalers.append(
+                {
+                    "id": hid,
+                    "symbol": symbol,
+                    "label": label,
+                    "color": color,
+                    "price": price,
+                    "change_1d_pct": _pct_over(series, 1),
+                    "change_range_pct": range_pct,
+                    "series": points,
+                }
+            )
+        except Exception as exc:
+            hyperscalers.append(
+                {
+                    "id": hid,
+                    "symbol": symbol,
+                    "label": label,
+                    "color": color,
+                    "price": None,
+                    "change_1d_pct": None,
+                    "change_range_pct": None,
+                    "series": [],
+                    "error": str(exc),
+                }
+            )
+
+    calendar_rows = []
+    if finnhub.get("available"):
+        for row in (finnhub.get("high_impact_upcoming") or [])[:18]:
+            calendar_rows.append(
+                {
+                    "date": str(row.get("date") or "")[:10],
+                    "time": None,
+                    "country": row.get("country") or "US",
+                    "event": row.get("event") or row.get("eventName") or "Event",
+                    "impact": row.get("impact") or "high",
+                    "actual": None if row.get("actual") in (None, "") else str(row.get("actual")),
+                    "estimate": None
+                    if row.get("estimate") in (None, "")
+                    else str(row.get("estimate")),
+                    "prev": None if row.get("prev") in (None, "") else str(row.get("prev")),
+                }
+            )
+        # also include recent releases with actuals
+        for row in (finnhub.get("recent_releases") or [])[:8]:
+            calendar_rows.append(
+                {
+                    "date": str(row.get("date") or "")[:10],
+                    "time": None,
+                    "country": row.get("country") or "US",
+                    "event": row.get("event") or "Event",
+                    "impact": row.get("impact") or "high",
+                    "actual": None if row.get("actual") in (None, "") else str(row.get("actual")),
+                    "estimate": None
+                    if row.get("estimate") in (None, "")
+                    else str(row.get("estimate")),
+                    "prev": None if row.get("prev") in (None, "") else str(row.get("prev")),
+                }
+            )
+
+    uses_fred = uses_fred_key and snap.get("HY_OAS") is not None
+    note_parts = [
+        "Render /macro 파이프라인",
+        "FRED" if uses_fred else "FRED 키 없음(Render)",
+        "Finnhub 캘린더" if finnhub.get("available") else "Finnhub 미사용",
+    ]
+
+    regime_ko = {
+        "High Stress": "고스트레스",
+        "Elevated": "경계",
+        "Caution": "주의",
+        "Calm": "안정",
+    }.get(stress.regime, stress.regime)
+
+    # Ensure snapshot has web fields
+    web_snap = {
+        "as_of": snap.get("as_of") or datetime.utcnow().isoformat() + "Z",
+        "DGS3MO": snap.get("DGS3MO"),
+        "DGS2": snap.get("DGS2"),
+        "DGS10": snap.get("DGS10"),
+        "DGS30": snap.get("DGS30"),
+        "T10Y2Y": snap.get("T10Y2Y"),
+        "T10Y3M": snap.get("T10Y3M"),
+        "HY_OAS": snap.get("HY_OAS"),
+        "IG_OAS": snap.get("IG_OAS"),
+        "VIX": snap.get("VIX"),
+        "FED_FUNDS": snap.get("FED_FUNDS"),
+        "SOFR": snap.get("SOFR"),
+        "MOVE": snap.get("MOVE"),
+        "T5YIE": snap.get("T5YIE"),
+        "T10YIE": snap.get("T10YIE"),
+        "NFCI": snap.get("NFCI"),
+        "SPY_5D": snap.get("SPY_5D"),
+        "SPY_20D": snap.get("SPY_20D"),
+        "HYG_TLT_20D": snap.get("HYG_TLT_20D"),
+    }
+
+    return {
+        "ok": True,
+        "source": "render",
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "note": " · ".join(note_parts),
+        "schedule_note": "권장 갱신: 평일 08:00 KST (FRED 전일 확정) · Render 캐시 1시간 · 시세 5분 폴링",
+        "range": range_key,
+        "uses_fred": uses_fred,
+        "snapshot": web_snap,
+        "stress": {
+            "score": int(stress.score),
+            "regime": stress.regime,
+            "regime_ko": regime_ko,
+            "drivers": list(stress.drivers),
+            "components": {k: float(v) for k, v in stress.components.items()},
+        },
+        "yield_curve": [
+            {"tenor": "3M", "value": web_snap["DGS3MO"]},
+            {"tenor": "2Y", "value": web_snap["DGS2"]},
+            {"tenor": "10Y", "value": web_snap["DGS10"]},
+            {"tenor": "30Y", "value": web_snap["DGS30"]},
+        ],
+        "metrics": metrics,
+        "assets": assets,
+        "hyperscalers": hyperscalers,
+        "hyperscaler_range": hs_range,
+        "calendar": calendar_rows,
+        "error": None
+        if not (bundle.get("fred_errors") or finnhub.get("errors"))
+        else "; ".join(
+            (bundle.get("fred_errors") or [])[:2]
+            + (finnhub.get("errors") or [])[:2]
+        ),
+    }
