@@ -1,4 +1,4 @@
-"""Scheduled US new-ETF brief — default 07:20 KST on US session days.
+"""Scheduled US new-ETF brief — default OFF (opt-in ETF_US_NEW_SCHEDULE_ENABLED).
 
 Delivers to the legacy ETF channel (TELEGRAM_CHAT_ID) and publishes
 ``etf`` / ``etf_us_new`` for the web dashboard.
@@ -98,7 +98,7 @@ def run_scheduled_etf_us_new(token: str, broadcast_fn) -> bool:
 
 
 def start_etf_us_new_scheduler(token: str, broadcast_fn) -> None:
-    if os.environ.get("ETF_US_NEW_SCHEDULE_ENABLED", "true").lower() in {
+    if os.environ.get("ETF_US_NEW_SCHEDULE_ENABLED", "false").lower() in {
         "0",
         "false",
         "no",

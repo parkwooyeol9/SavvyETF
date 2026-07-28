@@ -1,4 +1,4 @@
-"""Scheduled /etf_sector broadcast — default 07:00 KST on US session days.
+"""Scheduled /etf_sector broadcast — default OFF (opt-in ETF_SECTOR_SCHEDULE_ENABLED).
 
 Delivers to the legacy ETF channel (TELEGRAM_CHAT_ID).
 Skips weekends and when the covered US equity session is a holiday.
@@ -120,7 +120,7 @@ def run_scheduled_etf_sector(token: str, broadcast_fn) -> bool:
 
 
 def start_etf_sector_scheduler(token: str, broadcast_fn) -> None:
-    if os.environ.get("ETF_SECTOR_SCHEDULE_ENABLED", "true").lower() in {
+    if os.environ.get("ETF_SECTOR_SCHEDULE_ENABLED", "false").lower() in {
         "0",
         "false",
         "no",

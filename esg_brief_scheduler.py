@@ -1,6 +1,6 @@
 """Scheduled ESG·지정학 data briefing → SavvyESG (TELEGRAM_CHAT_ID_ESG).
 
-Default: every day 11:00 KST.
+Default OFF (opt-in ESG_BRIEF_SCHEDULE_ENABLED=true). Slot: 11:00 KST.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def run_scheduled_esg_brief(token: str, broadcast_fn) -> bool:
 
 
 def start_esg_brief_scheduler(token: str, broadcast_fn) -> None:
-    if os.environ.get("ESG_BRIEF_SCHEDULE_ENABLED", "true").lower() in {
+    if os.environ.get("ESG_BRIEF_SCHEDULE_ENABLED", "false").lower() in {
         "0",
         "false",
         "no",

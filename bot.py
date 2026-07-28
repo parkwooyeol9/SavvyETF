@@ -112,10 +112,10 @@ What each command returns:
 → KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
 
 /summary_kor_intra
-→ Same as /summary_kor using Naver 1m vs previous close (auto 11:00 KST)
+→ Same as /summary_kor using Naver 1m vs previous close (manual; schedule off by default)
 
 /summary_nxt
-→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 08:30·16:40 KST)
+→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 16:40 KST)
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -159,11 +159,11 @@ What each command returns:
 
 Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
-  /summary_nxt 08:30 / 16:40 · /summary_kor_intra 11:00 · /summary_kor 15:40  → Korea channel
-  /etf_sector 07:00 · /etf_us_new 07:20 (US session days) · /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /summary_nxt 16:40 · /summary_kor 15:40  → Korea channel
+  /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
-  /esg monitor 09:00 daily · /esg accident 09:30 · /esg overview 09:45 (KRX)  → SavvyESG channel
-  ESG·지정학 data briefing 11:00 daily  → SavvyESG channel
+  /esg monitor 09:00 daily · /esg accident 09:30 (KRX)  → SavvyESG channel
+  (opt-in off by default: kor_intra, nxt 08:30, etf_sector, etf_us_new, esg overview/brief)
 
 Type /help for the full command list.
 """
@@ -204,13 +204,10 @@ def build_help_messages() -> list[dict]:
 <code>/summary_pre</code> 21:50 — 프리마켓 (US 채널)
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 (Korea 채널)
-<code>/summary_kor_intra</code> 11:00 — 한국 장중 (Korea 채널)
-<code>/summary_nxt</code> 08:30·16:40 — NXT 브리핑 (Korea 채널)
-<code>/etf_sector</code> 07:00 — 섹터 로테이션 (레거시 ETF 채널, 미국 휴장 제외)
-<code>/etf_us_new</code> 07:20 — 미국 신규 상장 ETF (레거시 ETF 채널, 미국 휴장 제외)
+<code>/summary_nxt</code> 16:40 — NXT 브리핑 (Korea 채널)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
-<code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 · <code>/esg</code> 개요 09:45 — SavvyESG 채널 (accident/overview는 한국 휴장 제외)
-<code>/data_briefing esg</code> 11:00 — ESG·지정학 데이터 브리핑 (SavvyESG, 매일)
+<code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 — SavvyESG (accident는 한국 휴장 제외)
+<i>스케줄 OFF(수동만):</i> <code>/summary_kor_intra</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> overview · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 <code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us/esg)
 
@@ -2496,7 +2493,7 @@ def start_web_server():
                             "SUMMARY_KOR_SCHEDULE_KST", "15:40"
                         ),
                         "summary_nxt_kst": os.environ.get(
-                            "SUMMARY_NXT_SCHEDULE_KST", "8:30,16:40"
+                            "SUMMARY_NXT_SCHEDULE_KST", "16:40"
                         ),
                         "etf_sector_kst": os.environ.get(
                             "ETF_SECTOR_SCHEDULE_KST", "7:00"
@@ -2517,6 +2514,10 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
+                            "ON: summary, summary_pre, reddit, summary_kor, "
+                            "summary_nxt@16:40, etfcheck, esg monitor/accident, etfdb. "
+                            "OFF default: kor_intra, etf_sector, etf_us_new, "
+                            "esg overview, esg brief. "
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
                             "ETF→TELEGRAM_CHAT_ID; ESG→TELEGRAM_CHAT_ID_ESG."
                         ),

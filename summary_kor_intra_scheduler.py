@@ -1,4 +1,4 @@
-"""Scheduled /summary_kor_intra broadcasts at 11:00 KST weekdays."""
+"""Scheduled /summary_kor_intra — default OFF (enable SUMMARY_KOR_INTRA_SCHEDULE_ENABLED)."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def run_scheduled_summary_kor_intra(token: str, broadcast_fn, public_url: str = 
 
 
 def start_summary_kor_intra_scheduler(token: str, broadcast_fn, public_url: str = "") -> None:
-    if os.environ.get("SUMMARY_KOR_INTRA_SCHEDULE_ENABLED", "true").lower() in {
+    if os.environ.get("SUMMARY_KOR_INTRA_SCHEDULE_ENABLED", "false").lower() in {
         "0",
         "false",
         "no",

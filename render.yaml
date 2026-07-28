@@ -51,7 +51,7 @@ services:
       - key: REDDIT_SCHEDULE_HOURS_KST
         value: "21"
       - key: SUMMARY_KOR_INTRA_SCHEDULE_ENABLED
-        value: "true"
+        value: "false"
       - key: SUMMARY_KOR_INTRA_SCHEDULE_HOURS_KST
         value: "11"
       - key: SUMMARY_KOR_SCHEDULE_ENABLED
@@ -61,11 +61,15 @@ services:
       - key: SUMMARY_NXT_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
-        value: "8:30,16:40"
+        value: "16:40"
       - key: ETF_SECTOR_SCHEDULE_ENABLED
-        value: "true"
+        value: "false"
       - key: ETF_SECTOR_SCHEDULE_KST
         value: "7:00"
+      - key: ETF_US_NEW_SCHEDULE_ENABLED
+        value: "false"
+      - key: ETF_US_NEW_SCHEDULE_KST
+        value: "7:20"
       - key: ETFCHECK_SCHEDULE_ENABLED
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
@@ -78,12 +82,14 @@ services:
         value: "9:00"
       - key: ESG_ACCIDENT_SCHEDULE_KST
         value: "9:30"
+      - key: ESG_OVERVIEW_SCHEDULE_ENABLED
+        value: "false"
       - key: ESG_OVERVIEW_SCHEDULE_KST
         value: "9:45"
       - key: ESG_SCHEDULE_OVERVIEW_QUERIES
         value: "삼성전자"
       - key: ESG_BRIEF_SCHEDULE_ENABLED
-        value: "true"
+        value: "false"
       - key: ESG_BRIEF_SCHEDULE_KST
         value: "11:00"
       - key: WEBAPP_PUBLIC_URL

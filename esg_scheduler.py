@@ -3,7 +3,7 @@
 Defaults (KST):
   - 09:00  /esg monitor — Climate Risk (every calendar day)
   - 09:30  /esg accident — 중대재해 screen (KRX trading days)
-  - 09:45  /esg overview — configured names (KRX trading days)
+  - 09:45  /esg overview — opt-in (ESG_OVERVIEW_SCHEDULE_ENABLED=true)
 """
 
 from __future__ import annotations
@@ -233,6 +233,13 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         "false",
         "no",
     }
+    overview_enabled = os.environ.get(
+        "ESG_OVERVIEW_SCHEDULE_ENABLED", "false"
+    ).lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     def loop() -> None:
         state = _load_state()
@@ -240,11 +247,16 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         last_accident = state.get("last_esg_accident_slot")
         last_overview = state.get("last_esg_overview_slot")
         queries = ", ".join(_overview_queries())
+        overview_bit = (
+            f"overview {overview_h:02d}:{overview_m:02d} ({queries})"
+            if overview_enabled
+            else "overview off"
+        )
         print(
             f"esg scheduler active — "
             f"monitor {monitor_h:02d}:{monitor_m:02d} daily · "
             f"KRX accident {accident_h:02d}:{accident_m:02d} · "
-            f"overview {overview_h:02d}:{overview_m:02d} ({queries}) "
+            f"{overview_bit} "
             f"→ TELEGRAM_CHAT_ID_ESG ({catchup_minutes}m catch-up)"
         )
 
@@ -289,24 +301,29 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
                         last_accident = accident_slot
                         update_scheduler_state(last_esg_accident_slot=accident_slot)
 
-                overview_slot = due_slot_id(
-                    now,
-                    overview_h,
-                    overview_m,
-                    last_slot=last_overview,
-                    window_minutes=catchup_minutes,
-                )
-                if overview_slot:
-                    if _should_skip_kr_non_trading(now):
-                        print(
-                            f"Scheduled esg overview skipped ({overview_slot}): "
-                            "weekend or KRX holiday"
-                        )
-                        last_overview = overview_slot
-                        update_scheduler_state(last_esg_overview_slot=overview_slot)
-                    elif run_scheduled_esg_overview(token, broadcast_fn):
-                        last_overview = overview_slot
-                        update_scheduler_state(last_esg_overview_slot=overview_slot)
+                if overview_enabled:
+                    overview_slot = due_slot_id(
+                        now,
+                        overview_h,
+                        overview_m,
+                        last_slot=last_overview,
+                        window_minutes=catchup_minutes,
+                    )
+                    if overview_slot:
+                        if _should_skip_kr_non_trading(now):
+                            print(
+                                f"Scheduled esg overview skipped ({overview_slot}): "
+                                "weekend or KRX holiday"
+                            )
+                            last_overview = overview_slot
+                            update_scheduler_state(
+                                last_esg_overview_slot=overview_slot
+                            )
+                        elif run_scheduled_esg_overview(token, broadcast_fn):
+                            last_overview = overview_slot
+                            update_scheduler_state(
+                                last_esg_overview_slot=overview_slot
+                            )
             except Exception as exc:
                 print(f"esg scheduler loop error: {exc}")
 
