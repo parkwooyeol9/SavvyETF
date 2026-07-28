@@ -8,6 +8,7 @@ import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
+import MacroTab from "@/components/MacroTab";
 import SimulateTab from "@/components/SimulateTab";
 import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
 import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
@@ -196,6 +197,7 @@ export default function Dashboard() {
       tab === "simulate" ||
       tab === "education" ||
       tab === "geo" ||
+      tab === "economy" ||
       tab === "etfdb" ||
       tab === "leverage"
     ) {
@@ -276,6 +278,8 @@ export default function Dashboard() {
         <KrMarketTab variant="leverage" />
       ) : tab === "geo" ? (
         <GeoTab />
+      ) : tab === "economy" ? (
+        <MacroTab />
       ) : tab === "kr" ? (
         <>
           <KrMarketTab variant="market" />

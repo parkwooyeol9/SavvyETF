@@ -7,6 +7,7 @@ export type ShellTabId =
   | "geo"
   | "etfdb"
   | "leverage"
+  | "economy"
   | TabId;
 
 export type NavGroupId = "main" | "market" | "etf" | "esg";
@@ -47,6 +48,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "main",
   "kr",
   "us",
+  "economy",
   "education",
   "simulate",
   "etf",
@@ -70,6 +72,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfdb: "ETF DB",
   leverage: "레버리지 ETF",
   geo: "지정학",
+  economy: "경제",
   ...TAB_LABELS,
 };
 
@@ -80,7 +83,7 @@ export const NAV_GROUPS: Array<{
   tabs: ShellTabId[];
 }> = [
   { id: "main", label: "메인", tabs: ["main"] },
-  { id: "market", label: "시황", tabs: ["kr", "us"] },
+  { id: "market", label: "시황", tabs: ["kr", "us", "economy"] },
   {
     id: "etf",
     label: "ETF",
