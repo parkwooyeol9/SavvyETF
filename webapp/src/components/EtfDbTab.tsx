@@ -184,8 +184,8 @@ export default function EtfDbTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB</h2>
           <p className="kr-note">
-            국내 상장 ETF · 유형/국가/GICS 업종(+헬스케어·배당·커버드콜·액티브) · AUM 합산
-            라이브 차트 · 수급(NAV×Δ설정좌수)
+            국내 상장 ETF · 유형/국가/GICS 업종(+바이오·헬스케어·배당·커버드콜·액티브) ·
+            AUM 일별 시계열 · 수급(NAV×Δ설정좌수)
           </p>
         </div>
         <div className="etfdb-hero-actions">
@@ -239,8 +239,8 @@ export default function EtfDbTab() {
             {equityOnly ? " · 주식형만 (채권·원자재·기타 제외)" : " · 전체 ETF"}
             {" · "}
             {chartMode === "intraday"
-              ? "AUM 분·초 라이브 시계열"
-              : "AUM 일별 시계열 + 당일 라이브"}
+              ? "AUM 라이브(당일 포인트) — 일별 히스토리 로딩 전"
+              : "AUM 일별 추정(가격×설정좌수 근사) + 당일 라이브"}
             {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : ""}
           </p>
 
@@ -300,7 +300,7 @@ export default function EtfDbTab() {
               <h3 className="etfdb-detail-title" style={{ marginBottom: "0.5rem" }}>
                 AUM 합산 · {chartKey}
                 <span className="etfdb-chart-mode">
-                  {chartMode === "intraday" ? "라이브" : "일별"}
+                  {chartMode === "intraday" ? "라이브" : `일별 · ${chartData.length}일`}
                 </span>
               </h3>
               <div className="etfdb-chart">

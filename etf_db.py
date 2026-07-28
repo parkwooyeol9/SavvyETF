@@ -67,13 +67,15 @@ COUNTRY_RULES: list[tuple[str, list[str]]] = [
 # Style overlays (name match) — checked before GICS
 STYLE_SECTOR_RULES: list[tuple[str, list[str]]] = [
     ("커버드콜", ["커버드콜"]),
+    # Before 액티브/헬스케어 so "바이오…액티브" names stay 바이오.
+    ("바이오", ["바이오", "BIO", "바이오텍", "바이오시밀러"]),
     ("액티브", ["액티브"]),
     ("배당", ["고배당", "월배당", "배당", "인컴"]),
 ]
 
 # GICS 11 sectors (+ Korean ETF name heuristics)
 GICS_SECTOR_RULES: list[tuple[str, list[str]]] = [
-    ("헬스케어", ["헬스케어", "바이오", "의료", "제약", "HEALTH"]),
+    ("헬스케어", ["헬스케어", "의료", "제약", "HEALTH"]),
     ("에너지", ["에너지", "원유", "천연가스", "WTI", "석유", "가스"]),
     ("소재", ["소재", "철강", "구리", "리튬", "화학", "금현물", "금선물", "은선물", "은현물", "골드", "원자재", "농산물"]),
     ("산업재", ["산업재", "방산", "우주", "항공", "조선", "해운", "건설", "인프라", "운송", "기계"]),
@@ -1039,7 +1041,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
       el.textContent = fmtSignedEok(tf);
       el.className = "v " + clsSigned(tf);
     }}
-    document.getElementById("flowNote").textContent = "AUM 시계열: 일별 스냅샷 + 당일 라이브 합산. 업종=GICS(+헬스케어·배당·커버드콜·액티브). "
+    document.getElementById("flowNote").textContent = "AUM 시계열: 일별 스냅샷 + 당일 라이브 합산. 업종=GICS(+바이오·헬스케어·배당·커버드콜·액티브). "
       + (DATA.prev_as_of
         ? `수급: ${{DATA.prev_as_of}} → ${{DATA.as_of}} (NAV×Δ설정좌수).`
         : "수급은 스냅샷 2일분 축적 후 표시.");

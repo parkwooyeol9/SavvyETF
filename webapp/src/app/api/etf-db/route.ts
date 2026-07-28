@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { botBaseUrl } from "@/lib/bot";
+import {
+  pickRicherHistory,
+  reconstructAumHistories,
+} from "@/lib/etfAumHistory";
 import { buildPayloadFromNaver, type EtfDbPayload } from "@/lib/etfDb";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +42,7 @@ async function fetchNaverUniverse(): Promise<unknown[]> {
   }
   const data = JSON.parse(text) as NaverListResponse;
   const items = data?.result?.etfItemList;
-  if (!Array.isArray(items) || !items.length) {
+  if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Naver ETF list empty");
   }
   return items;
@@ -105,10 +109,35 @@ export async function GET(request: Request) {
         flowByCode: overlay.flowByCode,
         prevAsOf: overlay.prevAsOf,
         flowHistory: equityOnly ? undefined : overlay.flowHistory,
+        // Equity-only aggregates ≠ full-universe bot snapshots.
         aumHistory: equityOnly ? undefined : overlay.aumHistory,
         equityOnly,
       },
     );
+
+    // Snapshot history is often 0–1 days; reconstruct ~90d from constituent prices.
+    try {
+      const reconstructed = await reconstructAumHistories({
+        rows: payload.rows,
+        aggregates: payload.aggregates,
+        liveDay: payload.as_of || payload.generated_at.slice(0, 10),
+        equityOnly,
+      });
+      payload.aum_history = {
+        type: pickRicherHistory(payload.aum_history.type, reconstructed.type),
+        country: pickRicherHistory(
+          payload.aum_history.country,
+          reconstructed.country,
+        ),
+        sector: pickRicherHistory(
+          payload.aum_history.sector,
+          reconstructed.sector,
+        ),
+      };
+    } catch (histExc) {
+      console.warn("etf-db aum history reconstruct failed:", histExc);
+    }
+
     return NextResponse.json(payload);
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
