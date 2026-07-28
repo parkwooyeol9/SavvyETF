@@ -718,12 +718,13 @@ def macro_web_payload(
             )
 
     calendar_rows = []
-    if finnhub.get("available"):
+    calendar_source = finnhub.get("calendar_source")
+    if finnhub.get("available") or finnhub.get("calendar"):
         for row in (finnhub.get("high_impact_upcoming") or [])[:18]:
             calendar_rows.append(
                 {
                     "date": str(row.get("date") or "")[:10],
-                    "time": None,
+                    "time": row.get("time") or None,
                     "country": row.get("country") or "US",
                     "event": row.get("event") or row.get("eventName") or "Event",
                     "impact": row.get("impact") or "high",
@@ -734,12 +735,11 @@ def macro_web_payload(
                     "prev": None if row.get("prev") in (None, "") else str(row.get("prev")),
                 }
             )
-        # also include recent releases with actuals
         for row in (finnhub.get("recent_releases") or [])[:8]:
             calendar_rows.append(
                 {
                     "date": str(row.get("date") or "")[:10],
-                    "time": None,
+                    "time": row.get("time") or None,
                     "country": row.get("country") or "US",
                     "event": row.get("event") or "Event",
                     "impact": row.get("impact") or "high",
@@ -751,11 +751,16 @@ def macro_web_payload(
                 }
             )
 
+    cal_label = {
+        "finnhub": "Finnhub 캘린더",
+        "investing": "Investing.com 캘린더",
+        "forexfactory": "Forex Factory 캘린더",
+    }.get(str(calendar_source or ""), None)
     uses_fred = uses_fred_key and snap.get("HY_OAS") is not None
     note_parts = [
         "Render /macro 파이프라인",
         "FRED" if uses_fred else "FRED 키 없음(Render)",
-        "Finnhub 캘린더" if finnhub.get("available") else "Finnhub 미사용",
+        cal_label or ("캘린더 없음" if not calendar_rows else "캘린더"),
     ]
 
     regime_ko = {
@@ -815,6 +820,7 @@ def macro_web_payload(
         "hyperscalers": hyperscalers,
         "hyperscaler_range": hs_range,
         "calendar": calendar_rows,
+        "calendar_source": calendar_source,
         "error": _sanitize_macro_errors(
             (bundle.get("fred_errors") or []) + (finnhub.get("errors") or [])
         ),

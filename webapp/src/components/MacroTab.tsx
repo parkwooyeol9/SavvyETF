@@ -708,12 +708,24 @@ export default function MacroTab() {
             })}
 
             <section className="geo-section">
-              <h3 className="geo-section-title">미국 고영향 경제지표 캘린더</h3>
+              <h3 className="geo-section-title">
+                미국 고영향 경제지표 캘린더
+                {data.calendar_source ? (
+                  <code className="geo-inline-code">
+                    {data.calendar_source === "forexfactory"
+                      ? "Forex Factory"
+                      : data.calendar_source === "investing"
+                        ? "Investing.com"
+                        : data.calendar_source === "finnhub"
+                          ? "Finnhub"
+                          : data.calendar_source}
+                  </code>
+                ) : null}
+              </h3>
               {!data.calendar.length ? (
                 <p className="empty">
-                  {data.uses_fred
-                    ? "고영향 캘린더가 비어 있습니다. Finnhub free 플랜은 economic calendar가 403일 수 있습니다."
-                    : "Render 봇 연결 대기 중이거나 Finnhub 캘린더를 가져오지 못했습니다."}
+                  캘린더를 가져오지 못했습니다. Finnhub → Investing.com → Forex
+                  Factory 순으로 재시도합니다.
                 </p>
               ) : (
                 <div className="macro-cal-table-wrap">

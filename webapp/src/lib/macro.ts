@@ -123,6 +123,7 @@ export type MacroPayload = {
   hyperscalers: HyperscalerSeries[];
   hyperscaler_range: HyperscalerRange;
   calendar: MacroCalendarEvent[];
+  calendar_source?: string | null;
   error?: string;
 };
 

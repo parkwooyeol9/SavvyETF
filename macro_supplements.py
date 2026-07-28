@@ -510,50 +510,72 @@ def _safe_float(value: Any) -> float | None:
 
 
 def build_finnhub_bundle() -> dict[str, Any]:
-    if not _finnhub_api_key():
-        return {"available": False, "errors": ["FINNHUB_API_KEY not set"]}
+    from macro_calendar import fetch_economic_calendar
 
     errors: list[str] = []
     calendar: list[dict[str, Any]] = []
+    calendar_source: str | None = None
     news: list[dict[str, str]] = []
     quotes: dict[str, dict[str, float | None]] = {}
     forex: dict[str, dict[str, float | None]] = {}
 
-    try:
-        calendar = fetch_finnhub_economic_calendar()
-    except Exception as exc:
-        errors.append(f"economic calendar: {exc}")
+    has_finnhub = bool(_finnhub_api_key())
 
-    try:
-        news = fetch_finnhub_market_news()
-    except Exception as exc:
-        errors.append(f"market news: {exc}")
+    def _finnhub_cal():
+        return fetch_finnhub_economic_calendar()
 
-    try:
-        quotes = fetch_finnhub_quotes(FINNHUB_MACRO_QUOTES)
-    except Exception as exc:
-        errors.append(f"quotes: {exc}")
+    calendar, calendar_source, cal_errors = fetch_economic_calendar(
+        finnhub_fetcher=_finnhub_cal if has_finnhub else None,
+    )
+    errors.extend(cal_errors)
 
-    try:
-        forex = fetch_finnhub_quotes(FINNHUB_FOREX_QUOTES)
-    except Exception as exc:
-        errors.append(f"forex: {exc}")
+    if has_finnhub:
+        try:
+            news = fetch_finnhub_market_news()
+        except Exception as exc:
+            errors.append(f"market news: {exc}")
 
+        try:
+            quotes = fetch_finnhub_quotes(FINNHUB_MACRO_QUOTES)
+        except Exception as exc:
+            errors.append(f"quotes: {exc}")
+
+        try:
+            forex = fetch_finnhub_quotes(FINNHUB_FOREX_QUOTES)
+        except Exception as exc:
+            errors.append(f"forex: {exc}")
+    elif not calendar:
+        errors.append("FINNHUB_API_KEY not set")
+
+    today = datetime.now(KST).date().isoformat()
     high_impact_upcoming = [
         row
         for row in calendar
-        if row.get("impact") == "high" and row.get("country") == "US" and not row.get("actual")
+        if row.get("impact") == "high"
+        and row.get("country") == "US"
+        and not row.get("actual")
+        and str(row.get("date") or "") >= today
     ]
+    # If timezone makes "today" events look past, still keep near-term blanks
+    if not high_impact_upcoming:
+        high_impact_upcoming = [
+            row
+            for row in calendar
+            if row.get("impact") == "high"
+            and row.get("country") == "US"
+            and not row.get("actual")
+        ]
     recent_releases = [
         row
         for row in calendar
         if row.get("actual") not in (None, "") and row.get("country") == "US"
-    ][:5]
+    ][:8]
 
     return {
         "available": bool(calendar or news or quotes or forex),
         "calendar": calendar,
-        "high_impact_upcoming": high_impact_upcoming[:6],
+        "calendar_source": calendar_source,
+        "high_impact_upcoming": high_impact_upcoming[:12],
         "recent_releases": recent_releases,
         "news": news[:8],
         "quotes": quotes,
