@@ -124,8 +124,8 @@ def _public_url(key: str, version: int | str) -> str:
     return f"{base}/{key}?v={version}"
 
 
-def _get_json(client, key: str) -> dict[str, Any] | None:
-    """Return parsed tab JSON, or None if the object is missing.
+def _get_json(client, key: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Return (parsed tab JSON or None if missing, etag).
 
     Corrupt JSON / unexpected S3 errors raise — callers must not treat those
     as an empty tab (that would wipe sibling brief slots on the next put).
@@ -133,20 +133,25 @@ def _get_json(client, key: str) -> dict[str, Any] | None:
     try:
         obj = client.get_object(Bucket=_bucket(), Key=key)
     except client.exceptions.NoSuchKey:
-        return None
+        return None, None
     except Exception as exc:
         msg = str(exc)
         if "NoSuchKey" in msg or "404" in msg or "Not Found" in msg:
-            return None
+            return None, None
         raise
     raw = obj["Body"].read().decode("utf-8")
+    etag = obj.get("ETag")
+    if isinstance(etag, str):
+        etag = etag.strip('"')
+    else:
+        etag = None
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Corrupt brief JSON at {key}: {exc}") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError(f"Corrupt brief JSON at {key}: expected object")
-    return parsed
+    return parsed, etag
 
 
 def _put_bytes(
@@ -156,14 +161,21 @@ def _put_bytes(
     content_type: str,
     *,
     cache_control: str = "public, max-age=60",
+    if_match: str | None = None,
+    if_none_match: str | None = None,
 ) -> None:
-    client.put_object(
-        Bucket=_bucket(),
-        Key=key,
-        Body=body,
-        ContentType=content_type,
-        CacheControl=cache_control,
-    )
+    kwargs: dict[str, Any] = {
+        "Bucket": _bucket(),
+        "Key": key,
+        "Body": body,
+        "ContentType": content_type,
+        "CacheControl": cache_control,
+    }
+    if if_match:
+        kwargs["IfMatch"] = if_match
+    if if_none_match:
+        kwargs["IfNoneMatch"] = if_none_match
+    client.put_object(**kwargs)
 
 
 def _list_keys(client, prefix: str) -> list[str]:
@@ -269,7 +281,11 @@ def upsert_brief_r2(
     images: list[dict[str, Any]] | None = None,
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Write one brief slot to R2. Returns the updated tab payload."""
+    """Write one brief slot to R2. Returns the updated tab payload.
+
+    Uses conditional put + verify/retry so concurrent slot upserts cannot
+    drop sibling slots (lost update on the shared tab JSON).
+    """
     _ensure_dotenv()
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
@@ -284,43 +300,118 @@ def upsert_brief_r2(
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     client = _client()
-    try:
-        current = _get_json(client, _tab_key(tab))
-    except Exception as exc:
-        raise RuntimeError(
-            f"Refusing R2 upsert for {tab}/{slot_key}: cannot read existing briefs ({exc})"
-        ) from exc
-    if current is None:
-        current = {"tab": tab, "updated_at": None, "slots": {}}
-    elif not isinstance(current.get("slots"), dict):
-        raise RuntimeError(
-            f"Refusing R2 upsert for {tab}/{slot_key}: existing slots field is corrupt"
-        )
-    slots = dict(current["slots"])
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     uploaded = _save_images(client, tab, slot_key, images)
+    tab_key = _tab_key(tab)
+    last_err: Exception | None = None
 
-    slot_payload: dict[str, Any] = {
-        "slot": slot_key,
-        "generated_at": generated_at,
-        "title": (title or "")[:200],
-        "meta": meta or {},
-        "received_at": now,
-    }
-    if html:
-        slot_payload["html"] = html
-    if sections:
-        slot_payload["sections"] = sections
-    if uploaded:
-        slot_payload["images"] = uploaded
+    for attempt in range(8):
+        try:
+            current, etag = _get_json(client, tab_key)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Refusing R2 upsert for {tab}/{slot_key}: cannot read existing briefs ({exc})"
+            ) from exc
+        if current is None:
+            current = {"tab": tab, "updated_at": None, "slots": {}}
+            etag = None
+        elif not isinstance(current.get("slots"), dict):
+            raise RuntimeError(
+                f"Refusing R2 upsert for {tab}/{slot_key}: existing slots field is corrupt"
+            )
+        prior_keys = set(current["slots"].keys())
+        slots = dict(current["slots"])
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    slots[slot_key] = slot_payload
-    next_tab = {"tab": tab, "updated_at": now, "slots": slots}
-    _put_bytes(
-        client,
-        _tab_key(tab),
-        json.dumps(next_tab, ensure_ascii=False, indent=2).encode("utf-8"),
-        "application/json",
-        cache_control="public, max-age=30",
+        slot_payload: dict[str, Any] = {
+            "slot": slot_key,
+            "generated_at": generated_at,
+            "title": (title or "")[:200],
+            "meta": meta or {},
+            "received_at": now,
+        }
+        if html:
+            slot_payload["html"] = html
+        if sections:
+            slot_payload["sections"] = sections
+        if uploaded:
+            slot_payload["images"] = uploaded
+
+        slots[slot_key] = slot_payload
+        next_tab = {"tab": tab, "updated_at": now, "slots": slots}
+        body = json.dumps(next_tab, ensure_ascii=False, indent=2).encode("utf-8")
+        try:
+            if etag:
+                _put_bytes(
+                    client,
+                    tab_key,
+                    body,
+                    "application/json",
+                    cache_control="public, max-age=30",
+                    if_match=etag,
+                )
+            else:
+                # Create-only when object was missing; if another writer created it,
+                # precondition fails and we retry with a fresh read.
+                _put_bytes(
+                    client,
+                    tab_key,
+                    body,
+                    "application/json",
+                    cache_control="public, max-age=30",
+                    if_none_match="*",
+                )
+        except Exception as exc:
+            msg = str(exc)
+            # R2/S3 precondition failures — concurrent writer won the race.
+            if any(
+                token in msg
+                for token in (
+                    "PreconditionFailed",
+                    "412",
+                    "IfMatch",
+                    "IfNoneMatch",
+                    "AtLeastOne",
+                )
+            ) or (
+                isinstance(getattr(exc, "response", None), dict)
+                and (exc.response.get("Error") or {}).get("Code")
+                in {"PreconditionFailed", "ConditionalRequestConflict"}
+            ):
+                last_err = exc
+                continue
+            # Some R2 setups ignore conditionals — fall through to verify.
+            if "InvalidArgument" in msg or "NotImplemented" in msg:
+                _put_bytes(
+                    client,
+                    tab_key,
+                    body,
+                    "application/json",
+                    cache_control="public, max-age=30",
+                )
+            else:
+                raise
+
+        # Verify siblings survived (covers backends that ignore IfMatch).
+        try:
+            verified, _ = _get_json(client, tab_key)
+        except Exception as exc:
+            last_err = exc
+            continue
+        if not verified or not isinstance(verified.get("slots"), dict):
+            last_err = RuntimeError("post-write verify missing slots")
+            continue
+        vslots = verified["slots"]
+        if slot_key not in vslots:
+            last_err = RuntimeError("post-write verify missing own slot")
+            continue
+        if not prior_keys.issubset(vslots.keys()):
+            last_err = RuntimeError(
+                f"post-write verify lost siblings {sorted(prior_keys - set(vslots))}"
+            )
+            continue
+        return verified
+
+    raise RuntimeError(
+        f"R2 upsert conflict for {tab}/{slot_key} after retries"
+        + (f": {last_err}" if last_err else "")
     )
-    return next_tab

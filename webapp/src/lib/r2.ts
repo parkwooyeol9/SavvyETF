@@ -82,11 +82,35 @@ export function publicUrlForKey(key: string, version?: number | string): string 
   return `/api/briefs/media/${key}?v=${encodeURIComponent(v)}`;
 }
 
+export async function r2GetObjectTextWithMeta(
+  key: string,
+): Promise<{ text: string | null; etag: string | null }> {
+  const cfg = getR2Config();
+  if (!cfg) return { text: null, etag: null };
+  const client = clientFor(cfg);
+  try {
+    const res = await client.send(
+      new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
+    );
+    if (!res.Body) return { text: null, etag: null };
+    const text = await res.Body.transformToString();
+    const etag = res.ETag ? res.ETag.replaceAll('"', "") : null;
+    return { text, etag };
+  } catch (exc) {
+    const name = exc instanceof Error ? exc.name : "";
+    if (name === "NoSuchKey" || name === "NotFound") return { text: null, etag: null };
+    const msg = exc instanceof Error ? exc.message : String(exc);
+    if (/NoSuchKey|NotFound|404/i.test(msg)) return { text: null, etag: null };
+    throw exc;
+  }
+}
+
 export async function r2PutObject(
   key: string,
   body: Buffer | Uint8Array | string,
   contentType: string,
   cacheControl = "public, max-age=60",
+  opts?: { ifMatch?: string; ifNoneMatch?: string },
 ): Promise<void> {
   const cfg = getR2Config();
   if (!cfg) throw new Error("R2 is not configured");
@@ -98,6 +122,8 @@ export async function r2PutObject(
       Body: typeof body === "string" ? Buffer.from(body, "utf8") : body,
       ContentType: contentType,
       CacheControl: cacheControl,
+      ...(opts?.ifMatch ? { IfMatch: opts.ifMatch } : {}),
+      ...(opts?.ifNoneMatch ? { IfNoneMatch: opts.ifNoneMatch } : {}),
     }),
   );
 }
