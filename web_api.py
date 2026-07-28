@@ -815,10 +815,32 @@ def macro_web_payload(
         "hyperscalers": hyperscalers,
         "hyperscaler_range": hs_range,
         "calendar": calendar_rows,
-        "error": None
-        if not (bundle.get("fred_errors") or finnhub.get("errors"))
-        else "; ".join(
-            (bundle.get("fred_errors") or [])[:2]
-            + (finnhub.get("errors") or [])[:2]
+        "error": _sanitize_macro_errors(
+            (bundle.get("fred_errors") or []) + (finnhub.get("errors") or [])
         ),
     }
+
+
+def _sanitize_macro_errors(errors: list[str]) -> str | None:
+    """Strip secrets/URLs from upstream errors before sending to the browser."""
+    if not errors:
+        return None
+    cleaned: list[str] = []
+    for raw in errors[:4]:
+        text = str(raw)
+        # Drop query strings that may contain API tokens
+        if "token=" in text.lower() or "api_key=" in text.lower():
+            if "403" in text:
+                cleaned.append("Finnhub calendar: 403 (플랜에서 economic calendar 미지원 가능)")
+            elif "401" in text:
+                cleaned.append("Finnhub: 401 unauthorized")
+            else:
+                cleaned.append("Finnhub/FRED request failed (auth)")
+            continue
+        if "http://" in text or "https://" in text:
+            # Keep short label only
+            head = text.split(":", 1)[0].strip()
+            cleaned.append(f"{head}: upstream HTTP error")
+            continue
+        cleaned.append(text[:120])
+    return "; ".join(cleaned) if cleaned else None

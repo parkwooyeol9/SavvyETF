@@ -385,7 +385,9 @@ export default function MacroTab() {
           sub:
             data.snapshot.HY_OAS != null
               ? `${fmtNum(data.snapshot.HY_OAS)}%`
-              : "FRED 필요",
+              : data.uses_fred
+                ? "로딩/결측"
+                : "Render 연결 대기",
         },
         {
           id: "ig",
@@ -395,7 +397,9 @@ export default function MacroTab() {
           sub:
             data.snapshot.IG_OAS != null
               ? `${fmtNum(data.snapshot.IG_OAS)}%`
-              : "FRED 필요",
+              : data.uses_fred
+                ? "로딩/결측"
+                : "Render 연결 대기",
         },
         {
           id: "vix",
@@ -707,9 +711,9 @@ export default function MacroTab() {
               <h3 className="geo-section-title">미국 고영향 경제지표 캘린더</h3>
               {!data.calendar.length ? (
                 <p className="empty">
-                  고영향 캘린더가 비어 있습니다. Render 봇의{" "}
-                  <code>FINNHUB_API_KEY</code>와{" "}
-                  <code>/api/web/macro</code> 배포를 확인하세요.
+                  {data.uses_fred
+                    ? "고영향 캘린더가 비어 있습니다. Finnhub free 플랜은 economic calendar가 403일 수 있습니다."
+                    : "Render 봇 연결 대기 중이거나 Finnhub 캘린더를 가져오지 못했습니다."}
                 </p>
               ) : (
                 <div className="macro-cal-table-wrap">
