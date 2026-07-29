@@ -131,7 +131,17 @@ export default function EtfNewTab() {
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/etf-new", { cache: "no-store" });
-      const json = (await res.json()) as ApiPayload;
+      const text = await res.text();
+      let json: ApiPayload;
+      try {
+        json = JSON.parse(text) as ApiPayload;
+      } catch {
+        throw new Error(
+          text.trimStart().startsWith("<")
+            ? "서버가 HTML을 반환했습니다(봇 과부하/타임아웃). 잠시 후 다시 시도하세요."
+            : `응답 파싱 실패 (HTTP ${res.status})`,
+        );
+      }
       setData(json);
       setSelected((prev) => {
         if (prev) return prev;

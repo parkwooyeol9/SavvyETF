@@ -7,6 +7,8 @@ Tracks 15 US-listed ETFs via ETF CHECK (etfcheck.co.kr):
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,6 +23,12 @@ from etfcheck_client import (
 )
 
 KST = ZoneInfo("Asia/Seoul")
+
+# Short TTL so concurrent dashboard loads don't re-scrape etfcheck every time.
+_PAYLOAD_TTL_SECONDS = 180
+_payload_lock = threading.Lock()
+_payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_payload_inflight: dict[str, threading.Event] = {}
 
 KOR15_TICKERS: tuple[str, ...] = (
     "IEMG",
@@ -393,29 +401,65 @@ def build_etf_kor15_brief(*, pdf_limit: int = 500) -> dict[str, Any]:
 
 def etf_kor15_payload(*, pdf_limit: int = 500) -> dict[str, Any]:
     """JSON payload for the live ETF시황 KOR15 panel."""
-    try:
-        brief = build_etf_kor15_brief(pdf_limit=pdf_limit)
-    except Exception as exc:
+    cache_key = f"pdf:{pdf_limit}"
+    now = time.monotonic()
+    with _payload_lock:
+        hit = _payload_cache.get(cache_key)
+        if hit and now - hit[0] < _PAYLOAD_TTL_SECONDS:
+            return hit[1]
+        inflight = _payload_inflight.get(cache_key)
+        if inflight is None:
+            inflight = threading.Event()
+            _payload_inflight[cache_key] = inflight
+            owner = True
+        else:
+            owner = False
+
+    if not owner:
+        inflight.wait(timeout=90)
+        with _payload_lock:
+            hit = _payload_cache.get(cache_key)
+            if hit:
+                return hit[1]
         return {
             "ok": False,
-            "error": str(exc),
+            "error": "etf-kor15 build timed out waiting for in-flight request",
             "generated_at_display": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
             "source": BASE_URL,
             "rows": [],
         }
-    return {
-        "ok": True,
-        "generated_at": brief.get("generated_at"),
-        "generated_at_display": brief.get("generated_at_display"),
-        "source": brief.get("source"),
-        "tickers": brief.get("tickers"),
-        "ok_count": brief.get("ok_count"),
-        "rows": brief.get("rows") or [],
-        "notes": [
-            "편입액($B) = AUM($B) × 편입비(%) / 100",
-            "삼성전자·SK하이닉스는 Top3 밖이어도 항상 표시",
-        ],
-    }
+
+    try:
+        try:
+            brief = build_etf_kor15_brief(pdf_limit=pdf_limit)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": str(exc),
+                "generated_at_display": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
+                "source": BASE_URL,
+                "rows": [],
+            }
+        payload = {
+            "ok": True,
+            "generated_at": brief.get("generated_at"),
+            "generated_at_display": brief.get("generated_at_display"),
+            "source": brief.get("source"),
+            "tickers": brief.get("tickers"),
+            "ok_count": brief.get("ok_count"),
+            "rows": brief.get("rows") or [],
+            "notes": [
+                "편입액($B) = AUM($B) × 편입비(%) / 100",
+                "삼성전자·SK하이닉스는 Top3 밖이어도 항상 표시",
+            ],
+        }
+        with _payload_lock:
+            _payload_cache[cache_key] = (time.monotonic(), payload)
+        return payload
+    finally:
+        with _payload_lock:
+            _payload_inflight.pop(cache_key, None)
+        inflight.set()
 
 
 def _fmt_weight(value: Any) -> str:

@@ -16,6 +16,21 @@ function botWebHeaders(extra?: HeadersInit): HeadersInit {
   };
 }
 
+function looksLikeHtml(text: string): boolean {
+  const head = text.trimStart().slice(0, 32).toLowerCase();
+  return (
+    head.startsWith("<!doctype") ||
+    head.startsWith("<html") ||
+    head.startsWith("<head") ||
+    head.startsWith("<body")
+  );
+}
+
+/**
+ * Fetch JSON from the Render bot. Never call res.json() blindly —
+ * Render gateway timeouts return HTML 502 pages, which previously
+ * surfaced as: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+ */
 export async function fetchBotJson<T>(
   path: string,
   init?: RequestInit & { timeoutMs?: number },
@@ -30,8 +45,23 @@ export async function fetchBotJson<T>(
       headers: botWebHeaders(init?.headers),
       cache: "no-store",
     });
-    const data = (await res.json()) as T;
-    return data;
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error(`Bot ${path} returned empty body (HTTP ${res.status})`);
+    }
+    if (looksLikeHtml(trimmed)) {
+      throw new Error(
+        `Bot ${path} returned HTML instead of JSON (HTTP ${res.status}) — often a Render gateway timeout while the bot was busy`,
+      );
+    }
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      throw new Error(
+        `Bot ${path} returned non-JSON (HTTP ${res.status}): ${trimmed.slice(0, 120)}`,
+      );
+    }
   } finally {
     clearTimeout(timer);
   }

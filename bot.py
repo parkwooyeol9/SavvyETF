@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -3080,7 +3080,13 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
             if path == "/api/web/etf-kor15":
                 from etf_kor15 import etf_kor15_payload
 
-                payload = etf_kor15_payload()
+                try:
+                    payload = etf_kor15_payload()
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "error": f"etf-kor15 failed: {exc}",
+                    }
                 status = 200 if payload.get("ok") else 503
                 body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
                 self._send_cors_json(body, status=status)
@@ -3106,12 +3112,18 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                     analyze_us = int((query.get("analyze_us") or ["2"])[0])
                 except ValueError:
                     analyze_us = 2
-                payload = etf_new_payload(
-                    kr_limit=max(1, min(kr_limit, 40)),
-                    us_limit=max(1, min(us_limit, 40)),
-                    analyze_kr=max(0, min(analyze_kr, 8)),
-                    analyze_us=max(0, min(analyze_us, 4)),
-                )
+                try:
+                    payload = etf_new_payload(
+                        kr_limit=max(1, min(kr_limit, 40)),
+                        us_limit=max(1, min(us_limit, 40)),
+                        analyze_kr=max(0, min(analyze_kr, 8)),
+                        analyze_us=max(0, min(analyze_us, 4)),
+                    )
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "error": f"etf-new failed: {exc}",
+                    }
                 status = 200 if payload.get("ok") else 503
                 body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
                 self._send_cors_json(body, status=status)
@@ -3320,12 +3332,14 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
         def log_message(self, format, *args):
             return
 
-    server = HTTPServer(("0.0.0.0", port), AppHandler)
+    # ThreadingHTTPServer: single-thread HTTPServer blocked concurrent /api/web/*
+    # calls (etf-kor15 ~30s) so Render returned HTML 502 while others queued.
+    server = ThreadingHTTPServer(("0.0.0.0", port), AppHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"( / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/macro , /api/web/simulate )"
+        f"(threading; / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/macro , /api/web/simulate )"
     )
 
 

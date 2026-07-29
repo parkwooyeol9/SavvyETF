@@ -96,7 +96,17 @@ export default function EtfKor15Tab() {
     setLoading(true);
     try {
       const res = await fetch("/api/etf-kor15", { cache: "no-store" });
-      const json = (await res.json()) as ApiPayload;
+      const text = await res.text();
+      let json: ApiPayload;
+      try {
+        json = JSON.parse(text) as ApiPayload;
+      } catch {
+        throw new Error(
+          text.trimStart().startsWith("<")
+            ? "서버가 HTML을 반환했습니다(봇 과부하/타임아웃). 잠시 후 다시 시도하세요."
+            : `응답 파싱 실패 (HTTP ${res.status})`,
+        );
+      }
       setData(json);
     } catch (exc) {
       setData({

@@ -8,6 +8,8 @@ Sources:
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,6 +23,11 @@ from etfcheck_client import (
 )
 
 KST = ZoneInfo("Asia/Seoul")
+
+_PAYLOAD_TTL_SECONDS = 180
+_payload_lock = threading.Lock()
+_payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_payload_inflight: dict[str, threading.Event] = {}
 
 _KR_HARD_EXCLUDE = (
     "국채",
@@ -228,63 +235,99 @@ def etf_new_payload(
     holdings_top_n: int = 12,
 ) -> dict[str, Any]:
     """Build dashboard JSON for the ETF시황 live panel."""
-    generated_at = datetime.now(KST)
-    try:
-        client = EtfCheckClient()
-        client.warmup()
-        kr_raw = fetch_new_listings(client, limit=max(kr_limit, 30), domestic_only=True)
-        us_raw = fetch_global_new_listings(client, limit=max(us_limit, 40))
-    except Exception as exc:
+    cache_key = f"{kr_limit}:{us_limit}:{analyze_kr}:{analyze_us}:{holdings_top_n}"
+    now = time.monotonic()
+    with _payload_lock:
+        hit = _payload_cache.get(cache_key)
+        if hit and now - hit[0] < _PAYLOAD_TTL_SECONDS:
+            return hit[1]
+        # Single-flight: concurrent identical requests wait for the first build.
+        inflight = _payload_inflight.get(cache_key)
+        if inflight is None:
+            inflight = threading.Event()
+            _payload_inflight[cache_key] = inflight
+            owner = True
+        else:
+            owner = False
+
+    if not owner:
+        inflight.wait(timeout=90)
+        with _payload_lock:
+            hit = _payload_cache.get(cache_key)
+            if hit:
+                return hit[1]
         return {
             "ok": False,
-            "error": str(exc),
-            "generated_at": generated_at.isoformat(),
-            "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
+            "error": "etf-new build timed out waiting for in-flight request",
+            "generated_at_display": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
             "source": BASE_URL,
         }
 
-    kr = [_normalize_kr(r) for r in kr_raw][:kr_limit]
-    us = [_normalize_us(r) for r in us_raw][:us_limit]
+    generated_at = datetime.now(KST)
+    try:
+        try:
+            client = EtfCheckClient()
+            client.warmup()
+            kr_raw = fetch_new_listings(client, limit=max(kr_limit, 30), domestic_only=True)
+            us_raw = fetch_global_new_listings(client, limit=max(us_limit, 40))
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": str(exc),
+                "generated_at": generated_at.isoformat(),
+                "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
+                "source": BASE_URL,
+            }
 
-    analyses: list[dict[str, Any]] = []
-    for listing in kr:
-        if len([a for a in analyses if a.get("market") == "KR"]) >= analyze_kr:
-            break
-        if not listing.get("equity_eligible"):
-            continue
-        result = _analyze_kr_equity(client, listing, top_n=holdings_top_n)
-        if result:
+        kr = [_normalize_kr(r) for r in kr_raw][:kr_limit]
+        us = [_normalize_us(r) for r in us_raw][:us_limit]
+
+        analyses: list[dict[str, Any]] = []
+        for listing in kr:
+            if len([a for a in analyses if a.get("market") == "KR"]) >= analyze_kr:
+                break
+            if not listing.get("equity_eligible"):
+                continue
+            result = _analyze_kr_equity(client, listing, top_n=holdings_top_n)
+            if result:
+                analyses.append(result)
+
+        for listing in us:
+            if len([a for a in analyses if a.get("market") == "US" and a.get("ok")]) >= analyze_us:
+                break
+            if not listing.get("equity_eligible"):
+                continue
+            result = _analyze_us_equity(listing, top_n=min(10, holdings_top_n))
+            if not result:
+                continue
+            # Skip Yahoo rate-limit / empty failures so we can try the next listing.
+            if not result.get("ok"):
+                err = str(result.get("error") or "").lower()
+                if "rate limit" in err or "too many requests" in err:
+                    continue
+                # Keep one soft failure only if we have no US analysis yet.
+                if any(a.get("market") == "US" for a in analyses):
+                    continue
             analyses.append(result)
 
-    for listing in us:
-        if len([a for a in analyses if a.get("market") == "US" and a.get("ok")]) >= analyze_us:
-            break
-        if not listing.get("equity_eligible"):
-            continue
-        result = _analyze_us_equity(listing, top_n=min(10, holdings_top_n))
-        if not result:
-            continue
-        # Skip Yahoo rate-limit / empty failures so we can try the next listing.
-        if not result.get("ok"):
-            err = str(result.get("error") or "").lower()
-            if "rate limit" in err or "too many requests" in err:
-                continue
-            # Keep one soft failure only if we have no US analysis yet.
-            if any(a.get("market") == "US" for a in analyses):
-                continue
-        analyses.append(result)
-
-    return {
-        "ok": True,
-        "generated_at": generated_at.isoformat(),
-        "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
-        "source": BASE_URL,
-        "kr_new": kr,
-        "us_new": us,
-        "analyses": analyses,
-        "notes": [
-            "한국·미국 신규상장: ETF CHECK (코스콤).",
-            "한국 주식형 구성종목: ETF CHECK 일간 PDF/CU 비중.",
-            "미국 구성종목: Yahoo top holdings (일간 전체 CU 아님).",
-        ],
-    }
+        payload = {
+            "ok": True,
+            "generated_at": generated_at.isoformat(),
+            "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
+            "source": BASE_URL,
+            "kr_new": kr,
+            "us_new": us,
+            "analyses": analyses,
+            "notes": [
+                "한국·미국 신규상장: ETF CHECK (코스콤).",
+                "한국 주식형 구성종목: ETF CHECK 일간 PDF/CU 비중.",
+                "미국 구성종목: Yahoo top holdings (일간 전체 CU 아님).",
+            ],
+        }
+        with _payload_lock:
+            _payload_cache[cache_key] = (time.monotonic(), payload)
+        return payload
+    finally:
+        with _payload_lock:
+            _payload_inflight.pop(cache_key, None)
+        inflight.set()
