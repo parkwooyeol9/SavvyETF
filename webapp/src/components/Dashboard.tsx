@@ -6,6 +6,7 @@ import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
+import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
@@ -319,10 +320,11 @@ export default function Dashboard() {
         </>
       ) : tab === "etf" ? (
         <>
+          <EtfKor15Tab />
           <EtfNewTab />
           <BriefSlotsPanel
             title="ETF 시황 브리프"
-            note="라이브 패널 위: ETF CHECK 신규상장·구성분석. 아래 슬롯: /etf_kor15(09:00) · /etfcheck · /etf_us_new · /etf_sector · etf_memb."
+            note="라이브: KOR15(편입비/편입액) · 신규상장. 아래 슬롯: /etf_kor15 · /etfcheck · /etf_us_new · /etf_sector · etf_memb."
             emptyText="ETF 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
             slots={slots}
           />

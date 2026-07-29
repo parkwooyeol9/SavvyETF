@@ -40,6 +40,11 @@ KOR15_TICKERS: tuple[str, ...] = (
     "FLKR",
 )
 
+# etfcheck mast has no FNDR; FNDE (Schwab Fundamental EM) is the closest listed peer.
+TICKER_ALIASES: dict[str, tuple[str, ...]] = {
+    "FNDR": ("FNDR", "FNDE"),
+}
+
 # Prefer issuer tickers; fall back to name tokens.
 _SAMSUNG = {"codes": {"005930"}, "name_tokens": ("samsung electronics",)}
 _HYNIX = {"codes": {"000660"}, "name_tokens": ("sk hynix", "skhynix")}
@@ -77,7 +82,44 @@ def _mast_by_symbol(client: EtfCheckClient) -> dict[str, dict[str, Any]]:
         sym = str(row.get("SYMBOL") or "").strip().upper()
         if sym and sym not in out:
             out[sym] = row
+        simple = str(row.get("SIMPLE_CODE") or "").strip().upper()
+        if simple and simple not in out:
+            out[simple] = row
     return out
+
+
+def _resolve_mast_row(
+    symbol: str,
+    mast: dict[str, dict[str, Any]],
+) -> tuple[str, dict[str, Any] | None, str | None]:
+    """Return (resolved_symbol, mast_row, alias_note)."""
+    symbol = symbol.upper()
+    candidates = TICKER_ALIASES.get(symbol, (symbol,))
+    for cand in candidates:
+        row = mast.get(cand)
+        if row:
+            note = None
+            if cand != symbol:
+                note = f"{symbol}→{cand} (etfcheck에 {symbol} 없음)"
+            return cand, row, note
+    return symbol, None, None
+
+
+def _call_with_retry(fn, *, attempts: int = 3, label: str = "etfcheck"):
+    import time
+
+    last_exc: Exception | None = None
+    for i in range(max(1, attempts)):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 — retry then surface
+            last_exc = exc
+            if i + 1 >= attempts:
+                break
+            time.sleep(0.45 * (i + 1))
+            print(f"{label} retry {i + 1}/{attempts}: {exc}")
+    assert last_exc is not None
+    raise last_exc
 
 
 def _normalize_holding(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -162,6 +204,59 @@ def _pick_display_holdings(
     return {"top3": top3, "specials": extras}
 
 
+def _enrich_exposure_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Attach flat samsung/hynix weight & notional (AUM × weight) fields for charts."""
+    aum = row.get("aum_usd_bn")
+    samsung_w = None
+    hynix_w = None
+    for sp in row.get("specials") or []:
+        if not isinstance(sp, dict) or sp.get("missing"):
+            continue
+        w = sp.get("weight_pct")
+        if not isinstance(w, (int, float)):
+            continue
+        label = sp.get("label")
+        if label == "삼성전자":
+            samsung_w = float(w)
+        elif label == "SK하이닉스":
+            hynix_w = float(w)
+        if isinstance(aum, (int, float)):
+            sp["value_usd_bn"] = round(float(aum) * float(w) / 100.0, 4)
+
+    row["samsung_weight_pct"] = samsung_w
+    row["hynix_weight_pct"] = hynix_w
+    if isinstance(aum, (int, float)) and samsung_w is not None:
+        row["samsung_value_usd_bn"] = round(float(aum) * samsung_w / 100.0, 4)
+    else:
+        row["samsung_value_usd_bn"] = None
+    if isinstance(aum, (int, float)) and hynix_w is not None:
+        row["hynix_value_usd_bn"] = round(float(aum) * hynix_w / 100.0, 4)
+    else:
+        row["hynix_value_usd_bn"] = None
+    return row
+
+
+def _empty_row(symbol: str, *, error: str, **extra: Any) -> dict[str, Any]:
+    row = {
+        "symbol": symbol,
+        "ok": False,
+        "error": error,
+        "name": extra.get("name") or symbol,
+        "resolved_symbol": extra.get("resolved_symbol"),
+        "alias_note": extra.get("alias_note"),
+        "mstar_id": extra.get("mstar_id"),
+        "aum_usd_bn": extra.get("aum_usd_bn"),
+        "adv_m_shares": extra.get("adv_m_shares"),
+        "top3": [],
+        "specials": [],
+        "samsung_weight_pct": None,
+        "hynix_weight_pct": None,
+        "samsung_value_usd_bn": None,
+        "hynix_value_usd_bn": None,
+    }
+    return row
+
+
 def _build_etf_row(
     client: EtfCheckClient,
     symbol: str,
@@ -169,26 +264,23 @@ def _build_etf_row(
     *,
     pdf_limit: int = 500,
 ) -> dict[str, Any]:
-    symbol = symbol.upper()
-    base = mast.get(symbol)
+    display_symbol = symbol.upper()
+    resolved, base, alias_note = _resolve_mast_row(display_symbol, mast)
     if not base:
-        return {
-            "symbol": symbol,
-            "ok": False,
-            "error": "etfcheck mast에 없음 (티커 확인 필요)",
-            "name": symbol,
-            "mstar_id": None,
-            "aum_usd_bn": None,
-            "adv_m_shares": None,
-            "top3": [],
-            "specials": [],
-        }
+        return _empty_row(
+            display_symbol,
+            error="etfcheck mast에 없음 (티커 확인 필요)",
+        )
 
     mstar_id = str(base.get("MSTARID") or "").strip()
-    info = fetch_global_etf_item_info(client, mstar_id) or {}
-    name = str(
-        info.get("FUNDNAME") or base.get("FUNDNAME") or symbol
-    ).strip()
+    info = (
+        _call_with_retry(
+            lambda: fetch_global_etf_item_info(client, mstar_id),
+            label=f"item:{resolved}",
+        )
+        or {}
+    )
+    name = str(info.get("FUNDNAME") or base.get("FUNDNAME") or resolved).strip()
 
     aum = _safe_float(info.get("CLSNETASSETS"))
     aum_bn = round(aum / 1e9, 2) if aum is not None else None
@@ -199,19 +291,21 @@ def _build_etf_row(
     adv_m = round(adv / 1e6, 2) if adv is not None else None
 
     try:
-        raw_pdf = fetch_global_etf_pdf_detail(client, mstar_id, limit=pdf_limit)
+        raw_pdf = _call_with_retry(
+            lambda: fetch_global_etf_pdf_detail(client, mstar_id, limit=pdf_limit),
+            label=f"pdf:{resolved}",
+        )
     except Exception as exc:
-        return {
-            "symbol": symbol,
-            "ok": False,
-            "error": f"PDF 조회 실패: {exc}",
-            "name": name,
-            "mstar_id": mstar_id,
-            "aum_usd_bn": aum_bn,
-            "adv_m_shares": adv_m,
-            "top3": [],
-            "specials": [],
-        }
+        return _empty_row(
+            display_symbol,
+            error=f"PDF 조회 실패: {exc}",
+            name=name,
+            resolved_symbol=resolved,
+            alias_note=alias_note,
+            mstar_id=mstar_id,
+            aum_usd_bn=aum_bn,
+            adv_m_shares=adv_m,
+        )
 
     holdings = []
     for row in raw_pdf:
@@ -219,10 +313,42 @@ def _build_etf_row(
             norm = _normalize_holding(row)
             if norm:
                 holdings.append(norm)
-    picked = _pick_display_holdings(holdings)
 
-    return {
-        "symbol": symbol,
+    if not holdings:
+        # Retry once with a larger limit — some broad ETFs truncate early.
+        try:
+            raw_pdf = _call_with_retry(
+                lambda: fetch_global_etf_pdf_detail(
+                    client, mstar_id, limit=max(pdf_limit, 800)
+                ),
+                attempts=2,
+                label=f"pdf-wide:{resolved}",
+            )
+            for row in raw_pdf:
+                if isinstance(row, dict):
+                    norm = _normalize_holding(row)
+                    if norm:
+                        holdings.append(norm)
+        except Exception as exc:
+            print(f"pdf-wide {resolved} skipped: {exc}")
+
+    if not holdings:
+        return _empty_row(
+            display_symbol,
+            error="구성종목 PDF 비어 있음",
+            name=name,
+            resolved_symbol=resolved,
+            alias_note=alias_note,
+            mstar_id=mstar_id,
+            aum_usd_bn=aum_bn,
+            adv_m_shares=adv_m,
+        )
+
+    picked = _pick_display_holdings(holdings)
+    out = {
+        "symbol": display_symbol,
+        "resolved_symbol": resolved,
+        "alias_note": alias_note,
         "ok": True,
         "error": None,
         "name": name,
@@ -234,35 +360,37 @@ def _build_etf_row(
         "specials": picked["specials"],
         "trade_date": str(info.get("TRADEDATE") or base.get("TRADEDATE") or "") or None,
     }
+    return _enrich_exposure_fields(out)
 
 
 def build_etf_kor15_brief(*, pdf_limit: int = 500) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     generated_at = datetime.now(KST)
     client = EtfCheckClient()
     client.warmup()
-    mast = _mast_by_symbol(client)
+    mast = _call_with_retry(lambda: _mast_by_symbol(client), label="mast")
 
-    rows: list[dict[str, Any]] = []
-    for symbol in KOR15_TICKERS:
+    rows_by_symbol: dict[str, dict[str, Any]] = {}
+
+    def _one(symbol: str) -> dict[str, Any]:
+        # Per-thread client — requests.Session is not fully thread-safe.
+        local = EtfCheckClient()
         try:
-            rows.append(
-                _build_etf_row(client, symbol, mast, pdf_limit=pdf_limit)
-            )
-        except Exception as exc:
-            rows.append(
-                {
-                    "symbol": symbol,
-                    "ok": False,
-                    "error": str(exc),
-                    "name": symbol,
-                    "mstar_id": None,
-                    "aum_usd_bn": None,
-                    "adv_m_shares": None,
-                    "top3": [],
-                    "specials": [],
-                }
-            )
+            return _build_etf_row(local, symbol, mast, pdf_limit=pdf_limit)
+        except Exception as exc:  # noqa: BLE001
+            return _empty_row(symbol, error=str(exc))
 
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futs = {pool.submit(_one, sym): sym for sym in KOR15_TICKERS}
+        for fut in as_completed(futs):
+            sym = futs[fut]
+            try:
+                rows_by_symbol[sym] = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                rows_by_symbol[sym] = _empty_row(sym, error=str(exc))
+
+    rows = [rows_by_symbol[sym] for sym in KOR15_TICKERS]
     return {
         "generated_at": generated_at.isoformat(),
         "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
@@ -270,6 +398,34 @@ def build_etf_kor15_brief(*, pdf_limit: int = 500) -> dict[str, Any]:
         "tickers": list(KOR15_TICKERS),
         "rows": rows,
         "ok_count": sum(1 for r in rows if r.get("ok")),
+    }
+
+
+def etf_kor15_payload(*, pdf_limit: int = 500) -> dict[str, Any]:
+    """JSON payload for the live ETF시황 KOR15 panel."""
+    try:
+        brief = build_etf_kor15_brief(pdf_limit=pdf_limit)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "generated_at_display": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
+            "source": BASE_URL,
+            "rows": [],
+        }
+    return {
+        "ok": True,
+        "generated_at": brief.get("generated_at"),
+        "generated_at_display": brief.get("generated_at_display"),
+        "source": brief.get("source"),
+        "tickers": brief.get("tickers"),
+        "ok_count": brief.get("ok_count"),
+        "rows": brief.get("rows") or [],
+        "notes": [
+            "편입액($B) = AUM($B) × 편입비(%) / 100",
+            "FNDR은 etfcheck에 없어 FNDE(Schwab Fundamental EM)로 대체 조회",
+            "삼성전자·SK하이닉스는 Top3 밖이어도 항상 표시",
+        ],
     }
 
 
@@ -313,9 +469,11 @@ def format_etf_kor15_telegram(brief: dict[str, Any]) -> str:
     ]
     for row in brief.get("rows") or []:
         sym = _esc(row.get("symbol"))
+        alias = row.get("alias_note")
+        alias_bit = f" <i>({_esc(alias)})</i>" if alias else ""
         if not row.get("ok"):
             lines.append(
-                f"<code>{sym}</code> {_esc(row.get('name') or '')}\n"
+                f"<code>{sym}</code> {_esc(row.get('name') or '')}{alias_bit}\n"
                 f"    ⚠ {_esc(row.get('error') or '조회 실패')}"
             )
             continue
@@ -324,7 +482,7 @@ def format_etf_kor15_telegram(brief: dict[str, Any]) -> str:
         aum_s = f"{aum:.2f}" if isinstance(aum, (int, float)) else "—"
         adv_s = f"{adv:.2f}" if isinstance(adv, (int, float)) else "—"
         lines.append(
-            f"<code>{sym}</code> {_esc(row.get('name') or '')}\n"
+            f"<code>{sym}</code> {_esc(row.get('name') or '')}{alias_bit}\n"
             f"    AUM {aum_s} · ADV {adv_s}\n"
             f"    Top3 {_esc(_fmt_top3_cell(row.get('top3') or []))}\n"
             f"    {_esc(_fmt_specials_cell(row.get('specials') or []))}"
@@ -420,24 +578,25 @@ def plot_etf_kor15_chart(brief: dict[str, Any]):
             cell.set_facecolor(palette["panel"])
             cell.set_text_props(color=palette["muted"] if c else palette["accent"])
 
-    # Bar: Samsung / Hynix weights
+    # Bar: Samsung / Hynix weights (prefer flat fields; fall back to specials)
     labels: list[str] = []
     samsung_w: list[float] = []
     hynix_w: list[float] = []
     for row in rows:
         labels.append(str(row.get("symbol") or ""))
-        s_val = 0.0
-        h_val = 0.0
-        for sp in row.get("specials") or []:
-            w = sp.get("weight_pct")
-            if not isinstance(w, (int, float)):
-                continue
-            if sp.get("label") == "삼성전자":
-                s_val = float(w)
-            elif sp.get("label") == "SK하이닉스":
-                h_val = float(w)
-        samsung_w.append(s_val)
-        hynix_w.append(h_val)
+        s_val = row.get("samsung_weight_pct")
+        h_val = row.get("hynix_weight_pct")
+        if not isinstance(s_val, (int, float)) or not isinstance(h_val, (int, float)):
+            for sp in row.get("specials") or []:
+                w = sp.get("weight_pct")
+                if not isinstance(w, (int, float)):
+                    continue
+                if sp.get("label") == "삼성전자":
+                    s_val = float(w)
+                elif sp.get("label") == "SK하이닉스":
+                    h_val = float(w)
+        samsung_w.append(float(s_val) if isinstance(s_val, (int, float)) else 0.0)
+        hynix_w.append(float(h_val) if isinstance(h_val, (int, float)) else 0.0)
 
     x = list(range(len(labels)))
     width = 0.38

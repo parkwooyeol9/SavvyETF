@@ -3075,6 +3075,15 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/etf-kor15":
+                from etf_kor15 import etf_kor15_payload
+
+                payload = etf_kor15_payload()
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/etf-new":
                 from etf_new_web import etf_new_payload
 
