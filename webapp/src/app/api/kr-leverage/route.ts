@@ -55,6 +55,29 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+function decodeHtmlBuffer(buf: Buffer, contentType: string | null): string {
+  const header = (contentType || "").toLowerCase();
+  const headerCharset = header.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1]?.toLowerCase();
+  const peek = buf.subarray(0, Math.min(buf.length, 4096)).toString("latin1");
+  const metaCharset = peek
+    .match(/charset\s*=\s*["']?\s*([a-zA-Z0-9_-]+)/i)?.[1]
+    ?.toLowerCase();
+  const raw = headerCharset || metaCharset || "utf-8";
+  const encoding =
+    raw === "euc-kr" || raw === "euckr" || raw === "ks_c_5601-1987" || raw === "cp949"
+      ? "euc-kr"
+      : raw === "utf8" || raw === "utf-8"
+        ? "utf-8"
+        : raw;
+  try {
+    return new TextDecoder(encoding).decode(buf);
+  } catch {
+    return encoding === "utf-8"
+      ? new TextDecoder("euc-kr").decode(buf)
+      : buf.toString("utf-8");
+  }
+}
+
 async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: {
@@ -67,11 +90,7 @@ async function fetchText(url: string): Promise<string> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  try {
-    return new TextDecoder("euc-kr").decode(buf);
-  } catch {
-    return buf.toString("utf-8");
-  }
+  return decodeHtmlBuffer(buf, res.headers.get("content-type"));
 }
 
 function todayBizdateKst(): string {
@@ -556,7 +575,7 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v1",
+      "kr-leverage:v2",
       170_000,
       600_000,
       buildBoard,

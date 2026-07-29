@@ -448,11 +448,28 @@ export default function LeverageEtfTab() {
                   <ComposedChart data={investorChart}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#243044" />
                     <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                    <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} width={48} />
+                    <YAxis
+                      yAxisId="net"
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      width={48}
+                    />
+                    <YAxis
+                      yAxisId="vol"
+                      orientation="right"
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      width={48}
+                    />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="volume" name="거래량" fill="#64748b" opacity={0.35} />
+                    <Bar
+                      yAxisId="vol"
+                      dataKey="volume"
+                      name="거래량"
+                      fill="#64748b"
+                      opacity={0.35}
+                    />
                     <Line
+                      yAxisId="net"
                       type="monotone"
                       dataKey="foreign"
                       name="외인"
@@ -461,6 +478,7 @@ export default function LeverageEtfTab() {
                       strokeWidth={2}
                     />
                     <Line
+                      yAxisId="net"
                       type="monotone"
                       dataKey="institution"
                       name="기관"
@@ -469,6 +487,7 @@ export default function LeverageEtfTab() {
                       strokeWidth={2}
                     />
                     <Line
+                      yAxisId="net"
                       type="monotone"
                       dataKey="individual"
                       name="개인"
