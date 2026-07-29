@@ -32,18 +32,13 @@ KOR15_TICKERS: tuple[str, ...] = (
     "EEM",
     "SCHF",
     "VEU",
-    "FNDR",
+    "FNDF",
     "IXUS",
     "AIA",
     "VPL",
     "VT",
     "FLKR",
 )
-
-# etfcheck mast has no FNDR; FNDE (Schwab Fundamental EM) is the closest listed peer.
-TICKER_ALIASES: dict[str, tuple[str, ...]] = {
-    "FNDR": ("FNDR", "FNDE"),
-}
 
 # Prefer issuer tickers; fall back to name tokens.
 _SAMSUNG = {"codes": {"005930"}, "name_tokens": ("samsung electronics",)}
@@ -94,14 +89,9 @@ def _resolve_mast_row(
 ) -> tuple[str, dict[str, Any] | None, str | None]:
     """Return (resolved_symbol, mast_row, alias_note)."""
     symbol = symbol.upper()
-    candidates = TICKER_ALIASES.get(symbol, (symbol,))
-    for cand in candidates:
-        row = mast.get(cand)
-        if row:
-            note = None
-            if cand != symbol:
-                note = f"{symbol}→{cand} (etfcheck에 {symbol} 없음)"
-            return cand, row, note
+    row = mast.get(symbol)
+    if row:
+        return symbol, row, None
     return symbol, None, None
 
 
@@ -423,7 +413,6 @@ def etf_kor15_payload(*, pdf_limit: int = 500) -> dict[str, Any]:
         "rows": brief.get("rows") or [],
         "notes": [
             "편입액($B) = AUM($B) × 편입비(%) / 100",
-            "FNDR은 etfcheck에 없어 FNDE(Schwab Fundamental EM)로 대체 조회",
             "삼성전자·SK하이닉스는 Top3 밖이어도 항상 표시",
         ],
     }
