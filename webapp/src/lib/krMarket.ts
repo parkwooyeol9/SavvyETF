@@ -88,9 +88,71 @@ export type LevGroupSeries = {
   series: LevGroupPoint[];
 };
 
+/** Per-product live quote + latest investor nets. */
+export type SingleStockLevRow = {
+  code: string;
+  name: string;
+  underlying: "samsung" | "hynix";
+  direction: "lev" | "inv";
+  structure: "spot" | "fut";
+  group_key: LevGroupKey;
+  group_label: string;
+  last: number;
+  change: number;
+  change_pct: number;
+  volume: number;
+  value: number;
+  value_eok: number;
+  aum_eok: number;
+  foreign_net: number | null;
+  institution_net: number | null;
+  individual_net: number | null;
+  trend_date?: string | null;
+  market_status?: string;
+};
+
+export type LevInvestorDay = {
+  date: string;
+  volume: number;
+  foreign_net: number;
+  institution_net: number;
+  individual_net: number;
+  close?: number | null;
+};
+
+export type LevBrokerSide = {
+  name: string;
+  volume: number;
+};
+
+export type LevDealerBoard = {
+  code: string;
+  sell: LevBrokerSide[];
+  buy: LevBrokerSide[];
+  foreign_est_sell?: number | null;
+  foreign_est_buy?: number | null;
+  note?: string;
+};
+
+export type LevChartBundle = {
+  code: string;
+  minute: KrCandle[];
+  daily: KrCandle[];
+};
+
 export type SingleStockLevBoard = {
   listing_date: string;
   groups: LevGroupSeries[];
+  /** 16 products ranked by today's trading value */
+  products?: SingleStockLevRow[];
+  /** Daily investor nets keyed by product code */
+  investors_by_code?: Record<string, LevInvestorDay[]>;
+  /** Group-summed daily investor nets */
+  investors_by_group?: Record<LevGroupKey, LevInvestorDay[]>;
+  /** Broker ranking keyed by product code (may be empty if Naver delays) */
+  dealers_by_code?: Record<string, LevDealerBoard>;
+  /** Price/volume candles for period charts */
+  charts_by_code?: Record<string, LevChartBundle>;
   total_aum_eok: number;
   total_value_eok: number;
   total_value_cum_eok: number;

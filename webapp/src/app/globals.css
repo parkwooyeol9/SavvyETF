@@ -1135,6 +1135,55 @@ a.geo-choke-hl:hover {
   }
 }
 
+.lev-panels {
+  margin: 0.75rem 0 0.5rem;
+}
+
+.lev-filter {
+  margin-bottom: 0.85rem;
+}
+
+.lev-select {
+  background: #0f172a;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  max-width: min(100%, 320px);
+}
+
+.lev-dealer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.kr-mini-title {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.kr-footnote {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.kr-table tr.selected td {
+  background: color-mix(in srgb, #38bdf8 10%, transparent);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 800px) {
+  .lev-dealer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .kr-credit-kpis {
   display: flex;
   flex-wrap: wrap;

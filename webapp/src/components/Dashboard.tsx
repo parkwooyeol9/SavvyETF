@@ -8,6 +8,7 @@ import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
+import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import SimulateTab from "@/components/SimulateTab";
 import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
@@ -290,7 +291,7 @@ export default function Dashboard() {
       ) : tab === "etfdb" ? (
         <EtfDbTab />
       ) : tab === "leverage" ? (
-        <KrMarketTab variant="leverage" />
+        <LeverageEtfTab />
       ) : tab === "geo" ? (
         <GeoTab />
       ) : tab === "economy" ? (
