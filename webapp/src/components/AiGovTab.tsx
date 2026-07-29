@@ -170,14 +170,23 @@ function ScreenPanels({
     ...(screen?.finnhub?.headlines || []),
   ].filter((h) => headlineText(h));
 
+  const showDart =
+    !screen?.dart?.error && dartHits.length > 0;
+  const showSec =
+    !screen?.sec?.error && filings.length > 0;
+  const showNews = headlines.length > 0;
+
+  if (!showDart && !showSec && !showNews && !policy.length) {
+    return null;
+  }
+
   return (
     <section className="esg-carbon-support ai-gov-screen">
       <div className="esg-carbon-support-head">
         <div>
-          <h3 className="esg-carbon-support-title">거버넌스 스크린 · 멀티소스</h3>
+          <h3 className="esg-carbon-support-title">거버넌스 스크린</h3>
           <p className="esg-carbon-support-sub">
-            공개 소스 우선: SEC · Google News RSS · AI기본법/EU AI Act 캘린더 (API 키 불필요).
-            DART/Finnhub/봇은 키가 있을 때만 보강합니다.
+            정책 캘린더와 수신된 공시·뉴스만 표시합니다.
           </p>
         </div>
         <button type="button" className="ghost-btn" onClick={onRefresh}>
@@ -185,27 +194,13 @@ function ScreenPanels({
         </button>
       </div>
 
-      {screen?.error ? <p className="empty warn">{screen.error}</p> : null}
-      {screen?.errors?.length ? (
-        <p className="empty warn">{screen.errors.slice(0, 3).join(" · ")}</p>
-      ) : null}
-
       <div className="ai-gov-panels">
+        {showDart ? (
         <article className="ai-gov-panel">
           <h4>
             DART · AI·개인정보·보안
             {screen?.dart?.hit_count != null ? ` (${screen.dart.hit_count})` : ""}
           </h4>
-          {screen?.dart?.error ? (
-            <p className="empty warn">{screen.dart.error}</p>
-          ) : null}
-          {!dartHits.length ? (
-            <p className="empty">
-              최근 90일 감시 유니버스(네이버·카카오·통신·반도체 등) 공시{" "}
-              <em>제목</em>에 AI·개인정보·보안 키워드 매칭 없음. 사고성 공시가 없을 때
-              흔하며, 아래 뉴스·SEC·정책 캘린더를 우선 보세요.
-            </p>
-          ) : (
             <ul className="ai-gov-list">
               {dartHits.slice(0, 12).map((h, i) => (
                 <li key={`${h.rcept_no || h.report_nm}-${i}`}>
@@ -226,9 +221,10 @@ function ScreenPanels({
                 </li>
               ))}
             </ul>
-          )}
         </article>
+        ) : null}
 
+        {showSec ? (
         <article className="ai-gov-panel">
           <h4>
             SEC · Cyber / Item 1.05
@@ -236,12 +232,6 @@ function ScreenPanels({
               ? ` (≈${screen.sec.filing_count})`
               : ""}
           </h4>
-          {screen?.sec?.error ? (
-            <p className="empty warn">{screen.sec.error}</p>
-          ) : null}
-          {!filings.length ? (
-            <p className="empty">최근 샘플 없음/미수신</p>
-          ) : (
             <ul className="ai-gov-list">
               {filings.slice(0, 10).map((f, i) => (
                 <li key={`${f.company}-${f.file_date}-${i}`}>
@@ -261,8 +251,8 @@ function ScreenPanels({
                 </li>
               ))}
             </ul>
-          )}
         </article>
+        ) : null}
 
         <article className="ai-gov-panel">
           <h4>정책 캘린더 · AI기본법 / EU AI Act</h4>
@@ -283,11 +273,9 @@ function ScreenPanels({
           </ul>
         </article>
 
+        {showNews ? (
         <article className="ai-gov-panel">
-          <h4>뉴스 · Google News RSS / (선택) Finnhub·Naver</h4>
-          {!headlines.length ? (
-            <p className="empty">헤드라인 없음/미수신</p>
-          ) : (
+          <h4>뉴스 · Google News RSS</h4>
             <ul className="ai-gov-list">
               {headlines.slice(0, 12).map((h, i) => {
                 const title = headlineText(h);
@@ -310,13 +298,13 @@ function ScreenPanels({
                 );
               })}
             </ul>
-          )}
         </article>
+        ) : null}
       </div>
 
       {screen?.generated_at ? (
         <p className="kr-foot esg-themes-foot">
-          {screen.note || "멀티소스 스크린"}
+          {screen.note || "거버넌스 스크린"}
           {` · ${new Date(screen.generated_at).toLocaleString("ko-KR", {
             hour12: false,
           })}`}
@@ -503,7 +491,7 @@ export default function AiGovTab() {
         onRefresh={() => void loadScreen()}
       />
 
-      <BriefSlotCards slots={aiSlots} />
+      {aiSlots.length > 0 ? <BriefSlotCards slots={aiSlots} /> : null}
     </div>
   );
 }

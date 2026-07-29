@@ -9,7 +9,6 @@ import type {
   GreenMineral,
   GreenMineralEvent,
   GreenMineralPayload,
-  MethodologyBlock,
   SupplySecurityDelta,
 } from "@/lib/greenMinerals";
 import {
@@ -128,18 +127,6 @@ function ListMetaCard({ meta }: { meta: CriticalListMeta }) {
       <a className="green-min-link" href={meta.source_url} target="_blank" rel="noreferrer">
         출처
       </a>
-    </article>
-  );
-}
-
-function MethodologyCard({ block }: { block: MethodologyBlock }) {
-  return (
-    <article className="green-min-card">
-      <h4>
-        {block.title_ko}
-        <span className="green-min-en"> · {block.title_en}</span>
-      </h4>
-      <p className="green-min-body">{block.body_ko}</p>
     </article>
   );
 }
@@ -403,15 +390,6 @@ export default function GreenMineralsTab() {
             ))
           )}
         </ul>
-      </div>
-
-      <div className="green-min-section">
-        <h3>Methodology</h3>
-        <div className="green-min-stack">
-          {(data?.methodology || []).map((block) => (
-            <MethodologyCard key={block.id} block={block} />
-          ))}
-        </div>
       </div>
     </section>
   );
