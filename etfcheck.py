@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from etfcheck_client import (
     BASE_URL,
     EtfCheckClient,
+    fetch_global_new_listings,
     fetch_new_listings,
     fetch_rank_inflow,
     fetch_rank_volume,
@@ -107,6 +108,7 @@ def build_etfcheck_brief(*, mode: str = "all", top_n: int = DEFAULT_TOP_N) -> di
         "volume": [],
         "inflow": [],
         "new_listings": [],
+        "us_new_listings": [],
     }
 
     if mode in {"all", "volume"}:
@@ -115,6 +117,7 @@ def build_etfcheck_brief(*, mode: str = "all", top_n: int = DEFAULT_TOP_N) -> di
         brief["inflow"] = fetch_rank_inflow(client, order="D", limit=top_n)
     if mode in {"all", "new"}:
         brief["new_listings"] = fetch_new_listings(client, limit=top_n, domestic_only=True)
+        brief["us_new_listings"] = fetch_global_new_listings(client, limit=top_n)
 
     return brief
 
@@ -161,7 +164,18 @@ def format_etfcheck_telegram(brief: dict[str, Any]) -> str:
             )
         lines.append("")
 
-    if not volume and not inflow and not listings:
+    us_listings = brief.get("us_new_listings") or []
+    if us_listings:
+        lines.append("<b>4️⃣ 미국 신규 상장 (최근)</b>")
+        for idx, row in enumerate(us_listings, start=1):
+            lines.append(
+                f"{idx}. <code>{_esc(row.get('SYMBOL'))}</code> {_esc(row.get('FUNDNAME'))}\n"
+                f"    상장 {_fmt_list_date(row.get('LIST_DATE') or row.get('INCEPDATE'))} · "
+                f"등락 {_fmt_pct(row.get('F15004'))}"
+            )
+        lines.append("")
+
+    if not volume and not inflow and not listings and not us_listings:
         lines.append("<i>조회 결과가 없습니다. 잠시 후 다시 시도하세요.</i>")
 
     lines.extend(["<i>Not financial advice.</i>"])

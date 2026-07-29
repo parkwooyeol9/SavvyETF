@@ -102,7 +102,7 @@ export function navGroupForTab(tab: ShellTabId): NavGroupId {
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_kor_intra", "summary_nxt"],
   us: ["summary", "summary_pre", "reddit"],
-  etf: ["etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
+  etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
   // Priority framing: physical climate (#2) → governance screen (#3) → safety filings
   esg: ["esg_monitor", "esg_overview", "esg_accident", "esg_data_briefing"],
 };

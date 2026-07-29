@@ -6,6 +6,7 @@ import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
+import EtfNewTab from "@/components/EtfNewTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
@@ -215,7 +216,8 @@ export default function Dashboard() {
       tab === "geo" ||
       tab === "economy" ||
       tab === "etfdb" ||
-      tab === "leverage"
+      tab === "leverage" ||
+      tab === "etf"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -312,6 +314,16 @@ export default function Dashboard() {
             title="ESG 시황 브리프"
             note="브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 → 중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요."
             emptyText="ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
+            slots={slots}
+          />
+        </>
+      ) : tab === "etf" ? (
+        <>
+          <EtfNewTab />
+          <BriefSlotsPanel
+            title="ETF 시황 브리프"
+            note="라이브 패널 위: ETF CHECK 신규상장·구성분석. 아래 슬롯: /etf_kor15(09:00) · /etfcheck · /etf_us_new · /etf_sector · etf_memb."
+            emptyText="ETF 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
             slots={slots}
           />
         </>

@@ -33,6 +33,7 @@ from stock_crawler import (
 from etf_sector_scheduler import start_etf_sector_scheduler
 from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
+from etf_kor15_scheduler import start_etf_kor15_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
@@ -77,6 +78,9 @@ What each command returns:
 
 /etfcheck
 → ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
+
+/etf_kor15
+→ 한국 노출 미국 ETF 15종 Top3·삼성전자/SK하이닉스 편입비 도표 (etfcheck)
 
 /etfdb
 → 국내 ETF DB: 유형·국가·업종 분류, AUM 합, NAV×Δ설정좌수 수급 (/etfdb 웹)
@@ -183,6 +187,7 @@ def build_help_messages() -> list[dict]:
 <code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
 <code>/etf_holdings EEM 005930</code> — ETF 편입비 시계열 + Excel
 <code>/etfcheck</code> — ETF CHECK 수급·거래대금·신규상장
+<code>/etf_kor15</code> — 한국 노출 미국 ETF 15종 Top3·삼성/하이닉스 편입비
 <code>/etfdb</code> — 국내 ETF DB (유형·국가·업종 AUM·수급, 웹 /etfdb)
 <code>/kospi</code> <code>/kosdaq</code> — KOSPI200·KOSDAQ100 (전일 종가 기준 캐시)
 <code>/kospi_intra</code> <code>/kosdaq_intra</code> — 장중 수익률 (Naver 1분봉 vs 전일 종가)
@@ -206,6 +211,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary_kor</code> 15:40 — 한국 마감 (Korea 채널)
 <code>/summary_nxt</code> 16:40 — NXT 브리핑 (Korea 채널)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
+<code>/etf_kor15</code> 09:00 — 한국 노출 미국 ETF 15종 편입비 (레거시 ETF 채널)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 — SavvyESG (accident는 한국 휴장 제외)
 <i>스케줄 OFF(수동만):</i> <code>/summary_kor_intra</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> overview · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
@@ -224,6 +230,7 @@ def build_help_messages() -> list[dict]:
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
 <code>/etf memb EEM</code> — 미국 ETF 현재 편입비중 Top10 + Excel
 <code>/etf_us_new</code> — 미국 신규 상장 ETF + 구성종목
+<code>/etf_kor15</code> — 한국 노출 미국 ETF 15종 Top3·삼성/하이닉스 편입비
 <code>/etf_holdings EEM 005930</code> — ETF 내 종목 편입비 시계열 + Excel
 <code>/comp QQQ IVV</code> — ETF 비교 + 엑셀
 <code>/port AAPL MSFT</code> — 포트 백테스트
@@ -1658,6 +1665,21 @@ def handle_telegram_message(message, chat_id: int):
         except Exception as exc:
             return [{"text": f"/etf_us_new failed: {exc}"}]
 
+    from etf_kor15 import is_etf_kor15_command
+
+    if is_etf_kor15_command(normalized):
+        try:
+            from etf_kor15 import run_etf_kor15
+
+            replies: list[dict] = [
+                {"text": "ETF KOR15 조회 중 (etfcheck AUM·ADV·편입비)…"}
+            ]
+            result = run_etf_kor15()
+            replies.extend(result["telegram_messages"])
+            return replies
+        except Exception as exc:
+            return [{"text": f"/etf_kor15 failed: {exc}"}]
+
     from etf_memb_us import is_etf_memb_command
 
     if is_etf_memb_command(normalized):
@@ -1993,10 +2015,15 @@ def handle_telegram_message(message, chat_id: int):
             "/sp_pre",
             "/nas_pre",
             "/etfcheck",
+            "/etf_kor15",
+            "/etfkor15",
+            "/etf_kor_15",
             "/etf_holdings",
             "/etfholdings",
             "/etf_holding",
             "/etf_sector",
+            "/etf_us_new",
+            "/etfusnew",
             "/kospi_intra",
             "/kosdaq_intra",
         )
@@ -2425,6 +2452,7 @@ def start_web_server():
                                 "summary-nxt-scheduler" in thread_names
                             ),
                             "etfcheck-scheduler": "etfcheck-scheduler" in thread_names,
+                            "etf-kor15-scheduler": "etf-kor15-scheduler" in thread_names,
                             "etf-sector-scheduler": (
                                 "etf-sector-scheduler" in thread_names
                             ),
@@ -2440,6 +2468,7 @@ def start_web_server():
                         "last_summary_kor_slot": state.get("last_summary_kor_slot"),
                         "last_summary_nxt_slot": state.get("last_summary_nxt_slot"),
                         "last_etfcheck_slot": state.get("last_etfcheck_slot"),
+                        "last_etf_kor15_slot": state.get("last_etf_kor15_slot"),
                         "last_etf_sector_slot": state.get("last_etf_sector_slot"),
                         "last_esg_monitor_slot": state.get("last_esg_monitor_slot"),
                         "last_esg_accident_slot": state.get("last_esg_accident_slot"),
@@ -2451,6 +2480,7 @@ def start_web_server():
                             "last_summary_kor_intra_error"
                         ),
                         "last_etfcheck_error": state.get("last_etfcheck_error"),
+                        "last_etf_kor15_error": state.get("last_etf_kor15_error"),
                         "last_etf_sector_error": state.get("last_etf_sector_error"),
                         "last_esg_monitor_error": state.get("last_esg_monitor_error"),
                         "last_esg_brief_error": state.get("last_esg_brief_error"),
@@ -2500,6 +2530,9 @@ def start_web_server():
                         ),
                         "etfcheck_kst": os.environ.get(
                             "ETFCHECK_SCHEDULE_KST", "15:40"
+                        ),
+                        "etf_kor15_kst": os.environ.get(
+                            "ETF_KOR15_SCHEDULE_KST", "9:00"
                         ),
                         "esg_monitor_kst": os.environ.get(
                             "ESG_MONITOR_SCHEDULE_KST", "9:00"
@@ -3042,6 +3075,37 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/etf-new":
+                from etf_new_web import etf_new_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                try:
+                    kr_limit = int((query.get("kr") or ["15"])[0])
+                except ValueError:
+                    kr_limit = 15
+                try:
+                    us_limit = int((query.get("us") or ["15"])[0])
+                except ValueError:
+                    us_limit = 15
+                try:
+                    analyze_kr = int((query.get("analyze_kr") or ["4"])[0])
+                except ValueError:
+                    analyze_kr = 4
+                try:
+                    analyze_us = int((query.get("analyze_us") or ["2"])[0])
+                except ValueError:
+                    analyze_us = 2
+                payload = etf_new_payload(
+                    kr_limit=max(1, min(kr_limit, 40)),
+                    us_limit=max(1, min(us_limit, 40)),
+                    analyze_kr=max(0, min(analyze_kr, 8)),
+                    analyze_us=max(0, min(analyze_us, 4)),
+                )
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def _send_cors_json(self, body: bytes, status: int = 200) -> None:
@@ -3416,6 +3480,7 @@ if __name__ == "__main__":
     start_etf_sector_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_us_new_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
+    start_etf_kor15_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_db_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)

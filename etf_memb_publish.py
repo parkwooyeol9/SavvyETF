@@ -7,10 +7,9 @@ from typing import Any
 
 def is_eligible_equity_etf(name: str) -> bool:
     """Exclude bond/single-stock products from new-listing memb picks."""
-    text = str(name or "")
-    if "국채" in text or "단일종목" in text:
-        return False
-    return True
+    from etf_new_web import is_kr_equity_listing
+
+    return is_kr_equity_listing(name)
 
 
 def pick_new_listing_for_memb(

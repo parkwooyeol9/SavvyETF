@@ -1139,6 +1139,91 @@ a.geo-choke-hl:hover {
   margin: 0.75rem 0 0.5rem;
 }
 
+.etf-new-panel .panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.etf-new-panel h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.etf-new-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.etf-new-block {
+  margin-top: 1rem;
+}
+
+.etf-new-block h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.etf-new-analysis {
+  margin-top: 0.65rem;
+}
+
+.etf-new-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.55rem;
+}
+
+.etf-new-meta span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.etf-new-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.etf-new-stats > div {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.etf-new-stats em {
+  display: block;
+  font-style: normal;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.etf-new-stats strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.etf-new-notes {
+  margin: 0.85rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.etf-new-panel .kr-table tr.selected td {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+@media (max-width: 900px) {
+  .etf-new-grid,
+  .etf-new-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lev-filter {
   margin-bottom: 0.85rem;
 }
