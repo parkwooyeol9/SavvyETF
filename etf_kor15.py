@@ -25,7 +25,7 @@ from etfcheck_client import (
 KST = ZoneInfo("Asia/Seoul")
 
 # Short TTL so concurrent dashboard loads don't re-scrape etfcheck every time.
-_PAYLOAD_TTL_SECONDS = 180
+_PAYLOAD_TTL_SECONDS = 300
 _payload_lock = threading.Lock()
 _payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _payload_inflight: dict[str, threading.Event] = {}

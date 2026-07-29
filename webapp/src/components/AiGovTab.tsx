@@ -394,7 +394,7 @@ export default function AiGovTab() {
   const loadRadar = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/ai-gov", { cache: "no-store" });
+      const res = await fetch("/api/ai-gov");
       const json = (await res.json()) as AiGovPayload;
       setData(json);
     } catch (exc) {
@@ -413,7 +413,7 @@ export default function AiGovTab() {
   const loadScreen = useCallback(async () => {
     setScreenLoading(true);
     try {
-      const res = await fetch("/api/ai-gov-screen", { cache: "no-store" });
+      const res = await fetch("/api/ai-gov-screen");
       const json = (await res.json()) as AiGovScreenPayload;
       setScreen(json);
     } catch (exc) {
@@ -430,7 +430,7 @@ export default function AiGovTab() {
 
   const loadBriefs = useCallback(async () => {
     try {
-      const res = await fetch("/api/briefs", { cache: "no-store" });
+      const res = await fetch("/api/briefs");
       const json = (await res.json()) as { ok?: boolean; briefs?: AllBriefs };
       if (json.briefs) setBriefs(json.briefs);
     } catch {

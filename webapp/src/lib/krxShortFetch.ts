@@ -10,6 +10,7 @@ import type {
   KrShortTradePoint,
   KrStockShortBoard,
 } from "@/lib/krShortCredit";
+import { withServerCache } from "@/lib/apiCache";
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
@@ -256,6 +257,15 @@ async function fetchBalanceSnapshot(
 }
 
 export async function fetchKrShortCreditBoard(): Promise<KrShortCreditBoardFull> {
+  return withServerCache(
+    "krx-short-credit:v1",
+    10 * 60_000,
+    20 * 60_000,
+    fetchKrShortCreditBoardUncached,
+  );
+}
+
+async function fetchKrShortCreditBoardUncached(): Promise<KrShortCreditBoardFull> {
   let cookie = "";
   const endDd = kstYmd();
   const strtDd = addDaysYmd(endDd, -50);

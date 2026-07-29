@@ -831,7 +831,7 @@ export default function KrMarketTab({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/kr-market", { cache: "no-store" });
+      const res = await fetch("/api/kr-market");
       const json = (await res.json()) as KrMarketPayload;
       setData(json);
     } catch (exc) {
@@ -846,7 +846,7 @@ export default function KrMarketTab({
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), 45_000);
+    const id = window.setInterval(() => void load(), 60_000);
     return () => window.clearInterval(id);
   }, [load]);
 

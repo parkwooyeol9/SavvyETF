@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { fetchBotJson } from "@/lib/bot";
 
 export const runtime = "nodejs";
@@ -14,10 +15,19 @@ type EtfKor15Payload = {
 
 export async function GET() {
   try {
-    const data = await fetchBotJson<EtfKor15Payload>("/api/web/etf-kor15", {
-      timeoutMs: 55_000,
+    const data = await withServerCache(
+      "etf-kor15:v1",
+      280_000,
+      600_000,
+      () =>
+        fetchBotJson<EtfKor15Payload>("/api/web/etf-kor15", {
+          timeoutMs: 55_000,
+        }),
+    );
+    return NextResponse.json(data, {
+      status: data.ok ? 200 : 503,
+      headers: { "Cache-Control": cdnCacheHeader("etfSlow") },
     });
-    return NextResponse.json(data, { status: data.ok ? 200 : 503 });
   } catch (exc) {
     return NextResponse.json(
       {

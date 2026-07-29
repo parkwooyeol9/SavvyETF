@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cdnCacheHeader } from "@/lib/apiCache";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
@@ -77,23 +78,26 @@ export async function GET(request: Request) {
     const step = Math.max(1, Math.ceil(points.length / maxPoints));
     const series = points.filter((_, i) => i % step === 0 || i === points.length - 1);
 
-    return NextResponse.json({
-      ok: true,
-      symbol,
-      label: "원/달러 (USDKRW)",
-      range,
-      generated_at: new Date().toISOString(),
-      spot: last,
-      day_change_pct: Math.round(dayChangePct * 100) / 100,
-      range_change_pct: Math.round(rangeChangePct * 100) / 100,
-      high: max,
-      low: min,
-      meta: {
-        previous_close: result.meta?.chartPreviousClose ?? prev,
-        currency: result.meta?.currency || "KRW",
+    return NextResponse.json(
+      {
+        ok: true,
+        symbol,
+        label: "원/달러 (USDKRW)",
+        range,
+        generated_at: new Date().toISOString(),
+        spot: last,
+        day_change_pct: Math.round(dayChangePct * 100) / 100,
+        range_change_pct: Math.round(rangeChangePct * 100) / 100,
+        high: max,
+        low: min,
+        meta: {
+          previous_close: result.meta?.chartPreviousClose ?? prev,
+          currency: result.meta?.currency || "KRW",
+        },
+        series,
       },
-      series,
-    });
+      { headers: { "Cache-Control": cdnCacheHeader("yahoo") } },
+    );
   } catch (exc) {
     return NextResponse.json(
       {

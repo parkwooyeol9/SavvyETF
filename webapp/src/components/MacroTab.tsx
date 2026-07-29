@@ -321,7 +321,6 @@ export default function MacroTab() {
       try {
         const res = await fetch(
           `/api/macro?range=${nextRange}&hsRange=${nextHs}`,
-          { cache: "no-store" },
         );
         const json = (await res.json()) as MacroPayload;
         if (!res.ok || !json.ok) {

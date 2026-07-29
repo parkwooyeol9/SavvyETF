@@ -25,6 +25,13 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
+# Connection resets from etfcheck show up as RemoteDisconnected / Connection aborted.
+_RETRYABLE_EXC = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
+
 
 def _resolve_check_key(*, force_refresh: bool = False) -> str:
     """Prefer env, then cached/build.js scrape, then bundled fallback."""
@@ -86,6 +93,8 @@ class EtfCheckClient:
                 "Accept": "application/json, text/plain, */*",
                 "Referer": f"{BASE_URL}/",
                 "Origin": BASE_URL,
+                # Avoid keep-alive stalls that surface as RemoteDisconnected.
+                "Connection": "close",
             }
         )
 
@@ -97,33 +106,48 @@ class EtfCheckClient:
         self.session.headers["etfcheckclient"] = token
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        self._refresh_auth_headers()
-        response = self.session.get(
-            f"{BASE_URL}{path}",
-            params=params or {},
-            timeout=self.timeout,
-        )
-        if response.status_code == 403:
-            # Key may have rotated — refresh once from build.js and retry.
-            self._refresh_auth_headers(force_key_refresh=True)
-            response = self.session.get(
-                f"{BASE_URL}{path}",
-                params=params or {},
-                timeout=self.timeout,
-            )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"ETF CHECK {path}: unexpected payload type")
-        if not payload.get("success"):
-            message = payload.get("message") or "unknown error"
-            raise RuntimeError(f"ETF CHECK {path}: {message}")
-        return payload
+        last_exc: Exception | None = None
+        for attempt in range(4):
+            try:
+                self._refresh_auth_headers(force_key_refresh=attempt >= 2)
+                response = self.session.get(
+                    f"{BASE_URL}{path}",
+                    params=params or {},
+                    timeout=self.timeout,
+                )
+                if response.status_code == 403 and attempt < 3:
+                    # Key may have rotated — refresh from build.js and retry.
+                    self._refresh_auth_headers(force_key_refresh=True)
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise RuntimeError(f"ETF CHECK {path}: unexpected payload type")
+                if not payload.get("success"):
+                    message = payload.get("message") or "unknown error"
+                    raise RuntimeError(f"ETF CHECK {path}: {message}")
+                return payload
+            except _RETRYABLE_EXC as exc:
+                last_exc = exc
+                time.sleep(0.45 * (attempt + 1))
+                continue
+        assert last_exc is not None
+        raise last_exc
 
     def warmup(self) -> None:
         """Hit the homepage once so cookies exist (tiny HTML, no JS render)."""
-        self._refresh_auth_headers()
-        self.session.get(BASE_URL + "/", timeout=self.timeout)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                self._refresh_auth_headers()
+                self.session.get(BASE_URL + "/", timeout=self.timeout)
+                return
+            except _RETRYABLE_EXC as exc:
+                last_exc = exc
+                time.sleep(0.4 * (attempt + 1))
+        if last_exc:
+            raise last_exc
 
 
 def fetch_global_etf_mast(client: EtfCheckClient) -> list[dict[str, Any]]:

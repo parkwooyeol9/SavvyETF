@@ -58,7 +58,7 @@ export default function EtfDbTab() {
       if (!silent) setLoading(true);
       try {
         const qs = equityOnly ? "?equity=1" : "";
-        const res = await fetch(`/api/etf-db${qs}`, { cache: "no-store" });
+        const res = await fetch(`/api/etf-db${qs}`);
         const json = (await res.json()) as EtfDbPayload;
         if (!res.ok || !json.ok) {
           throw new Error(json.error || `HTTP ${res.status}`);

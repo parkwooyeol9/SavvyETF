@@ -123,9 +123,7 @@ export default function MainTab() {
   const loadHeatmap = useCallback(async (u: string) => {
     setHeatLoading(true);
     try {
-      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30`);
       const data = (await res.json()) as HeatmapPayload;
       setHeatmap(data);
     } catch (exc) {

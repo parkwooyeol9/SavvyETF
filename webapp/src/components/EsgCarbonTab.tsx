@@ -155,7 +155,7 @@ export default function EsgCarbonTab({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/esg-carbon", { cache: "no-store" });
+      const res = await fetch("/api/esg-carbon");
       const json = (await res.json()) as EsgCarbonPayload;
       setData(json);
     } catch (exc) {

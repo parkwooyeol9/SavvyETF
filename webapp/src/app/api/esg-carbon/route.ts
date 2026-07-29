@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cdnCacheHeader } from "@/lib/apiCache";
 import type {
   CarbonBar,
   CarbonSeries,
@@ -389,7 +390,7 @@ export async function GET() {
         (errors.length ? ` 일부 실패: ${errors.join(" · ")}` : ""),
     };
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": "no-store" },
+      headers: { "Cache-Control": cdnCacheHeader("yahoo") },
     });
   } catch (exc) {
     return NextResponse.json(

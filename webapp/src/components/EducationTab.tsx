@@ -62,7 +62,7 @@ export default function EducationTab() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/fx?range=${range}`, { cache: "no-store" });
+        const res = await fetch(`/api/fx?range=${range}`);
         const data = (await res.json()) as FxPayload;
         if (!cancelled) setFx(data);
       } catch (exc) {

@@ -183,7 +183,7 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/briefs", { cache: "no-store" });
+      const res = await fetch("/api/briefs");
       const data = (await res.json()) as BriefsResponse;
       if (!res.ok || !data.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -337,7 +337,7 @@ export default function Dashboard() {
       ) : tab === "etf" ? (
         <>
           <EtfKor15Tab />
-          <EtfNewTab />
+          <EtfNewTab initialDelayMs={2000} />
           <BriefSlotsPanel
             title="ETF 시황 브리프"
             note="라이브: KOR15(편입비/편입액) · 신규상장. 아래 슬롯: /etf_kor15 · /etfcheck · /etf_us_new · /etf_sector · etf_memb."

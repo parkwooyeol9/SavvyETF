@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import {
   LEV_GROUP_METAS,
   levGroupKey,
@@ -554,12 +555,20 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 
 export async function GET() {
   try {
-    const board = await buildBoard();
-    return NextResponse.json({
-      ok: true,
-      generated_at: new Date().toISOString(),
-      board,
-    });
+    const board = await withServerCache(
+      "kr-leverage:v1",
+      170_000,
+      600_000,
+      buildBoard,
+    );
+    return NextResponse.json(
+      {
+        ok: true,
+        generated_at: new Date().toISOString(),
+        board,
+      },
+      { headers: { "Cache-Control": cdnCacheHeader("heavy") } },
+    );
   } catch (exc) {
     return NextResponse.json(
       {

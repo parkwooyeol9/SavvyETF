@@ -163,7 +163,7 @@ export default function GreenMineralsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/green-minerals", { cache: "no-store" });
+      const res = await fetch("/api/green-minerals");
       const text = await res.text();
       let json: GreenMineralPayload;
       try {

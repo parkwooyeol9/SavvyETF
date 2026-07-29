@@ -58,7 +58,7 @@ export default function LeverageEtfTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/kr-leverage", { cache: "no-store" });
+      const res = await fetch("/api/kr-leverage");
       const json = (await res.json()) as ApiPayload;
       setData(json);
       setSelectedCode((prev) => {

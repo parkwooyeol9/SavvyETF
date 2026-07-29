@@ -18,6 +18,7 @@ import {
   type LevGroupSeries,
   type SingleStockLevBoard,
 } from "@/lib/krMarket";
+import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { fetchKrShortCreditBoard } from "@/lib/krxShortFetch";
 
 export const dynamic = "force-dynamic";
@@ -681,8 +682,7 @@ async function fetchSingleStockLevBoard(): Promise<SingleStockLevBoard> {
   };
 }
 
-export async function GET() {
-  try {
+async function buildKrMarketPayload(): Promise<KrMarketPayload> {
     const [
       rt,
       kpiDaily,
@@ -794,7 +794,7 @@ export async function GET() {
       kqIntra,
     );
 
-    const payload: KrMarketPayload = {
+    return {
       ok: true,
       generated_at: new Date().toISOString(),
       note:
@@ -824,8 +824,19 @@ export async function GET() {
       short_credit: shortCredit,
       single_stock_lev: singleStockLev,
     };
+}
 
-    return NextResponse.json(payload);
+export async function GET() {
+  try {
+    const payload = await withServerCache(
+      "kr-market:v1",
+      55_000,
+      120_000,
+      buildKrMarketPayload,
+    );
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": cdnCacheHeader("market") },
+    });
   } catch (exc) {
     return NextResponse.json(
       {

@@ -95,7 +95,7 @@ export default function EtfKor15Tab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/etf-kor15", { cache: "no-store" });
+      const res = await fetch("/api/etf-kor15");
       const text = await res.text();
       let json: ApiPayload;
       try {

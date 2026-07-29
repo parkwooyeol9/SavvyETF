@@ -24,10 +24,51 @@ from etfcheck_client import (
 
 KST = ZoneInfo("Asia/Seoul")
 
-_PAYLOAD_TTL_SECONDS = 180
+_PAYLOAD_TTL_SECONDS = 300
+_STALE_TTL_SECONDS = 1800
 _payload_lock = threading.Lock()
 _payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _payload_inflight: dict[str, threading.Event] = {}
+
+
+def _friendly_etfcheck_error(exc: Exception) -> str:
+    text = str(exc)
+    low = text.lower()
+    if (
+        "remotedisconnected" in low
+        or "connection aborted" in low
+        or "connection reset" in low
+        or "remotely closed" in low
+    ):
+        return (
+            "ETF CHECK 서버 연결이 중간에 끊겼습니다. "
+            "잠시 후 새로고침해 주세요. "
+            f"({text[:160]})"
+        )
+    return text
+
+
+def _stale_or_error(cache_key: str, exc: Exception) -> dict[str, Any]:
+    """Prefer a recent successful payload over hard-failing the panel."""
+    now = time.monotonic()
+    with _payload_lock:
+        hit = _payload_cache.get(cache_key)
+        if hit and now - hit[0] < _STALE_TTL_SECONDS:
+            stale = dict(hit[1])
+            stale["stale"] = True
+            stale["stale_reason"] = _friendly_etfcheck_error(exc)
+            notes = list(stale.get("notes") or [])
+            notes.append("캐시된 직전 성공 응답을 표시 중(업스트림 일시 장애).")
+            stale["notes"] = notes
+            return stale
+    generated_at = datetime.now(KST)
+    return {
+        "ok": False,
+        "error": _friendly_etfcheck_error(exc),
+        "generated_at": generated_at.isoformat(),
+        "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
+        "source": BASE_URL,
+    }
 
 _KR_HARD_EXCLUDE = (
     "국채",
@@ -271,13 +312,7 @@ def etf_new_payload(
             kr_raw = fetch_new_listings(client, limit=max(kr_limit, 30), domestic_only=True)
             us_raw = fetch_global_new_listings(client, limit=max(us_limit, 40))
         except Exception as exc:
-            return {
-                "ok": False,
-                "error": str(exc),
-                "generated_at": generated_at.isoformat(),
-                "generated_at_display": generated_at.strftime("%Y-%m-%d %H:%M KST"),
-                "source": BASE_URL,
-            }
+            return _stale_or_error(cache_key, exc)
 
         kr = [_normalize_kr(r) for r in kr_raw][:kr_limit]
         us = [_normalize_us(r) for r in us_raw][:us_limit]
@@ -288,7 +323,10 @@ def etf_new_payload(
                 break
             if not listing.get("equity_eligible"):
                 continue
-            result = _analyze_kr_equity(client, listing, top_n=holdings_top_n)
+            try:
+                result = _analyze_kr_equity(client, listing, top_n=holdings_top_n)
+            except Exception:
+                continue
             if result:
                 analyses.append(result)
 
@@ -297,7 +335,10 @@ def etf_new_payload(
                 break
             if not listing.get("equity_eligible"):
                 continue
-            result = _analyze_us_equity(listing, top_n=min(10, holdings_top_n))
+            try:
+                result = _analyze_us_equity(listing, top_n=min(10, holdings_top_n))
+            except Exception:
+                continue
             if not result:
                 continue
             # Skip Yahoo rate-limit / empty failures so we can try the next listing.

@@ -147,7 +147,7 @@ export default function EsgThemesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/esg-themes", { cache: "no-store" });
+      const res = await fetch("/api/esg-themes");
       const json = (await res.json()) as EsgThemesPayload;
       setData(json);
     } catch (exc) {

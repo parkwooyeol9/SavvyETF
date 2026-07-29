@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { botBaseUrl } from "@/lib/bot";
 import {
   pickRicherHistory,
@@ -99,46 +100,57 @@ async function fetchBotOverlay(): Promise<{
 export async function GET(request: Request) {
   try {
     const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
-    const [items, overlay] = await Promise.all([
-      fetchNaverUniverse(),
-      fetchBotOverlay(),
-    ]);
-    const payload = buildPayloadFromNaver(
-      items as Parameters<typeof buildPayloadFromNaver>[0],
-      {
-        flowByCode: overlay.flowByCode,
-        prevAsOf: overlay.prevAsOf,
-        flowHistory: equityOnly ? undefined : overlay.flowHistory,
-        // Equity-only aggregates ≠ full-universe bot snapshots.
-        aumHistory: equityOnly ? undefined : overlay.aumHistory,
-        equityOnly,
+    const cacheKey = `etf-db:v1:${equityOnly ? "eq" : "all"}`;
+
+    const payload = await withServerCache(
+      cacheKey,
+      170_000,
+      600_000,
+      async () => {
+        const [items, overlay] = await Promise.all([
+          fetchNaverUniverse(),
+          fetchBotOverlay(),
+        ]);
+        const built = buildPayloadFromNaver(
+          items as Parameters<typeof buildPayloadFromNaver>[0],
+          {
+            flowByCode: overlay.flowByCode,
+            prevAsOf: overlay.prevAsOf,
+            flowHistory: equityOnly ? undefined : overlay.flowHistory,
+            aumHistory: equityOnly ? undefined : overlay.aumHistory,
+            equityOnly,
+          },
+        );
+
+        try {
+          const reconstructed = await reconstructAumHistories({
+            rows: built.rows,
+            aggregates: built.aggregates,
+            liveDay: built.as_of || built.generated_at.slice(0, 10),
+            equityOnly,
+          });
+          built.aum_history = {
+            type: pickRicherHistory(built.aum_history.type, reconstructed.type),
+            country: pickRicherHistory(
+              built.aum_history.country,
+              reconstructed.country,
+            ),
+            sector: pickRicherHistory(
+              built.aum_history.sector,
+              reconstructed.sector,
+            ),
+          };
+        } catch (histExc) {
+          console.warn("etf-db aum history reconstruct failed:", histExc);
+        }
+
+        return built;
       },
     );
 
-    // Snapshot history is often 0–1 days; reconstruct ~90d from constituent prices.
-    try {
-      const reconstructed = await reconstructAumHistories({
-        rows: payload.rows,
-        aggregates: payload.aggregates,
-        liveDay: payload.as_of || payload.generated_at.slice(0, 10),
-        equityOnly,
-      });
-      payload.aum_history = {
-        type: pickRicherHistory(payload.aum_history.type, reconstructed.type),
-        country: pickRicherHistory(
-          payload.aum_history.country,
-          reconstructed.country,
-        ),
-        sector: pickRicherHistory(
-          payload.aum_history.sector,
-          reconstructed.sector,
-        ),
-      };
-    } catch (histExc) {
-      console.warn("etf-db aum history reconstruct failed:", histExc);
-    }
-
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": cdnCacheHeader("heavy") },
+    });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
     return NextResponse.json(

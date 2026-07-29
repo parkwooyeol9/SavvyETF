@@ -109,7 +109,7 @@ export default function EsgRegTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/esg-reg", { cache: "no-store" });
+      const res = await fetch("/api/esg-reg");
       const json = (await res.json()) as EsgRegPayload;
       setData(json);
     } catch (exc) {

@@ -242,7 +242,7 @@ export default function AiInfraTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/ai-infra", { cache: "no-store" });
+      const res = await fetch("/api/ai-infra");
       const json = (await res.json()) as AiInfraPayload;
       setData(json);
     } catch (exc) {

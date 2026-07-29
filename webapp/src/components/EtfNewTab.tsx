@@ -43,6 +43,8 @@ type Analysis = {
 type ApiPayload = {
   ok: boolean;
   error?: string;
+  stale?: boolean;
+  stale_reason?: string;
   generated_at_display?: string;
   source?: string;
   kr_new?: Listing[];
@@ -123,14 +125,19 @@ function ListingTable({
   );
 }
 
-export default function EtfNewTab() {
+export default function EtfNewTab({
+  initialDelayMs = 2000,
+}: {
+  /** Stagger load so KOR15 and etf-new don't hit Render at once. */
+  initialDelayMs?: number;
+}) {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string>("");
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/etf-new", { cache: "no-store" });
+      const res = await fetch("/api/etf-new");
       const text = await res.text();
       let json: ApiPayload;
       try {
@@ -159,10 +166,13 @@ export default function EtfNewTab() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), initialDelayMs);
     const id = window.setInterval(() => void load(), 5 * 60_000);
-    return () => window.clearInterval(id);
-  }, [load]);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(id);
+    };
+  }, [load, initialDelayMs]);
 
   const analyses = data?.analyses || [];
   const active = useMemo(
@@ -189,6 +199,12 @@ export default function EtfNewTab() {
         <p className="empty">{data?.error || (loading ? "불러오는 중…" : "데이터 없음")}</p>
       ) : (
         <>
+          {data.stale ? (
+            <p className="kr-note">
+              직전 캐시 표시 중
+              {data.stale_reason ? ` · ${data.stale_reason}` : ""}
+            </p>
+          ) : null}
           <div className="etf-new-grid">
             <ListingTable
               title="🇰🇷 한국 신규상장"
