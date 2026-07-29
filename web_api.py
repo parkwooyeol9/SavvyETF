@@ -850,3 +850,23 @@ def _sanitize_macro_errors(errors: list[str]) -> str | None:
             continue
         cleaned.append(text[:120])
     return "; ".join(cleaned) if cleaned else None
+
+
+def ai_gov_screen_payload(query: str | None = None) -> dict[str, Any]:
+    """Dashboard payload for AI 거버넌스 tab (DART + SEC + news + policy)."""
+    try:
+        from ai_gov_screen import build_ai_gov_screen
+
+        return build_ai_gov_screen(query=query)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "dart": {"ok": False, "hits": [], "error": str(exc)},
+            "sec": {"ok": False, "filings": []},
+            "finnhub": {"ok": False, "headlines": []},
+            "naver": {"ok": False, "headlines": []},
+            "policy": {"ok": True, "events": []},
+            "errors": [str(exc)],
+            "error": str(exc),
+        }

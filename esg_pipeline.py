@@ -7,12 +7,14 @@ from typing import Any
 from esg_data import (
     ESG_HELP,
     build_esg_accident_profile,
+    build_esg_ai_gov_profile,
     build_esg_div_profile,
     build_esg_fin_profile,
     build_esg_overview_profile,
     build_esg_own_profile,
     build_esg_return_profile,
     format_esg_accident_telegram,
+    format_esg_ai_gov_telegram,
     format_esg_div_telegram,
     format_esg_fin_telegram,
     format_esg_overview_telegram,
@@ -40,6 +42,15 @@ MODES = {
     "accidents": "accident",
     "중대재해": "accident",
     "재해": "accident",
+    "aigov": "aigov",
+    "ai-gov": "aigov",
+    "ai_gov": "aigov",
+    "인공지능": "aigov",
+    "개인정보": "aigov",
+    "보안": "aigov",
+    "aibrief": "aibrief",
+    "ai-brief": "aibrief",
+    "ai_brief": "aibrief",
     "monitor": "monitor",
     "climate": "monitor",
     "기후": "monitor",
@@ -48,6 +59,9 @@ MODES = {
     "all": "overview",
     "요약": "overview",
 }
+
+# Modes that do not require a company query.
+OPTIONAL_QUERY_MODES = {"accident", "monitor", "aigov", "aibrief"}
 
 
 def is_esg_command(command: str) -> bool:
@@ -65,6 +79,8 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     /esg fin 삼성전자             → fin, 삼성전자
     /esg accident                → accident, None
     /esg accident 삼성전자        → accident, 삼성전자
+    /esg aigov                   → aigov, None
+    /esg aibrief                 → aibrief, None
     /esg monitor                 → monitor, None
     """
     parts = command.strip().split()
@@ -78,7 +94,7 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     if first in MODES:
         mode = MODES[first]
         query = " ".join(parts[2:]).strip() or None
-        if mode not in {"accident", "monitor"} and not query:
+        if mode not in OPTIONAL_QUERY_MODES and not query:
             raise ValueError(f"Usage: /esg {first} <기업명|종목코드>")
         return mode, query
 
@@ -116,6 +132,13 @@ def run_esg(
     elif mode == "accident":
         profile = build_esg_accident_profile(query)
         text = format_esg_accident_telegram(profile)
+    elif mode == "aigov":
+        profile = build_esg_ai_gov_profile(query)
+        text = format_esg_ai_gov_telegram(profile)
+    elif mode == "aibrief":
+        from esg_ai_brief_builder import generate_ai_gov_briefing
+
+        return generate_ai_gov_briefing(publish=publish, query=query)
     elif mode == "overview":
         profile = build_esg_overview_profile(query or "")
         text = format_esg_overview_telegram(profile)
@@ -133,18 +156,21 @@ def run_esg(
         "telegram_messages": [{"text": text, "parse_mode": "HTML"}],
     }
 
-    # Dashboard slots for accident/overview (schedulers may pass publish=False
-    # to batch multiple overview names into one slot).
-    if publish and mode in {"accident", "overview"}:
+    # Dashboard slots — only NEW aigov slot or existing accident/overview.
+    # Never rewrite sibling slots.
+    if publish and mode in {"accident", "overview", "aigov"}:
         try:
             from web_publish import publish_brief, section_from_html
 
-            slot = "esg_accident" if mode == "accident" else "esg_overview"
-            title = (
-                "거버넌스·안전 공시 · /esg accident"
-                if mode == "accident"
-                else f"거버넌스 품질 스크린 · /esg {query or 'overview'}"
-            )
+            if mode == "accident":
+                slot = "esg_accident"
+                title = "거버넌스·안전 공시 · /esg accident"
+            elif mode == "aigov":
+                slot = "esg_ai_gov"
+                title = "AI·개인정보·보안 공시 · /esg aigov"
+            else:
+                slot = "esg_overview"
+                title = f"거버넌스 품질 스크린 · /esg {query or 'overview'}"
             publish_brief(
                 "esg",
                 slot,

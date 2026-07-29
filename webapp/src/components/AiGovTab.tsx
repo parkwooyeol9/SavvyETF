@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -11,9 +11,16 @@ import {
 
 import type {
   AiGovBucket,
+  AiGovHeadline,
   AiGovPayload,
+  AiGovPolicyEvent,
+  AiGovScreenPayload,
   AiGovSignal,
 } from "@/lib/aiGov";
+import { AI_GOV_BRIEF_SLOTS, AI_POLICY_CALENDAR } from "@/lib/aiGov";
+import type { AllBriefs, BriefSlot } from "@/lib/types";
+import { emptyAllBriefs } from "@/lib/types";
+import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
 
 function fmtPct(n?: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -39,6 +46,26 @@ function chartStroke(change?: number | null): string {
   if (change > 0.05) return "#3dd68c";
   if (change < -0.05) return "#f87171";
   return "#4da3ff";
+}
+
+function headlineText(h: AiGovHeadline): string {
+  return (h.headline || h.title || "").trim();
+}
+
+function enrichPolicy(events?: AiGovPolicyEvent[]): AiGovPolicyEvent[] {
+  const base = events?.length ? events : AI_POLICY_CALENDAR;
+  const today = new Date().toISOString().slice(0, 10);
+  return base.map((e) => {
+    if (e.days_from_today != null && e.status) return e;
+    const days = Math.round(
+      (Date.parse(e.date) - Date.parse(today)) / (24 * 3600 * 1000),
+    );
+    return {
+      ...e,
+      days_from_today: days,
+      status: days < 0 ? "past" : days === 0 ? "today" : "upcoming",
+    };
+  });
 }
 
 function Spark({ signal }: { signal: AiGovSignal }) {
@@ -126,11 +153,245 @@ function BucketCard({ bucket }: { bucket: AiGovBucket }) {
   );
 }
 
+function ScreenPanels({
+  screen,
+  loading,
+  onRefresh,
+}: {
+  screen: AiGovScreenPayload | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const policy = enrichPolicy(screen?.policy?.events);
+  const dartHits = screen?.dart?.hits || [];
+  const filings = screen?.sec?.filings || [];
+  const headlines = [
+    ...(screen?.naver?.headlines || []),
+    ...(screen?.finnhub?.headlines || []),
+  ].filter((h) => headlineText(h));
+
+  return (
+    <section className="esg-carbon-support ai-gov-screen">
+      <div className="esg-carbon-support-head">
+        <div>
+          <h3 className="esg-carbon-support-title">거버넌스 스크린 · 멀티소스</h3>
+          <p className="esg-carbon-support-sub">
+            공개 소스 우선: SEC · Google News RSS · AI기본법/EU AI Act 캘린더 (API 키 불필요).
+            DART/Finnhub/봇은 키가 있을 때만 보강합니다.
+          </p>
+        </div>
+        <button type="button" className="ghost-btn" onClick={onRefresh}>
+          {loading ? "갱신 중…" : "스크린 새로고침"}
+        </button>
+      </div>
+
+      {screen?.error ? <p className="empty warn">{screen.error}</p> : null}
+      {screen?.errors?.length ? (
+        <p className="empty warn">{screen.errors.slice(0, 3).join(" · ")}</p>
+      ) : null}
+
+      <div className="ai-gov-panels">
+        <article className="ai-gov-panel">
+          <h4>
+            DART · AI·개인정보·보안
+            {screen?.dart?.hit_count != null ? ` (${screen.dart.hit_count})` : ""}
+          </h4>
+          {screen?.dart?.error ? (
+            <p className="empty warn">{screen.dart.error}</p>
+          ) : null}
+          {!dartHits.length ? (
+            <p className="empty">
+              최근 90일 감시 유니버스(네이버·카카오·통신·반도체 등) 공시{" "}
+              <em>제목</em>에 AI·개인정보·보안 키워드 매칭 없음. 사고성 공시가 없을 때
+              흔하며, 아래 뉴스·SEC·정책 캘린더를 우선 보세요.
+            </p>
+          ) : (
+            <ul className="ai-gov-list">
+              {dartHits.slice(0, 12).map((h, i) => (
+                <li key={`${h.rcept_no || h.report_nm}-${i}`}>
+                  <span className="ai-gov-meta">
+                    {h.date} · {h.corp_name}
+                    {h.stock_code ? ` · ${h.stock_code}` : ""}
+                    {h.matched?.length ? ` · ${h.matched.join(",")}` : ""}
+                  </span>
+                  <span className="ai-gov-title">
+                    {h.viewer ? (
+                      <a href={h.viewer} target="_blank" rel="noreferrer">
+                        {h.report_nm}
+                      </a>
+                    ) : (
+                      h.report_nm
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="ai-gov-panel">
+          <h4>
+            SEC · Cyber / Item 1.05
+            {screen?.sec?.filing_count != null
+              ? ` (≈${screen.sec.filing_count})`
+              : ""}
+          </h4>
+          {screen?.sec?.error ? (
+            <p className="empty warn">{screen.sec.error}</p>
+          ) : null}
+          {!filings.length ? (
+            <p className="empty">최근 샘플 없음/미수신</p>
+          ) : (
+            <ul className="ai-gov-list">
+              {filings.slice(0, 10).map((f, i) => (
+                <li key={`${f.company}-${f.file_date}-${i}`}>
+                  <span className="ai-gov-meta">
+                    {f.file_date} · {f.form}
+                    {f.item_summary ? ` · ${f.item_summary}` : ""}
+                  </span>
+                  <span className="ai-gov-title">
+                    {f.url ? (
+                      <a href={f.url} target="_blank" rel="noreferrer">
+                        {f.company}
+                      </a>
+                    ) : (
+                      f.company
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+
+        <article className="ai-gov-panel">
+          <h4>정책 캘린더 · AI기본법 / EU AI Act</h4>
+          <ul className="ai-gov-list">
+            {policy.map((e) => (
+              <li key={`${e.region}-${e.date}-${e.title}`}>
+                <span className="ai-gov-meta">
+                  {e.date} · {e.region}
+                  {e.status ? ` · ${e.status}` : ""}
+                  {e.days_from_today != null
+                    ? ` · ${e.days_from_today > 0 ? "+" : ""}${e.days_from_today}d`
+                    : ""}
+                </span>
+                <span className="ai-gov-title">{e.title}</span>
+                <span className="ai-gov-note">{e.note}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="ai-gov-panel">
+          <h4>뉴스 · Google News RSS / (선택) Finnhub·Naver</h4>
+          {!headlines.length ? (
+            <p className="empty">헤드라인 없음/미수신</p>
+          ) : (
+            <ul className="ai-gov-list">
+              {headlines.slice(0, 12).map((h, i) => {
+                const title = headlineText(h);
+                return (
+                  <li key={`${title}-${i}`}>
+                    <span className="ai-gov-meta">
+                      {h.source || "news"}
+                      {h.published || h.date ? ` · ${h.published || h.date}` : ""}
+                    </span>
+                    <span className="ai-gov-title">
+                      {h.url ? (
+                        <a href={h.url} target="_blank" rel="noreferrer">
+                          {title}
+                        </a>
+                      ) : (
+                        title
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </article>
+      </div>
+
+      {screen?.generated_at ? (
+        <p className="kr-foot esg-themes-foot">
+          {screen.note || "멀티소스 스크린"}
+          {` · ${new Date(screen.generated_at).toLocaleString("ko-KR", {
+            hour12: false,
+          })}`}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function BriefSlotCards({ slots }: { slots: BriefSlot[] }) {
+  if (!slots.length) {
+    return (
+      <section className="esg-carbon-support">
+        <div className="esg-carbon-support-head">
+          <div>
+            <h3 className="esg-carbon-support-title">AI 거버넌스 브리프 슬롯</h3>
+            <p className="esg-carbon-support-sub">
+              <code>esg_ai_gov</code> · <code>esg_ai_gov_brief</code> — 텔레그램{" "}
+              <code>/esg aigov</code> · <code>/esg aibrief</code> 또는 스케줄 후 채워집니다.
+              기존 monitor/overview/accident/data_briefing 슬롯은 그대로입니다.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="esg-carbon-support">
+      <div className="esg-carbon-support-head">
+        <div>
+          <h3 className="esg-carbon-support-title">AI 거버넌스 브리프 슬롯</h3>
+          <p className="esg-carbon-support-sub">
+            신규 슬롯만 표시합니다 (기존 ESG 슬롯 비덮어쓰기).
+          </p>
+        </div>
+      </div>
+      <div className="ai-gov-brief-grid">
+        {slots.map((slot) => (
+          <article key={slot.slot} className="ai-gov-panel">
+            <h4>{slot.title || slot.slot}</h4>
+            <p className="ai-gov-meta">
+              {slot.slot}
+              {slot.generated_at ? ` · ${slot.generated_at}` : ""}
+            </p>
+            {(slot.sections || []).slice(0, 2).map((sec, i) => (
+              <div
+                key={i}
+                className="ai-gov-brief-body"
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeBriefHtml(sec.html_or_text || ""),
+                }}
+              />
+            ))}
+            {!slot.sections?.length && slot.html ? (
+              <div
+                className="ai-gov-brief-body"
+                dangerouslySetInnerHTML={{ __html: sanitizeBriefHtml(slot.html) }}
+              />
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function AiGovTab() {
   const [data, setData] = useState<AiGovPayload | null>(null);
+  const [screen, setScreen] = useState<AiGovScreenPayload | null>(null);
+  const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [loading, setLoading] = useState(true);
+  const [screenLoading, setScreenLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const loadRadar = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/ai-gov", { cache: "no-store" });
@@ -149,11 +410,50 @@ export default function AiGovTab() {
     }
   }, []);
 
+  const loadScreen = useCallback(async () => {
+    setScreenLoading(true);
+    try {
+      const res = await fetch("/api/ai-gov-screen", { cache: "no-store" });
+      const json = (await res.json()) as AiGovScreenPayload;
+      setScreen(json);
+    } catch (exc) {
+      setScreen({
+        ok: false,
+        generated_at: new Date().toISOString(),
+        policy: { ok: true, events: AI_POLICY_CALENDAR },
+        error: exc instanceof Error ? exc.message : "스크린 로드 실패",
+      });
+    } finally {
+      setScreenLoading(false);
+    }
+  }, []);
+
+  const loadBriefs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/briefs", { cache: "no-store" });
+      const json = (await res.json()) as { ok?: boolean; briefs?: AllBriefs };
+      if (json.briefs) setBriefs(json.briefs);
+    } catch {
+      // ignore — radar/screen still work
+    }
+  }, []);
+
   useEffect(() => {
-    void load();
-    const id = window.setInterval(() => void load(), 5 * 60_000);
+    void loadRadar();
+    void loadScreen();
+    void loadBriefs();
+    const id = window.setInterval(() => {
+      void loadRadar();
+      void loadScreen();
+      void loadBriefs();
+    }, 5 * 60_000);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [loadRadar, loadScreen, loadBriefs]);
+
+  const aiSlots = useMemo(() => {
+    const map = briefs.esg?.slots || {};
+    return AI_GOV_BRIEF_SLOTS.map((key) => map[key]).filter(Boolean) as BriefSlot[];
+  }, [briefs]);
 
   return (
     <div className="esg-themes-tab ai-gov-tab">
@@ -161,13 +461,13 @@ export default function AiGovTab() {
         <div>
           <h2 className="kr-hero-title">AI 거버넌스 · Transformation</h2>
           <p className="kr-hero-sub">
-            AI 기회(인프라·반도체)와 신뢰(사이버·소프트웨어) 시장 프록시를 모아 봅니다.
-            전력·기후·DART 기업 거버넌스는 ESG시황 탭을 그대로 유지합니다.
+            AI 기회(인프라·반도체)와 신뢰(사이버·소프트웨어) 시장 프록시, DART/SEC/뉴스·규제
+            스크린을 함께 봅니다. 전력·기후·기존 DART 거버넌스는 ESG시황 탭을 유지합니다.
           </p>
         </div>
         <div className="kr-hero-actions">
-          <button type="button" className="ghost-btn" onClick={() => void load()}>
-            {loading ? "갱신 중…" : "새로고침"}
+          <button type="button" className="ghost-btn" onClick={() => void loadRadar()}>
+            {loading ? "갱신 중…" : "레이더 새로고침"}
           </button>
         </div>
       </div>
@@ -197,18 +497,13 @@ export default function AiGovTab() {
         </>
       ) : null}
 
-      <section className="esg-carbon-support">
-        <div className="esg-carbon-support-head">
-          <div>
-            <h3 className="esg-carbon-support-title">다음 단계 (미연동)</h3>
-            <p className="esg-carbon-support-sub">
-              DART AI·개인정보·보안 공시 스크린, AI기본법 이벤트, 주간 거버넌스 브리프는
-              별도 슬롯으로 추가할 예정입니다. 기존 ESG/지정학 브리프 저장소는 건드리지
-              않습니다.
-            </p>
-          </div>
-        </div>
-      </section>
+      <ScreenPanels
+        screen={screen}
+        loading={screenLoading}
+        onRefresh={() => void loadScreen()}
+      />
+
+      <BriefSlotCards slots={aiSlots} />
     </div>
   );
 }

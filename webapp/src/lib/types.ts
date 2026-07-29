@@ -6,6 +6,7 @@ export type ShellTabId =
   | "education"
   | "geo"
   | "aigov"
+  | "aiinfra"
   | "etfdb"
   | "leverage"
   | "economy"
@@ -58,6 +59,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "esg",
   "geo",
   "aigov",
+  "aiinfra",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -75,6 +77,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   leverage: "레버리지 ETF",
   geo: "지정학",
   aigov: "AI 거버넌스",
+  aiinfra: "AI 인프라",
   economy: "경제",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
@@ -93,8 +96,8 @@ export const NAV_GROUPS: Array<{
     label: "ETF",
     tabs: ["education", "simulate", "etf", "leverage", "etfdb"],
   },
-  // Append-only: do not replace existing esg/geo entries when adding tabs.
-  { id: "esg", label: "ESG", tabs: ["esg", "geo", "aigov"] },
+  // Append-only: do not replace existing esg/geo/aigov entries when adding tabs.
+  { id: "esg", label: "ESG", tabs: ["esg", "geo", "aigov", "aiinfra"] },
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
@@ -109,7 +112,15 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   us: ["summary", "summary_pre", "reddit"],
   etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
   // Priority framing: physical climate (#2) → governance screen (#3) → safety filings
-  esg: ["esg_monitor", "esg_overview", "esg_accident", "esg_data_briefing"],
+  // Append-only AI gov slots — do not reorder/replace existing entries.
+  esg: [
+    "esg_monitor",
+    "esg_overview",
+    "esg_accident",
+    "esg_data_briefing",
+    "esg_ai_gov",
+    "esg_ai_gov_brief",
+  ],
 };
 
 export function isTabId(value: string): value is TabId {

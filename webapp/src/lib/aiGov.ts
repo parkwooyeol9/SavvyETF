@@ -1,6 +1,6 @@
 /**
- * AI Governance tab — Yahoo ETF proxies only (no brief TabId / R2 slots).
- * Keep symbol set small and liquid to reduce fetch failures.
+ * AI Governance tab — Yahoo ETF proxies + multi-source governance screen.
+ * Brief TabId stays esg; new slots are append-only (esg_ai_gov / esg_ai_gov_brief).
  */
 
 export type AiGovBucketId = "transform" | "trust";
@@ -38,6 +38,118 @@ export type AiGovPayload = {
   buckets: AiGovBucket[];
   error?: string;
 };
+
+export type AiGovDartHit = {
+  date?: string;
+  corp_name?: string;
+  stock_code?: string;
+  report_nm?: string;
+  rcept_no?: string;
+  viewer?: string | null;
+  matched?: string[];
+};
+
+export type AiGovSecFiling = {
+  company?: string;
+  form?: string;
+  file_date?: string;
+  items?: string;
+  item_summary?: string;
+  url?: string;
+};
+
+export type AiGovHeadline = {
+  headline?: string;
+  title?: string;
+  source?: string;
+  published?: string;
+  date?: string;
+  url?: string;
+  query?: string;
+  category?: string;
+  summary?: string;
+};
+
+export type AiGovPolicyEvent = {
+  date: string;
+  region: string;
+  title: string;
+  note: string;
+  days_from_today?: number;
+  status?: "past" | "today" | "upcoming" | string;
+};
+
+export type AiGovScreenPayload = {
+  ok: boolean;
+  generated_at: string;
+  note?: string;
+  dart?: {
+    ok?: boolean;
+    source?: string;
+    days?: number;
+    keywords?: string[];
+    hit_count?: number;
+    hits?: AiGovDartHit[];
+    error?: string;
+  };
+  sec?: {
+    ok?: boolean;
+    source?: string;
+    window_days?: number;
+    filing_count?: number;
+    filings?: AiGovSecFiling[];
+    error?: string;
+  };
+  finnhub?: {
+    ok?: boolean;
+    source?: string;
+    headlines?: AiGovHeadline[];
+    filtered?: boolean;
+    error?: string;
+  };
+  naver?: {
+    ok?: boolean;
+    source?: string;
+    headlines?: AiGovHeadline[];
+    error?: string;
+  };
+  policy?: {
+    ok?: boolean;
+    events?: AiGovPolicyEvent[];
+  };
+  errors?: string[];
+  error?: string;
+};
+
+/** Static fallback when bot/API omits policy block. */
+export const AI_POLICY_CALENDAR: AiGovPolicyEvent[] = [
+  {
+    date: "2026-01-22",
+    region: "KR",
+    title: "AI기본법 전면 시행",
+    note: "고영향 AI·생성형 표시·내부 거버넌스 의무 본격 적용",
+  },
+  {
+    date: "2026-07-21",
+    region: "KR",
+    title: "AI기본법 후속 개정·시행령",
+    note: "공공조달 우선·포용·창업 지원 조항 구체화",
+  },
+  {
+    date: "2026-08-02",
+    region: "EU",
+    title: "EU AI Act — GPAI 의무 단계",
+    note: "일반목적 AI(GPAI) 관련 의무 타임라인 (사업자 준수 점검)",
+  },
+  {
+    date: "2027-08-02",
+    region: "EU",
+    title: "EU AI Act — 고위험 AI 전면",
+    note: "고위험 시스템 요구사항 전면 적용 예정 구간",
+  },
+];
+
+export const AI_GOV_BRIEF_SLOTS = ["esg_ai_gov", "esg_ai_gov_brief"] as const;
 
 export const AI_GOV_BUCKET_SPECS: Array<{
   id: AiGovBucketId;
@@ -86,7 +198,7 @@ export const AI_GOV_BUCKET_SPECS: Array<{
     title: "Trust · Cyber",
     title_en: "Security and software governance proxies",
     blurb:
-      "사이버·기업 소프트웨어는 AI 도입 시대의 신뢰·통제 지출을 간접 반영합니다. 기업별 AI 공시 스크린은 추후 추가 예정입니다.",
+      "사이버·기업 소프트웨어는 AI 도입 시대의 신뢰·통제 지출을 간접 반영합니다. 아래 공시·규제 스크린과 함께 보세요.",
     signals: [
       {
         id: "hack",

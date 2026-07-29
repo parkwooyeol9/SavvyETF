@@ -1457,6 +1457,8 @@ def handle_telegram_message(message, chat_id: int):
                         "/esg 삼성전자\n"
                         "/esg fin|div|own|return 기업\n"
                         "/esg accident [기업]\n"
+                        "/esg aigov [기업]\n"
+                        "/esg aibrief\n"
                         "/esg help\n\n"
                         f"{exc}"
                     )
@@ -3110,6 +3112,17 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                     analyze_kr=max(0, min(analyze_kr, 8)),
                     analyze_us=max(0, min(analyze_us, 4)),
                 )
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
+            if path == "/api/web/ai-gov-screen":
+                from web_api import ai_gov_screen_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                corp = (query.get("q") or query.get("query") or [""])[0].strip() or None
+                payload = ai_gov_screen_payload(corp)
                 status = 200 if payload.get("ok") else 503
                 body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
                 self._send_cors_json(body, status=status)

@@ -1648,6 +1648,240 @@ a.geo-choke-hl:hover {
   margin-top: 0.55rem;
 }
 
+.ai-gov-panels,
+.ai-gov-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.ai-gov-panel {
+  border: 1px solid #2b3648;
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  background: rgba(12, 18, 28, 0.55);
+}
+
+.ai-gov-panel h4 {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.ai-gov-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ai-gov-list li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.ai-gov-meta {
+  font-size: 0.72rem;
+  color: #8b9bb0;
+}
+
+.ai-gov-title {
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.ai-gov-title a {
+  color: #cfe2ff;
+  text-decoration: none;
+}
+
+.ai-gov-title a:hover {
+  text-decoration: underline;
+}
+
+.ai-gov-note {
+  font-size: 0.78rem;
+  color: #a7b4c4;
+}
+
+.ai-gov-brief-body {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #d7e0ea;
+}
+
+.ai-gov-brief-body p {
+  margin: 0.4rem 0;
+}
+
+.ai-infra-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.ai-infra-summary-card {
+  border: 1px solid #2b3648;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(12, 18, 28, 0.55);
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ai-infra-summary-card strong {
+  font-size: 0.78rem;
+  color: #9db0c7;
+  font-weight: 600;
+}
+
+.ai-infra-summary-card span {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.ai-infra-summary-card em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: #7f91a8;
+}
+
+.ai-infra-section {
+  margin: 1.25rem 0 1.5rem;
+}
+
+.ai-infra-panel {
+  border: 1px solid #2b3648;
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  background: rgba(12, 18, 28, 0.55);
+  margin-top: 0.75rem;
+}
+
+.ai-infra-panel.stress {
+  margin-bottom: 0.85rem;
+}
+
+.ai-infra-panel h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.ai-infra-stress-val {
+  font-size: 1.6rem;
+  font-weight: 750;
+  margin-bottom: 0.35rem;
+}
+
+.ai-infra-prov {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0;
+}
+
+.ai-infra-chip {
+  font-size: 0.68rem;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  color: #c5d0dc;
+}
+
+.ai-infra-chip.cadence {
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+.ai-infra-chip.collected {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.ai-infra-chip.published {
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.ai-infra-chip.estimated,
+.ai-infra-chip.status-planned {
+  border-color: #a855f7;
+  color: #e9d5ff;
+}
+
+.ai-infra-chip.status-live {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.ai-infra-chip.status-partial {
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.ai-infra-chip.muted {
+  opacity: 0.75;
+}
+
+.ai-infra-meta {
+  margin: 0.2rem 0 0.45rem;
+  font-size: 0.72rem;
+  color: #8b9bb0;
+}
+
+.ai-infra-en {
+  color: #8b9bb0;
+  font-weight: 500;
+  font-size: 0.82em;
+}
+
+.ai-infra-annual,
+.ai-infra-roadmap {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.ai-infra-table-wrap {
+  overflow-x: auto;
+}
+
+.ai-infra-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.ai-infra-table th,
+.ai-infra-table td {
+  text-align: left;
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid #243044;
+}
+
+.ai-infra-table th {
+  color: #9db0c7;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .ai-infra-summary,
+  .ai-infra-annual,
+  .ai-infra-roadmap {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .ai-gov-panels,
+  .ai-gov-brief-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .kr-grid-2 {
     grid-template-columns: 1fr;

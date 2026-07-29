@@ -22,6 +22,8 @@ KST = ZoneInfo("Asia/Seoul")
 DEFAULT_MONITOR_KST = (9, 0)
 DEFAULT_ACCIDENT_KST = (9, 30)
 DEFAULT_OVERVIEW_KST = (9, 45)
+DEFAULT_AIGOV_KST = (10, 0)
+DEFAULT_AIBRIEF_KST = (10, 15)
 DEFAULT_POLL_SECONDS = 30
 DEFAULT_OVERVIEW_QUERIES = ("삼성전자",)
 
@@ -56,6 +58,20 @@ def _overview_time_kst() -> tuple[int, int]:
     return _parse_hhmm(
         os.environ.get("ESG_OVERVIEW_SCHEDULE_KST", "9:45"),
         DEFAULT_OVERVIEW_KST,
+    )
+
+
+def _aigov_time_kst() -> tuple[int, int]:
+    return _parse_hhmm(
+        os.environ.get("ESG_AIGOV_SCHEDULE_KST", "10:00"),
+        DEFAULT_AIGOV_KST,
+    )
+
+
+def _aibrief_time_kst() -> tuple[int, int]:
+    return _parse_hhmm(
+        os.environ.get("ESG_AIBRIEF_SCHEDULE_KST", "10:15"),
+        DEFAULT_AIBRIEF_KST,
     )
 
 
@@ -206,6 +222,68 @@ def run_scheduled_esg_overview(token: str, broadcast_fn) -> bool:
         end_heavy_work("scheduled-esg-overview")
 
 
+def run_scheduled_esg_aigov(token: str, broadcast_fn) -> bool:
+    from esg_pipeline import run_esg
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    if not begin_heavy_work_blocking("scheduled-esg-aigov", timeout=180):
+        print(
+            "Scheduled esg aigov skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
+        return False
+    try:
+        # publish → NEW slot esg_ai_gov only
+        result = run_esg("aigov", None)
+        messages = result.get("telegram_messages") or []
+        if not messages:
+            print("Scheduled esg aigov skipped: empty messages.")
+            return False
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled esg aigov not delivered: 0 chats.")
+            return False
+        print(f"Scheduled esg aigov sent → {delivered} chat(s).")
+        return True
+    except Exception as exc:
+        print(f"Scheduled esg aigov failed: {exc}")
+        update_scheduler_state(last_esg_aigov_error=str(exc))
+        return False
+    finally:
+        end_heavy_work("scheduled-esg-aigov")
+
+
+def run_scheduled_esg_aibrief(token: str, broadcast_fn) -> bool:
+    from esg_pipeline import run_esg
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    if not begin_heavy_work_blocking("scheduled-esg-aibrief", timeout=300):
+        print(
+            "Scheduled esg aibrief skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
+        return False
+    try:
+        # publish → NEW slot esg_ai_gov_brief only
+        result = run_esg("aibrief", None)
+        messages = result.get("telegram_messages") or []
+        if not messages:
+            print("Scheduled esg aibrief skipped: empty messages.")
+            return False
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled esg aibrief not delivered: 0 chats.")
+            return False
+        print(f"Scheduled esg aibrief sent → {delivered} chat(s).")
+        return True
+    except Exception as exc:
+        print(f"Scheduled esg aibrief failed: {exc}")
+        update_scheduler_state(last_esg_aibrief_error=str(exc))
+        return False
+    finally:
+        end_heavy_work("scheduled-esg-aibrief")
+
+
 def start_esg_scheduler(token: str, broadcast_fn) -> None:
     if os.environ.get("ESG_SCHEDULE_ENABLED", "true").lower() in {
         "0",
@@ -218,6 +296,8 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
     monitor_h, monitor_m = _monitor_time_kst()
     accident_h, accident_m = _accident_time_kst()
     overview_h, overview_m = _overview_time_kst()
+    aigov_h, aigov_m = _aigov_time_kst()
+    aibrief_h, aibrief_m = _aibrief_time_kst()
     poll_seconds = _poll_seconds()
     catchup_minutes = 120
     try:
@@ -240,23 +320,48 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         "false",
         "no",
     }
+    aigov_enabled = os.environ.get("ESG_AIGOV_SCHEDULE_ENABLED", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    # Weekly Gemini brief — default OFF to control cost; enable explicitly.
+    aibrief_enabled = os.environ.get(
+        "ESG_AIBRIEF_SCHEDULE_ENABLED", "false"
+    ).lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     def loop() -> None:
         state = _load_state()
         last_monitor = state.get("last_esg_monitor_slot")
         last_accident = state.get("last_esg_accident_slot")
         last_overview = state.get("last_esg_overview_slot")
+        last_aigov = state.get("last_esg_aigov_slot")
+        last_aibrief = state.get("last_esg_aibrief_slot")
         queries = ", ".join(_overview_queries())
         overview_bit = (
             f"overview {overview_h:02d}:{overview_m:02d} ({queries})"
             if overview_enabled
             else "overview off"
         )
+        aigov_bit = (
+            f"aigov {aigov_h:02d}:{aigov_m:02d}"
+            if aigov_enabled
+            else "aigov off"
+        )
+        aibrief_bit = (
+            f"aibrief {aibrief_h:02d}:{aibrief_m:02d}"
+            if aibrief_enabled
+            else "aibrief off"
+        )
         print(
             f"esg scheduler active — "
             f"monitor {monitor_h:02d}:{monitor_m:02d} daily · "
             f"KRX accident {accident_h:02d}:{accident_m:02d} · "
-            f"{overview_bit} "
+            f"{overview_bit} · {aigov_bit} · {aibrief_bit} "
             f"→ TELEGRAM_CHAT_ID_ESG ({catchup_minutes}m catch-up)"
         )
 
@@ -324,6 +429,47 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
                             update_scheduler_state(
                                 last_esg_overview_slot=overview_slot
                             )
+
+                if aigov_enabled:
+                    aigov_slot = due_slot_id(
+                        now,
+                        aigov_h,
+                        aigov_m,
+                        last_slot=last_aigov,
+                        window_minutes=catchup_minutes,
+                    )
+                    if aigov_slot:
+                        if _should_skip_kr_non_trading(now):
+                            print(
+                                f"Scheduled esg aigov skipped ({aigov_slot}): "
+                                "weekend or KRX holiday"
+                            )
+                            last_aigov = aigov_slot
+                            update_scheduler_state(last_esg_aigov_slot=aigov_slot)
+                        elif run_scheduled_esg_aigov(token, broadcast_fn):
+                            last_aigov = aigov_slot
+                            update_scheduler_state(last_esg_aigov_slot=aigov_slot)
+
+                if aibrief_enabled:
+                    aibrief_slot = due_slot_id(
+                        now,
+                        aibrief_h,
+                        aibrief_m,
+                        last_slot=last_aibrief,
+                        window_minutes=catchup_minutes,
+                    )
+                    if aibrief_slot:
+                        # Prefer Mon (weekday=0) when enabled; still allow catch-up same day.
+                        if now.weekday() != 0:
+                            print(
+                                f"Scheduled esg aibrief skipped ({aibrief_slot}): "
+                                "weekly Mon-only"
+                            )
+                            last_aibrief = aibrief_slot
+                            update_scheduler_state(last_esg_aibrief_slot=aibrief_slot)
+                        elif run_scheduled_esg_aibrief(token, broadcast_fn):
+                            last_aibrief = aibrief_slot
+                            update_scheduler_state(last_esg_aibrief_slot=aibrief_slot)
             except Exception as exc:
                 print(f"esg scheduler loop error: {exc}")
 

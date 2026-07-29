@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AiGovTab from "@/components/AiGovTab";
+import AiInfraTab from "@/components/AiInfraTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
@@ -217,6 +218,7 @@ export default function Dashboard() {
       tab === "education" ||
       tab === "geo" ||
       tab === "aigov" ||
+      tab === "aiinfra" ||
       tab === "economy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
@@ -301,6 +303,8 @@ export default function Dashboard() {
         <GeoTab />
       ) : tab === "aigov" ? (
         <AiGovTab />
+      ) : tab === "aiinfra" ? (
+        <AiInfraTab />
       ) : tab === "economy" ? (
         <MacroTab />
       ) : tab === "kr" ? (

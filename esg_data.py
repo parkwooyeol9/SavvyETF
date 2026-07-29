@@ -6,6 +6,7 @@ Modes map roughly to the product screens:
   own     — ownership (largest + related) + 5% majorstock signals
   div     — 3y dividend history (DPS, payout, yield)
   accident— 중대재해-related disclosures (90d screen)
+  aigov   — AI / privacy / security disclosures (90d screen)
   overview— short pack combining the above
 """
 
@@ -47,6 +48,36 @@ ACCIDENT_KEYWORDS = (
     "산재사망",
     "사망사고",
     "중대재해관련",
+)
+
+# AI governance / privacy / security disclosure titles (Open DART list.json).
+AI_GOV_KEYWORDS = (
+    "인공지능",
+    "개인정보",
+    "정보보호",
+    "정보유출",
+    "보안사고",
+    "사이버",
+    "유출사고",
+    "해킹",
+    "랜섬웨어",
+    "딥페이크",
+    "정보보안",
+    "유출",
+)
+
+# Prefer 6-digit stock codes — name search can be ambiguous (e.g. 네이버*).
+AI_GOV_WATCHLIST = (
+    "005930",  # 삼성전자
+    "000660",  # SK하이닉스
+    "035420",  # NAVER
+    "035720",  # 카카오
+    "017670",  # SK텔레콤
+    "030200",  # KT
+    "032640",  # LG유플러스
+    "018260",  # 삼성에스디에스
+    "323410",  # 카카오뱅크
+    "105560",  # KB금융
 )
 
 RETURN_DISCLOSURE_KEYWORDS = (
@@ -494,13 +525,15 @@ def fetch_disclosure_timeline(
     return hits[:limit]
 
 
-def screen_accident_disclosures(
+def screen_keyword_disclosures(
+    keywords: tuple[str, ...],
     *,
     days: int = 90,
     corp_code: str | None = None,
     max_pages: int = 10,
     limit: int = 30,
 ) -> list[dict[str, Any]]:
+    """Market-wide (or single-corp) DART list.json screen by report_nm keywords."""
     end = datetime.now(KST)
     bgn = end - timedelta(days=days)
     hits: list[dict[str, Any]] = []
@@ -519,7 +552,8 @@ def screen_accident_disclosures(
             break
         for row in rows:
             name = (row.get("report_nm") or "").strip()
-            if not any(k in name for k in ACCIDENT_KEYWORDS):
+            matched = [k for k in keywords if k in name]
+            if not matched:
                 continue
             hits.append(
                 {
@@ -529,6 +563,7 @@ def screen_accident_disclosures(
                     "report_nm": name,
                     "rcept_no": row.get("rcept_no"),
                     "viewer": _viewer(row.get("rcept_no")),
+                    "matched": matched,
                 }
             )
         time.sleep(0.12)
@@ -536,6 +571,38 @@ def screen_accident_disclosures(
             break
     hits.sort(key=lambda x: x.get("date") or "", reverse=True)
     return hits[:limit]
+
+
+def screen_accident_disclosures(
+    *,
+    days: int = 90,
+    corp_code: str | None = None,
+    max_pages: int = 10,
+    limit: int = 30,
+) -> list[dict[str, Any]]:
+    return screen_keyword_disclosures(
+        ACCIDENT_KEYWORDS,
+        days=days,
+        corp_code=corp_code,
+        max_pages=max_pages,
+        limit=limit,
+    )
+
+
+def screen_ai_gov_disclosures(
+    *,
+    days: int = 90,
+    corp_code: str | None = None,
+    max_pages: int = 12,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    return screen_keyword_disclosures(
+        AI_GOV_KEYWORDS,
+        days=days,
+        corp_code=corp_code,
+        max_pages=max_pages,
+        limit=limit,
+    )
 
 
 def build_esg_fin_profile(query: str) -> dict[str, Any]:
@@ -658,6 +725,55 @@ def build_esg_accident_profile(query: str | None = None) -> dict[str, Any]:
         "stock_code": (corp.get("stock_code") if corp else "") or "",
         "generated_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
         "days": 90,
+        "hits": hits,
+    }
+
+
+def build_esg_ai_gov_profile(query: str | None = None) -> dict[str, Any]:
+    corp = None
+    corp_code = None
+    if query:
+        corp = resolve_corp(query)
+        corp_code = corp["corp_code"]
+    days = 90
+    hits = screen_ai_gov_disclosures(days=days, corp_code=corp_code)
+
+    # Market-wide titles rarely contain AI keywords — also scan a KR watchlist.
+    if not corp_code:
+        seen: set[str] = {
+            str(h.get("rcept_no") or f"{h.get('date')}|{h.get('report_nm')}") for h in hits
+        }
+        for name in AI_GOV_WATCHLIST:
+            try:
+                resolved = resolve_corp(name)
+            except Exception:
+                continue
+            extra = screen_ai_gov_disclosures(
+                days=days,
+                corp_code=resolved["corp_code"],
+                max_pages=4,
+                limit=12,
+            )
+            for row in extra:
+                key = str(row.get("rcept_no") or f"{row.get('date')}|{row.get('report_nm')}")
+                if key in seen:
+                    continue
+                seen.add(key)
+                hits.append(row)
+            time.sleep(0.08)
+        hits.sort(key=lambda x: x.get("date") or "", reverse=True)
+        hits = hits[:40]
+
+    return {
+        "mode": "aigov",
+        "query": query,
+        "corp_name": corp["corp_name"] if corp else None,
+        "corp_code": corp_code,
+        "stock_code": (corp.get("stock_code") if corp else "") or "",
+        "generated_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
+        "days": days,
+        "keywords": list(AI_GOV_KEYWORDS),
+        "watchlist": list(AI_GOV_WATCHLIST) if not corp_code else [],
         "hits": hits,
     }
 
@@ -909,6 +1025,42 @@ def format_esg_accident_telegram(profile: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_esg_ai_gov_telegram(profile: dict[str, Any]) -> str:
+    scope = profile.get("corp_name") or "전체 시장"
+    keywords = profile.get("keywords") or list(AI_GOV_KEYWORDS)
+    lines = [
+        f"<b>🛡️ ESG · AI·개인정보·보안 공시 — {_esc(scope)}</b>",
+        f"<i>{profile['generated_at']} · 최근 {profile.get('days', 90)}일</i>",
+        f"키워드: {', '.join(keywords)}",
+        "",
+    ]
+    hits = profile.get("hits") or []
+    if not hits:
+        lines.append(
+            "해당 기간 감시 유니버스 공시 제목에 키워드 매칭이 없습니다 "
+            "(사고성 공시가 없을 때 정상일 수 있음)."
+        )
+    else:
+        lines.append(f"<b>{len(hits)}건</b>")
+        for idx, item in enumerate(hits, start=1):
+            code = item.get("stock_code") or ""
+            code_s = f" <code>{code}</code>" if code else ""
+            link = f'<a href="{item["viewer"]}">원문</a>' if item.get("viewer") else ""
+            matched = item.get("matched") or []
+            tag = f" · {', '.join(matched)}" if matched else ""
+            lines.append(
+                f"{idx}. {item.get('date')} {_esc(item.get('corp_name'))}{code_s}{tag}\n"
+                f"    {_esc(item.get('report_nm'))} {link}"
+            )
+    lines.extend(
+        [
+            "",
+            "<i>웹 AI 거버넌스 탭 · Source: Open DART list · Not legal advice.</i>",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def format_esg_overview_telegram(profile: dict[str, Any]) -> str:
     fin = profile["fin"]
     dart = fin["dart"]
@@ -970,7 +1122,7 @@ ESG_HELP = """\
 <b>🧭 /esg — ESG 중요도 프레임</b>
 1) 전력·그리드·에너지 안보 (구조적 기회) — 웹 ESG 레이더
 2) 물리적 기후위험·적응 (포트폴리오 하방) — <code>/esg monitor</code>
-3) 거버넌스·AI·사이버 (기업 품질 스크린) — overview / own / accident
+3) 거버넌스·AI·사이버 (기업 품질 스크린) — overview / own / accident / aigov
 
 <code>/esg monitor</code> — 물리적 기후위험 (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — 거버넌스 허브 요약
@@ -980,6 +1132,8 @@ ESG_HELP = """\
 <code>/esg return 삼성전자</code> — 자사주·주주환원 공시 타임라인
 <code>/esg accident</code> — 최근 90일 중대재해·안전 공시
 <code>/esg accident 기업</code> — 특정 기업만
+<code>/esg aigov</code> — AI·개인정보·보안 공시 스크린 (신규 슬롯)
+<code>/esg aibrief</code> — AI 거버넌스 주간 브리프 (신규 슬롯)
 
 종목코드도 가능: <code>/esg 005930</code>
 """
