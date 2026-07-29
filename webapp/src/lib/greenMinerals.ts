@@ -1,22 +1,20 @@
 /**
- * Critical Minerals / 녹색 광물 — Phase 1 (key-free, curated).
+ * Critical Minerals / 녹색 광물 — Phase 1.5 (key-free, curated).
  *
- * Implemented now:
+ * In scope (shown in UI):
  * - Mineral taxonomy + industry tags + dual_use
- * - National critical-list membership (curated snapshot)
+ * - National critical-list membership snapshots (editor-reviewed)
  * - Green–Defence competition matrix (qualitative)
  * - Related ETF Yahoo proxies
  * - Curated geopolitics / policy events
  * - Google News RSS assist
+ * - Methodology (definitions, cadence, what we do not claim)
  *
- * Deferred (needs DB, licensed prices, trade APIs, geo pipeline):
- * - Spot/futures mineral prices, Market Tightness
- * - USGS/IEA production & refining HHI live refresh
- * - Project pipeline + maps
- * - UN Comtrade trade dependency
- * - Social licence / human-rights incident scoring
- * - Recycling throughput, substitution commercialisation tracker
- * - Scenario engine, daily briefing cron, PostgreSQL schema
+ * Out of scope (not shown in UI — do not re-add as "미구현" teasers):
+ * - Licensed exchange mineral prices / Market Tightness
+ * - Live USGS/IEA HHI scrapers, trade HS dependency, project maps
+ * - Automated social-licence / human-rights scores
+ * - Quantitative scenario engine, full DB + daily cron product
  */
 
 export type MineralTag =
@@ -123,12 +121,21 @@ export type GreenMineralHeadline = {
   query?: string;
 };
 
-export type DeferredModule = {
+export type CriticalListMeta = {
+  id: CriticalListId;
+  label_ko: string;
+  label_en: string;
+  as_of: string;
+  source_name: string;
+  source_url: string;
+  note_ko: string;
+};
+
+export type MethodologyBlock = {
   id: string;
   title_ko: string;
   title_en: string;
-  reason_ko: string;
-  effort: "M" | "L" | "XL";
+  body_ko: string;
 };
 
 export type GreenMineralPayload = {
@@ -142,22 +149,120 @@ export type GreenMineralPayload = {
   events: GreenMineralEvent[];
   etfs: GreenMineralEtf[];
   headlines: GreenMineralHeadline[];
-  deferred: DeferredModule[];
+  list_meta: CriticalListMeta[];
   list_labels: Record<CriticalListId, { ko: string; en: string }>;
+  methodology: MethodologyBlock[];
   error?: string;
 };
+
+export const CRITICAL_LIST_META: CriticalListMeta[] = [
+  {
+    id: "US",
+    label_ko: "미국 핵심광물",
+    label_en: "US Critical Minerals List",
+    as_of: "2022-02",
+    source_name: "USGS / DOI critical minerals determinations (public)",
+    source_url: "https://www.usgs.gov/programs/mineral-resources-program",
+    note_ko: "연방 목록은 개정됨. 멤버십은 편집 검수 스냅샷이며 법령 원문 대체 아님.",
+  },
+  {
+    id: "EU",
+    label_ko: "EU 핵심원자재",
+    label_en: "EU Critical / Strategic Raw Materials",
+    as_of: "2023-03",
+    source_name: "European Commission CRM / CRMA materials lists",
+    source_url: "https://single-market-economy.ec.europa.eu/sectors/raw-materials/crm_en",
+    note_ko: "Critical vs Strategic 구분 가능. 본 표는 모니터용 단순 포함 여부.",
+  },
+  {
+    id: "CA",
+    label_ko: "캐나다",
+    label_en: "Canada Critical Minerals List",
+    as_of: "2022-03",
+    source_name: "Natural Resources Canada",
+    source_url: "https://www.canada.ca/en/natural-resources-canada.html",
+    note_ko: "캐나다 공식 목록 기준 편집 매핑.",
+  },
+  {
+    id: "AU",
+    label_ko: "호주",
+    label_en: "Australia Critical Minerals List",
+    as_of: "2023-12",
+    source_name: "Australian Government critical minerals",
+    source_url: "https://www.industry.gov.au/",
+    note_ko: "호주 목록·전략 문서 기준. 개정 시 as_of 갱신.",
+  },
+  {
+    id: "JP",
+    label_ko: "일본 전략광물",
+    label_en: "Japan strategic / specified minerals",
+    as_of: "2023-06",
+    source_name: "METI mineral security materials (public briefings)",
+    source_url: "https://www.meti.go.jp/",
+    note_ko: "일본은 '지정'·전략 표현이 문서마다 다름 — 근사 매핑.",
+  },
+  {
+    id: "KR",
+    label_ko: "한국 핵심광물",
+    label_en: "Korea critical minerals",
+    as_of: "2023-02",
+    source_name: "MOTIE 핵심광물 확보 전략 관련 공개자료",
+    source_url: "https://www.motie.go.kr/",
+    note_ko: "한국 전략 대상 광물 중심 매핑. 법정 단일 리스트와 1:1이 아닐 수 있음.",
+  },
+];
 
 export const CRITICAL_LIST_LABELS: Record<
   CriticalListId,
   { ko: string; en: string }
-> = {
-  US: { ko: "미국 핵심광물", en: "US Critical Minerals List" },
-  EU: { ko: "EU 핵심원자재", en: "EU Critical Raw Materials" },
-  CA: { ko: "캐나다", en: "Canada Critical Minerals List" },
-  AU: { ko: "호주", en: "Australia Critical Minerals List" },
-  JP: { ko: "일본 전략광물", en: "Japan strategic minerals" },
-  KR: { ko: "한국 핵심광물", en: "Korea critical minerals" },
-};
+> = Object.fromEntries(
+  CRITICAL_LIST_META.map((m) => [m.id, { ko: m.label_ko, en: m.label_en }]),
+) as Record<CriticalListId, { ko: string; en: string }>;
+
+export const METHODOLOGY_BLOCKS: MethodologyBlock[] = [
+  {
+    id: "scope",
+    title_ko: "범위",
+    title_en: "Scope",
+    body_ko:
+      "투자자 관점의 핵심광물 모니터. 단일 '세계 핵심광물' 목록이 아니라 국가·산업별 분류를 병기한다. UI 기본 언어는 한국어, 고유명사는 영어 병기.",
+  },
+  {
+    id: "cadence",
+    title_ko: "갱신 주기",
+    title_en: "Cadence",
+    body_ko:
+      "fetched_at(수집)과 발표일·발효일을 구분한다. ETF 프록시는 Yahoo 일봉(수분~수시간 캐시). 국가목록·정책 이벤트는 편집 큐레이션(수시). RSS는 탐지용이며 확정 사실이 아니다.",
+  },
+  {
+    id: "security_delta",
+    title_ko: "Supply Security delta",
+    title_en: "Editor-assigned directional score",
+    body_ko:
+      "수입국 관점 방향성(+2~-2). +2 실공급 다변화/개시, +1 자금·장기계약, 0 조사·MOU·전략발표, -1 허가지연·관세 불확실, -2 수출금지·중대 중단. 종합 Mineral Security Score는 산출하지 않는다.",
+  },
+  {
+    id: "dual_use",
+    title_ko: "이중용도 맵",
+    title_en: "Green–Defence map",
+    body_ko:
+      "방산·청정 동시 수요 압력은 정성 등급이다. 미공개 무기체계 투입량을 추정 수치로 만들지 않는다.",
+  },
+  {
+    id: "etf_proxy",
+    title_ko: "ETF 프록시",
+    title_en: "ETF proxies",
+    body_ko:
+      "Yahoo 상장 ETF 가격·수익률만 표시. 광물 현물·선물·평가가격과 혼합하지 않는다. 투자 조언이 아니다.",
+  },
+  {
+    id: "out_of_scope",
+    title_ko: "의도적 비범위",
+    title_en: "Out of scope",
+    body_ko:
+      "거래소급 광물가·재고, 무역 HS 의존도 자동화, 프로젝트 지도 DB, Social Licence 자동점수, 정량 시나리오, 통합 위험 종합점수는 제품 범위에서 제외한다(화면에도 미표시).",
+  },
+];
 
 /** Phase-1 curated taxonomy — not a single universal “critical” list. */
 export const GREEN_MINERALS: GreenMineral[] = [
@@ -221,6 +326,7 @@ export const GREEN_MINERALS: GreenMineral[] = [
     dual_use: false,
     lists: ["US", "EU", "CA", "AU", "JP", "KR"],
     end_uses_ko: "전력망·EV·데이터센터",
+    note_ko: "일부 국가 목록에서 전략/중요 원자재로만 취급 — 배지=모니터용 포함",
   },
   {
     id: "neodymium",
@@ -582,6 +688,66 @@ export const GREEN_MINERAL_EVENTS: GreenMineralEvent[] = [
     security_delta: 1,
     security_rationale_ko: "자금지원 축(+1)",
   },
+  {
+    id: "cn-antimony-controls-2024",
+    date: "2024-09-15",
+    jurisdiction: "CN",
+    event_type: "export_control",
+    minerals: ["antimony"],
+    policy_stage: "effective",
+    title_ko: "중국 안티몬 관련 수출통제 보도·조치",
+    title_en: "China antimony export control measures (reported)",
+    summary_ko: "방산·난연 공급망의 허가·대체조달 압력. 원문·발효일은 관보 대조 권장.",
+    source_name: "Public trade / MOFCOM reporting track",
+    source_url: "https://english.mofcom.gov.cn/",
+    security_delta: -2,
+    security_rationale_ko: "이중용도·방산 민감 품목의 공급충격 가능(-2)",
+  },
+  {
+    id: "us-defense-production-minerals",
+    date: "2022-03-31",
+    jurisdiction: "US",
+    event_type: "defence_priority",
+    minerals: ["lithium", "nickel", "cobalt", "graphite", "manganese", "rare_earth"],
+    policy_stage: "effective",
+    title_ko: "미국 국방생산법 등 핵심광물·배터리 공급망 우선조치",
+    title_en: "US DPA / defence mineral supply-chain actions",
+    summary_ko: "국방·산업정책이 동일 광물 체인을 끌어올림. 발표≠즉시 신규 광산 가동.",
+    source_name: "White House / DoD public releases",
+    source_url: "https://www.defense.gov/",
+    security_delta: 1,
+    security_rationale_ko: "구매·투자 유인(+1). 실생산은 프로젝트별",
+  },
+  {
+    id: "jp-economic-security-minerals",
+    date: "2022-05-11",
+    jurisdiction: "JP",
+    event_type: "economic_security",
+    minerals: ["rare_earth", "gallium", "germanium", "graphite"],
+    policy_stage: "adopted",
+    title_ko: "일본 경제안보 추진법 체계와 특정중요물자 축",
+    title_en: "Japan economic security framework / critical materials axis",
+    summary_ko: "비축·공급망 조사·지원 틀. 개별 광물 수출입 충격과는 별개로 추적.",
+    source_name: "METI / Cabinet Office (public)",
+    source_url: "https://www.meti.go.jp/",
+    security_delta: 0,
+    security_rationale_ko: "제도 프레임(0) — 이행·비축 규모는 후속 확인",
+  },
+  {
+    id: "ca-critical-minerals-strategy",
+    date: "2022-12-09",
+    jurisdiction: "CA",
+    event_type: "strategy",
+    minerals: ["lithium", "nickel", "copper", "graphite", "rare_earth", "uranium"],
+    policy_stage: "adopted",
+    title_ko: "캐나다 Critical Minerals Strategy",
+    title_en: "Canada Critical Minerals Strategy",
+    summary_ko: "동맹 조달·국내 개발·원주민 협의 축을 동시에 언급. 허가·사회수용이 병목.",
+    source_name: "Natural Resources Canada",
+    source_url: "https://www.canada.ca/en/natural-resources-canada.html",
+    security_delta: 0,
+    security_rationale_ko: "전략 발표(0). FPIC·허가 리스크는 프로젝트별",
+  },
 ];
 
 export const GREEN_MINERAL_ETF_SPECS: EtfProxySpec[] = [
@@ -590,6 +756,12 @@ export const GREEN_MINERAL_ETF_SPECS: EtfProxySpec[] = [
     symbol: "LIT",
     label: "리튬·배터리",
     thesis: "Lithium & battery value chain proxy",
+  },
+  {
+    id: "batt",
+    symbol: "BATT",
+    label: "배터리 테마",
+    thesis: "Broader battery / materials theme proxy",
   },
   {
     id: "copx",
@@ -616,69 +788,16 @@ export const GREEN_MINERAL_ETF_SPECS: EtfProxySpec[] = [
     thesis: "Diversified metals & mining",
   },
   {
+    id: "xme",
+    symbol: "XME",
+    label: "금속·광업(US)",
+    thesis: "US metals & mining sector SPDR",
+  },
+  {
     id: "gdx",
     symbol: "GDX",
     label: "금광(참조)",
     thesis: "Gold miners — risk-off / mining beta reference",
-  },
-];
-
-export const DEFERRED_MODULES: DeferredModule[] = [
-  {
-    id: "prices",
-    title_ko: "광물 현물·선물·재고·Market Tightness",
-    title_en: "Spot/futures/inventory & tightness",
-    reason_ko: "LME/SHFE/평가가격은 라이선스·벤치마크 혼용 금지 — 유료·공식 feed 확보 후",
-    effort: "XL",
-  },
-  {
-    id: "production_hhi",
-    title_ko: "채굴·정제 HHI / USGS·IEA 라이브",
-    title_en: "Production & refining concentration",
-    reason_ko: "연간 통계 파서 + 단위 정규화 + 수정이력 DB 필요",
-    effort: "L",
-  },
-  {
-    id: "projects_map",
-    title_ko: "프로젝트 파이프라인·지도",
-    title_en: "Project pipeline & map",
-    reason_ko: "좌표·단계·허가 이벤트 DB + MapLibre — 수집 배치가 병목",
-    effort: "XL",
-  },
-  {
-    id: "trade",
-    title_ko: "무역의존도·HS 단계 분해",
-    title_en: "Trade dependency / HS stages",
-    reason_ko: "UN Comtrade·관세청 매핑, HS≠광물 1:1 — 추정 표시 인프라 필요",
-    effort: "XL",
-  },
-  {
-    id: "social_licence",
-    title_ko: "Social Licence Risk Score",
-    title_en: "Social licence monitor",
-    reason_ko: "allegation/confirmed 구분·증거 coverage — 뉴스 카운트만으로 확정 금지",
-    effort: "XL",
-  },
-  {
-    id: "recycling",
-    title_ko: "재활용 실처리량·대체기술 상업화",
-    title_en: "Recycling & substitution",
-    reason_ko: "발표용량≠가동≠회수량 — 시설별 실적 수집이 선행",
-    effort: "L",
-  },
-  {
-    id: "scenarios",
-    title_ko: "투자 스트레스 시나리오 엔진",
-    title_en: "Scenario analysis",
-    reason_ko: "정량 입력(공급·수요) 없으면 directional만 — 상위 데이터 모듈 이후",
-    effort: "L",
-  },
-  {
-    id: "db_cron",
-    title_ko: "PostgreSQL/D1 스키마 + 일간 크론 브리핑",
-    title_en: "DB schema & daily pipeline",
-    reason_ko: "스펙 §8–9 전체 — Phase 1은 서버리스 큐레이션+Yahoo/RSS만",
-    effort: "XL",
   },
 ];
 

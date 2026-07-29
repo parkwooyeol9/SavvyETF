@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
   CriticalListId,
+  CriticalListMeta,
   DualUseRow,
   GreenMineral,
   GreenMineralEvent,
   GreenMineralPayload,
+  MethodologyBlock,
   SupplySecurityDelta,
 } from "@/lib/greenMinerals";
 import {
@@ -112,6 +114,45 @@ function EventCard({ event }: { event: GreenMineralEvent }) {
   );
 }
 
+function ListMetaCard({ meta }: { meta: CriticalListMeta }) {
+  return (
+    <article className="green-min-card">
+      <h4>
+        {meta.label_ko}
+        <span className="green-min-en"> · {meta.label_en}</span>
+      </h4>
+      <p className="green-min-meta">
+        as_of {meta.as_of} · {meta.source_name}
+      </p>
+      <p className="green-min-body">{meta.note_ko}</p>
+      <a className="green-min-link" href={meta.source_url} target="_blank" rel="noreferrer">
+        출처
+      </a>
+    </article>
+  );
+}
+
+function MethodologyCard({ block }: { block: MethodologyBlock }) {
+  return (
+    <article className="green-min-card">
+      <h4>
+        {block.title_ko}
+        <span className="green-min-en"> · {block.title_en}</span>
+      </h4>
+      <p className="green-min-body">{block.body_ko}</p>
+    </article>
+  );
+}
+
+const EMPTY_LABELS: GreenMineralPayload["list_labels"] = {
+  US: { ko: "미국", en: "US" },
+  EU: { ko: "EU", en: "EU" },
+  CA: { ko: "캐나다", en: "Canada" },
+  AU: { ko: "호주", en: "Australia" },
+  JP: { ko: "일본", en: "Japan" },
+  KR: { ko: "한국", en: "Korea" },
+};
+
 export default function GreenMineralsTab() {
   const [data, setData] = useState<GreenMineralPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,15 +189,9 @@ export default function GreenMineralsTab() {
         events: [],
         etfs: [],
         headlines: [],
-        deferred: [],
-        list_labels: {
-          US: { ko: "미국", en: "US" },
-          EU: { ko: "EU", en: "EU" },
-          CA: { ko: "캐나다", en: "Canada" },
-          AU: { ko: "호주", en: "Australia" },
-          JP: { ko: "일본", en: "Japan" },
-          KR: { ko: "한국", en: "Korea" },
-        },
+        list_meta: [],
+        list_labels: EMPTY_LABELS,
+        methodology: [],
         error: exc instanceof Error ? exc.message : "로드 실패",
       });
     } finally {
@@ -264,6 +299,18 @@ export default function GreenMineralsTab() {
       </div>
 
       <div className="green-min-section">
+        <h3>국가 핵심광물 목록 스냅샷</h3>
+        <p className="green-min-meta">
+          편집 검수 as_of. 법령·관보 원문 대체가 아니며, 개정 시 배지 멤버십을 수동 갱신.
+        </p>
+        <div className="green-min-grid">
+          {(data?.list_meta || []).map((meta) => (
+            <ListMetaCard key={meta.id} meta={meta} />
+          ))}
+        </div>
+      </div>
+
+      <div className="green-min-section">
         <h3>광물 분류체계</h3>
         <div className="esg-reg-filters">
           <label>
@@ -359,31 +406,11 @@ export default function GreenMineralsTab() {
       </div>
 
       <div className="green-min-section">
-        <h3>미구현 (의도적 연기)</h3>
-        <div className="table-wrap">
-          <table className="kr-table">
-            <thead>
-              <tr>
-                <th>모듈</th>
-                <th>연기 사유</th>
-                <th>규모</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.deferred || []).map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    {d.title_ko}
-                    <div className="green-min-en">{d.title_en}</div>
-                  </td>
-                  <td>{d.reason_ko}</td>
-                  <td>
-                    <code>{d.effort}</code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <h3>Methodology</h3>
+        <div className="green-min-stack">
+          {(data?.methodology || []).map((block) => (
+            <MethodologyCard key={block.id} block={block} />
+          ))}
         </div>
       </div>
     </section>

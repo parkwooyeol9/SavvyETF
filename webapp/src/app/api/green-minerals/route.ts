@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 
 import {
   CRITICAL_LIST_LABELS,
-  DEFERRED_MODULES,
+  CRITICAL_LIST_META,
   DUAL_USE_MAP,
   GREEN_MINERALS,
   GREEN_MINERAL_ETF_SPECS,
   GREEN_MINERAL_EVENTS,
+  METHODOLOGY_BLOCKS,
   type GreenMineralEtf,
   type GreenMineralHeadline,
   type GreenMineralPayload,
@@ -107,9 +108,10 @@ function decodeXml(s: string): string {
 
 async function fetchNews(): Promise<GreenMineralHeadline[]> {
   const queries = [
-    "critical minerals OR critical raw materials OR export controls gallium OR germanium",
-    "핵심광물 OR 희토류 OR 리튬 OR 흑연 수출통제",
-    "mining social licence OR FPIC OR battery recycling minerals",
+    "critical minerals OR critical raw materials OR export controls gallium OR germanium OR antimony",
+    "핵심광물 OR 희토류 OR 리튬 OR 흑연 OR 안티몬 수출통제",
+    "mining social licence OR FPIC OR battery recycling OR rare earth",
+    "IEA critical minerals OR USGS mineral commodity",
   ];
   const out: GreenMineralHeadline[] = [];
   const seen = new Set<string>();
@@ -134,7 +136,7 @@ async function fetchNews(): Promise<GreenMineralHeadline[]> {
       if (!res.ok) continue;
       const xml = await res.text();
       const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
-      for (const item of items.slice(0, 5)) {
+      for (const item of items.slice(0, 4)) {
         const title = decodeXml(
           (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] ||
             item.match(/<title>(.*?)<\/title>/)?.[1] ||
@@ -168,7 +170,31 @@ async function fetchNews(): Promise<GreenMineralHeadline[]> {
       // soft-fail
     }
   }
-  return out.slice(0, 15);
+  return out.slice(0, 18);
+}
+
+function basePayload(
+  partial: Partial<GreenMineralPayload> & { ok: boolean },
+): GreenMineralPayload {
+  return {
+    generated_at: new Date().toISOString(),
+    subtitle_ko: "녹색 전환이 지정학·인권과 충돌하는 지점",
+    subtitle_en:
+      "Where the Green Transition Collides with Geopolitics and Human Rights",
+    note:
+      "Phase 1.5: 국가목록 스냅샷·정책 이벤트·Methodology·Yahoo ETF·RSS. 거래소 광물가·무역 HHI·프로젝트 지도·소셜라이선스 자동점수는 제품 비범위(미표시).",
+    minerals: GREEN_MINERALS,
+    dual_use: DUAL_USE_MAP,
+    events: [...GREEN_MINERAL_EVENTS].sort((a, b) =>
+      a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
+    ),
+    etfs: [],
+    headlines: [],
+    list_meta: CRITICAL_LIST_META,
+    list_labels: CRITICAL_LIST_LABELS,
+    methodology: METHODOLOGY_BLOCKS,
+    ...partial,
+  };
 }
 
 export async function GET() {
@@ -178,48 +204,17 @@ export async function GET() {
       fetchNews(),
     ]);
 
-    const payload: GreenMineralPayload = {
-      ok: true,
-      generated_at: new Date().toISOString(),
-      subtitle_ko: "녹색 전환이 지정학·인권과 충돌하는 지점",
-      subtitle_en:
-        "Where the Green Transition Collides with Geopolitics and Human Rights",
-      note:
-        "Phase 1: 분류체계·이중용도 맵·큐레이션 정책·Yahoo ETF·RSS. 현물가격·HHI·무역·프로젝트·소셜라이선스 점수는 미구현(아래 Deferred).",
-      minerals: GREEN_MINERALS,
-      dual_use: DUAL_USE_MAP,
-      events: [...GREEN_MINERAL_EVENTS].sort((a, b) =>
-        a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
-      ),
-      etfs,
-      headlines,
-      deferred: DEFERRED_MODULES,
-      list_labels: CRITICAL_LIST_LABELS,
-    };
-
-    return NextResponse.json(payload, {
+    return NextResponse.json(basePayload({ ok: true, etfs, headlines }), {
       headers: {
         "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
       },
     });
   } catch (exc) {
     return NextResponse.json(
-      {
+      basePayload({
         ok: false,
-        generated_at: new Date().toISOString(),
-        subtitle_ko: "녹색 전환이 지정학·인권과 충돌하는 지점",
-        subtitle_en:
-          "Where the Green Transition Collides with Geopolitics and Human Rights",
-        note: "",
-        minerals: GREEN_MINERALS,
-        dual_use: DUAL_USE_MAP,
-        events: GREEN_MINERAL_EVENTS,
-        etfs: [],
-        headlines: [],
-        deferred: DEFERRED_MODULES,
-        list_labels: CRITICAL_LIST_LABELS,
         error: exc instanceof Error ? exc.message : "green-minerals failed",
-      } satisfies GreenMineralPayload,
+      }),
       { status: 502 },
     );
   }
