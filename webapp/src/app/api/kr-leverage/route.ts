@@ -7,10 +7,11 @@ import {
   SINGLE_STOCK_LEV_ETFS,
   SINGLE_STOCK_LEV_LISTING_DATE,
   SINGLE_STOCK_LEV_LISTING_YMD,
-  type KrCandle,
   type LevBrokerSide,
-  type LevChartBundle,
   type LevDealerBoard,
+  type LevDeleverBucket,
+  type LevDeleveraging,
+  type LevDeleverPoint,
   type LevGroupKey,
   type LevGroupPoint,
   type LevGroupSeries,
@@ -188,63 +189,6 @@ async function fetchAumByDate(code: string): Promise<Record<string, number>> {
   return out;
 }
 
-async function fetchStockDaily(code: string, pageSize = 80): Promise<KrCandle[]> {
-  type Row = {
-    localTradedAt?: string;
-    closePrice?: string;
-    openPrice?: string;
-    highPrice?: string;
-    lowPrice?: string;
-    accumulatedTradingVolume?: string | number;
-  };
-  const rows = await fetchJson<Row[]>(
-    `https://m.stock.naver.com/api/stock/${code}/price?pageSize=${pageSize}&page=1`,
-  );
-  const candles: KrCandle[] = [];
-  for (const row of [...(rows || [])].reverse()) {
-    const close = parseNumber(row.closePrice);
-    if (close == null || !row.localTradedAt) continue;
-    candles.push({
-      time: row.localTradedAt.slice(0, 10),
-      open: parseNumber(row.openPrice) ?? close,
-      high: parseNumber(row.highPrice) ?? close,
-      low: parseNumber(row.lowPrice) ?? close,
-      close,
-      volume: parseNumber(row.accumulatedTradingVolume) ?? undefined,
-    });
-  }
-  return candles;
-}
-
-async function fetchStockMinute(code: string): Promise<KrCandle[]> {
-  type Row = {
-    localDateTime?: string;
-    currentPrice?: number;
-    openPrice?: number;
-    highPrice?: number;
-    lowPrice?: number;
-    accumulatedTradingVolume?: number;
-  };
-  const rows = await fetchJson<Row[]>(
-    `https://api.stock.naver.com/chart/domestic/item/${code}/minute?periodType=day`,
-  );
-  return (rows || [])
-    .filter((row) => row.localDateTime && row.currentPrice != null)
-    .map((row) => {
-      const ts = String(row.localDateTime);
-      const time = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(8, 10)}:${ts.slice(10, 12)}`;
-      const close = Number(row.currentPrice);
-      return {
-        time,
-        open: Number(row.openPrice ?? close),
-        high: Number(row.highPrice ?? close),
-        low: Number(row.lowPrice ?? close),
-        close,
-        volume: row.accumulatedTradingVolume,
-      };
-    });
-}
-
 async function fetchInvestorTrend(code: string): Promise<LevInvestorDay[]> {
   type Row = {
     bizdate?: string;
@@ -359,6 +303,126 @@ function sumInvestorDays(seriesList: LevInvestorDay[][]): LevInvestorDay[] {
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+type CodeDaySeries = {
+  meta: (typeof SINGLE_STOCK_LEV_ETFS)[number];
+  days: EtfDayPoint[];
+};
+
+function buildDeleverBucket(
+  key: string,
+  label: string,
+  members: CodeDaySeries[],
+  color?: string,
+): LevDeleverBucket {
+  const dateSet = new Set<string>();
+  const maps = members.map((m) => {
+    for (const d of m.days) dateSet.add(d.date);
+    return new Map(m.days.map((d) => [d.date, d] as const));
+  });
+  const dates = [...dateSet].sort();
+
+  type Raw = { date: string; aum_eok: number; units_proxy: number };
+  const raw: Raw[] = [];
+  for (const ymd of dates) {
+    let aum = 0;
+    let units = 0;
+    for (const map of maps) {
+      const pt = map.get(ymd);
+      if (!pt) continue;
+      aum += pt.aum;
+      if (pt.aum > 0 && pt.close > 0) units += pt.aum / pt.close;
+    }
+    if (aum <= 0 && units <= 0) continue;
+    raw.push({ date: ymdToIso(ymd), aum_eok: aum / 1e8, units_proxy: units });
+  }
+
+  let peakAum = 0;
+  let peakAumDate = raw[0]?.date || "";
+  let peakUnits = 0;
+  let peakUnitsDate = raw[0]?.date || "";
+  for (const pt of raw) {
+    if (pt.aum_eok >= peakAum) {
+      peakAum = pt.aum_eok;
+      peakAumDate = pt.date;
+    }
+    if (pt.units_proxy >= peakUnits) {
+      peakUnits = pt.units_proxy;
+      peakUnitsDate = pt.date;
+    }
+  }
+
+  const latest = raw[raw.length - 1];
+  const currentAum = latest?.aum_eok ?? 0;
+  const currentUnits = latest?.units_proxy ?? 0;
+  const remainingPct =
+    peakUnits > 0 ? Math.max(0, Math.min(100, (100 * currentUnits) / peakUnits)) : 100;
+  const progressPct = Math.max(0, Math.min(100, 100 - remainingPct));
+  const aumDrawdown =
+    peakAum > 0 ? Math.max(0, Math.min(100, (100 * (peakAum - currentAum)) / peakAum)) : 0;
+
+  const series: LevDeleverPoint[] = raw.map((pt) => {
+    const rem =
+      peakUnits > 0 ? Math.max(0, Math.min(100, (100 * pt.units_proxy) / peakUnits)) : 100;
+    return {
+      date: pt.date,
+      aum_eok: pt.aum_eok,
+      units_proxy: pt.units_proxy,
+      remaining_pct: rem,
+      progress_pct: Math.max(0, Math.min(100, 100 - rem)),
+    };
+  });
+
+  return {
+    key,
+    label,
+    color,
+    peak_aum_eok: peakAum,
+    peak_aum_date: peakAumDate,
+    current_aum_eok: currentAum,
+    aum_drawdown_pct: aumDrawdown,
+    peak_units: peakUnits,
+    peak_units_date: peakUnitsDate,
+    current_units: currentUnits,
+    progress_pct: progressPct,
+    remaining_pct: remainingPct,
+    series,
+  };
+}
+
+function buildDeleveraging(perCode: CodeDaySeries[]): LevDeleveraging {
+  const total = buildDeleverBucket("all", "전체 16종", perCode);
+  const lev = buildDeleverBucket(
+    "lev",
+    "레버리지(2x)",
+    perCode.filter((p) => p.meta.direction === "lev"),
+    "#3b82f6",
+  );
+  const inv = buildDeleverBucket(
+    "inv",
+    "인버스(-2x)",
+    perCode.filter((p) => p.meta.direction === "inv"),
+    "#f59e0b",
+  );
+  const by_group = LEV_GROUP_METAS.map((g) =>
+    buildDeleverBucket(
+      g.key,
+      g.label,
+      perCode.filter(
+        (p) => levGroupKey(p.meta.underlying, p.meta.direction) === g.key,
+      ),
+      g.color,
+    ),
+  );
+  return {
+    total,
+    lev,
+    inv,
+    by_group,
+    note:
+      "좌수 프록시(AUM÷종가)의 피크 대비 감소율. AUM 하락에는 가격효과가 섞이므로 좌수 기준을 우선합니다. 헤지펀드 식별·공식 설정/해지는 포함하지 않습니다.",
+  };
+}
+
 async function buildBoard(): Promise<SingleStockLevBoard> {
   const codes = SINGLE_STOCK_LEV_ETFS.map((e) => e.code);
   const metaByCode = Object.fromEntries(
@@ -419,12 +483,10 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 
   const perCode = await Promise.all(
     SINGLE_STOCK_LEV_ETFS.map(async (meta) => {
-      const [siseDays, aumMap, trend, daily, minute, dealer] = await Promise.all([
+      const [siseDays, aumMap, trend, dealer] = await Promise.all([
         settled(fetchSiseDayPoints(meta.code), [] as EtfDayPoint[]),
         settled(fetchAumByDate(meta.code), {} as Record<string, number>),
         settled(fetchInvestorTrend(meta.code), [] as LevInvestorDay[]),
-        settled(fetchStockDaily(meta.code, 80), [] as KrCandle[]),
-        settled(fetchStockMinute(meta.code), [] as KrCandle[]),
         settled(fetchDealer(meta.code), {
           code: meta.code,
           sell: [],
@@ -484,7 +546,6 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
         days,
         product,
         trend,
-        chart: { code: meta.code, minute, daily } satisfies LevChartBundle,
         dealer,
       };
     }),
@@ -539,11 +600,9 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 
   const products = perCode.map((p) => p.product).sort((a, b) => b.value - a.value);
   const investors_by_code: Record<string, LevInvestorDay[]> = {};
-  const charts_by_code: Record<string, LevChartBundle> = {};
   const dealers_by_code: Record<string, LevDealerBoard> = {};
   for (const p of perCode) {
     investors_by_code[p.meta.code] = p.trend;
-    charts_by_code[p.meta.code] = p.chart;
     dealers_by_code[p.meta.code] = p.dealer;
   }
 
@@ -555,6 +614,8 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
     investors_by_group[g.key] = sumInvestorDays(seriesList);
   }
 
+  const deleveraging = buildDeleveraging(perCode);
+
   return {
     listing_date: SINGLE_STOCK_LEV_LISTING_DATE,
     groups,
@@ -562,20 +623,20 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
     investors_by_code,
     investors_by_group,
     dealers_by_code,
-    charts_by_code,
+    deleveraging,
     total_aum_eok: groups.reduce((s, g) => s + g.latest_aum_eok, 0),
     total_value_eok: groups.reduce((s, g) => s + g.latest_value_eok, 0),
     total_value_cum_eok: groups.reduce((s, g) => s + g.value_cum_eok, 0),
     as_of: asOf,
     note:
-      "16개 단일종목 레버리지·인버스 ETF. 유형 합산 AUM·거래대금 + 종목별 투자자 순매매·가격차트·거래원(네이버, 20분 지연).",
+      "16개 단일종목 레버리지·인버스 ETF. 유형 합산 AUM·거래대금 + 종목별 투자자 순매매·거래원(네이버, 20분 지연) + 좌수 피크 대비 청산 프록시.",
   };
 }
 
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v2",
+      "kr-leverage:v3",
       170_000,
       600_000,
       buildBoard,

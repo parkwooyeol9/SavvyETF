@@ -134,10 +134,43 @@ export type LevDealerBoard = {
   note?: string;
 };
 
-export type LevChartBundle = {
-  code: string;
-  minute: KrCandle[];
-  daily: KrCandle[];
+/** Peak-to-current size shrink proxy for single-stock lev/inv ETFs. */
+export type LevDeleverPoint = {
+  date: string;
+  aum_eok: number;
+  /** Sum of AUM/close across members — share-count proxy */
+  units_proxy: number;
+  /** 100 × (1 − units / peak_units), clipped [0, 100] */
+  progress_pct: number;
+  /** 100 × units / peak_units */
+  remaining_pct: number;
+};
+
+export type LevDeleverBucket = {
+  key: string;
+  label: string;
+  color?: string;
+  peak_aum_eok: number;
+  peak_aum_date: string;
+  current_aum_eok: number;
+  /** AUM drawdown from peak (price + redemption mixed) */
+  aum_drawdown_pct: number;
+  peak_units: number;
+  peak_units_date: string;
+  current_units: number;
+  /** Primary liquidation proxy from share-count peak */
+  progress_pct: number;
+  remaining_pct: number;
+  series: LevDeleverPoint[];
+};
+
+export type LevDeleveraging = {
+  /** Overall + direction + 4 type buckets */
+  total: LevDeleverBucket;
+  lev: LevDeleverBucket;
+  inv: LevDeleverBucket;
+  by_group: LevDeleverBucket[];
+  note: string;
 };
 
 export type SingleStockLevBoard = {
@@ -151,8 +184,8 @@ export type SingleStockLevBoard = {
   investors_by_group?: Record<LevGroupKey, LevInvestorDay[]>;
   /** Broker ranking keyed by product code (may be empty if Naver delays) */
   dealers_by_code?: Record<string, LevDealerBoard>;
-  /** Price/volume candles for period charts */
-  charts_by_code?: Record<string, LevChartBundle>;
+  /** Peak AUM / units shrink proxy (not hedge-fund identity) */
+  deleveraging?: LevDeleveraging;
   total_aum_eok: number;
   total_value_eok: number;
   total_value_cum_eok: number;

@@ -19,14 +19,13 @@ import {
   fmtPct,
   fmtShares,
   fmtValueEok,
-  type LevChartBundle,
+  type LevDeleverBucket,
   type LevInvestorDay,
   type SingleStockLevBoard,
   type SingleStockLevRow,
 } from "@/lib/krMarket";
 
-type Panel = "groups" | "products" | "investors" | "dealers" | "charts";
-type Period = "1d" | "5d" | "20d" | "60d";
+type Panel = "groups" | "products" | "investors" | "dealers";
 type UnderlyingFilter = "all" | "samsung" | "hynix";
 
 type ApiPayload = {
@@ -41,17 +40,39 @@ function toneClass(n?: number | null): string {
   return n > 0 ? "up" : "down";
 }
 
-function sliceDaily(daily: { time: string; close: number; volume?: number }[], period: Period) {
-  if (period === "1d") return daily.slice(-1);
-  const n = period === "5d" ? 5 : period === "20d" ? 20 : 60;
-  return daily.slice(-n);
+function ProgressBar({ pct, color }: { pct: number; color?: string }) {
+  const w = Math.max(0, Math.min(100, pct));
+  return (
+    <div className="lev-progress-track" aria-hidden>
+      <div
+        className="lev-progress-fill"
+        style={{ width: `${w}%`, background: color || "#38bdf8" }}
+      />
+    </div>
+  );
+}
+
+function DeleverKpi({ bucket }: { bucket: LevDeleverBucket }) {
+  return (
+    <div>
+      <span style={bucket.color ? { color: bucket.color } : undefined}>
+        {bucket.label}
+      </span>
+      <strong>{bucket.progress_pct.toFixed(0)}%</strong>
+      <em>
+        잔여 {bucket.remaining_pct.toFixed(0)}% · AUM{" "}
+        {fmtValueEok(bucket.current_aum_eok)} / 피크{" "}
+        {fmtValueEok(bucket.peak_aum_eok)}
+      </em>
+      <ProgressBar pct={bucket.progress_pct} color={bucket.color} />
+    </div>
+  );
 }
 
 export default function LeverageEtfTab() {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [panel, setPanel] = useState<Panel>("groups");
-  const [period, setPeriod] = useState<Period>("20d");
   const [filter, setFilter] = useState<UnderlyingFilter>("all");
   const [valueMode, setValueMode] = useState<"cum" | "daily">("cum");
   const [selectedCode, setSelectedCode] = useState<string>("");
@@ -142,27 +163,6 @@ export default function LeverageEtfTab() {
     [investorSeries],
   );
 
-  const chartBundle: LevChartBundle | null = useMemo(() => {
-    if (!board || !selected) return null;
-    return board.charts_by_code?.[selected.code] || null;
-  }, [board, selected]);
-
-  const priceChart = useMemo(() => {
-    if (!chartBundle) return [];
-    if (period === "1d") {
-      return chartBundle.minute.map((c) => ({
-        t: c.time.slice(11, 16),
-        close: c.close,
-        volume: c.volume ?? 0,
-      }));
-    }
-    return sliceDaily(chartBundle.daily, period).map((c) => ({
-      t: c.time.slice(5),
-      close: c.close,
-      volume: c.volume ?? 0,
-    }));
-  }, [chartBundle, period]);
-
   const dealer = selected
     ? board?.dealers_by_code?.[selected.code]
     : undefined;
@@ -187,6 +187,27 @@ export default function LeverageEtfTab() {
     return { sell, buy };
   }, [board?.dealers_by_code, products]);
 
+  const delever = board?.deleveraging;
+  const deleverChart = useMemo(() => {
+    if (!delever) return [];
+    const byDate = new Map<string, Record<string, number | string>>();
+    const seriesList: { key: string; points: LevDeleverBucket["series"] }[] = [
+      { key: "all", points: delever.total.series },
+      { key: "lev", points: delever.lev.series },
+      { key: "inv", points: delever.inv.series },
+    ];
+    for (const { key, points } of seriesList) {
+      for (const pt of points) {
+        const row = byDate.get(pt.date) || { t: pt.date.slice(5) };
+        row[key] = Math.round(pt.progress_pct * 10) / 10;
+        byDate.set(pt.date, row);
+      }
+    }
+    return [...byDate.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, row]) => row);
+  }, [delever]);
+
   return (
     <div className="kr-tab lev-tab">
       <div className="kr-hero">
@@ -194,7 +215,7 @@ export default function LeverageEtfTab() {
           <h2 className="kr-hero-title">레버리지 ETF</h2>
           <p className="kr-hero-sub">
             삼성전자·SK하이닉스 단일종목 레버리지/인버스 16종 · 유형 합산 · 투자자
-            순매매 · 거래원 · 기간 차트
+            순매매 · 거래원 · 청산 프록시
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -218,7 +239,6 @@ export default function LeverageEtfTab() {
                 ["products", "종목 테이블"],
                 ["investors", "투자자"],
                 ["dealers", "거래원"],
-                ["charts", "라이브 차트"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -644,81 +664,115 @@ export default function LeverageEtfTab() {
             </article>
           ) : null}
 
-          {panel === "charts" && selected ? (
-            <article className="kr-card">
+          {delever ? (
+            <article className="kr-card lev-delever-card">
               <div className="kr-card-head">
                 <div>
-                  <h3 className="kr-card-title">라이브 차트 · {selected.name}</h3>
-                  <p className="kr-card-sub">당일 분봉 / 5·20·60일 일봉 · 종가·거래량</p>
+                  <h3 className="kr-card-title">디레버리징 프록시 · 청산 진행도</h3>
+                  <p className="kr-card-sub">{delever.note}</p>
                 </div>
-                <select
-                  className="lev-select"
-                  value={selected.code}
-                  onChange={(e) => setSelectedCode(e.target.value)}
-                >
-                  {products.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      {p.group_label} · {p.name}
-                    </option>
-                  ))}
-                </select>
               </div>
-              <div className="seg">
-                {(
-                  [
-                    ["1d", "당일"],
-                    ["5d", "5일"],
-                    ["20d", "20일"],
-                    ["60d", "60일"],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={period === id ? "active" : ""}
-                    onClick={() => setPeriod(id)}
-                  >
-                    {label}
-                  </button>
+
+              <div className="kr-flow-summary">
+                <div>
+                  <span>전체 청산 진행도</span>
+                  <strong>{delever.total.progress_pct.toFixed(0)}%</strong>
+                  <em>
+                    잔여 좌수 {delever.total.remaining_pct.toFixed(0)}% · 피크{" "}
+                    {delever.total.peak_units_date}
+                  </em>
+                  <ProgressBar pct={delever.total.progress_pct} />
+                </div>
+                <div>
+                  <span>AUM 피크 대비 하락</span>
+                  <strong>{delever.total.aum_drawdown_pct.toFixed(0)}%</strong>
+                  <em>
+                    {fmtValueEok(delever.total.current_aum_eok)} / 피크{" "}
+                    {fmtValueEok(delever.total.peak_aum_eok)} (
+                    {delever.total.peak_aum_date})
+                  </em>
+                </div>
+                <DeleverKpi bucket={delever.lev} />
+                <DeleverKpi bucket={delever.inv} />
+              </div>
+
+              <div className="kr-flow-summary kr-lev-group-summary">
+                {delever.by_group.map((g) => (
+                  <DeleverKpi key={g.key} bucket={g} />
                 ))}
               </div>
-              <div className="kr-chart" style={{ marginTop: "0.75rem" }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={priceChart}>
+
+              <h4 className="kr-mini-title">청산 진행도 추이 (좌수 피크 대비)</h4>
+              <div className="kr-chart">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={deleverChart}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#243044" />
                     <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
                     <YAxis
-                      yAxisId="price"
                       tick={{ fill: "#94a3b8", fontSize: 11 }}
-                      width={56}
-                      domain={["auto", "auto"]}
-                    />
-                    <YAxis
-                      yAxisId="vol"
-                      orientation="right"
-                      tick={{ fill: "#94a3b8", fontSize: 11 }}
-                      width={48}
+                      width={40}
+                      domain={[0, 100]}
+                      unit="%"
                     />
                     <Tooltip />
                     <Legend />
-                    <Bar
-                      yAxisId="vol"
-                      dataKey="volume"
-                      name="거래량"
-                      fill="#475569"
-                      opacity={0.35}
+                    <Line
+                      type="monotone"
+                      dataKey="all"
+                      name="전체"
+                      stroke="#e2e8f0"
+                      dot={false}
+                      strokeWidth={2.5}
                     />
                     <Line
-                      yAxisId="price"
                       type="monotone"
-                      dataKey="close"
-                      name="종가"
-                      stroke="#38bdf8"
+                      dataKey="lev"
+                      name="레버리지"
+                      stroke="#3b82f6"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="inv"
+                      name="인버스"
+                      stroke="#f59e0b"
                       dot={false}
                       strokeWidth={2}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
+              </div>
+
+              <div className="table-wrap" style={{ marginTop: "1rem" }}>
+                <table className="kr-table">
+                  <thead>
+                    <tr>
+                      <th>구분</th>
+                      <th className="num">진행도</th>
+                      <th className="num">잔여</th>
+                      <th className="num">현재 AUM</th>
+                      <th className="num">피크 AUM</th>
+                      <th>좌수 피크일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[delever.total, delever.lev, delever.inv, ...delever.by_group].map(
+                      (b) => (
+                        <tr key={b.key}>
+                          <td style={b.color ? { color: b.color } : undefined}>
+                            {b.label}
+                          </td>
+                          <td className="num">{b.progress_pct.toFixed(1)}%</td>
+                          <td className="num">{b.remaining_pct.toFixed(1)}%</td>
+                          <td className="num">{fmtValueEok(b.current_aum_eok)}</td>
+                          <td className="num">{fmtValueEok(b.peak_aum_eok)}</td>
+                          <td>{b.peak_units_date}</td>
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
               </div>
             </article>
           ) : null}
