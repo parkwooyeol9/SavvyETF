@@ -244,11 +244,16 @@ export type KrIndexBoard = {
   technicals: KrTechnicals;
 };
 
+import type { KrShortCreditBoard } from "./krShortCredit";
+
 export type KrMarketPayload = {
   ok: boolean;
   error?: string;
   generated_at?: string;
   note?: string;
+  /** KOSPI composite index (Naver KOSPI). */
+  kospi?: KrIndexBoard;
+  /** @deprecated prefer kospi — mirrored for older clients */
   kospi200?: KrIndexBoard;
   kosdaq?: KrIndexBoard;
   kosdaq150?: {
@@ -268,6 +273,7 @@ export type KrMarketPayload = {
     latest?: KrCreditRow | null;
     credit_ratio_proxy?: number | null;
   };
+  short_credit?: KrShortCreditBoard;
   single_stock_lev?: SingleStockLevBoard;
 };
 

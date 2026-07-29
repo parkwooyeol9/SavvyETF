@@ -18,6 +18,7 @@ import {
   type LevGroupSeries,
   type SingleStockLevBoard,
 } from "@/lib/krMarket";
+import { fetchKrShortCreditBoard } from "@/lib/krxShortFetch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -694,11 +695,12 @@ export async function GET() {
       kq150Daily,
       kq150Quote,
       singleStockLev,
+      shortCredit,
     ] = await Promise.all([
-      settled(fetchRealtimeQuotes(["KPI200", "KOSDAQ", "KOSPI"]), {}),
-      settled(fetchDailyPrices("KPI200", 60), [] as KrCandle[]),
+      settled(fetchRealtimeQuotes(["KOSPI", "KOSDAQ", "KPI200"]), {}),
+      settled(fetchDailyPrices("KOSPI", 60), [] as KrCandle[]),
       settled(fetchDailyPrices("KOSDAQ", 60), [] as KrCandle[]),
-      settled(fetchIntradayMinutes("KPI200"), [] as KrCandle[]),
+      settled(fetchIntradayMinutes("KOSPI"), [] as KrCandle[]),
       settled(fetchIntradayMinutes("KOSDAQ"), [] as KrCandle[]),
       settled(fetchFlows("01"), { intraday: [], daily: [] }),
       settled(fetchFlows("02"), { intraday: [], daily: [] }),
@@ -716,16 +718,23 @@ export async function GET() {
         total_value_eok: 0,
         total_value_cum_eok: 0,
       } satisfies SingleStockLevBoard),
+      settled(fetchKrShortCreditBoard(), {
+        source_note: "",
+        unavailable: ["공매도 수집 실패"],
+        market_balance: [],
+        market_balance_history: { KOSPI: [], KOSDAQ: [] },
+        stocks: [],
+      }),
     ]);
 
-    const kpiQuote = rt.KPI200
+    const kpiQuote = rt.KOSPI
       ? {
-          code: "KPI200",
-          name: "코스피200",
-          last: rt.KPI200.last,
-          change: rt.KPI200.change,
-          change_pct: rt.KPI200.change_pct,
-          market_status: rt.KPI200.status,
+          code: "KOSPI",
+          name: "코스피",
+          last: rt.KOSPI.last,
+          change: rt.KOSPI.change,
+          change_pct: rt.KOSPI.change_pct,
+          market_status: rt.KOSPI.status,
           open: kpiDaily[kpiDaily.length - 1]?.open,
           high: kpiDaily[kpiDaily.length - 1]?.high,
           low: kpiDaily[kpiDaily.length - 1]?.low,
@@ -735,10 +744,10 @@ export async function GET() {
               : undefined,
         }
       : await settled(
-          quoteFromDaily("KPI200", "코스피200", kpiDaily),
+          quoteFromDaily("KOSPI", "코스피", kpiDaily),
           {
-            code: "KPI200",
-            name: "코스피200",
+            code: "KOSPI",
+            name: "코스피",
             last: kpiDaily[kpiDaily.length - 1]?.close ?? 0,
             change: 0,
             change_pct: 0,
@@ -770,9 +779,9 @@ export async function GET() {
           },
         );
 
-    const kospi200 = buildIndexBoard(
-      "KPI200",
-      "코스피200",
+    const kospi = buildIndexBoard(
+      "KOSPI",
+      "코스피",
       kpiQuote,
       kpiDaily,
       kpiIntra,
@@ -789,8 +798,9 @@ export async function GET() {
       ok: true,
       generated_at: new Date().toISOString(),
       note:
-        "코스닥100 지수는 코스닥150으로 개편되어, 시황·수급은 코스닥 종합 기준입니다. 대형주 추세는 KODEX 코스닥150으로 참고하세요.",
-      kospi200,
+        "지수: 코스피·코스닥 종합(Naver). 공매도: KRX 순보유잔고·거래비중. 신용잔고: 네이버 증시자금. 대차잔고는 공개 API 없어 제외.",
+      kospi,
+      kospi200: kospi,
       kosdaq,
       kosdaq150: kq150Quote
         ? {
@@ -811,6 +821,7 @@ export async function GET() {
         latest: credit.latest,
         credit_ratio_proxy: credit.credit_ratio_proxy,
       },
+      short_credit: shortCredit,
       single_stock_lev: singleStockLev,
     };
 
