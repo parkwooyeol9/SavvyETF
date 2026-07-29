@@ -1875,6 +1875,165 @@ a.geo-choke-hl:hover {
   }
 }
 
+.esg-reg-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.esg-reg-score-card,
+.esg-reg-event {
+  border: 1px solid #2b3648;
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  background: rgba(12, 18, 28, 0.55);
+}
+
+.esg-reg-score-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.esg-reg-score-card h4,
+.esg-reg-event h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.esg-reg-score {
+  font-size: 1.45rem;
+  font-weight: 750;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.esg-reg-note,
+.esg-reg-summary,
+.esg-reg-rationale {
+  margin: 0.35rem 0;
+  font-size: 0.82rem;
+  color: #c5d0dc;
+  line-height: 1.4;
+}
+
+.esg-reg-rationale {
+  color: #9db0c7;
+}
+
+.esg-reg-meta {
+  font-size: 0.72rem;
+  color: #8b9bb0;
+}
+
+.esg-reg-en {
+  color: #8b9bb0;
+  font-weight: 500;
+  font-size: 0.82em;
+}
+
+.esg-reg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+  color: #c5d0dc;
+}
+
+.esg-reg-chip em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.esg-reg-chip.status-effective,
+.esg-reg-chip.status-adopted {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.esg-reg-chip.status-proposal,
+.esg-reg-chip.status-consultation {
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+.esg-reg-chip.status-amended {
+  border-color: #a855f7;
+  color: #e9d5ff;
+}
+
+.esg-reg-chip.status-delayed,
+.esg-reg-chip.status-withdrawn,
+.esg-reg-chip.status-court_challenged {
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.esg-reg-evidence {
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.esg-reg-evidence-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.esg-reg-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.esg-reg-filters label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: #9db0c7;
+}
+
+.esg-reg-filters select {
+  background: #0f1724;
+  color: #e8eef5;
+  border: 1px solid #2b3648;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+}
+
+.esg-reg-event-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.esg-reg-event-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.esg-reg-title {
+  font-size: 0.86rem;
+}
+
+@media (max-width: 900px) {
+  .esg-reg-score-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .ai-gov-panels,
   .ai-gov-brief-grid {
