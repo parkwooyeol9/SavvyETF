@@ -13,6 +13,20 @@ Tabs:
 시황 탭은 Render Telegram 봇이 **Cloudflare R2**(권장) 또는 `/api/ingest`로 푸시합니다.
 메인 히트맵·시뮬레이션·why-ETF는 Vercel이 Yahoo Finance로 직접 계산합니다.
 
+### Brief storage (important)
+
+Each brief **slot** is its own R2 object so publishing one snapshot cannot erase another:
+
+```
+briefs/{tab}/slots/{slot}.json
+briefs/{tab}/history/{slot}/{ts}.json   # last 5 versions
+briefs/images/{tab}/{slot}/{id}.png
+briefs/{tab}.json                      # legacy monolith (read/migrate only)
+```
+
+Prefer deploying the webapp from **git `main`** (or a clean checkout). Avoid ad-hoc
+`vercel --prod` from a stale local tree — that can ship UI without newer tabs.
+
 ## 1. Deploy to Vercel
 
 ```bash

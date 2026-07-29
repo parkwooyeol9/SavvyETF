@@ -204,6 +204,12 @@ a.tab-btn {
   vertical-align: middle;
 }
 
+.slot-badge.stale {
+  border-color: color-mix(in srgb, #d97706 55%, var(--border));
+  color: #fbbf24;
+  background: color-mix(in srgb, #d97706 12%, transparent);
+}
+
 .html-frame {
   width: 100%;
   min-height: 480px;

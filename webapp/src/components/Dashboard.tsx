@@ -60,11 +60,21 @@ function formatWhen(value?: string | null): string {
   return d.toLocaleString("ko-KR", { hour12: false });
 }
 
+function slotAgeDays(slot: BriefSlot): number | null {
+  const raw = slot.received_at || slot.generated_at;
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+}
+
 function SlotView({ slot }: { slot: BriefSlot }) {
   const srcDoc = useMemo(() => {
     if (!slot.html) return null;
     return prepareBriefSrcDoc(slot.html);
   }, [slot.html]);
+  const ageDays = slotAgeDays(slot);
+  const stale = ageDays != null && ageDays >= 3;
 
   return (
     <article className="slot-card">
@@ -72,6 +82,11 @@ function SlotView({ slot }: { slot: BriefSlot }) {
         <h3 className="slot-title">
           {slot.title}
           <span className="slot-badge">{slot.slot}</span>
+          {stale ? (
+            <span className="slot-badge stale" title="3일 이상 갱신되지 않음">
+              오래됨 {Math.floor(ageDays!)}일
+            </span>
+          ) : null}
         </h3>
         <div className="slot-time">생성 {formatWhen(slot.generated_at)}</div>
       </div>

@@ -1,12 +1,11 @@
 """Publish brief snapshots from the Telegram bot to durable remote + local store.
 
 Order:
-  1. Always write a local Render copy (homepage fallback after redeploys need reseed).
-  2. If Cloudflare R2 is configured, write JSON + PNGs there (primary durable store)
-     with stable image keys and orphan PNG GC.
+  1. Always write a local Render copy (per-slot files under data/web_briefs/).
+  2. If Cloudflare R2 is configured, write that slot object only
+     (briefs/{tab}/slots/{slot}.json) — siblings are never rewritten.
   3. Only if R2 failed/unavailable and WEB_PUBLISH_URL + WEB_INGEST_SECRET are set,
-     POST to Vercel /api/ingest as a fallback (avoids a second R2 read-modify-write
-     that can wipe sibling slots on a transient read failure).
+     POST to Vercel /api/ingest as a fallback.
 
 Local or R2 success is enough for the dashboard; Vercel ingest failures are non-fatal.
 """

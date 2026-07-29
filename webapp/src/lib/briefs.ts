@@ -5,8 +5,9 @@ import {
   gcSlotImageOrphans,
   publicUrlForKey,
   r2Configured,
+  r2DeleteKeys,
   r2GetObjectText,
-  r2GetObjectTextWithMeta,
+  r2ListKeys,
   r2PutObject,
 } from "./r2";
 import {
@@ -22,9 +23,28 @@ import {
 } from "./types";
 import { sanitizeBriefHtml, sanitizeDocumentHtml } from "./sanitizeHtml";
 
-function storePath(tab: TabId): string {
+/** Legacy monolith — read/migrate only. */
+function legacyStorePath(tab: TabId): string {
   return `briefs/${tab}.json`;
 }
+
+function slotStorePath(tab: TabId, slot: string): string {
+  return `briefs/${tab}/slots/${safeKeyPart(slot, "slot")}.json`;
+}
+
+function slotsPrefix(tab: TabId): string {
+  return `briefs/${tab}/slots/`;
+}
+
+function historyStorePath(tab: TabId, slot: string, ts: string): string {
+  return `briefs/${tab}/history/${safeKeyPart(slot, "slot")}/${safeKeyPart(ts, "t")}.json`;
+}
+
+function historyPrefix(tab: TabId, slot: string): string {
+  return `briefs/${tab}/history/${safeKeyPart(slot, "slot")}/`;
+}
+
+const HISTORY_KEEP = 5;
 
 function safeKeyPart(value: string, fallback: string): string {
   const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
@@ -64,23 +84,53 @@ export function remoteStoreConfigured(): boolean {
 
 async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
   try {
-    const text = await r2GetObjectText(storePath(tab));
-    if (!text) return { tab: emptyTab(tab) };
-    const parsed = JSON.parse(text) as TabBriefs;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.slots !== "object") {
-      // Object exists but is unusable — fail closed so upsert cannot wipe siblings.
-      return {
-        tab: emptyTab(tab),
-        error: `r2: corrupt briefs/${tab}.json (missing slots object)`,
-      };
-    }
-    return {
-      tab: {
-        tab,
-        updated_at: parsed.updated_at ?? null,
-        slots: parsed.slots ?? {},
-      },
+    const slots: Record<string, BriefSlot> = {};
+    let updatedAt: string | null = null;
+    const bumpUpdated = (ts?: string | null) => {
+      if (!ts) return;
+      if (!updatedAt || ts > updatedAt) updatedAt = ts;
     };
+
+    const keys = await r2ListKeys(slotsPrefix(tab));
+    await Promise.all(
+      keys
+        .filter((key) => key.endsWith(".json"))
+        .map(async (key) => {
+          const name = key.split("/").pop()?.replace(/\.json$/, "") || "";
+          if (!name) return;
+          try {
+            const text = await r2GetObjectText(key);
+            if (!text) return;
+            const parsed = JSON.parse(text) as BriefSlot;
+            if (!parsed?.title || !parsed?.generated_at) return;
+            const slotKey = safeKeyPart(String(parsed.slot || name), name);
+            slots[slotKey] = { ...parsed, slot: slotKey };
+            bumpUpdated(parsed.received_at);
+          } catch (exc) {
+            console.warn(`r2 skip corrupt slot ${key}:`, exc);
+          }
+        }),
+    );
+
+    // Legacy monolith fills only missing slots (per-slot wins).
+    try {
+      const legacyText = await r2GetObjectText(legacyStorePath(tab));
+      if (legacyText) {
+        const parsed = JSON.parse(legacyText) as TabBriefs;
+        if (parsed && typeof parsed.slots === "object") {
+          for (const [key, raw] of Object.entries(parsed.slots || {})) {
+            const slotKey = safeKeyPart(String(raw?.slot || key), key);
+            if (slots[slotKey] || !raw?.title || !raw?.generated_at) continue;
+            slots[slotKey] = { ...raw, slot: slotKey };
+          }
+          bumpUpdated(parsed.updated_at);
+        }
+      }
+    } catch (exc) {
+      console.warn(`r2 legacy read warning (${tab}):`, exc);
+    }
+
+    return { tab: { tab, updated_at: updatedAt, slots } };
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
     return { tab: emptyTab(tab), error: `r2: ${message}` };
@@ -92,7 +142,7 @@ async function readTabFromBlob(tab: TabId): Promise<TabReadResult> {
     return { tab: emptyTab(tab) };
   }
   try {
-    const meta = await head(storePath(tab));
+    const meta = await head(legacyStorePath(tab));
     if (!meta?.url) return { tab: emptyTab(tab) };
     const uploadedMs = meta.uploadedAt
       ? new Date(meta.uploadedAt).getTime()
@@ -465,14 +515,13 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     throw new Error("Missing generated_at or title");
   }
 
-  // Upload images once; JSON merge retries must not re-upload.
   const uploadedImages = await uploadImages(body.tab, slotKey, body.images);
   const sections = (body.sections || []).map((section) => ({
     ...section,
     html_or_text: sanitizeBriefHtml(section.html_or_text || ""),
   }));
-
-  const buildSlot = (now: string): BriefSlot => ({
+  const now = new Date().toISOString();
+  const slot: BriefSlot = {
     slot: slotKey,
     generated_at: body.generated_at,
     title: body.title.slice(0, 200),
@@ -481,132 +530,85 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     images: uploadedImages,
     meta: body.meta ?? {},
     received_at: now,
+  };
+  const payload = JSON.stringify(slot, null, 2);
+
+  if (r2Configured()) {
+    // One object per slot — siblings are never rewritten.
+    await r2PutObject(
+      slotStorePath(body.tab, slotKey),
+      payload,
+      "application/json",
+      "public, max-age=30",
+    );
+
+    // Best-effort history + GC.
+    try {
+      const ts = now.replace(/[:.]/g, "").replace(/\+00:00$/, "Z");
+      await r2PutObject(
+        historyStorePath(body.tab, slotKey, ts),
+        payload,
+        "application/json",
+        "private, max-age=0",
+      );
+      const histKeys = (await r2ListKeys(historyPrefix(body.tab, slotKey)))
+        .filter((k) => k.endsWith(".json"))
+        .sort();
+      if (histKeys.length > HISTORY_KEEP) {
+        await r2DeleteKeys(histKeys.slice(0, histKeys.length - HISTORY_KEEP));
+      }
+    } catch (exc) {
+      console.warn(`r2 history warning (${body.tab}/${slotKey}):`, exc);
+    }
+
+    // Lazy-migrate any remaining legacy slots so reads stay complete.
+    try {
+      const legacyText = await r2GetObjectText(legacyStorePath(body.tab));
+      if (legacyText) {
+        const legacy = JSON.parse(legacyText) as TabBriefs;
+        for (const [key, raw] of Object.entries(legacy.slots || {})) {
+          const sk = safeKeyPart(String(raw?.slot || key), key);
+          if (!sk || sk === slotKey) continue;
+          const dest = slotStorePath(body.tab, sk);
+          const existing = await r2GetObjectText(dest);
+          if (existing || !raw?.title || !raw?.generated_at) continue;
+          await r2PutObject(
+            dest,
+            JSON.stringify({ ...raw, slot: sk }, null, 2),
+            "application/json",
+            "public, max-age=30",
+          );
+        }
+      }
+    } catch (exc) {
+      console.warn(`r2 legacy migrate warning (${body.tab}):`, exc);
+    }
+
+    const assembled = await readTabFromR2(body.tab);
+    if (assembled.error) {
+      // Slot write succeeded; return at least this slot.
+      return { tab: body.tab, updated_at: now, slots: { [slotKey]: slot } };
+    }
+    return assembled.tab;
+  }
+
+  // Legacy Blob: still monolithic (rarely used). Fail closed on read errors.
+  const read = await readTabFromBlob(body.tab);
+  if (read.error) {
+    throw new Error(
+      `Refusing upsert for ${body.tab}/${slotKey}: cannot read existing briefs (${read.error})`,
+    );
+  }
+  const next: TabBriefs = {
+    tab: body.tab,
+    updated_at: now,
+    slots: { ...read.tab.slots, [slotKey]: slot },
+  };
+  await put(legacyStorePath(body.tab), JSON.stringify(next, null, 2), {
+    access: "public",
+    contentType: "application/json",
+    addRandomSuffix: false,
+    allowOverwrite: true,
   });
-
-  if (!r2Configured()) {
-    const read = await readTab(body.tab);
-    if (read.error) {
-      throw new Error(
-        `Refusing upsert for ${body.tab}/${slotKey}: cannot read existing briefs (${read.error})`,
-      );
-    }
-    const now = new Date().toISOString();
-    const next: TabBriefs = {
-      tab: body.tab,
-      updated_at: now,
-      slots: { ...read.tab.slots, [slotKey]: buildSlot(now) },
-    };
-    await put(storePath(body.tab), JSON.stringify(next, null, 2), {
-      access: "public",
-      contentType: "application/json",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return next;
-  }
-
-  const key = storePath(body.tab);
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    let text: string | null;
-    let etag: string | null;
-    try {
-      ({ text, etag } = await r2GetObjectTextWithMeta(key));
-    } catch (exc) {
-      throw new Error(
-        `Refusing upsert for ${body.tab}/${slotKey}: cannot read existing briefs (${
-          exc instanceof Error ? exc.message : String(exc)
-        })`,
-      );
-    }
-
-    let currentSlots: TabBriefs["slots"] = {};
-    if (text) {
-      let parsed: TabBriefs;
-      try {
-        parsed = JSON.parse(text) as TabBriefs;
-      } catch (exc) {
-        throw new Error(
-          `Refusing upsert for ${body.tab}/${slotKey}: corrupt JSON (${
-            exc instanceof Error ? exc.message : String(exc)
-          })`,
-        );
-      }
-      if (!parsed || typeof parsed !== "object" || typeof parsed.slots !== "object") {
-        throw new Error(
-          `Refusing upsert for ${body.tab}/${slotKey}: corrupt briefs (missing slots object)`,
-        );
-      }
-      currentSlots = parsed.slots ?? {};
-    }
-    const priorKeys = new Set(Object.keys(currentSlots));
-    const now = new Date().toISOString();
-    const next: TabBriefs = {
-      tab: body.tab,
-      updated_at: now,
-      slots: { ...currentSlots, [slotKey]: buildSlot(now) },
-    };
-    const payload = JSON.stringify(next, null, 2);
-
-    try {
-      if (etag) {
-        await r2PutObject(key, payload, "application/json", "public, max-age=30", {
-          ifMatch: etag,
-        });
-      } else {
-        await r2PutObject(key, payload, "application/json", "public, max-age=30", {
-          ifNoneMatch: "*",
-        });
-      }
-    } catch (exc) {
-      const msg = exc instanceof Error ? exc.message : String(exc);
-      const name = exc instanceof Error ? exc.name : "";
-      if (
-        name === "PreconditionFailed" ||
-        /PreconditionFailed|412|IfMatch|IfNoneMatch|ConditionalRequestConflict/i.test(
-          msg,
-        )
-      ) {
-        lastError = exc;
-        continue;
-      }
-      if (/InvalidArgument|NotImplemented/i.test(msg)) {
-        await r2PutObject(key, payload, "application/json", "public, max-age=30");
-      } else {
-        throw exc;
-      }
-    }
-
-    const verify = await r2GetObjectTextWithMeta(key);
-    if (!verify.text) {
-      lastError = new Error("post-write verify missing object");
-      continue;
-    }
-    try {
-      const verified = JSON.parse(verify.text) as TabBriefs;
-      const vslots = verified?.slots || {};
-      if (!vslots[slotKey]) {
-        lastError = new Error("post-write verify missing own slot");
-        continue;
-      }
-      const lost = [...priorKeys].filter((k) => !(k in vslots));
-      if (lost.length) {
-        lastError = new Error(`post-write verify lost siblings ${lost.join(",")}`);
-        continue;
-      }
-      return {
-        tab: body.tab,
-        updated_at: verified.updated_at ?? now,
-        slots: vslots,
-      };
-    } catch (exc) {
-      lastError = exc;
-    }
-  }
-
-  throw new Error(
-    `R2 upsert conflict for ${body.tab}/${slotKey} after retries${
-      lastError instanceof Error ? `: ${lastError.message}` : ""
-    }`,
-  );
+  return next;
 }

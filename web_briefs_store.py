@@ -27,8 +27,16 @@ def _safe_part(value: str, fallback: str = "x") -> str:
     return (cleaned[:64] or fallback)
 
 
-def _tab_path(tab: str) -> Path:
+def _legacy_tab_path(tab: str) -> Path:
     return STORE_DIR / f"{_safe_part(tab)}.json"
+
+
+def _slots_dir(tab: str) -> Path:
+    return STORE_DIR / _safe_part(tab) / "slots"
+
+
+def _slot_path(tab: str, slot: str) -> Path:
+    return _slots_dir(tab) / f"{_safe_part(slot, 'slot')}.json"
 
 
 def _empty_tab(tab: str) -> dict[str, Any]:
@@ -43,28 +51,96 @@ def _public_base() -> str:
     ).rstrip("/")
 
 
-def _read_tab(tab: str) -> dict[str, Any]:
-    path = _tab_path(tab)
+def _normalize_slot(slot_key: str, raw: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    title = (raw.get("title") or slot_key or "").strip()
+    generated = (raw.get("generated_at") or raw.get("received_at") or "").strip()
+    if not title or not generated:
+        return None
+    out: dict[str, Any] = {
+        "slot": _safe_part(str(raw.get("slot") or slot_key), slot_key),
+        "generated_at": generated,
+        "title": title[:200],
+        "meta": raw.get("meta") if isinstance(raw.get("meta"), dict) else {},
+    }
+    if raw.get("received_at"):
+        out["received_at"] = raw["received_at"]
+    if raw.get("html"):
+        out["html"] = raw["html"]
+    if raw.get("sections"):
+        out["sections"] = raw["sections"]
+    if raw.get("images"):
+        out["images"] = raw["images"]
+    return out
+
+
+def _read_legacy_slots(tab: str) -> dict[str, Any]:
+    path = _legacy_tab_path(tab)
     if not path.is_file():
-        return _empty_tab(tab)
+        return {}
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return _empty_tab(tab)
+        return {}
     if not isinstance(parsed, dict) or not isinstance(parsed.get("slots"), dict):
-        return _empty_tab(tab)
-    return {
-        "tab": tab,
-        "updated_at": parsed.get("updated_at"),
-        "slots": parsed.get("slots") or {},
-    }
+        return {}
+    out: dict[str, Any] = {}
+    for key, raw in parsed["slots"].items():
+        slot = _normalize_slot(str(key), raw if isinstance(raw, dict) else {})
+        if slot:
+            out[slot["slot"]] = slot
+    return out
+
+
+def _read_tab(tab: str) -> dict[str, Any]:
+    """Assemble tab from per-slot files; fill gaps from legacy monolith."""
+    slots: dict[str, Any] = {}
+    updated_at: str | None = None
+    slots_dir = _slots_dir(tab)
+    if slots_dir.is_dir():
+        for path in sorted(slots_dir.glob("*.json")):
+            try:
+                parsed = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            slot = _normalize_slot(path.stem, parsed if isinstance(parsed, dict) else {})
+            if not slot:
+                continue
+            slots[slot["slot"]] = slot
+            recv = slot.get("received_at")
+            if isinstance(recv, str) and (updated_at is None or recv > updated_at):
+                updated_at = recv
+
+    for key, slot in _read_legacy_slots(tab).items():
+        if key in slots:
+            continue
+        slots[key] = slot
+        recv = slot.get("received_at")
+        if isinstance(recv, str) and (updated_at is None or recv > updated_at):
+            updated_at = recv
+
+    return {"tab": tab, "updated_at": updated_at, "slots": slots}
+
+
+def _write_slot(tab: str, slot_key: str, slot_payload: dict[str, Any]) -> None:
+    path = _slot_path(tab, slot_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(slot_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _write_tab(tab: str, payload: dict[str, Any]) -> None:
-    STORE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _tab_path(tab)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
+    """Compatibility: write each slot file (used by seed/replace paths)."""
+    slots = payload.get("slots") if isinstance(payload.get("slots"), dict) else {}
+    for key, raw in slots.items():
+        if not isinstance(raw, dict):
+            continue
+        slot = _normalize_slot(str(key), raw)
+        if slot:
+            _write_slot(tab, slot["slot"], slot)
 
 def _image_rel_path(tab: str, slot: str, image_id: str) -> Path:
     return (
@@ -143,7 +219,6 @@ def upsert_brief(
     if not (generated_at or "").strip():
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    current = _read_tab(tab)
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     uploaded = _save_images(tab, slot_key, images)
     # Prefer freshly saved local image URLs; keep plain URL images that are not
@@ -178,21 +253,17 @@ def upsert_brief(
     if uploaded:
         slot_payload["images"] = uploaded
 
-    next_tab = {
-        "tab": tab,
-        "updated_at": now,
-        "slots": {
-            **current.get("slots", {}),
-            slot_key: slot_payload,
-        },
-    }
-    _write_tab(tab, next_tab)
-    return next_tab
+    _write_slot(tab, slot_key, slot_payload)
+    # Return assembled tab (siblings untouched on disk).
+    return _read_tab(tab)
 
 
 
 def replace_tab(tab: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """Overwrite all slots for a tab (used by seed replace mode)."""
+    """Overwrite all slots for a tab (used by seed replace mode).
+
+    Writes per-slot files and removes slot files not present in the payload.
+    """
     if tab not in VALID_TABS:
         raise ValueError(f"Invalid tab: {tab}")
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -230,9 +301,20 @@ def replace_tab(tab: str, slots: dict[str, Any]) -> dict[str, Any]:
         if images:
             item["images"] = images
         cleaned[key] = item
-    payload = {"tab": tab, "updated_at": now if cleaned else None, "slots": cleaned}
-    _write_tab(tab, payload)
-    return payload
+        _write_slot(tab, key, item)
+
+    # Remove slot files not in the replace payload.
+    slots_dir = _slots_dir(tab)
+    if slots_dir.is_dir():
+        keep = set(cleaned.keys())
+        for path in slots_dir.glob("*.json"):
+            if path.stem not in keep:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+    return {"tab": tab, "updated_at": now if cleaned else None, "slots": cleaned}
 
 def load_all_briefs() -> dict[str, Any]:
     """Return {kr,us,etf,esg} tab payloads, seeding from on-disk HTML when empty."""

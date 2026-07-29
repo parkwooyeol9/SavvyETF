@@ -1,8 +1,12 @@
 """Cloudflare R2 (S3-compatible) brief store for the Telegram bot.
 
-Writes tab JSON + chart PNGs with stable keys and deletes orphan versioned
-PNGs under each slot prefix. Used as the durable remote store (Hobby Blob
-replacement) so Render redeploys / Blob blocks do not wipe the homepage.
+Layout (per-slot — one write cannot erase sibling slots):
+  briefs/{tab}/slots/{slot}.json
+  briefs/{tab}/history/{slot}/{ts}.json   (rolling backup, last N)
+  briefs/{tab}.json                      (legacy monolith — read/migrate only)
+
+Images:
+  briefs/images/{tab}/{slot}/{id}.png
 
 Env:
   R2_ACCOUNT_ID
@@ -25,6 +29,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 VALID_TABS = ("kr", "us", "etf", "esg")
+HISTORY_KEEP = 5
 
 
 def _ensure_dotenv() -> None:
@@ -71,8 +76,27 @@ def _bucket() -> str:
     return os.environ["R2_BUCKET_NAME"].strip()
 
 
-def _tab_key(tab: str) -> str:
+def _legacy_tab_key(tab: str) -> str:
     return f"briefs/{_safe_part(tab)}.json"
+
+
+def _slot_key(tab: str, slot: str) -> str:
+    return f"briefs/{_safe_part(tab)}/slots/{_safe_part(slot, 'slot')}.json"
+
+
+def _slots_prefix(tab: str) -> str:
+    return f"briefs/{_safe_part(tab)}/slots/"
+
+
+def _history_key(tab: str, slot: str, ts: str) -> str:
+    return (
+        f"briefs/{_safe_part(tab)}/history/"
+        f"{_safe_part(slot, 'slot')}/{_safe_part(ts, 't')}.json"
+    )
+
+
+def _history_prefix(tab: str, slot: str) -> str:
+    return f"briefs/{_safe_part(tab)}/history/{_safe_part(slot, 'slot')}/"
 
 
 def _image_key(tab: str, slot: str, image_id: str) -> str:
@@ -82,7 +106,7 @@ def _image_key(tab: str, slot: str, image_id: str) -> str:
     )
 
 
-def _slot_prefix(tab: str, slot: str) -> str:
+def _slot_image_prefix(tab: str, slot: str) -> str:
     return f"briefs/images/{_safe_part(tab)}/{_safe_part(slot, 'slot')}/"
 
 
@@ -95,7 +119,6 @@ def _media_base() -> str:
         return media
     publish = (os.environ.get("WEB_PUBLISH_URL") or "").strip()
     if publish:
-        # https://savvyetf.vercel.app/api/ingest → https://savvyetf.vercel.app
         from urllib.parse import urlparse
 
         parsed = urlparse(publish)
@@ -107,7 +130,6 @@ def _media_base() -> str:
         or ""
     ).strip().rstrip("/")
     if bot:
-        # Last resort: keep images on Render local API until webapp reads JSON
         return f"{bot}/api/web-briefs/images-proxy"
     return ""
 
@@ -119,39 +141,29 @@ def _public_url(key: str, version: int | str) -> str:
     if base.endswith("/api/briefs/media"):
         return f"{base}/{key}?v={version}"
     if "/api/web-briefs/images" in base:
-        # unused placeholder — prefer R2 public / Vercel media
         return f"{base.rstrip('/')}/{key}?v={version}"
     return f"{base}/{key}?v={version}"
 
 
-def _get_json(client, key: str) -> tuple[dict[str, Any] | None, str | None]:
-    """Return (parsed tab JSON or None if missing, etag).
-
-    Corrupt JSON / unexpected S3 errors raise — callers must not treat those
-    as an empty tab (that would wipe sibling brief slots on the next put).
-    """
+def _get_json(client, key: str) -> dict[str, Any] | None:
+    """Return parsed JSON object, or None if missing. Corrupt JSON raises."""
     try:
         obj = client.get_object(Bucket=_bucket(), Key=key)
     except client.exceptions.NoSuchKey:
-        return None, None
+        return None
     except Exception as exc:
         msg = str(exc)
         if "NoSuchKey" in msg or "404" in msg or "Not Found" in msg:
-            return None, None
+            return None
         raise
     raw = obj["Body"].read().decode("utf-8")
-    etag = obj.get("ETag")
-    if isinstance(etag, str):
-        etag = etag.strip('"')
-    else:
-        etag = None
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Corrupt brief JSON at {key}: {exc}") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError(f"Corrupt brief JSON at {key}: expected object")
-    return parsed, etag
+    return parsed
 
 
 def _put_bytes(
@@ -161,21 +173,14 @@ def _put_bytes(
     content_type: str,
     *,
     cache_control: str = "public, max-age=60",
-    if_match: str | None = None,
-    if_none_match: str | None = None,
 ) -> None:
-    kwargs: dict[str, Any] = {
-        "Bucket": _bucket(),
-        "Key": key,
-        "Body": body,
-        "ContentType": content_type,
-        "CacheControl": cache_control,
-    }
-    if if_match:
-        kwargs["IfMatch"] = if_match
-    if if_none_match:
-        kwargs["IfNoneMatch"] = if_none_match
-    client.put_object(**kwargs)
+    client.put_object(
+        Bucket=_bucket(),
+        Key=key,
+        Body=body,
+        ContentType=content_type,
+        CacheControl=cache_control,
+    )
 
 
 def _list_keys(client, prefix: str) -> list[str]:
@@ -196,9 +201,126 @@ def _list_keys(client, prefix: str) -> list[str]:
     return keys
 
 
+def _normalize_slot(slot_key: str, raw: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    title = (raw.get("title") or slot_key or "").strip()
+    generated = (raw.get("generated_at") or raw.get("received_at") or "").strip()
+    if not title or not generated:
+        return None
+    out: dict[str, Any] = {
+        "slot": _safe_part(str(raw.get("slot") or slot_key), slot_key),
+        "generated_at": generated,
+        "title": title[:200],
+        "meta": raw.get("meta") if isinstance(raw.get("meta"), dict) else {},
+    }
+    if raw.get("received_at"):
+        out["received_at"] = raw["received_at"]
+    if raw.get("html"):
+        out["html"] = raw["html"]
+    if raw.get("sections"):
+        out["sections"] = raw["sections"]
+    if raw.get("images"):
+        out["images"] = raw["images"]
+    return out
+
+
+def _assemble_tab(client, tab: str) -> dict[str, Any]:
+    """Load all slots for a tab (per-slot files + legacy monolith fallback)."""
+    slots: dict[str, Any] = {}
+    updated_at: str | None = None
+
+    for key in _list_keys(client, _slots_prefix(tab)):
+        if not key.endswith(".json"):
+            continue
+        name = key.rsplit("/", 1)[-1][:-5]
+        try:
+            parsed = _get_json(client, key)
+        except Exception as exc:
+            print(f"r2 skip corrupt slot {key}: {exc}")
+            continue
+        if not parsed:
+            continue
+        slot = _normalize_slot(name, parsed)
+        if not slot:
+            continue
+        slots[slot["slot"]] = slot
+        recv = slot.get("received_at")
+        if isinstance(recv, str) and (updated_at is None or recv > updated_at):
+            updated_at = recv
+
+    # Legacy monolith: fill only missing slots (per-slot wins).
+    try:
+        legacy = _get_json(client, _legacy_tab_key(tab))
+    except Exception as exc:
+        print(f"r2 legacy read warning ({tab}): {exc}")
+        legacy = None
+    if legacy and isinstance(legacy.get("slots"), dict):
+        for key, raw in legacy["slots"].items():
+            slot = _normalize_slot(str(key), raw if isinstance(raw, dict) else {})
+            if not slot:
+                continue
+            if slot["slot"] in slots:
+                continue
+            slots[slot["slot"]] = slot
+        leg_upd = legacy.get("updated_at")
+        if isinstance(leg_upd, str) and (updated_at is None or leg_upd > updated_at):
+            updated_at = leg_upd
+
+    return {"tab": tab, "updated_at": updated_at, "slots": slots}
+
+
+def _migrate_legacy_slots(client, tab: str) -> int:
+    """Split legacy tab JSON into per-slot objects (idempotent)."""
+    try:
+        legacy = _get_json(client, _legacy_tab_key(tab))
+    except Exception:
+        return 0
+    if not legacy or not isinstance(legacy.get("slots"), dict):
+        return 0
+    written = 0
+    for key, raw in legacy["slots"].items():
+        slot = _normalize_slot(str(key), raw if isinstance(raw, dict) else {})
+        if not slot:
+            continue
+        slot_key = slot["slot"]
+        dest = _slot_key(tab, slot_key)
+        existing = None
+        try:
+            existing = _get_json(client, dest)
+        except Exception:
+            pass
+        if existing:
+            continue
+        _put_bytes(
+            client,
+            dest,
+            json.dumps(slot, ensure_ascii=False, indent=2).encode("utf-8"),
+            "application/json",
+            cache_control="public, max-age=30",
+        )
+        written += 1
+    if written:
+        print(f"r2 migrated {written} legacy slot(s) for {tab}")
+    return written
+
+
+def _gc_history(client, tab: str, slot: str) -> None:
+    keys = sorted(_list_keys(client, _history_prefix(tab, slot)))
+    if len(keys) <= HISTORY_KEEP:
+        return
+    doomed = keys[: len(keys) - HISTORY_KEEP]
+    for i in range(0, len(doomed), 900):
+        chunk = doomed[i : i + 900]
+        client.delete_objects(
+            Bucket=_bucket(),
+            Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True},
+        )
+
+
 def gc_slot_image_orphans(client, tab: str, slot: str, keep_ids: set[str]) -> int:
-    """Delete objects under the slot prefix that are not stable `{id}.png` keepers."""
-    prefix = _slot_prefix(tab, slot)
+    """Delete objects under the slot image prefix that are not stable `{id}.png`."""
+    prefix = _slot_image_prefix(tab, slot)
     keep_names = {f"{_safe_part(i, 'chart')}.png" for i in keep_ids}
     doomed = []
     for key in _list_keys(client, prefix):
@@ -207,7 +329,6 @@ def gc_slot_image_orphans(client, tab: str, slot: str, keep_ids: set[str]) -> in
             doomed.append(key)
     if not doomed:
         return 0
-    # delete_objects max 1000
     deleted = 0
     for i in range(0, len(doomed), 900):
         chunk = doomed[i : i + 900]
@@ -281,11 +402,7 @@ def upsert_brief_r2(
     images: list[dict[str, Any]] | None = None,
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Write one brief slot to R2. Returns the updated tab payload.
-
-    Uses conditional put + verify/retry so concurrent slot upserts cannot
-    drop sibling slots (lost update on the shared tab JSON).
-    """
+    """Write one brief slot object. Sibling slots are never rewritten."""
     _ensure_dotenv()
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
@@ -300,118 +417,49 @@ def upsert_brief_r2(
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     client = _client()
+    try:
+        _migrate_legacy_slots(client, tab)
+    except Exception as exc:
+        print(f"r2 legacy migrate warning ({tab}): {exc}")
+
     uploaded = _save_images(client, tab, slot_key, images)
-    tab_key = _tab_key(tab)
-    last_err: Exception | None = None
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    slot_payload: dict[str, Any] = {
+        "slot": slot_key,
+        "generated_at": generated_at,
+        "title": (title or "")[:200],
+        "meta": meta or {},
+        "received_at": now,
+    }
+    if html:
+        slot_payload["html"] = html
+    if sections:
+        slot_payload["sections"] = sections
+    if uploaded:
+        slot_payload["images"] = uploaded
 
-    for attempt in range(8):
-        try:
-            current, etag = _get_json(client, tab_key)
-        except Exception as exc:
-            raise RuntimeError(
-                f"Refusing R2 upsert for {tab}/{slot_key}: cannot read existing briefs ({exc})"
-            ) from exc
-        if current is None:
-            current = {"tab": tab, "updated_at": None, "slots": {}}
-            etag = None
-        elif not isinstance(current.get("slots"), dict):
-            raise RuntimeError(
-                f"Refusing R2 upsert for {tab}/{slot_key}: existing slots field is corrupt"
-            )
-        prior_keys = set(current["slots"].keys())
-        slots = dict(current["slots"])
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-        slot_payload: dict[str, Any] = {
-            "slot": slot_key,
-            "generated_at": generated_at,
-            "title": (title or "")[:200],
-            "meta": meta or {},
-            "received_at": now,
-        }
-        if html:
-            slot_payload["html"] = html
-        if sections:
-            slot_payload["sections"] = sections
-        if uploaded:
-            slot_payload["images"] = uploaded
-
-        slots[slot_key] = slot_payload
-        next_tab = {"tab": tab, "updated_at": now, "slots": slots}
-        body = json.dumps(next_tab, ensure_ascii=False, indent=2).encode("utf-8")
-        try:
-            if etag:
-                _put_bytes(
-                    client,
-                    tab_key,
-                    body,
-                    "application/json",
-                    cache_control="public, max-age=30",
-                    if_match=etag,
-                )
-            else:
-                # Create-only when object was missing; if another writer created it,
-                # precondition fails and we retry with a fresh read.
-                _put_bytes(
-                    client,
-                    tab_key,
-                    body,
-                    "application/json",
-                    cache_control="public, max-age=30",
-                    if_none_match="*",
-                )
-        except Exception as exc:
-            msg = str(exc)
-            # R2/S3 precondition failures — concurrent writer won the race.
-            if any(
-                token in msg
-                for token in (
-                    "PreconditionFailed",
-                    "412",
-                    "IfMatch",
-                    "IfNoneMatch",
-                    "AtLeastOne",
-                )
-            ) or (
-                isinstance(getattr(exc, "response", None), dict)
-                and (exc.response.get("Error") or {}).get("Code")
-                in {"PreconditionFailed", "ConditionalRequestConflict"}
-            ):
-                last_err = exc
-                continue
-            # Some R2 setups ignore conditionals — fall through to verify.
-            if "InvalidArgument" in msg or "NotImplemented" in msg:
-                _put_bytes(
-                    client,
-                    tab_key,
-                    body,
-                    "application/json",
-                    cache_control="public, max-age=30",
-                )
-            else:
-                raise
-
-        # Verify siblings survived (covers backends that ignore IfMatch).
-        try:
-            verified, _ = _get_json(client, tab_key)
-        except Exception as exc:
-            last_err = exc
-            continue
-        if not verified or not isinstance(verified.get("slots"), dict):
-            last_err = RuntimeError("post-write verify missing slots")
-            continue
-        vslots = verified["slots"]
-        if slot_key not in vslots:
-            last_err = RuntimeError("post-write verify missing own slot")
-            continue
-        if not prior_keys.issubset(vslots.keys()):
-            last_err = RuntimeError(
-                f"post-write verify lost siblings {sorted(prior_keys - set(vslots))}"
-            )
-            continue
-        return verified
-
-    raise RuntimeError(
-        f"R2 upsert conflict for {tab}/{slot_key} after retries"
-        + (f": {last_err}" if last_err else "")
+    body = json.dumps(slot_payload, ensure_ascii=False, indent=2).encode("utf-8")
+    dest = _slot_key(tab, slot_key)
+    _put_bytes(
+        client,
+        dest,
+        body,
+        "application/json",
+        cache_control="public, max-age=30",
     )
+
+    # Rolling history backup (best-effort).
+    try:
+        ts = now.replace(":", "").replace(".", "").replace("+00:00", "Z")
+        _put_bytes(
+            client,
+            _history_key(tab, slot_key, ts),
+            body,
+            "application/json",
+            cache_control="private, max-age=0",
+        )
+        _gc_history(client, tab, slot_key)
+    except Exception as exc:
+        print(f"r2 history warning ({tab}/{slot_key}): {exc}")
+
+    return _assemble_tab(client, tab)
