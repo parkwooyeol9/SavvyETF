@@ -8,6 +8,7 @@ export type ShellTabId =
   | "aigov"
   | "aiinfra"
   | "esgreg"
+  | "greenmin"
   | "etfdb"
   | "leverage"
   | "economy"
@@ -62,6 +63,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "aigov",
   "aiinfra",
   "esgreg",
+  "greenmin",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -81,6 +83,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aigov: "AI 거버넌스",
   aiinfra: "AI 인프라",
   esgreg: "ESG 규제",
+  greenmin: "녹색 광물",
   economy: "경제",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
@@ -103,7 +106,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "esg",
     label: "ESG",
-    tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg"],
+    tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"],
   },
 ];
 
