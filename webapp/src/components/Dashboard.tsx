@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import AiGovTab from "@/components/AiGovTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
@@ -215,6 +216,7 @@ export default function Dashboard() {
       tab === "simulate" ||
       tab === "education" ||
       tab === "geo" ||
+      tab === "aigov" ||
       tab === "economy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
@@ -297,6 +299,8 @@ export default function Dashboard() {
         <LeverageEtfTab />
       ) : tab === "geo" ? (
         <GeoTab />
+      ) : tab === "aigov" ? (
+        <AiGovTab />
       ) : tab === "economy" ? (
         <MacroTab />
       ) : tab === "kr" ? (
@@ -329,16 +333,23 @@ export default function Dashboard() {
             slots={slots}
           />
         </>
-      ) : (
+      ) : briefTab ? (
         <section className="panel">
           {!slots.length ? (
             <p className="empty">
-              {TAB_LABELS[briefTab!]} 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는
+              {TAB_LABELS[briefTab]} 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는
               수동 명령 후 자동으로 채워집니다.
             </p>
           ) : (
             slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
           )}
+        </section>
+      ) : (
+        <section className="panel">
+          <p className="empty">
+            이 탭({SHELL_TAB_LABELS[tab]})은 아직 연결되지 않았습니다. 기존 탭은
+            그대로 유지됩니다.
+          </p>
         </section>
       )}
     </div>

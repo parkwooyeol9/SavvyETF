@@ -5,6 +5,7 @@ export type ShellTabId =
   | "simulate"
   | "education"
   | "geo"
+  | "aigov"
   | "etfdb"
   | "leverage"
   | "economy"
@@ -56,6 +57,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "etfdb",
   "esg",
   "geo",
+  "aigov",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -72,7 +74,9 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfdb: "ETF DB",
   leverage: "레버리지 ETF",
   geo: "지정학",
+  aigov: "AI 거버넌스",
   economy: "경제",
+  // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
 
@@ -89,7 +93,8 @@ export const NAV_GROUPS: Array<{
     label: "ETF",
     tabs: ["education", "simulate", "etf", "leverage", "etfdb"],
   },
-  { id: "esg", label: "ESG", tabs: ["esg", "geo"] },
+  // Append-only: do not replace existing esg/geo entries when adding tabs.
+  { id: "esg", label: "ESG", tabs: ["esg", "geo", "aigov"] },
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
