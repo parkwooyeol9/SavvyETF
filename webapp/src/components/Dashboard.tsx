@@ -8,6 +8,7 @@ import EsgRegTab from "@/components/EsgRegTab";
 import GreenMineralsTab from "@/components/GreenMineralsTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
+import EventStudyTab from "@/components/EventStudyTab";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
@@ -224,6 +225,7 @@ export default function Dashboard() {
       tab === "esgreg" ||
       tab === "greenmin" ||
       tab === "economy" ||
+      tab === "eventstudy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
       tab === "etf"
@@ -315,6 +317,8 @@ export default function Dashboard() {
         <GreenMineralsTab />
       ) : tab === "economy" ? (
         <MacroTab />
+      ) : tab === "eventstudy" ? (
+        <EventStudyTab />
       ) : tab === "kr" ? (
         <>
           <KrMarketTab variant="market" />

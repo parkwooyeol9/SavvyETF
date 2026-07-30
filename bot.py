@@ -139,6 +139,9 @@ What each command returns:
 /event [keyword]
 → Event study (US/JP/KR/CN indices) + impact comment + PDF
 
+/seasonality TICKER
+→ Monthly return seasonality check (10y, default focus Jun–Sep) + chart
+
 /comp QQQ IVV QNDX
 → ETF charts, metrics, AI pick, Excel workbook
 
@@ -198,6 +201,7 @@ def build_help_messages() -> list[dict]:
 <code>/idx</code> — MSCI 국가비중 → 주요국 지수·선물·FX
 <code>/macro</code> — 매크로 리스크 대시보드
 <code>/event</code> — 과거 유사 이벤트 스터디 (미·일·한·중, PDF)
+<code>/seasonality 빙그레</code> — 월별 수익률 계절성 검증 (10년, 여름 시즌)
 <code>/adr TSM</code> — ADR 상장 영향 분석
 
 <b>📰 뉴스</b>
@@ -1625,6 +1629,36 @@ def handle_telegram_message(message, chat_id: int):
 
     if lower.startswith("/event") or _is_pending_event_reply(chat_id, normalized):
         return _handle_event_command(normalized, chat_id)
+
+    if lower.startswith("/seasonality"):
+        try:
+            from seasonality_pipeline import run_seasonality_pipeline
+
+            replies: list[dict] = [
+                {
+                    "text": (
+                        "📊 월별 수익률 계절성 분석 중… "
+                        "(최근 10년, Yahoo Finance)"
+                    )
+                }
+            ]
+            result = run_seasonality_pipeline(normalized)
+            replies.extend(result.get("telegram_messages") or [])
+            return replies
+        except ValueError as exc:
+            return [
+                {
+                    "text": (
+                        "Usage: /seasonality TICKER\n"
+                        "Example: /seasonality 005180\n"
+                        "Example: /seasonality 빙그레\n"
+                        "Example: /seasonality CARR\n\n"
+                        f"{exc}"
+                    )
+                }
+            ]
+        except Exception as exc:
+            return [{"text": f"/seasonality failed: {exc}"}]
 
     if lower.startswith("/heatmap"):
         try:
@@ -3267,6 +3301,50 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                     self._send(err, "application/json; charset=utf-8", 400)
                 return
 
+            if path == "/api/web/seasonality":
+                from seasonality import DEFAULT_FOCUS_MONTHS, seasonality_web_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                ticker = (query.get("ticker") or [""])[0].strip()
+                if not ticker:
+                    self._send_cors_json(
+                        json.dumps(
+                            {"ok": False, "error": "ticker query param required"},
+                            ensure_ascii=False,
+                        ).encode("utf-8"),
+                        status=400,
+                    )
+                    return
+                months_raw = (query.get("months") or [""])[0].strip()
+                focus_months = DEFAULT_FOCUS_MONTHS
+                if months_raw:
+                    try:
+                        focus_months = tuple(
+                            sorted(
+                                {
+                                    int(m)
+                                    for m in months_raw.split(",")
+                                    if m.strip()
+                                }
+                            )
+                        )
+                        if not focus_months or any(m < 1 or m > 12 for m in focus_months):
+                            raise ValueError("months must be 1-12")
+                    except ValueError as exc:
+                        self._send_cors_json(
+                            json.dumps(
+                                {"ok": False, "error": str(exc)},
+                                ensure_ascii=False,
+                            ).encode("utf-8"),
+                            status=400,
+                        )
+                        return
+                payload = seasonality_web_payload(ticker, focus_months=focus_months)
+                status = 200 if payload.get("ok") else 400
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/simulate":
                 if not self._bot_web_api_ok():
                     self._reject_unauthorized(cors=True)
@@ -3339,7 +3417,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
     thread.start()
     print(
         f"Web server listening on port {port} "
-        f"(threading; / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/macro , /api/web/simulate )"
+        f"(threading; / , /summary , /summary_kor , /summary_kor_intra , /summary_nxt , /reddit , /event , /seasonality , /summary.pdf , /summary_pre.pdf , /summary_kor.pdf , /summary_kor_intra.pdf , /reddit.pdf , /event.pdf , /kakao , /kakao/skill , /health , /api/web/heatmap , /api/web/macro , /api/web/seasonality , /api/web/simulate )"
     )
 
 

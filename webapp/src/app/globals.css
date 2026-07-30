@@ -3931,3 +3931,158 @@ a.geo-choke-hl:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Event Study / seasonality tab */
+.eventstudy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.eventstudy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 360px;
+}
+
+.eventstudy-field span,
+.eventstudy-months-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.eventstudy-field input {
+  font: inherit;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.eventstudy-month-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.eventstudy-month-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.eventstudy-month-btn.active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: #b45309;
+  color: #fbbf24;
+}
+
+.eventstudy-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.eventstudy-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.eventstudy-example-btn {
+  appearance: none;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.eventstudy-summary {
+  margin: 0.75rem 0 1rem;
+  color: #c5d0dc;
+  line-height: 1.55;
+  font-size: 0.92rem;
+}
+
+.eventstudy-chart {
+  margin-top: 0.5rem;
+}
+
+.eventstudy-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+}
+
+.eventstudy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.eventstudy-table th,
+.eventstudy-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+
+.eventstudy-table th:first-child,
+.eventstudy-table td:first-child {
+  text-align: left;
+}
+
+.eventstudy-table tr.focus {
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.eventstudy-year-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.eventstudy-year-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: var(--panel-2);
+}
+
+.eventstudy-year {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.eventstudy-year-card.up strong {
+  color: #4ade80;
+}
+
+.eventstudy-year-card.down strong {
+  color: #f87171;
+}
+
+.empty.err {
+  color: #f87171;
+  margin-top: 0.75rem;
+}

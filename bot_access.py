@@ -37,6 +37,7 @@ HEAVY_COMMAND_TOKENS = {
     "/summary_nxt",
     "/reddit",
     "/event",
+    "/seasonality",
     "/fin_estimate",
     "/finestimate",
     "/idx",

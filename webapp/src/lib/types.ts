@@ -12,6 +12,7 @@ export type ShellTabId =
   | "etfdb"
   | "leverage"
   | "economy"
+  | "eventstudy"
   | TabId;
 
 export type NavGroupId = "main" | "market" | "etf" | "esg";
@@ -53,6 +54,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "kr",
   "us",
   "economy",
+  "eventstudy",
   "education",
   "simulate",
   "etf",
@@ -85,6 +87,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   esgreg: "ESG 규제",
   greenmin: "녹색 광물",
   economy: "경제",
+  eventstudy: "이벤트 스터디",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -96,7 +99,7 @@ export const NAV_GROUPS: Array<{
   tabs: ShellTabId[];
 }> = [
   { id: "main", label: "메인", tabs: ["main"] },
-  { id: "market", label: "시황", tabs: ["kr", "us", "economy"] },
+  { id: "market", label: "시황", tabs: ["kr", "us", "economy", "eventstudy"] },
   {
     id: "etf",
     label: "ETF",
