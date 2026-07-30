@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
+import { fetchForcedSellBoard } from "@/lib/kofiaFreeSis";
 import {
   LEV_GROUP_METAS,
   levGroupKey,
@@ -615,6 +616,17 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
   }
 
   const deleveraging = buildDeleveraging(perCode);
+  const forced_sell = await settled(fetchForcedSellBoard(90), {
+    as_of: null,
+    stress: "calm" as const,
+    stress_label: "데이터 없음",
+    latest_fund: null,
+    latest_credit: null,
+    credit_delta: null,
+    fund_series: [],
+    credit_series: [],
+    note: "반대매매·신용 데이터를 불러오지 못했습니다.",
+  });
 
   return {
     listing_date: SINGLE_STOCK_LEV_LISTING_DATE,
@@ -624,19 +636,20 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
     investors_by_group,
     dealers_by_code,
     deleveraging,
+    forced_sell,
     total_aum_eok: groups.reduce((s, g) => s + g.latest_aum_eok, 0),
     total_value_eok: groups.reduce((s, g) => s + g.latest_value_eok, 0),
     total_value_cum_eok: groups.reduce((s, g) => s + g.value_cum_eok, 0),
     as_of: asOf,
     note:
-      "16개 단일종목 레버리지·인버스 ETF. 유형 합산 AUM·거래대금 + 종목별 투자자 순매매·거래원(네이버, 20분 지연) + 좌수 피크 대비 청산 프록시.",
+      "16개 단일종목 레버리지·인버스 ETF. 유형 합산·투자자·거래원(네이버) + 청산 프록시 + 반대매매·신용(금투협 FreeSIS).",
   };
 }
 
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v3",
+      "kr-leverage:v4",
       170_000,
       600_000,
       buildBoard,

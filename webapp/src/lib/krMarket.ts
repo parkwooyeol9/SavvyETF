@@ -1,5 +1,7 @@
 /** Korean market dashboard types + technical helpers (client/server shared). */
 
+import type { ForcedSellBoard } from "./kofiaFreeSis";
+
 export type KrCandle = {
   time: string;
   open: number;
@@ -186,6 +188,8 @@ export type SingleStockLevBoard = {
   dealers_by_code?: Record<string, LevDealerBoard>;
   /** Peak AUM / units shrink proxy (not hedge-fund identity) */
   deleveraging?: LevDeleveraging;
+  /** KOFIA FreeSIS: 미수 반대매매 + 신용융자 잔고 */
+  forced_sell?: ForcedSellBoard;
   total_aum_eok: number;
   total_value_eok: number;
   total_value_cum_eok: number;

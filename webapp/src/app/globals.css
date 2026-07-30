@@ -1156,6 +1156,59 @@ a.geo-choke-hl:hover {
   margin-top: 1rem;
 }
 
+.lev-forced-card {
+  margin-top: 1rem;
+}
+
+.lev-forced-explain {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.lev-forced-explain strong {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.lev-stress-badge {
+  flex-shrink: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid rgba(43, 54, 72, 0.85);
+  background: rgba(10, 15, 22, 0.55);
+  color: #cbd5e1;
+}
+
+.lev-stress-badge.stress-calm {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.lev-stress-badge.stress-elevated {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.lev-stress-badge.stress-high,
+.lev-stress-badge.stress-extreme {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.lev-forced-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .lev-forced-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .kr-lev-group-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));

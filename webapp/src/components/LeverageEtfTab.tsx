@@ -24,6 +24,7 @@ import {
   type SingleStockLevBoard,
   type SingleStockLevRow,
 } from "@/lib/krMarket";
+import { fmtWonEok, fmtWonJo, type ForcedSellBoard } from "@/lib/kofiaFreeSis";
 
 type Panel = "groups" | "products" | "investors" | "dealers";
 type UnderlyingFilter = "all" | "samsung" | "hynix";
@@ -188,6 +189,7 @@ export default function LeverageEtfTab() {
   }, [board?.dealers_by_code, products]);
 
   const delever = board?.deleveraging;
+  const forced = board?.forced_sell;
   const deleverChart = useMemo(() => {
     if (!delever) return [];
     const byDate = new Map<string, Record<string, number | string>>();
@@ -208,6 +210,30 @@ export default function LeverageEtfTab() {
       .map(([, row]) => row);
   }, [delever]);
 
+  const forcedChart = useMemo(() => {
+    if (!forced?.fund_series?.length) return [];
+    const creditByDate = new Map(
+      (forced.credit_series || []).map((c) => [c.date, c.loan_total / 1e12]),
+    );
+    return forced.fund_series.map((d) => ({
+      t: d.date.slice(5),
+      opp_eok: Math.round(d.opp_sell / 1e8),
+      ratio: d.opp_ratio_pct,
+      unsettled_jo: Math.round((d.unsettled / 1e12) * 100) / 100,
+      credit_jo: creditByDate.has(d.date)
+        ? Math.round((creditByDate.get(d.date) || 0) * 100) / 100
+        : null,
+    }));
+  }, [forced]);
+
+  const creditChart = useMemo(() => {
+    if (!forced?.credit_series?.length) return [];
+    return forced.credit_series.map((d) => ({
+      t: d.date.slice(5),
+      loan_jo: Math.round((d.loan_total / 1e12) * 100) / 100,
+    }));
+  }, [forced]);
+
   return (
     <div className="kr-tab lev-tab">
       <div className="kr-hero">
@@ -215,7 +241,7 @@ export default function LeverageEtfTab() {
           <h2 className="kr-hero-title">레버리지 ETF</h2>
           <p className="kr-hero-sub">
             삼성전자·SK하이닉스 단일종목 레버리지/인버스 16종 · 유형 합산 · 투자자
-            순매매 · 거래원 · 청산 프록시
+            순매매 · 거래원 · 청산 프록시 · 반대매매/신용
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -777,6 +803,10 @@ export default function LeverageEtfTab() {
             </article>
           ) : null}
 
+          {forced ? (
+            <ForcedSellPanel forced={forced} chart={forcedChart} creditChart={creditChart} />
+          ) : null}
+
           <p className="kr-footnote">
             {board.note} · 약 60초마다 갱신
             {data.generated_at
@@ -786,5 +816,194 @@ export default function LeverageEtfTab() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function ForcedSellPanel({
+  forced,
+  chart,
+  creditChart,
+}: {
+  forced: ForcedSellBoard;
+  chart: Array<Record<string, number | string | null>>;
+  creditChart: Array<{ t: string; loan_jo: number }>;
+}) {
+  const f = forced.latest_fund;
+  const c = forced.latest_credit;
+  const delta = forced.credit_delta;
+  const hasFund = Boolean(forced.fund_series.length);
+  const hasCredit = Boolean(forced.credit_series.length);
+
+  return (
+    <article className={`kr-card lev-forced-card stress-${forced.stress}`}>
+      <div className="kr-card-head">
+        <div>
+          <h3 className="kr-card-title">반대매매 · 신용 모니터</h3>
+          <p className="kr-card-sub">
+            금투협 FreeSIS 일별 · 미수 기준 강제매도 + 신용융자 잔고
+            {forced.as_of ? ` · 기준 ${forced.as_of}` : ""}
+          </p>
+        </div>
+        <div className={`lev-stress-badge stress-${forced.stress}`}>
+          {forced.stress_label}
+        </div>
+      </div>
+
+      <p className="lev-forced-explain">
+        주가가 급락하면 미수·신용 담보가 부족해지며 증권사가 주식을 강제로 팔 수
+        있습니다. 아래 <strong>반대매매 비중</strong>이 뛰면 그날 강제매도 압력이
+        커진 날이고, <strong>신용융자 잔고</strong>가 꾸준히 줄면 빚투가 걷히는
+        구간으로 읽으면 됩니다. (계좌별 마진콜·종목별 반대매매는 공개되지 않습니다.)
+      </p>
+
+      {!hasFund && !hasCredit ? (
+        <p className="empty">{forced.note}</p>
+      ) : (
+        <>
+          <div className="kr-flow-summary lev-forced-kpis">
+            <div>
+              <span>반대매매 비중</span>
+              <strong>
+                {f ? `${f.opp_ratio_pct.toFixed(1)}%` : "—"}
+              </strong>
+              <em>미수금 대비 실제 반대매매</em>
+            </div>
+            <div>
+              <span>반대매매 금액</span>
+              <strong>{f ? fmtWonEok(f.opp_sell) : "—"}</strong>
+              <em>당일 강제매도 규모(미수 기준)</em>
+            </div>
+            <div>
+              <span>위탁매매 미수금</span>
+              <strong>{f ? fmtWonEok(f.unsettled) : "—"}</strong>
+              <em>초단기 외상 잔액</em>
+            </div>
+            <div>
+              <span>신용융자 잔고</span>
+              <strong>{c ? fmtWonJo(c.loan_total) : "—"}</strong>
+              <em>
+                전일 대비{" "}
+                {delta == null
+                  ? "—"
+                  : `${delta >= 0 ? "+" : ""}${fmtWonEok(delta)}`}
+              </em>
+            </div>
+          </div>
+
+          {hasFund ? (
+            <>
+              <h4 className="kr-mini-title">반대매매 금액 · 비중 추이</h4>
+              <p className="kr-card-sub">좌축 반대매매(억) · 우축 비중(%)</p>
+              <div className="kr-chart">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart data={chart}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#243044" />
+                    <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                    <YAxis
+                      yAxisId="amt"
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      width={48}
+                    />
+                    <YAxis
+                      yAxisId="ratio"
+                      orientation="right"
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      width={40}
+                      unit="%"
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Bar
+                      yAxisId="amt"
+                      dataKey="opp_eok"
+                      name="반대매매(억)"
+                      fill="#ef4444"
+                      opacity={0.55}
+                    />
+                    <Line
+                      yAxisId="ratio"
+                      type="monotone"
+                      dataKey="ratio"
+                      name="비중%"
+                      stroke="#fbbf24"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : null}
+
+          {hasCredit ? (
+            <>
+              <h4 className="kr-mini-title" style={{ marginTop: "1rem" }}>
+                신용거래융자 잔고 추이
+              </h4>
+              <p className="kr-card-sub">단위: 조원 · 잔고 감소 ≈ 신용 디레버리징 프록시</p>
+              <div className="kr-chart">
+                <ResponsiveContainer width="100%" height={220}>
+                  <ComposedChart data={creditChart}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#243044" />
+                    <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      width={40}
+                      domain={["auto", "auto"]}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="loan_jo"
+                      name="신용융자(조)"
+                      stroke="#38bdf8"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : null}
+
+          <div className="table-wrap" style={{ marginTop: "1rem" }}>
+            <table className="kr-table">
+              <thead>
+                <tr>
+                  <th>일자</th>
+                  <th className="num">반대매매</th>
+                  <th className="num">비중</th>
+                  <th className="num">미수금</th>
+                  <th className="num">예탁금</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...forced.fund_series]
+                  .reverse()
+                  .slice(0, 12)
+                  .map((d) => (
+                    <tr key={d.date}>
+                      <td>{d.date}</td>
+                      <td className="num">{fmtWonEok(d.opp_sell)}</td>
+                      <td
+                        className={`num ${d.opp_ratio_pct >= 5 ? "down" : ""}`}
+                      >
+                        {d.opp_ratio_pct.toFixed(1)}%
+                      </td>
+                      <td className="num">{fmtWonEok(d.unsettled)}</td>
+                      <td className="num">{fmtWonJo(d.deposit)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="kr-footnote" style={{ marginTop: "0.75rem" }}>
+            {forced.note}
+          </p>
+        </>
+      )}
+    </article>
   );
 }
