@@ -4,7 +4,6 @@ import BriefSlotView from "@/components/BriefSlotView";
 import EsgBriefStrip from "@/components/EsgBriefStrip";
 import EsgEtfChips from "@/components/EsgEtfChips";
 import EsgRiskMap from "@/components/EsgRiskMap";
-import EsgSubNav from "@/components/EsgSubNav";
 import { ESG_TAB_BRIEF_SLOTS } from "@/lib/esgShared";
 import type { BriefSlot, ShellTabId } from "@/lib/types";
 
@@ -32,7 +31,6 @@ export default function EsgTabShell({
   return (
     <>
       <EsgRiskMap briefSlots={briefSlotsRecord} />
-      <EsgSubNav active={tab} />
       {children}
       {isFullEsgTab ? (
         <section className="panel kr-briefs">
