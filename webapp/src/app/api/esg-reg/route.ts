@@ -116,8 +116,9 @@ export async function GET() {
       ok: true,
       generated_at: fetchedAt,
       note:
-        "핵심은 편집 검토 이벤트 카탈로그(출처 URL·모멘텀 근거 공개). RSS는 보조 헤드라인. " +
-        "Regulatory Momentum Score는 관할권별로만 합산하며 국가 간 단일 순위로 해석하지 마세요.",
+        "핵심은 편집 검토 이벤트 카탈로그(2026년 신규·변경 기본 표시, 과거는 아카이브). " +
+        "RSS는 보조 헤드라인. Regulatory Momentum Score는 관할권별·최근 lookback 합산이며 " +
+        "국가 간 단일 순위로 해석하지 마세요.",
       timezone_display: "Asia/Seoul",
       statuses: ESG_REG_STATUS_LIST,
       events,

@@ -8,7 +8,14 @@ import type {
   EsgRegPayload,
   EsgRegStatus,
 } from "@/lib/esgReg";
-import { ESG_REG_STATUS_LABELS } from "@/lib/esgReg";
+import {
+  ESG_REG_FOCUS_YEAR,
+  ESG_REG_LAST_REVIEWED,
+  ESG_REG_STATUS_LABELS,
+  eventYear,
+} from "@/lib/esgReg";
+
+type YearFilter = "focus" | "recent" | "all";
 
 function deltaClass(d: number): string {
   if (d > 0) return "up";
@@ -41,7 +48,7 @@ function ScoreCard({ score }: { score: EsgRegJurisdictionScore }) {
             <span className="esg-reg-en"> · {score.label_en}</span>
           </h4>
           <p className="esg-reg-meta">
-            근거 이벤트 {score.event_count}건 · lookback 포함 합산
+            근거 이벤트 {score.event_count}건 · 최근 lookback 합산
           </p>
         </div>
         <div className={`esg-reg-score ${deltaClass(score.score)}`}>
@@ -105,6 +112,7 @@ export default function EsgRegTab() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<EsgRegStatus | "all">("all");
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string>("all");
+  const [yearFilter, setYearFilter] = useState<YearFilter>("focus");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,13 +159,23 @@ export default function EsgRegTab() {
   const filteredEvents = useMemo(() => {
     if (!data?.events) return [];
     return data.events.filter((e) => {
+      const year = eventYear(e.date);
+      if (yearFilter === "focus" && year < ESG_REG_FOCUS_YEAR) return false;
+      if (yearFilter === "recent" && year < ESG_REG_FOCUS_YEAR - 1) return false;
       if (statusFilter !== "all" && e.status !== statusFilter) return false;
       if (jurisdictionFilter !== "all" && e.jurisdiction !== jurisdictionFilter) {
         return false;
       }
       return true;
     });
-  }, [data, statusFilter, jurisdictionFilter]);
+  }, [data, statusFilter, jurisdictionFilter, yearFilter]);
+
+  const focusCount = useMemo(
+    () =>
+      (data?.events || []).filter((e) => eventYear(e.date) >= ESG_REG_FOCUS_YEAR)
+        .length,
+    [data],
+  );
 
   return (
     <div className="esg-themes-tab esg-reg-tab">
@@ -166,10 +184,12 @@ export default function EsgRegTab() {
           <h2 className="kr-hero-title">ESG 규제 모니터</h2>
           <p className="kr-hero-sub">
             ISSB · EU(CSRD/ESRS/SFDR/Taxonomy/CBAM/CSDDD/ESMA) · 미국 · 한국 · 아시아
-            지속가능금융 규제를 이벤트 단위로 추적합니다. 모멘텀 점수는 관할권별이며, 근거
-            이벤트를 함께 공개합니다.
+            지속가능금융 규제를 이벤트 단위로 추적합니다. 카탈로그는 {ESG_REG_FOCUS_YEAR}
+            년 신규·변경 위주로 표시합니다.
             <br />
-            <span className="meta-soft">마지막 편집 검토: 2026-07-30</span>
+            <span className="meta-soft">
+              마지막 편집 검토: {ESG_REG_LAST_REVIEWED}
+            </span>
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -228,12 +248,28 @@ export default function EsgRegTab() {
               <div>
                 <h3 className="esg-carbon-support-title">규제 이벤트 카탈로그</h3>
                 <p className="esg-carbon-support-sub">
-                  편집 검토 마일스톤. 상태·출처·모멘텀 근거를 함께 표시합니다.
+                  {ESG_REG_FOCUS_YEAR}년 신규·변경 {focusCount}건을 기본 표시합니다.
+                  과거 베이스라인은 연도 필터에서 아카이브로 열 수 있습니다.
                 </p>
               </div>
             </div>
 
             <div className="esg-reg-filters">
+              <label>
+                연도
+                <select
+                  value={yearFilter}
+                  onChange={(e) => setYearFilter(e.target.value as YearFilter)}
+                >
+                  <option value="focus">
+                    {ESG_REG_FOCUS_YEAR}년 신규·변경
+                  </option>
+                  <option value="recent">
+                    {ESG_REG_FOCUS_YEAR - 1}–{ESG_REG_FOCUS_YEAR}
+                  </option>
+                  <option value="all">전체 아카이브</option>
+                </select>
+              </label>
               <label>
                 상태
                 <select

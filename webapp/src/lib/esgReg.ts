@@ -143,11 +143,117 @@ export const ESG_REG_JURISDICTION_LABELS: Record<
 /**
  * Curated milestone set — editor-reviewed. Update periodically.
  * Scores are NOT a single global ranking; evidence stays attached.
+ * Default UI focuses on 2026+ changes; older rows stay as archive.
  */
 /** Last editorial review of curated regulation events (YYYY-MM-DD). */
-export const ESG_REG_LAST_REVIEWED = "2026-07-30";
+export const ESG_REG_LAST_REVIEWED = "2026-07-31";
+
+/** Default catalog focus year for the regulation event list. */
+export const ESG_REG_FOCUS_YEAR = 2026;
 
 export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
+  // —— 2026 focus (primary catalog) ——
+  {
+    id: "kr-kssb-roadmap-final-2026",
+    date: "2026-07-09",
+    jurisdiction: "KR",
+    framework: "KR_DISCLOSURE",
+    status: "adopted",
+    title_ko: "한국 KSSB 1·2 지속가능공시 로드맵 확정",
+    title_en: "Korea finalises KSSB 1/2 sustainability reporting roadmap",
+    summary_ko:
+      "KSSB 1(일반)·KSSB 2(기후) 기준 적용 로드맵 확정. KOSPI 연결자산 10조원 이상 FY2027부터, 5조원 이상은 FY2028부터. Scope 3는 FY2030, 인증은 공시 개시 2년 후.",
+    source_name: "KASB / 금융위원회",
+    source_url: "https://www.kasb.or.kr/",
+    momentum_delta: 2,
+    momentum_rationale_ko: "ISSB 정합 의무공시 일정 확정(+2).",
+    tags: ["KSSB", "ISSB-alignment", "2026"],
+  },
+  {
+    id: "eu-esrs-simplification-2026",
+    date: "2026-07-03",
+    jurisdiction: "EU",
+    framework: "ESRS",
+    status: "amended",
+    title_ko: "개정 ESRS 채택 (부담 완화·datapoint 축소)",
+    title_en: "Revised ESRS adopted (burden reduction)",
+    summary_ko:
+      "Omnibus 단순화 패키지 일환으로 개정 ESRS 채택. 의무 datapoint 60%+·전체 70%+ 축소, FY2027부터 적용(FY2026 조기적용 가능). 중소기업 자발적 기준·value chain cap도 동시 채택.",
+    source_name: "European Commission",
+    source_url:
+      "https://finance.ec.europa.eu/news/commission-adopts-revised-sustainability-reporting-standards-reduce-administrative-burdens-eu-2026-07-03_en",
+    momentum_delta: -1,
+    momentum_rationale_ko: "의무 체계는 유지되나 범위·부담 축소(-1).",
+    tags: ["ESRS", "Omnibus", "2026"],
+  },
+  {
+    id: "eu-omnibus-csrd-2026",
+    date: "2026-03-18",
+    jurisdiction: "EU",
+    framework: "CSRD",
+    status: "amended",
+    title_ko: "Omnibus I 지침 시행 — CSRD 적용범위 축소",
+    title_en: "Omnibus I in force — CSRD scope narrowed",
+    summary_ko:
+      "Directive (EU) 2026/470 시행. CSRD 대상이 직원 1,000명·순매출 €4.5억 초과 등으로 축소되고 Wave 2·3 일정이 조정됨. 회원국 전환 기한은 2027-03-19.",
+    source_name: "European Commission / EUR-Lex",
+    source_url:
+      "https://finance.ec.europa.eu/capital-markets-union-and-financial-markets/company-reporting-and-auditing/company-reporting/corporate-sustainability-reporting_en",
+    momentum_delta: -1,
+    momentum_rationale_ko: "의무 대상·일정 축소로 규제 강도 완화(-1).",
+    tags: ["CSRD", "Omnibus", "2026"],
+  },
+  {
+    id: "eu-cbam-definitive-2026",
+    date: "2026-01-01",
+    jurisdiction: "EU",
+    framework: "CBAM",
+    status: "effective",
+    title_ko: "CBAM 본격(definitive) 체제 개시",
+    title_en: "CBAM definitive regime starts",
+    summary_ko:
+      "과도기간(2023–2025) 종료 후 본격 체제 시작. 수입자 인가·보고·벌칙 적용. 인증서 매입·제출은 Omnibus로 2027-02부터, 첫 연간신고(2026년분)는 2027-09-30.",
+    source_name: "European Commission",
+    source_url: "https://taxation-customs.ec.europa.eu/carbon-border-adjustment-mechanism_en",
+    momentum_delta: 2,
+    momentum_rationale_ko: "탄소국경 규제 본격 의무 개시(+2).",
+    tags: ["CBAM", "2026"],
+  },
+  {
+    id: "kr-kssb-roadmap-draft-2026",
+    date: "2026-02-01",
+    jurisdiction: "KR",
+    framework: "KR_DISCLOSURE",
+    status: "proposal",
+    title_ko: "한국 지속가능공시 로드맵 초안 공개",
+    title_en: "Korea sustainability reporting roadmap draft",
+    summary_ko:
+      "KSSB 기준 단계적 의무화 초안. 이후 7월 최종안에서 중소·중견 일정이 앞당겨짐.",
+    source_name: "금융위원회 / KASB",
+    source_url: "https://www.fsc.go.kr/",
+    momentum_delta: 1,
+    momentum_rationale_ko: "의무화 일정 공식 제안(+1).",
+    tags: ["KSSB", "2026"],
+  },
+
+  // —— 2025 (recent context) ——
+  {
+    id: "jp-ssbj",
+    date: "2025-03-05",
+    jurisdiction: "JP",
+    framework: "ASIA_TAXONOMY",
+    status: "adopted",
+    title_ko: "일본 SSBJ 지속가능성 공시기준 확정",
+    title_en: "Japan SSBJ sustainability disclosure standards",
+    summary_ko: "ISSB 정합 공시기준 확정·적용 일정. FSA·거래소 요구와 함께 추적.",
+    source_name: "Japan FSA / SSBJ",
+    source_url: "https://www.fsa.go.jp/",
+    momentum_delta: 2,
+    momentum_rationale_ko: "국내 기준 채택으로 의무화 경로 강화(+2).",
+    tags: ["SSBJ", "ISSB-alignment"],
+  },
+
+  // —— Archive (pre-2025 baseline; hidden by default in UI) ——
   {
     id: "issb-s1-s2-effective-2024",
     date: "2024-01-01",
@@ -162,7 +268,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.ifrs.org/issued-standards/ifrs-sustainability-standards-navigator/",
     momentum_delta: 2,
     momentum_rationale_ko: "글로벌 기준선의 신규 의무·적용 개시(+2).",
-    tags: ["S1", "S2", "nature", "human-capital-pipeline"],
+    tags: ["S1", "S2", "archive"],
   },
   {
     id: "issb-nature-human-capital-research",
@@ -178,7 +284,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.ifrs.org/projects/work-plan/",
     momentum_delta: 1,
     momentum_rationale_ko: "범위 확대 방향의 협의·연구(+1).",
-    tags: ["nature", "human-capital"],
+    tags: ["nature", "human-capital", "archive"],
   },
   {
     id: "eu-csrd-first-wave",
@@ -189,12 +295,12 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     title_ko: "CSRD 1차 적용 웨이브",
     title_en: "CSRD first application wave",
     summary_ko:
-      "대규모 상장사 등 1차 대상의 지속가능성 보고 의무 적용. ESRS와 연계.",
+      "대규모 상장사 등 1차 대상의 지속가능성 보고 의무 적용. ESRS와 연계. 이후 Omnibus로 적용범위 재조정.",
     source_name: "European Commission",
     source_url: "https://finance.ec.europa.eu/capital-markets-union-and-financial-markets/company-reporting-and-auditing/company-reporting/corporate-sustainability-reporting_en",
     momentum_delta: 2,
     momentum_rationale_ko: "신규 의무 공시 체제 시행(+2).",
-    tags: ["CSRD", "ESRS"],
+    tags: ["CSRD", "ESRS", "archive"],
   },
   {
     id: "eu-esrs-set1",
@@ -204,29 +310,12 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     status: "adopted",
     title_ko: "ESRS Set 1 채택",
     title_en: "ESRS Set 1 adopted",
-    summary_ko: "유럽 지속가능성 보고기준 Set 1 채택. CSRD 이행의 핵심 기술 기준.",
+    summary_ko: "유럽 지속가능성 보고기준 Set 1 채택. 2026년 개정 ESRS로 상당 부분 단순화됨.",
     source_name: "European Commission / EFRAG",
     source_url: "https://www.efrag.org/lab6",
     momentum_delta: 2,
     momentum_rationale_ko: "의무 보고 기준 채택(+2).",
-    tags: ["ESRS"],
-  },
-  {
-    id: "eu-esrs-simplification-2026",
-    date: "2026-07-03",
-    jurisdiction: "EU",
-    framework: "ESRS",
-    status: "amended",
-    title_ko: "개정 ESRS 채택 (부담 완화·datapoint 축소)",
-    title_en: "Revised ESRS adopted (burden reduction)",
-    summary_ko:
-      "Omnibus 단순화 패키지 일환으로 개정 ESRS 채택. 의무 datapoint 대폭 축소·유연성 확대. 의무는 유지하되 범위·부담 조정.",
-    source_name: "European Commission",
-    source_url:
-      "https://finance.ec.europa.eu/news/commission-adopts-revised-sustainability-reporting-standards-reduce-administrative-burdens-eu-2026-07-03_en",
-    momentum_delta: -1,
-    momentum_rationale_ko: "의무 체계는 유지되나 범위·부담 축소(-1).",
-    tags: ["ESRS", "Omnibus"],
+    tags: ["ESRS", "archive"],
   },
   {
     id: "eu-cbam-transitional",
@@ -236,12 +325,12 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     status: "effective",
     title_ko: "CBAM 과도 보고 기간 개시",
     title_en: "CBAM transitional reporting started",
-    summary_ko: "탄소국경조정메커니즘 과도 기간 보고 의무 시작. 본격 과금 단계는 별도 일정.",
+    summary_ko: "탄소국경조정메커니즘 과도 기간(2023–2025) 보고 의무. 2026-01-01 본격 체제로 전환.",
     source_name: "European Commission",
     source_url: "https://taxation-customs.ec.europa.eu/carbon-border-adjustment-mechanism_en",
     momentum_delta: 2,
     momentum_rationale_ko: "신규 무역·탄소 규제 시행(+2).",
-    tags: ["CBAM"],
+    tags: ["CBAM", "archive"],
   },
   {
     id: "eu-csddd",
@@ -256,7 +345,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://eur-lex.europa.eu/",
     momentum_delta: 2,
     momentum_rationale_ko: "신규 실사 의무 체계 채택(+2).",
-    tags: ["CSDDD", "due-diligence"],
+    tags: ["CSDDD", "due-diligence", "archive"],
   },
   {
     id: "eu-sfdr",
@@ -271,7 +360,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://finance.ec.europa.eu/regulation-and-supervision/financial-services-legislation/implementing-and-delegated-acts/sustainable-finance-disclosure-regulation_en",
     momentum_delta: 0,
     momentum_rationale_ko: "장기 운영 중인 체제·기술/해석 업데이트 중심(0).",
-    tags: ["SFDR"],
+    tags: ["SFDR", "archive"],
   },
   {
     id: "esma-fund-names",
@@ -287,7 +376,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.esma.europa.eu/",
     momentum_delta: 1,
     momentum_rationale_ko: "상품 명명·마케팅 범위 강화(+1).",
-    tags: ["fund-names", "greenwashing"],
+    tags: ["fund-names", "greenwashing", "archive"],
   },
   {
     id: "us-sec-climate-rule",
@@ -297,12 +386,12 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     status: "adopted",
     title_ko: "SEC 기후공시 규칙 채택",
     title_en: "SEC climate disclosure rule adopted",
-    summary_ko: "연방 기후 관련 공시 규칙 채택. 이후 소송·집행 일정 변동에 유의.",
+    summary_ko: "연방 기후 관련 공시 규칙 채택. 이후 소송·집행 유예로 실질 모멘텀은 약화.",
     source_name: "U.S. SEC",
     source_url: "https://www.sec.gov/",
     momentum_delta: 2,
     momentum_rationale_ko: "연방 의무 공시 규칙 채택(+2).",
-    tags: ["SEC", "climate"],
+    tags: ["SEC", "climate", "archive"],
   },
   {
     id: "us-sec-climate-litigation",
@@ -318,7 +407,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.sec.gov/",
     momentum_delta: -2,
     momentum_rationale_ko: "법원 다툼으로 실질 집행·확실성 저하(-2).",
-    tags: ["SEC", "litigation"],
+    tags: ["SEC", "litigation", "archive"],
   },
   {
     id: "us-state-climate",
@@ -334,23 +423,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.gov.ca.gov/",
     momentum_delta: 1,
     momentum_rationale_ko: "주 단위 의무 확대(+1). 연방과 단일 점수로 합산하지 말 것.",
-    tags: ["state", "California"],
-  },
-  {
-    id: "kr-esg-disclosure-roadmap",
-    date: "2024-04-30",
-    jurisdiction: "KR",
-    framework: "KR_DISCLOSURE",
-    status: "proposal",
-    title_ko: "한국 ESG 공시 로드맵·단계적 의무화 논의",
-    title_en: "Korea ESG disclosure roadmap / phased mandate discussion",
-    summary_ko:
-      "금융위·거래소 중심의 지속가능경영보고서·ESG 공시 단계적 의무화 일정 논의. 확정 일정은 공시·보도 확인.",
-    source_name: "금융위원회 / 한국거래소",
-    source_url: "https://www.fsc.go.kr/",
-    momentum_delta: 1,
-    momentum_rationale_ko: "의무화 방향의 제안·로드맵(+1).",
-    tags: ["KRX", "FSC"],
+    tags: ["state", "California", "archive"],
   },
   {
     id: "kr-k-taxonomy",
@@ -365,7 +438,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.me.go.kr/",
     momentum_delta: 1,
     momentum_rationale_ko: "분류체계 도입으로 지속가능금융 인프라 확대(+1).",
-    tags: ["taxonomy"],
+    tags: ["taxonomy", "archive"],
   },
   {
     id: "kr-k-ets",
@@ -380,7 +453,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://ets.krx.co.kr/",
     momentum_delta: 0,
     momentum_rationale_ko: "기존 제도 운영·기술 업데이트 성격(0). 가격은 ESG시황 탄소 섹션.",
-    tags: ["ETS"],
+    tags: ["ETS", "archive"],
   },
   {
     id: "kr-green-bond",
@@ -395,22 +468,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.fsc.go.kr/",
     momentum_delta: 0,
     momentum_rationale_ko: "가이드·시장 인프라 성격의 운영 업데이트(0).",
-    tags: ["green-bond"],
-  },
-  {
-    id: "jp-ssbj",
-    date: "2025-03-05",
-    jurisdiction: "JP",
-    framework: "ASIA_TAXONOMY",
-    status: "adopted",
-    title_ko: "일본 SSBJ 지속가능성 공시기준 확정 흐름",
-    title_en: "Japan SSBJ sustainability disclosure standards",
-    summary_ko: "ISSB 정합 공시기준 확정·적용 일정. FSA·거래소 요구와 함께 추적.",
-    source_name: "Japan FSA / SSBJ",
-    source_url: "https://www.fsa.go.jp/",
-    momentum_delta: 2,
-    momentum_rationale_ko: "국내 기준 채택으로 의무화 경로 강화(+2).",
-    tags: ["SSBJ", "ISSB-alignment"],
+    tags: ["green-bond", "archive"],
   },
   {
     id: "sg-mas-taxonomy",
@@ -425,7 +483,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.mas.gov.sg/",
     momentum_delta: 1,
     momentum_rationale_ko: "분류·공시 인프라 확대(+1).",
-    tags: ["MAS"],
+    tags: ["MAS", "archive"],
   },
   {
     id: "hk-sfc-climate",
@@ -440,7 +498,7 @@ export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
     source_url: "https://www.sfc.hk/",
     momentum_delta: 1,
     momentum_rationale_ko: "펀드 공시·거버넌스 기대 강화(+1).",
-    tags: ["SFC"],
+    tags: ["SFC", "archive"],
   },
 ];
 
@@ -455,11 +513,17 @@ export const ESG_REG_STATUS_LIST: EsgRegStatus[] = [
   "court_challenged",
 ];
 
+export function eventYear(date: string): number {
+  const y = Number(date.slice(0, 4));
+  return Number.isFinite(y) ? y : 0;
+}
+
 export function computeJurisdictionScores(
   events: EsgRegEvent[],
   options?: { lookbackDays?: number },
 ): EsgRegJurisdictionScore[] {
-  const lookbackDays = options?.lookbackDays ?? 900;
+  // Prefer recent momentum (~18 months) so scores track 2025–2026 shifts.
+  const lookbackDays = options?.lookbackDays ?? 550;
   const today = new Date();
   const cutoff = new Date(today);
   cutoff.setDate(cutoff.getDate() - lookbackDays);
