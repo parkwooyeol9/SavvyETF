@@ -78,7 +78,13 @@ function cookieFrom(res: Response, prev = ""): string {
         return [x.slice(0, i), x.slice(i + 1)] as const;
       }),
   );
-  for (const c of res.headers.getSetCookie?.() || []) {
+  const raw: string[] = [];
+  if (typeof res.headers.getSetCookie === "function") {
+    raw.push(...res.headers.getSetCookie());
+  }
+  const single = res.headers.get("set-cookie");
+  if (single) raw.push(single);
+  for (const c of raw) {
     const nv = c.split(";")[0];
     const i = nv.indexOf("=");
     if (i > 0) map[nv.slice(0, i)] = nv.slice(i + 1);
@@ -86,6 +92,16 @@ function cookieFrom(res: Response, prev = ""): string {
   return Object.entries(map)
     .map(([k, v]) => `${k}=${v}`)
     .join("; ");
+}
+
+/** FreeSIS/Java sometimes emits NaN/Infinity which Strict JSON.parse rejects. */
+function parseFreesisJson<T>(text: string): T {
+  const cleaned = text
+    .replace(/:\s*NaN\b/g, ":null")
+    .replace(/:\s*-Infinity\b/g, ":null")
+    .replace(/:\s*Infinity\b/g, ":null")
+    .replace(/:\s*undefined\b/g, ":null");
+  return JSON.parse(cleaned) as T;
 }
 
 async function freesisPost<T>(
@@ -110,21 +126,39 @@ async function freesisPost<T>(
   const next = cookieFrom(res, cookie);
   const ct = res.headers.get("content-type") || "";
   const text = await res.text();
-  if (!ct.includes("json")) {
+  const looksJson =
+    ct.includes("json") ||
+    text.trimStart().startsWith("{") ||
+    text.trimStart().startsWith("[");
+  if (!looksJson) {
     throw new Error(`FreeSIS ${path} non-JSON (${res.status})`);
   }
-  return { json: JSON.parse(text) as T, cookie: next };
+  try {
+    return { json: parseFreesisJson<T>(text), cookie: next };
+  } catch (exc) {
+    throw new Error(
+      `FreeSIS ${path} JSON parse failed: ${exc instanceof Error ? exc.message : "unknown"}`,
+    );
+  }
+}
+
+function kstYmd(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date(ms))
+    .replace(/-/g, "");
 }
 
 function lookbackRange(days: number): { start: string; end: string } {
-  const end = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }),
-  );
-  const start = new Date(end);
-  start.setDate(start.getDate() - days);
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  return { start: fmt(start), end: fmt(end) };
+  const endMs = Date.now();
+  return {
+    start: kstYmd(endMs - days * 86_400_000),
+    end: kstYmd(endMs),
+  };
 }
 
 type MetaList = {
@@ -275,12 +309,28 @@ async function fetchCreditSeries(
 }
 
 export async function fetchForcedSellBoard(
-  lookbackDays = 90,
+  lookbackDays = 60,
 ): Promise<ForcedSellBoard> {
   const emptyNote =
     "금융투자협회 FreeSIS 증시자금·신용공여. 미수 기준 반대매매(신용담보 반대매매 전체와 범위가 다를 수 있음). 통상 1~2영업일 지연.";
-  try {
+
+  const empty = (extra?: string): ForcedSellBoard => ({
+    as_of: null,
+    stress: "calm",
+    stress_label: "데이터 없음",
+    latest_fund: null,
+    latest_credit: null,
+    credit_delta: null,
+    fund_series: [],
+    credit_series: [],
+    note: extra ? `${emptyNote} ${extra}` : emptyNote,
+  });
+
+  const attempt = async (): Promise<ForcedSellBoard> => {
     const { start, end } = lookbackRange(lookbackDays);
+    if (!/^\d{8}$/.test(start) || !/^\d{8}$/.test(end)) {
+      throw new Error("invalid lookback dates");
+    }
     let cookie = await warmSession();
     const fund = await fetchFundSeries(cookie, start, end);
     cookie = fund.cookie;
@@ -294,6 +344,9 @@ export async function fetchForcedSellBoard(
 
     const fund_series = fund.rows;
     const credit_series = creditRows;
+    if (!fund_series.length && !credit_series.length) {
+      throw new Error("empty FreeSIS series");
+    }
     const latest_fund = fund_series[fund_series.length - 1] || null;
     const latest_credit = credit_series[credit_series.length - 1] || null;
     const prevCredit = credit_series[credit_series.length - 2];
@@ -314,18 +367,17 @@ export async function fetchForcedSellBoard(
       credit_series,
       note: emptyNote,
     };
-  } catch (exc) {
-    return {
-      as_of: null,
-      stress: "calm",
-      stress_label: "데이터 없음",
-      latest_fund: null,
-      latest_credit: null,
-      credit_delta: null,
-      fund_series: [],
-      credit_series: [],
-      note: `${emptyNote} 수집 실패: ${exc instanceof Error ? exc.message : "unknown"}`,
-    };
+  };
+
+  try {
+    return await attempt();
+  } catch {
+    try {
+      // One retry — FreeSIS sessions / NaN payloads are intermittently flaky.
+      return await attempt();
+    } catch {
+      return empty("지금은 협회 통계를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
+    }
   }
 }
 

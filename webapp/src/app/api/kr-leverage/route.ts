@@ -616,7 +616,7 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
   }
 
   const deleveraging = buildDeleveraging(perCode);
-  const forced_sell = await settled(fetchForcedSellBoard(90), {
+  const forced_sell = await settled(fetchForcedSellBoard(60), {
     as_of: null,
     stress: "calm" as const,
     stress_label: "데이터 없음",
@@ -649,7 +649,7 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v4",
+      "kr-leverage:v5",
       170_000,
       600_000,
       buildBoard,
