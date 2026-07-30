@@ -315,6 +315,12 @@ export default function AiInfraTab() {
         </div>
       </div>
 
+      <p className="esg-proxy-notice">
+        <strong>Power Stress Proxy</strong>는 전력 ETF(GRID·XLU·NLR·DTCR)의 1개월 수익률이
+        SPY 대비 얼마나 높은지를 보는 <em>추정 지표</em>입니다. 실제 전력 수요·용량·
+        가용률을 직접 측정하지 않습니다.
+      </p>
+
       <div className="ai-infra-summary">
         <div className="ai-infra-summary-card">
           <strong>오늘 수집</strong>

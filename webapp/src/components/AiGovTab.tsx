@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -17,10 +17,7 @@ import type {
   AiGovScreenPayload,
   AiGovSignal,
 } from "@/lib/aiGov";
-import { AI_GOV_BRIEF_SLOTS, AI_POLICY_CALENDAR } from "@/lib/aiGov";
-import type { AllBriefs, BriefSlot } from "@/lib/types";
-import { emptyAllBriefs } from "@/lib/types";
-import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
+import { AI_POLICY_CALENDAR } from "@/lib/aiGov";
 
 function fmtPct(n?: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -314,68 +311,9 @@ function ScreenPanels({
   );
 }
 
-function BriefSlotCards({ slots }: { slots: BriefSlot[] }) {
-  if (!slots.length) {
-    return (
-      <section className="esg-carbon-support">
-        <div className="esg-carbon-support-head">
-          <div>
-            <h3 className="esg-carbon-support-title">AI 거버넌스 브리프 슬롯</h3>
-            <p className="esg-carbon-support-sub">
-              <code>esg_ai_gov</code> · <code>esg_ai_gov_brief</code> — 텔레그램{" "}
-              <code>/esg aigov</code> · <code>/esg aibrief</code> 또는 스케줄 후 채워집니다.
-              기존 monitor/overview/accident/data_briefing 슬롯은 그대로입니다.
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="esg-carbon-support">
-      <div className="esg-carbon-support-head">
-        <div>
-          <h3 className="esg-carbon-support-title">AI 거버넌스 브리프 슬롯</h3>
-          <p className="esg-carbon-support-sub">
-            신규 슬롯만 표시합니다 (기존 ESG 슬롯 비덮어쓰기).
-          </p>
-        </div>
-      </div>
-      <div className="ai-gov-brief-grid">
-        {slots.map((slot) => (
-          <article key={slot.slot} className="ai-gov-panel">
-            <h4>{slot.title || slot.slot}</h4>
-            <p className="ai-gov-meta">
-              {slot.slot}
-              {slot.generated_at ? ` · ${slot.generated_at}` : ""}
-            </p>
-            {(slot.sections || []).slice(0, 2).map((sec, i) => (
-              <div
-                key={i}
-                className="ai-gov-brief-body"
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeBriefHtml(sec.html_or_text || ""),
-                }}
-              />
-            ))}
-            {!slot.sections?.length && slot.html ? (
-              <div
-                className="ai-gov-brief-body"
-                dangerouslySetInnerHTML={{ __html: sanitizeBriefHtml(slot.html) }}
-              />
-            ) : null}
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export default function AiGovTab() {
   const [data, setData] = useState<AiGovPayload | null>(null);
   const [screen, setScreen] = useState<AiGovScreenPayload | null>(null);
-  const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [loading, setLoading] = useState(true);
   const [screenLoading, setScreenLoading] = useState(true);
 
@@ -416,32 +354,15 @@ export default function AiGovTab() {
     }
   }, []);
 
-  const loadBriefs = useCallback(async () => {
-    try {
-      const res = await fetch("/api/briefs");
-      const json = (await res.json()) as { ok?: boolean; briefs?: AllBriefs };
-      if (json.briefs) setBriefs(json.briefs);
-    } catch {
-      // ignore — radar/screen still work
-    }
-  }, []);
-
   useEffect(() => {
     void loadRadar();
     void loadScreen();
-    void loadBriefs();
     const id = window.setInterval(() => {
       void loadRadar();
       void loadScreen();
-      void loadBriefs();
     }, 5 * 60_000);
     return () => window.clearInterval(id);
-  }, [loadRadar, loadScreen, loadBriefs]);
-
-  const aiSlots = useMemo(() => {
-    const map = briefs.esg?.slots || {};
-    return AI_GOV_BRIEF_SLOTS.map((key) => map[key]).filter(Boolean) as BriefSlot[];
-  }, [briefs]);
+  }, [loadRadar, loadScreen]);
 
   return (
     <div className="esg-themes-tab ai-gov-tab">
@@ -491,7 +412,6 @@ export default function AiGovTab() {
         onRefresh={() => void loadScreen()}
       />
 
-      {aiSlots.length > 0 ? <BriefSlotCards slots={aiSlots} /> : null}
     </div>
   );
 }

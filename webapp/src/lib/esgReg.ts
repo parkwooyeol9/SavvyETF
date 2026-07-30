@@ -144,6 +144,9 @@ export const ESG_REG_JURISDICTION_LABELS: Record<
  * Curated milestone set — editor-reviewed. Update periodically.
  * Scores are NOT a single global ranking; evidence stays attached.
  */
+/** Last editorial review of curated regulation events (YYYY-MM-DD). */
+export const ESG_REG_LAST_REVIEWED = "2026-07-30";
+
 export const ESG_REG_CURATED_EVENTS: EsgRegEvent[] = [
   {
     id: "issb-s1-s2-effective-2024",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import AiGovTab from "@/components/AiGovTab";
 import AiInfraTab from "@/components/AiInfraTab";
@@ -9,6 +9,8 @@ import GreenMineralsTab from "@/components/GreenMineralsTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EventStudyTab from "@/components/EventStudyTab";
+import BriefSlotView from "@/components/BriefSlotView";
+import EsgTabShell from "@/components/EsgTabShell";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
@@ -18,8 +20,7 @@ import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import SimulateTab from "@/components/SimulateTab";
-import { prepareBriefSrcDoc } from "@/lib/briefSrcDoc";
-import { sanitizeBriefHtml } from "@/lib/sanitizeHtml";
+import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
   type BriefSlot,
@@ -62,88 +63,7 @@ function orderedSlots(tab: TabId, slots: Record<string, BriefSlot>): BriefSlot[]
 }
 
 function formatWhen(value?: string | null): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("ko-KR", { hour12: false });
-}
-
-function slotAgeDays(slot: BriefSlot): number | null {
-  const raw = slot.received_at || slot.generated_at;
-  if (!raw) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
-}
-
-function SlotView({ slot }: { slot: BriefSlot }) {
-  const srcDoc = useMemo(() => {
-    if (!slot.html) return null;
-    return prepareBriefSrcDoc(slot.html);
-  }, [slot.html]);
-  const ageDays = slotAgeDays(slot);
-  const stale = ageDays != null && ageDays >= 3;
-
-  return (
-    <article className="slot-card">
-      <div className="slot-head">
-        <h3 className="slot-title">
-          {slot.title}
-          <span className="slot-badge">{slot.slot}</span>
-          {stale ? (
-            <span className="slot-badge stale" title="3일 이상 갱신되지 않음">
-              오래됨 {Math.floor(ageDays!)}일
-            </span>
-          ) : null}
-        </h3>
-        <div className="slot-time">생성 {formatWhen(slot.generated_at)}</div>
-      </div>
-
-      {srcDoc ? (
-        <iframe
-          className="html-frame"
-          title={slot.title}
-          srcDoc={srcDoc}
-          sandbox=""
-        />
-      ) : null}
-
-      {(slot.images || []).map((image) => {
-        const bust =
-          slot.received_at || slot.generated_at || image.id || "1";
-        const sep = image.url.includes("?") ? "&" : "?";
-        const src = `${image.url}${sep}t=${encodeURIComponent(bust)}`;
-        return (
-          <figure
-            className="slot-image"
-            key={`${slot.slot}-${image.id}-${bust}`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={image.caption || slot.title} loading="lazy" />
-            {image.caption ? <figcaption>{image.caption}</figcaption> : null}
-          </figure>
-        );
-      })}
-
-      {(slot.sections || []).map((section, idx) => (
-        <div className="section-block" key={`${slot.slot}-${idx}`}>
-          {section.heading ? <h4>{section.heading}</h4> : null}
-          <div
-            className="section-body"
-            dangerouslySetInnerHTML={{
-              __html: sanitizeBriefHtml(section.html_or_text),
-            }}
-          />
-        </div>
-      ))}
-
-      {!srcDoc &&
-      !(slot.images || []).length &&
-      !(slot.sections || []).length ? (
-        <p className="empty">이 슬롯에 표시할 본문이 없습니다.</p>
-      ) : null}
-    </article>
-  );
+  return formatBriefWhen(value);
 }
 
 function BriefSlotsPanel({
@@ -164,7 +84,7 @@ function BriefSlotsPanel({
       {!slots.length ? (
         <p className="empty">{emptyText}</p>
       ) : (
-        slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+        slots.map((slot) => <BriefSlotView key={slot.slot} slot={slot} />)
       )}
     </section>
   );
@@ -203,16 +123,23 @@ export default function Dashboard() {
     void load();
     const id = window.setInterval(() => void load(), 60_000);
     const onFocus = () => void load();
+    const onNav = (e: Event) => {
+      const next = (e as CustomEvent<ShellTabId>).detail;
+      if (next) setTab(next);
+    };
     window.addEventListener("focus", onFocus);
+    window.addEventListener("savvyetf-nav-tab", onNav);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("savvyetf-nav-tab", onNav);
     };
   }, [load]);
 
   const briefTab = isBriefTabId(tab) ? tab : null;
   const current = briefTab ? briefs[briefTab] : null;
   const slots = briefTab ? orderedSlots(briefTab, current?.slots || {}) : [];
+  const esgSlots = orderedSlots("esg", briefs.esg?.slots || {});
 
   const metaText = (() => {
     if (
@@ -224,6 +151,7 @@ export default function Dashboard() {
       tab === "aiinfra" ||
       tab === "esgreg" ||
       tab === "greenmin" ||
+      tab === "esg" ||
       tab === "economy" ||
       tab === "eventstudy" ||
       tab === "etfdb" ||
@@ -306,15 +234,25 @@ export default function Dashboard() {
       ) : tab === "leverage" ? (
         <LeverageEtfTab />
       ) : tab === "geo" ? (
-        <GeoTab />
+        <EsgTabShell tab="geo" allSlots={esgSlots}>
+          <GeoTab />
+        </EsgTabShell>
       ) : tab === "aigov" ? (
-        <AiGovTab />
+        <EsgTabShell tab="aigov" allSlots={esgSlots}>
+          <AiGovTab />
+        </EsgTabShell>
       ) : tab === "aiinfra" ? (
-        <AiInfraTab />
+        <EsgTabShell tab="aiinfra" allSlots={esgSlots}>
+          <AiInfraTab />
+        </EsgTabShell>
       ) : tab === "esgreg" ? (
-        <EsgRegTab />
+        <EsgTabShell tab="esgreg" allSlots={esgSlots}>
+          <EsgRegTab />
+        </EsgTabShell>
       ) : tab === "greenmin" ? (
-        <GreenMineralsTab />
+        <EsgTabShell tab="greenmin" allSlots={esgSlots}>
+          <GreenMineralsTab />
+        </EsgTabShell>
       ) : tab === "economy" ? (
         <MacroTab />
       ) : tab === "eventstudy" ? (
@@ -329,15 +267,9 @@ export default function Dashboard() {
           />
         </>
       ) : tab === "esg" ? (
-        <>
+        <EsgTabShell tab="esg" allSlots={esgSlots}>
           <EsgThemesTab />
-          <BriefSlotsPanel
-            title="ESG 시황 브리프"
-            note="브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 → 중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요."
-            emptyText="ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
-            slots={slots}
-          />
-        </>
+        </EsgTabShell>
       ) : tab === "etf" ? (
         <>
           <EtfKor15Tab />
@@ -357,7 +289,7 @@ export default function Dashboard() {
               수동 명령 후 자동으로 채워집니다.
             </p>
           ) : (
-            slots.map((slot) => <SlotView key={slot.slot} slot={slot} />)
+            slots.map((slot) => <BriefSlotView key={slot.slot} slot={slot} />)
           )}
         </section>
       ) : (

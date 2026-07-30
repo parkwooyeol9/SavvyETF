@@ -4086,3 +4086,169 @@ a.geo-choke-hl:hover {
   color: #f87171;
   margin-top: 0.75rem;
 }
+
+/* ESG integration layer */
+.esg-risk-map {
+  margin-bottom: 0.5rem;
+}
+
+.esg-risk-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.esg-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+}
+
+.esg-risk-tile {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.esg-risk-tile.hot {
+  border-color: #b45309;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.esg-risk-tile.up {
+  border-color: #2f6b52;
+}
+
+.esg-risk-tile.down {
+  border-color: #7f1d1d;
+}
+
+.esg-risk-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.esg-risk-value {
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.esg-risk-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.esg-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+}
+
+.esg-subnav-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.esg-subnav-btn.active {
+  background: rgba(34, 160, 107, 0.15);
+  border-color: #2f6b52;
+  color: #6ee7b7;
+}
+
+.esg-etf-panel {
+  margin-top: 0.5rem;
+}
+
+.esg-etf-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.esg-etf-chip {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: var(--panel-2);
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.esg-etf-chip strong {
+  font-size: 0.95rem;
+}
+
+.esg-etf-chip-label {
+  font-size: 0.78rem;
+  color: #c5d0dc;
+}
+
+.esg-etf-chip em {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.esg-brief-strip .kr-note.warn {
+  color: #fbbf24;
+}
+
+.esg-proxy-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid #b45309;
+  background: rgba(245, 158, 11, 0.08);
+  color: #fde68a;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.esg-inline-link {
+  appearance: none;
+  border: none;
+  background: none;
+  color: #60a5fa;
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.geo-score-guide {
+  margin-top: 0.35rem;
+}
+
+.green-min-method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.slot-badge.stale {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #7f1d1d;
+  color: #fca5a5;
+}

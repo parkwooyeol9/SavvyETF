@@ -168,6 +168,8 @@ export default function EsgRegTab() {
             ISSB · EU(CSRD/ESRS/SFDR/Taxonomy/CBAM/CSDDD/ESMA) · 미국 · 한국 · 아시아
             지속가능금융 규제를 이벤트 단위로 추적합니다. 모멘텀 점수는 관할권별이며, 근거
             이벤트를 함께 공개합니다.
+            <br />
+            <span className="meta-soft">마지막 편집 검토: 2026-07-30</span>
           </p>
         </div>
         <div className="kr-hero-actions">

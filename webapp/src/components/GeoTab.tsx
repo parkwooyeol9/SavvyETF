@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { navigateDashboardTab } from "@/components/EsgSubNav";
 import {
   GEO_RANGES,
   type GeoChokepoint,
@@ -490,6 +491,18 @@ export default function GeoTab() {
                     <li key={d}>{d}</li>
                   ))}
                 </ul>
+                <p className="meta-soft geo-score-guide">
+                  0–35 완화 · 36–54 주시 · 55–74 경계 · 75+ 고압력. 휴리스틱 점수이며
+                  호르무즈·초크포인트·에너지·금속 시그널을 종합합니다. 공급망·광물 관점은{" "}
+                  <button
+                    type="button"
+                    className="esg-inline-link"
+                    onClick={() => navigateDashboardTab("greenmin")}
+                  >
+                    녹색 광물
+                  </button>{" "}
+                  탭을 참고하세요.
+                </p>
                 <p className="meta-soft">
                   갱신{" "}
                   {new Date(data.generated_at).toLocaleString("ko-KR", {

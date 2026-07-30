@@ -325,9 +325,9 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         "false",
         "no",
     }
-    # Weekly Gemini brief — default OFF to control cost; enable explicitly.
+    # Weekly Gemini brief — default ON (Mondays only); disable with ESG_AIBRIEF_SCHEDULE_ENABLED=false
     aibrief_enabled = os.environ.get(
-        "ESG_AIBRIEF_SCHEDULE_ENABLED", "false"
+        "ESG_AIBRIEF_SCHEDULE_ENABLED", "true"
     ).lower() not in {
         "0",
         "false",

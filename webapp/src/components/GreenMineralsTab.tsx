@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { navigateDashboardTab } from "@/components/EsgSubNav";
 import type {
   CriticalListId,
   CriticalListMeta,
@@ -188,6 +189,8 @@ export default function GreenMineralsTab() {
 
   useEffect(() => {
     void load();
+    const id = window.setInterval(() => void load(), 5 * 60_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
   const minerals = useMemo(() => {
@@ -214,6 +217,15 @@ export default function GreenMineralsTab() {
               {data?.subtitle_en ||
                 "Where the Green Transition Collides with Geopolitics and Human Rights"}
             </span>
+            <br />
+            <button
+              type="button"
+              className="esg-inline-link"
+              onClick={() => navigateDashboardTab("geo")}
+            >
+              지정학 탭
+            </button>
+            에서 해운·초크포인트 리스크를 함께 확인하세요.
           </p>
         </div>
         <button type="button" className="ghost-btn" onClick={() => void load()} disabled={loading}>
@@ -391,6 +403,26 @@ export default function GreenMineralsTab() {
           )}
         </ul>
       </div>
+
+      {(data?.methodology?.length ?? 0) > 0 ? (
+        <div className="green-min-section green-min-methodology">
+          <h3>방법론 · 한계</h3>
+          <p className="green-min-meta">
+            아래는 본 탭이 주장하는 범위와 의도적으로 다루지 않는 항목입니다.
+          </p>
+          <div className="green-min-method-grid">
+            {data!.methodology.map((block) => (
+              <article key={block.id} className="green-min-card">
+                <h4>
+                  {block.title_ko}
+                  <span className="green-min-en"> · {block.title_en}</span>
+                </h4>
+                <p className="green-min-body">{block.body_ko}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
