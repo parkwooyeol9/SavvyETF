@@ -307,7 +307,16 @@ def _format_dart_telegram_block(universe: dict, summary: dict) -> list[dict]:
     return messages
 
 
-def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
+def telegram_compact_mode() -> bool:
+    """Default ON — slim Telegram pack; full detail stays on web/PDF/R2."""
+    return os.environ.get("SUMMARY_KOR_TELEGRAM_COMPACT", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
+def _format_universe_telegram_full(universe: dict, summary: dict) -> list[dict]:
     messages: list[dict] = [
         {"text": _format_boards_telegram(universe, summary), "parse_mode": "HTML"}
     ]
@@ -378,14 +387,44 @@ def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
     return messages
 
 
+def _format_universe_telegram_compact(universe: dict, summary: dict) -> list[dict]:
+    """Boards + leader name only — no chart photos, DART, or per-ticker news."""
+    board_text = _format_boards_telegram(universe, summary)
+    leader = universe.get("leader_ticker")
+    chart_notes = (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
+    extras: list[str] = []
+    if leader:
+        extras.append(f"📈 Top leader: {format_kr_ticker_label(leader)}")
+        note = (chart_notes.get(universe["key"]) or "").strip()
+        if note:
+            extras.append(note)
+    if extras:
+        board_text = f"{board_text}\n\n" + "\n".join(extras)
+    return [{"text": board_text, "parse_mode": "HTML"}]
+
+
+def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
+    if telegram_compact_mode():
+        return _format_universe_telegram_compact(universe, summary)
+    return _format_universe_telegram_full(universe, summary)
+
+
 def render_summary_kor_telegram(summary: dict) -> list[dict]:
     intraday = _is_intraday(summary)
+    compact = telegram_compact_mode()
     title = "🇰🇷 SavvyETF Korea Intraday Brief" if intraday else "🇰🇷 SavvyETF Korea Brief"
-    source_line = (
-        "KOSPI 200 + KOSDAQ 100 · Naver 1분봉 vs 전일 종가 · Naver News · DART"
-        if intraday
-        else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
-    )
+    if compact:
+        source_line = (
+            "요약 모드 · 보드 + 브리핑 · 차트·뉴스·DART·PDF는 웹 참고"
+            if not intraday
+            else "요약 모드 · 장중 보드 + 브리핑 · 상세는 웹 참고"
+        )
+    else:
+        source_line = (
+            "KOSPI 200 + KOSDAQ 100 · Naver 1분봉 vs 전일 종가 · Naver News · DART"
+            if intraday
+            else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
+        )
     messages: list[dict] = [
         {
             "text": (
@@ -874,21 +913,36 @@ def generate_summary_kor(
 
     messages = render_summary_kor_telegram(summary)
     label = "Korea intraday brief" if intraday else "Korea brief"
-    messages.append(
-        {
-            "text": (
-                f"🇰🇷 {label} (web): {kor_web}\n"
-                f"📄 PDF: {kor_web}.pdf"
-                if kor_web.endswith(path_suffix)
-                else f"🇰🇷 {label} (web): {kor_web}\n📄 PDF: {path_suffix}.pdf"
-            )
-        }
+    pdf_url = (
+        f"{kor_web}.pdf"
+        if kor_web.endswith(path_suffix)
+        else f"{path_suffix}.pdf"
     )
-    pdf_message = format_summary_pdf_message(summary, public_url or kor_web)
-    if pdf_message:
-        messages.append(pdf_message)
-    elif summary.get("pdf_error"):
-        messages.append({"text": f"PDF export unavailable: {summary['pdf_error']}"})
+    if telegram_compact_mode():
+        # Link only — no PDF document upload (saves a Telegram send).
+        messages.append(
+            {
+                "text": (
+                    f"🇰🇷 {label} (상세·차트·뉴스·DART)\n"
+                    f"웹: {kor_web}\n"
+                    f"PDF: {pdf_url}"
+                )
+            }
+        )
+    else:
+        messages.append(
+            {
+                "text": (
+                    f"🇰🇷 {label} (web): {kor_web}\n"
+                    f"📄 PDF: {pdf_url}"
+                )
+            }
+        )
+        pdf_message = format_summary_pdf_message(summary, public_url or kor_web)
+        if pdf_message:
+            messages.append(pdf_message)
+        elif summary.get("pdf_error"):
+            messages.append({"text": f"PDF export unavailable: {summary['pdf_error']}"})
 
     summary["telegram_messages"] = messages
 

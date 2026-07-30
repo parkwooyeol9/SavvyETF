@@ -1,9 +1,12 @@
-"""Scheduled /summary_nxt broadcasts — default 16:40 KST weekdays.
+"""Scheduled /summary_nxt — default 16:40 KST weekdays (web/R2).
+
+Telegram delivery is off by default (SUMMARY_NXT_TELEGRAM_ENABLED=false).
+Enable Telegram with SUMMARY_NXT_TELEGRAM_ENABLED=true.
 
 Nextrade sessions (KST):
   Premarket  08:00–08:50   → opt-in 08:30 via SUMMARY_NXT_SCHEDULE_KST=8:30,16:40
   Main       09:00:30–15:20
-  After      15:40–20:00   → default 16:40 after-open pulse
+  After      15:40–20:00   → default 16:40 after-open pulse (web publish)
 """
 
 from __future__ import annotations
@@ -88,8 +91,21 @@ def run_scheduled_summary_nxt(
         )
         return False
 
+    telegram_enabled = os.environ.get("SUMMARY_NXT_TELEGRAM_ENABLED", "false").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
     try:
         summary = generate_summary_nxt(public_url=public_url)
+        # Always publish HTML/R2 via generate_summary_nxt; Telegram is optional.
+        if not telegram_enabled:
+            print(
+                f"Scheduled summary_nxt web-only ({trigger}): "
+                "Telegram off (SUMMARY_NXT_TELEGRAM_ENABLED=false)."
+            )
+            return True
         messages = summary.get("telegram_messages") or []
         if not messages:
             print(f"Scheduled summary_nxt skipped ({trigger}): no telegram messages.")
@@ -130,13 +146,19 @@ def start_summary_nxt_scheduler(token: str, broadcast_fn, public_url: str = "") 
     except ValueError:
         catchup_minutes = 360
     labels = ", ".join(f"{h:02d}:{m:02d}" for h, m in times)
+    telegram_bit = (
+        "Telegram ON"
+        if os.environ.get("SUMMARY_NXT_TELEGRAM_ENABLED", "false").lower()
+        not in {"0", "false", "no"}
+        else "web-only (Telegram OFF)"
+    )
 
     def loop() -> None:
         state = _load_state()
         last_slot = state.get("last_summary_nxt_slot")
         print(
             f"summary_nxt scheduler active — weekdays at {labels} KST "
-            f"({catchup_minutes}m catch-up · NXT pre/after pulses)"
+            f"({catchup_minutes}m catch-up · {telegram_bit})"
         )
 
         while True:

@@ -119,7 +119,7 @@ What each command returns:
 → Same as /summary_kor using Naver 1m vs previous close (manual; schedule off by default)
 
 /summary_nxt
-→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (auto 16:40 KST)
+→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (web schedule 16:40; Telegram off)
 
 /aibriefing
 → Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
@@ -166,11 +166,12 @@ What each command returns:
 
 Auto schedule (KST):
   /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
-  /summary_nxt 16:40 · /summary_kor 15:40  → Korea channel
+  /summary_kor 15:40 (compact Telegram)  → Korea channel
+  /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
   /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
   /esg monitor 09:00 daily · /esg accident 09:30 (KRX)  → SavvyESG channel
-  (opt-in off by default: kor_intra, nxt 08:30, etf_sector, etf_us_new, esg overview/brief)
+  (opt-in off: kor_intra, etf_sector, etf_us_new, esg overview/brief)
 
 Type /help for the full command list.
 """
@@ -212,8 +213,8 @@ def build_help_messages() -> list[dict]:
 <code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
 <code>/summary_pre</code> 21:50 — 프리마켓 (US 채널)
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
-<code>/summary_kor</code> 15:40 — 한국 마감 (Korea 채널)
-<code>/summary_nxt</code> 16:40 — NXT 브리핑 (Korea 채널)
+<code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
+<code>/summary_nxt</code> 16:40 — NXT 브리핑 (웹/R2만; 텔레그램 OFF)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/etf_kor15</code> 09:00 — 한국 노출 미국 ETF 15종 편입비 (레거시 ETF 채널)
 <code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 — SavvyESG (accident는 한국 휴장 제외)
@@ -2583,10 +2584,11 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
-                            "ON: summary, summary_pre, reddit, summary_kor, "
-                            "summary_nxt@16:40, etfcheck, esg monitor/accident, etfdb. "
+                            "ON: summary, summary_pre, reddit, summary_kor@15:40 "
+                            "(compact Telegram), summary_nxt@16:40 (web-only), "
+                            "etfcheck, esg monitor/accident, etfdb. "
                             "OFF default: kor_intra, etf_sector, etf_us_new, "
-                            "esg overview, esg brief. "
+                            "esg overview, esg brief; SUMMARY_NXT_TELEGRAM_ENABLED=false. "
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
                             "ETF→TELEGRAM_CHAT_ID; ESG→TELEGRAM_CHAT_ID_ESG."
                         ),

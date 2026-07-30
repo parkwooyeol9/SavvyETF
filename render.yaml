@@ -62,6 +62,10 @@ services:
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
         value: "16:40"
+      - key: SUMMARY_NXT_TELEGRAM_ENABLED
+        value: "false"
+      - key: SUMMARY_KOR_TELEGRAM_COMPACT
+        value: "true"
       - key: ETF_SECTOR_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_SECTOR_SCHEDULE_KST
