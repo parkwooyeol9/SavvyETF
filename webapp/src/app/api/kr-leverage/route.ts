@@ -482,6 +482,23 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 
   const todayYmd = todayBizdateKst();
 
+  const forcedSellPromise = settled(fetchForcedSellBoard(60), {
+    as_of: null,
+    stress: "calm" as const,
+    stress_label: "데이터 없음",
+    latest_fund: null,
+    latest_credit: null,
+    credit_delta: null,
+    fund_series: [],
+    credit_series: [],
+    sources: {
+      freesis_fund: false,
+      freesis_credit: false,
+      naver_credit: false,
+    },
+    note: "반대매매·신용 데이터를 불러오지 못했습니다.",
+  });
+
   const perCode = await Promise.all(
     SINGLE_STOCK_LEV_ETFS.map(async (meta) => {
       const [siseDays, aumMap, trend, dealer] = await Promise.all([
@@ -616,17 +633,7 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
   }
 
   const deleveraging = buildDeleveraging(perCode);
-  const forced_sell = await settled(fetchForcedSellBoard(60), {
-    as_of: null,
-    stress: "calm" as const,
-    stress_label: "데이터 없음",
-    latest_fund: null,
-    latest_credit: null,
-    credit_delta: null,
-    fund_series: [],
-    credit_series: [],
-    note: "반대매매·신용 데이터를 불러오지 못했습니다.",
-  });
+  const forced_sell = await forcedSellPromise;
 
   return {
     listing_date: SINGLE_STOCK_LEV_LISTING_DATE,
@@ -642,14 +649,14 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
     total_value_cum_eok: groups.reduce((s, g) => s + g.value_cum_eok, 0),
     as_of: asOf,
     note:
-      "16개 단일종목 레버리지·인버스 ETF. 유형 합산·투자자·거래원(네이버) + 청산 프록시 + 반대매매·신용(금투협 FreeSIS).",
+      "16개 단일종목 레버리지·인버스 ETF. 유형 합산·투자자·거래원(네이버) + 청산 프록시 + 반대매매·신용(FreeSIS/네이버).",
   };
 }
 
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v5",
+      "kr-leverage:v6",
       170_000,
       600_000,
       buildBoard,

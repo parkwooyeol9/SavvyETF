@@ -1,7 +1,7 @@
 /**
- * KOFIA FreeSIS (금융투자협회 종합통계) — market fund & forced-sell series.
- * 증시자금추이(STATSCU0100000060): 예탁금·미수금·반대매매.
- * 신용공여 잔고(STATSCU0100000070): 신용거래융자·대주.
+ * Forced-sell / credit monitor sources:
+ * - KOFIA FreeSIS (증시자금·신용공여) — has 반대매매; often blocked from Vercel US egress
+ * - Naver 증시자금 — 예탁금·신용잔고; reliable from Vercel (억원 단위)
  */
 
 const UA =
@@ -12,6 +12,7 @@ const FUND_SERVICE = "STATSCU0100000060";
 const CREDIT_SERVICE = "STATSCU0100000070";
 /** FreeSIS 단위 콤보 코드 — '01'일 때 원 스케일이 네이버 증시자금(억원)과 일치 */
 const UNIT_WON_SCALE = "01";
+const FREE_SIS_TIMEOUT_MS = 12_000;
 
 export type KofiaFundDay = {
   date: string; // YYYY-MM-DD
@@ -46,6 +47,12 @@ export type ForcedSellBoard = {
   credit_delta: number | null;
   fund_series: KofiaFundDay[];
   credit_series: KofiaCreditDay[];
+  /** Which backends contributed */
+  sources: {
+    freesis_fund: boolean;
+    freesis_credit: boolean;
+    naver_credit: boolean;
+  };
   note: string;
 };
 
@@ -122,6 +129,7 @@ async function freesisPost<T>(
     },
     body: JSON.stringify(body),
     cache: "no-store",
+    signal: AbortSignal.timeout(FREE_SIS_TIMEOUT_MS),
   });
   const next = cookieFrom(res, cookie);
   const ct = res.headers.get("content-type") || "";
@@ -176,6 +184,7 @@ async function warmSession(): Promise<string> {
     {
       headers: { "User-Agent": UA, Accept: "text/html" },
       cache: "no-store",
+      signal: AbortSignal.timeout(FREE_SIS_TIMEOUT_MS),
     },
   );
   return cookieFrom(res);
@@ -190,7 +199,6 @@ function parseFundRows(rows: Array<Record<string, unknown>>): KofiaFundDay[] {
     const deposit = num(r.TMPV2);
     const unsettled = num(r.TMPV5);
     const opp_sell = num(r.TMPV6);
-    // Need at least ratio or an amount field to keep the row.
     if (!deposit && !unsettled && !opp_sell && !opp_ratio_pct) continue;
     out.push({
       date,
@@ -209,9 +217,7 @@ function mapCreditRows(
   rows: Array<Record<string, unknown>>,
   _headers: Array<{ ORDER_SEQ?: number; HEADER_NM?: string }>,
 ): KofiaCreditDay[] {
-  // STATSCU0100000070 fixed layout (group headers excluded from TMPV*):
-  // 1 구분 · 2 융자전체 · 3 융자코스피 · 4 융자코스닥 ·
-  // 5 대주전체 · 6 대주코스피 · 7 대주코스닥 · 8 청약 · 9 예탁담보
+  // STATSCU0100000070: 1구분 2융자전체 3코스피 4코스닥 5대주전체 … 9예탁담보
   void _headers;
   const out: KofiaCreditDay[] = [];
   for (const r of rows) {
@@ -236,7 +242,6 @@ async function fetchFundSeries(
   start: string,
   end: string,
 ): Promise<{ rows: KofiaFundDay[]; cookie: string }> {
-  // Meta warm (browser does this before grid submit)
   const meta = await freesisPost<MetaSrv>(
     "/meta/getSrvData.do",
     {
@@ -308,77 +313,188 @@ async function fetchCreditSeries(
   };
 }
 
-export async function fetchForcedSellBoard(
-  lookbackDays = 60,
-): Promise<ForcedSellBoard> {
-  const emptyNote =
-    "금융투자협회 FreeSIS 증시자금·신용공여. 미수 기준 반대매매(신용담보 반대매매 전체와 범위가 다를 수 있음). 통상 1~2영업일 지연.";
+function decodeNaverHtml(buf: Buffer, contentType: string | null): string {
+  const header = (contentType || "").toLowerCase();
+  const charset = header.match(/charset\s*=\s*["']?([^\s;"']+)/i)?.[1]?.toLowerCase();
+  const encoding =
+    charset === "utf-8" || charset === "utf8"
+      ? "utf-8"
+      : charset === "euc-kr" || charset === "euckr" || charset === "ks_c_5601-1987"
+        ? "euc-kr"
+        : "euc-kr";
+  try {
+    return new TextDecoder(encoding).decode(buf);
+  } catch {
+    return buf.toString("utf-8");
+  }
+}
 
-  const empty = (extra?: string): ForcedSellBoard => ({
-    as_of: null,
-    stress: "calm",
-    stress_label: "데이터 없음",
-    latest_fund: null,
-    latest_credit: null,
-    credit_delta: null,
-    fund_series: [],
-    credit_series: [],
-    note: extra ? `${emptyNote} ${extra}` : emptyNote,
+/** Naver 증시자금 — units are 억원 on the page. Works from Vercel. */
+async function fetchNaverCreditSeries(): Promise<{
+  deposit_series: { date: string; deposit: number }[];
+  credit_series: KofiaCreditDay[];
+}> {
+  const res = await fetch("https://finance.naver.com/sise/sise_deposit.naver", {
+    headers: {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml",
+      Referer: "https://finance.naver.com/",
+      "Accept-Language": "ko-KR,ko;q=0.9",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
+  if (!res.ok) throw new Error(`Naver deposit HTTP ${res.status}`);
+  const html = decodeNaverHtml(
+    Buffer.from(await res.arrayBuffer()),
+    res.headers.get("content-type"),
+  );
+  const deposit_series: { date: string; deposit: number }[] = [];
+  const credit_series: KofiaCreditDay[] = [];
+  const trs = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+  for (const tr of trs) {
+    const cells = (tr.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || []).map((c) =>
+      c.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    );
+    if (!cells.length || !/^\d{2}\.\d{2}\.\d{2}$/.test(cells[0])) continue;
+    const date = `20${cells[0].replace(/\./g, "-")}`;
+    const depositEok = num(cells[1]);
+    const creditEok = num(cells[3]);
+    if (!depositEok && !creditEok) continue;
+    // 억원 → 원
+    const deposit = depositEok * 1e8;
+    const loan_total = creditEok * 1e8;
+    deposit_series.push({ date, deposit });
+    credit_series.push({
+      date,
+      loan_total,
+      loan_kospi: 0,
+      loan_kosdaq: 0,
+      short_total: 0,
+      collateral_loan: 0,
+    });
+  }
+  deposit_series.sort((a, b) => a.date.localeCompare(b.date));
+  credit_series.sort((a, b) => a.date.localeCompare(b.date));
+  return { deposit_series, credit_series };
+}
 
-  const attempt = async (): Promise<ForcedSellBoard> => {
-    const { start, end } = lookbackRange(lookbackDays);
-    if (!/^\d{8}$/.test(start) || !/^\d{8}$/.test(end)) {
-      throw new Error("invalid lookback dates");
-    }
+async function tryFreesis(
+  start: string,
+  end: string,
+): Promise<{ fund: KofiaFundDay[]; credit: KofiaCreditDay[]; error?: string }> {
+  try {
     let cookie = await warmSession();
     const fund = await fetchFundSeries(cookie, start, end);
     cookie = fund.cookie;
-    let creditRows: KofiaCreditDay[] = [];
+    let credit: KofiaCreditDay[] = [];
     try {
-      const credit = await fetchCreditSeries(cookie, start, end);
-      creditRows = credit.rows;
+      const c = await fetchCreditSeries(cookie, start, end);
+      credit = c.rows;
     } catch {
-      creditRows = [];
+      credit = [];
     }
-
-    const fund_series = fund.rows;
-    const credit_series = creditRows;
-    if (!fund_series.length && !credit_series.length) {
-      throw new Error("empty FreeSIS series");
-    }
-    const latest_fund = fund_series[fund_series.length - 1] || null;
-    const latest_credit = credit_series[credit_series.length - 1] || null;
-    const prevCredit = credit_series[credit_series.length - 2];
-    const credit_delta =
-      latest_credit && prevCredit
-        ? latest_credit.loan_total - prevCredit.loan_total
-        : null;
-    const { stress, label } = stressFromRatio(latest_fund?.opp_ratio_pct ?? 0);
-
+    return { fund: fund.rows, credit };
+  } catch (exc) {
     return {
-      as_of: latest_fund?.date || latest_credit?.date || null,
-      stress,
-      stress_label: label,
-      latest_fund,
-      latest_credit,
-      credit_delta,
-      fund_series,
-      credit_series,
-      note: emptyNote,
+      fund: [],
+      credit: [],
+      error: exc instanceof Error ? exc.message : "FreeSIS failed",
     };
+  }
+}
+
+export async function fetchForcedSellBoard(
+  lookbackDays = 60,
+): Promise<ForcedSellBoard> {
+  const baseNote =
+    "미수 기준 반대매매는 금투협 FreeSIS, 신용·예탁금은 FreeSIS 또는 네이버 증시자금. 통상 1~2영업일 지연.";
+
+  const { start, end } = lookbackRange(lookbackDays);
+
+  const [freesis, naver] = await Promise.all([
+    tryFreesis(start, end),
+    fetchNaverCreditSeries().catch(() => ({
+      deposit_series: [] as { date: string; deposit: number }[],
+      credit_series: [] as KofiaCreditDay[],
+    })),
+  ]);
+
+  const fund_series = freesis.fund;
+  const credit_series =
+    freesis.credit.length > 0 ? freesis.credit : naver.credit_series;
+
+  // If FreeSIS fund missing, still expose deposit via synthetic fund rows for the table.
+  let fundForUi = fund_series;
+  if (!fundForUi.length && naver.deposit_series.length) {
+    fundForUi = naver.deposit_series.map((d) => ({
+      date: d.date,
+      deposit: d.deposit,
+      deriv_deposit: 0,
+      rp_balance: 0,
+      unsettled: 0,
+      opp_sell: 0,
+      opp_ratio_pct: 0,
+    }));
+  }
+
+  const sources = {
+    freesis_fund: freesis.fund.length > 0,
+    freesis_credit: freesis.credit.length > 0,
+    naver_credit: freesis.credit.length === 0 && naver.credit_series.length > 0,
   };
 
-  try {
-    return await attempt();
-  } catch {
-    try {
-      // One retry — FreeSIS sessions / NaN payloads are intermittently flaky.
-      return await attempt();
-    } catch {
-      return empty("지금은 협회 통계를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
-    }
+  if (!fundForUi.length && !credit_series.length) {
+    return {
+      as_of: null,
+      stress: "calm",
+      stress_label: "데이터 없음",
+      latest_fund: null,
+      latest_credit: null,
+      credit_delta: null,
+      fund_series: [],
+      credit_series: [],
+      sources,
+      note: `${baseNote} 지금은 통계를 불러오지 못했습니다.${freesis.error ? ` (${freesis.error})` : ""}`,
+    };
   }
+
+  const latest_fund = sources.freesis_fund
+    ? fund_series[fund_series.length - 1] || null
+    : fundForUi[fundForUi.length - 1] || null;
+  // For KPIs: only treat opp metrics as real when FreeSIS fund succeeded
+  const latest_fund_kpi = sources.freesis_fund
+    ? fund_series[fund_series.length - 1] || null
+    : null;
+  const latest_credit = credit_series[credit_series.length - 1] || null;
+  const prevCredit = credit_series[credit_series.length - 2];
+  const credit_delta =
+    latest_credit && prevCredit
+      ? latest_credit.loan_total - prevCredit.loan_total
+      : null;
+
+  const { stress, label } = sources.freesis_fund
+    ? stressFromRatio(latest_fund_kpi?.opp_ratio_pct ?? 0)
+    : { stress: "calm" as const, label: "신용만 표시" };
+
+  const parts: string[] = [baseNote];
+  if (sources.freesis_fund) parts.push("반대매매: FreeSIS");
+  else parts.push("반대매매: FreeSIS 접속 불가(서버 지역 제한 가능)");
+  if (sources.freesis_credit) parts.push("신용: FreeSIS");
+  else if (sources.naver_credit) parts.push("신용·예탁금: 네이버 증시자금");
+
+  return {
+    as_of: latest_fund_kpi?.date || latest_credit?.date || latest_fund?.date || null,
+    stress,
+    stress_label: label,
+    latest_fund: latest_fund_kpi,
+    latest_credit,
+    credit_delta,
+    fund_series: sources.freesis_fund ? fund_series : [],
+    credit_series,
+    sources,
+    note: parts.join(" · "),
+  };
 }
 
 export function fmtWonEok(n?: number | null, digits = 0): string {

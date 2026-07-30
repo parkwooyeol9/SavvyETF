@@ -838,11 +838,15 @@ function ForcedSellPanel({
     <article className={`kr-card lev-forced-card stress-${forced.stress}`}>
       <div className="kr-card-head">
         <div>
-          <h3 className="kr-card-title">반대매매 · 신용 모니터</h3>
-          <p className="kr-card-sub">
-            금투협 FreeSIS 일별 · 미수 기준 강제매도 + 신용융자 잔고
-            {forced.as_of ? ` · 기준 ${forced.as_of}` : ""}
-          </p>
+                  <h3 className="kr-card-title">반대매매 · 신용 모니터</h3>
+                  <p className="kr-card-sub">
+                    {forced.sources?.freesis_fund
+                      ? "금투협 FreeSIS 일별 · 미수 기준 강제매도 + 신용융자 잔고"
+                      : forced.sources?.naver_credit
+                        ? "네이버 증시자금 신용·예탁금 (FreeSIS 반대매매는 서버에서 접속 제한될 수 있음)"
+                        : "미수 강제매도 + 신용융자 잔고"}
+                    {forced.as_of ? ` · 기준 ${forced.as_of}` : ""}
+                  </p>
         </div>
         <div className={`lev-stress-badge stress-${forced.stress}`}>
           {forced.stress_label}
@@ -967,37 +971,71 @@ function ForcedSellPanel({
             </>
           ) : null}
 
-          <div className="table-wrap" style={{ marginTop: "1rem" }}>
-            <table className="kr-table">
-              <thead>
-                <tr>
-                  <th>일자</th>
-                  <th className="num">반대매매</th>
-                  <th className="num">비중</th>
-                  <th className="num">미수금</th>
-                  <th className="num">예탁금</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...forced.fund_series]
-                  .reverse()
-                  .slice(0, 12)
-                  .map((d) => (
-                    <tr key={d.date}>
-                      <td>{d.date}</td>
-                      <td className="num">{fmtWonEok(d.opp_sell)}</td>
-                      <td
-                        className={`num ${d.opp_ratio_pct >= 5 ? "down" : ""}`}
-                      >
-                        {d.opp_ratio_pct.toFixed(1)}%
-                      </td>
-                      <td className="num">{fmtWonEok(d.unsettled)}</td>
-                      <td className="num">{fmtWonJo(d.deposit)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+          {hasFund ? (
+            <div className="table-wrap" style={{ marginTop: "1rem" }}>
+              <table className="kr-table">
+                <thead>
+                  <tr>
+                    <th>일자</th>
+                    <th className="num">반대매매</th>
+                    <th className="num">비중</th>
+                    <th className="num">미수금</th>
+                    <th className="num">예탁금</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...forced.fund_series]
+                    .reverse()
+                    .slice(0, 12)
+                    .map((d) => (
+                      <tr key={d.date}>
+                        <td>{d.date}</td>
+                        <td className="num">{fmtWonEok(d.opp_sell)}</td>
+                        <td
+                          className={`num ${d.opp_ratio_pct >= 5 ? "down" : ""}`}
+                        >
+                          {d.opp_ratio_pct.toFixed(1)}%
+                        </td>
+                        <td className="num">{fmtWonEok(d.unsettled)}</td>
+                        <td className="num">{fmtWonJo(d.deposit)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : hasCredit ? (
+            <div className="table-wrap" style={{ marginTop: "1rem" }}>
+              <table className="kr-table">
+                <thead>
+                  <tr>
+                    <th>일자</th>
+                    <th className="num">신용융자</th>
+                    <th className="num">전일대비</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...forced.credit_series]
+                    .reverse()
+                    .slice(0, 12)
+                    .map((d, i, arr) => {
+                      const prev = arr[i + 1];
+                      const delta = prev ? d.loan_total - prev.loan_total : null;
+                      return (
+                        <tr key={d.date}>
+                          <td>{d.date}</td>
+                          <td className="num">{fmtWonJo(d.loan_total)}</td>
+                          <td className={`num ${toneClass(delta)}`}>
+                            {delta == null
+                              ? "—"
+                              : `${delta >= 0 ? "+" : ""}${fmtWonEok(delta)}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
 
           <p className="kr-footnote" style={{ marginTop: "0.75rem" }}>
             {forced.note}
