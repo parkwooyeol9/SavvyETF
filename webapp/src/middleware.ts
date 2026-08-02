@@ -33,11 +33,11 @@ export async function middleware(request: NextRequest) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://va.vercel-scripts.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com https://*.googleusercontent.com https://*.supabase.co",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com",
+      "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com",
       "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co",
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com https://*.supabase.co",
@@ -70,5 +70,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|_vercel/insights|_vercel/speed-insights).*)",
+  ],
 };
