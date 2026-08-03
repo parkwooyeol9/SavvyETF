@@ -506,12 +506,7 @@ export default function EtfWeightMonitorTab() {
                       dataKey={key}
                       stroke={LINE_COLORS[idx % LINE_COLORS.length]}
                       dot={false}
-                      activeDot={{
-                        r: 5,
-                        onClick: (_: unknown, payload: { payload?: { date?: string } }) => {
-                          selectChartDate(payload?.payload?.date);
-                        },
-                      }}
+                      activeDot={{ r: 5 }}
                       strokeWidth={2}
                       connectNulls
                     />
