@@ -54,27 +54,63 @@ export type TradingSignalsPayload = {
   note: string;
   schedule_note: string;
   disclaimer: string;
+  methodology: string[];
   risk: RiskRegime;
   summary: string[];
   core: AssetSignal[];
   sectors: AssetSignal[];
   themes: AssetSignal[];
+  crypto: CryptoPanel | null;
   error?: string;
 };
 
+export type CryptoIndicator = {
+  id: string;
+  label: string;
+  value: number | null;
+  display: string;
+  unit?: string;
+  note?: string;
+  tone?: "up" | "down" | "flat";
+};
+
+export type CryptoPanel = {
+  symbol: string;
+  label: string;
+  source_note: string;
+  signal: AssetSignal | null;
+  indicators: CryptoIndicator[];
+  as_of: string | null;
+};
+
 export const SIGNAL_SCHEDULE_NOTE =
-  "일봉 룰 시그널 · Yahoo 종가 기준 · 교육용 (투자 권유 아님)";
+  "일봉 룰 시그널 · Yahoo(주식/ETF) + OKX/CoinGecko(크립토) · 교육용 (투자 권유 아님)";
 
 export const SIGNAL_DISCLAIMER =
   "본 시그널은 추세·모멘텀·상대강도·변동성·매크로 오버레이에 따른 기계적 규칙입니다. 투자 자문·매매 권유가 아니며, 손실 가능성을 배제하지 않습니다.";
+
+export const SIGNAL_METHODOLOGY: string[] = [
+  "점수 0–100 → Buy(≥65) / Hold(35–64) / Sell(≤34)",
+  "추세 30%: 종가 vs SMA20·SMA50",
+  "모멘텀 25%: 5D·20D 수익률",
+  "상대강도 20%: vs SPY 20D excess (섹터·테마·QQQ)",
+  "변동성 15%: 20D 실현 vol 페널티",
+  "매크로 10%: VIX·HY OAS (금속은 스트레스 시 가점, 위험자산은 감점)",
+];
 
 export const CORE_SPECS: SignalAssetSpec[] = [
   { id: "spy", symbol: "SPY", label: "S&P 500", group: "core" },
   { id: "qqq", symbol: "QQQ", label: "Nasdaq 100", group: "core" },
   { id: "gld", symbol: "GLD", label: "Gold", group: "metal" },
   { id: "slv", symbol: "SLV", label: "Silver", group: "metal" },
-  { id: "bito", symbol: "BITO", label: "Bitcoin (BITO)", group: "crypto" },
 ];
+
+export const CRYPTO_PERP_SPEC: SignalAssetSpec = {
+  id: "btcusdt_p",
+  symbol: "BTCUSDT.P",
+  label: "BTCUSDT Perpetual",
+  group: "crypto",
+};
 
 export const SECTOR_SPECS: SignalAssetSpec[] = [
   { id: "xlc", symbol: "XLC", label: "Communication", group: "sector" },
@@ -460,6 +496,7 @@ export function buildSummary(input: {
   core: AssetSignal[];
   sectors: AssetSignal[];
   themes: AssetSignal[];
+  crypto?: AssetSignal | null;
 }): string[] {
   const lines: string[] = [];
   lines.push(
@@ -497,5 +534,15 @@ export function buildSummary(input: {
       `${a.symbol} ${a.signal_ko} (${a.score})${a.drivers[0] ? ` · ${a.drivers[0]}` : ""}`,
     );
   }
-  return lines.slice(0, 8);
+  if (input.crypto) {
+    lines.push(
+      `${input.crypto.symbol} ${input.crypto.signal_ko} (${input.crypto.score})${input.crypto.drivers[0] ? ` · ${input.crypto.drivers[0]}` : ""}`,
+    );
+  }
+  return lines.slice(0, 9);
+}
+
+export function fmtCryptoNum(n: number | null | undefined, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toFixed(digits);
 }
