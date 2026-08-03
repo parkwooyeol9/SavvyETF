@@ -123,9 +123,9 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const universeOnly = url.searchParams.get("universe") === "1";
   const ticker = (url.searchParams.get("ticker") || "DRAM").trim().toUpperCase();
-  const cacheKey = universeOnly
-    ? "etf-weights:v2:universe"
-    : `etf-weights:v2:${ticker}`;
+    const cacheKey = universeOnly
+    ? "etf-weights:v3:universe"
+    : `etf-weights:v3:${ticker}`;
 
   try {
     const payload = await withServerCache(cacheKey, 120_000, 600_000, async () => {

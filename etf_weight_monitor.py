@@ -333,6 +333,21 @@ def top_holdings_as_economic(rows: list[dict[str, Any]], *, top_n: int = 12) -> 
     return out
 
 
+def _roundhill_holdings_as_of(csv_date_iso: str | None, file_day: date) -> tuple[str, str | None]:
+    """Match Roundhill UI: holdingsDate = CSV Date minus 1 calendar day.
+
+    Returns (as_of_iso, csv_date_iso).
+    """
+    if csv_date_iso:
+        try:
+            csv_d = datetime.strptime(csv_date_iso, "%Y-%m-%d").date()
+            as_of = (csv_d - timedelta(days=1)).isoformat()
+            return as_of, csv_date_iso
+        except ValueError:
+            pass
+    return file_day.isoformat(), csv_date_iso
+
+
 def build_snapshot(
     *,
     ticker: str,
@@ -345,6 +360,7 @@ def build_snapshot(
     holdings: list[dict[str, Any]],
     file_day: str | None = None,
     file_key: str | None = None,
+    csv_date: str | None = None,
     aum_usd: float | None = None,
 ) -> dict[str, Any]:
     ticker = ticker.upper()
@@ -359,6 +375,7 @@ def build_snapshot(
         "name": name,
         "issuer": issuer,
         "as_of": as_of,
+        "csv_date": csv_date,
         "file_day": file_day,
         "file_key": file_key,
         "aum_usd": aum_usd,
@@ -374,21 +391,12 @@ def build_snapshot(
     }
 
 
-def save_snapshot(snapshot: dict[str, Any], *, csv_text: str | None = None) -> Path:
-    ticker = snapshot["ticker"]
-    day = snapshot["as_of"]
-    root = _ticker_dir(ticker)
-    (root / "snapshots").mkdir(parents=True, exist_ok=True)
-    path = _snapshot_path(ticker, day)
-    path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
-    _latest_path(ticker).write_text(
-        json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
-    )
-    if csv_text:
-        raw = root / "raw"
-        raw.mkdir(parents=True, exist_ok=True)
-        (raw / f"{day}.csv").write_text(csv_text, encoding="utf-8")
-    return path
+def _is_newer_as_of(candidate: str | None, current: str | None) -> bool:
+    if not candidate:
+        return False
+    if not current:
+        return True
+    return candidate >= current
 
 
 def list_snapshot_days(ticker: str) -> list[str]:
@@ -418,19 +426,48 @@ def load_latest(ticker: str) -> dict[str, Any] | None:
         return None
 
 
+def save_snapshot(snapshot: dict[str, Any], *, csv_text: str | None = None) -> Path:
+    ticker = snapshot["ticker"]
+    day = snapshot["as_of"]
+    root = _ticker_dir(ticker)
+    (root / "snapshots").mkdir(parents=True, exist_ok=True)
+    path = _snapshot_path(ticker, day)
+    path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+
+    # Never let an older backfill overwrite the pointer to the newest day.
+    existing = load_latest(ticker)
+    if _is_newer_as_of(snapshot.get("as_of"), (existing or {}).get("as_of")):
+        _latest_path(ticker).write_text(
+            json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
+        )
+
+    if csv_text:
+        raw = root / "raw"
+        raw.mkdir(parents=True, exist_ok=True)
+        (raw / f"{day}.csv").write_text(csv_text, encoding="utf-8")
+    return path
+
+
 def publish_to_r2(snapshot: dict[str, Any], *, csv_text: str | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"ok": False}
     try:
         from r2_briefs import r2_configured
-        from r2_data import put_bytes, put_json
+        from r2_data import get_json, put_bytes, put_json
 
         if not r2_configured():
             result["error"] = "R2 not configured"
             return result
         ticker = snapshot["ticker"]
         day = snapshot["as_of"]
-        put_json(f"etf_weights/{ticker}/latest.json", snapshot)
         put_json(f"etf_weights/{ticker}/snapshots/{day}.json", snapshot)
+
+        remote_latest = get_json(f"etf_weights/{ticker}/latest.json")
+        if _is_newer_as_of(snapshot.get("as_of"), (remote_latest or {}).get("as_of")):
+            put_json(f"etf_weights/{ticker}/latest.json", snapshot)
+            result["latest_updated"] = True
+        else:
+            result["latest_updated"] = False
+
         if csv_text:
             put_bytes(
                 f"etf_weights/{ticker}/raw/{day}.csv",
@@ -543,7 +580,8 @@ def collect_roundhill_from_csv(
             rows = parse_account_rows(csv_text, acct)
             if not rows:
                 continue
-            as_of = rows[0].get("date") or file_day.isoformat()
+            csv_date = rows[0].get("date")
+            as_of, csv_date = _roundhill_holdings_as_of(csv_date, file_day)
             snap = build_snapshot(
                 ticker=acct,
                 name=f"Roundhill {acct}",
@@ -551,13 +589,15 @@ def collect_roundhill_from_csv(
                 source="roundhill_filepoint_csv",
                 source_url=f"{FILEPOINT_BASE}{file_key}.csv",
                 source_note=(
-                    "Roundhill Filepoint daily holdings CSV (all funds in one file). "
-                    "Website PDF/CSV downloads are generated from this feed."
+                    "Roundhill Filepoint daily holdings CSV. "
+                    "as_of matches website holdingsDate (= CSV Date − 1 day). "
+                    "Website PDF/CSV downloads are generated from this same feed."
                 ),
                 as_of=as_of,
                 holdings=rows,
                 file_day=file_day.isoformat(),
                 file_key=file_key,
+                csv_date=csv_date,
             )
             # Prefer DRAM display name
             if acct == "DRAM":
@@ -892,6 +932,9 @@ def weight_monitor_payload(ticker: str = "DRAM") -> dict[str, Any]:
         "name": latest.get("name"),
         "issuer": latest.get("issuer"),
         "as_of": latest.get("as_of"),
+        "csv_date": latest.get("csv_date"),
+        "file_day": latest.get("file_day"),
+        "file_key": latest.get("file_key"),
         "aum_usd": latest.get("aum_usd"),
         "generated_at": latest.get("generated_at"),
         "generated_at_display": latest.get("generated_at_display"),

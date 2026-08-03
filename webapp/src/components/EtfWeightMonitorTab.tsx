@@ -49,6 +49,8 @@ type Payload = {
   name?: string;
   issuer?: string;
   as_of?: string | null;
+  csv_date?: string | null;
+  file_day?: string | null;
   aum_usd?: number | null;
   generated_at_display?: string;
   source_note?: string;
@@ -223,7 +225,9 @@ export default function EtfWeightMonitorTab() {
       {data?.ok ? (
         <>
           <p className="meta-line" style={{ marginBottom: 12 }}>
-            {data.name} · {data.issuer} · as of {data.as_of || "—"} · AUM{" "}
+            {data.name} · {data.issuer} · holdings as of {data.as_of || "—"}
+            {data.csv_date ? ` (CSV Date ${data.csv_date})` : ""}
+            {data.file_day ? ` · file ${data.file_day}` : ""} · AUM{" "}
             {fmtAum(data.aum_usd)} · 스냅샷 {data.history?.snapshot_count ?? 0}일
           </p>
           {data.source_note ? (
