@@ -14,6 +14,7 @@ export type ShellTabId =
   | "etfweights"
   | "economy"
   | "yencarry"
+  | "signals"
   | "eventstudy"
   | TabId;
 
@@ -57,6 +58,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "us",
   "economy",
   "yencarry",
+  "signals",
   "eventstudy",
   "education",
   "simulate",
@@ -93,6 +95,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   greenmin: "녹색 광물",
   economy: "경제",
   yencarry: "엔케리 모니터",
+  signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
@@ -108,7 +111,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "economy", "yencarry", "eventstudy"],
+    tabs: ["kr", "us", "economy", "yencarry", "signals", "eventstudy"],
   },
   {
     id: "etf",

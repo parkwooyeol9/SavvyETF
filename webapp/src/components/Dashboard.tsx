@@ -21,6 +21,7 @@ import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import YenCarryTab from "@/components/YenCarryTab";
+import TradingSignalsTab from "@/components/TradingSignalsTab";
 import SimulateTab from "@/components/SimulateTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
@@ -156,6 +157,7 @@ export default function Dashboard() {
       tab === "esg" ||
       tab === "economy" ||
       tab === "yencarry" ||
+      tab === "signals" ||
       tab === "eventstudy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
@@ -263,6 +265,8 @@ export default function Dashboard() {
         <MacroTab />
       ) : tab === "yencarry" ? (
         <YenCarryTab />
+      ) : tab === "signals" ? (
+        <TradingSignalsTab />
       ) : tab === "eventstudy" ? (
         <EventStudyTab />
       ) : tab === "kr" ? (
