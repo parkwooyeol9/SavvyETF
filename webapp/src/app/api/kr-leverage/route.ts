@@ -656,7 +656,7 @@ async function buildBoard(): Promise<SingleStockLevBoard> {
 export async function GET() {
   try {
     const board = await withServerCache(
-      "kr-leverage:v6",
+      "kr-leverage:v7",
       170_000,
       600_000,
       buildBoard,

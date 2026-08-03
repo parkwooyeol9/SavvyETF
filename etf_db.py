@@ -503,6 +503,16 @@ def build_etf_db(*, force_fetch: bool = True) -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
 
+    # After Render redeploys local snapshots vanish; pull history from R2 first.
+    try:
+        from r2_data import sync_etf_snapshots_from_r2
+
+        n = sync_etf_snapshots_from_r2(local_dir=SNAPSHOT_DIR)
+        if n:
+            print(f"etf_db: restored {n} snapshot(s) from R2")
+    except Exception as sync_exc:
+        print(f"etf_db: R2 snapshot sync skipped: {sync_exc}")
+
     rows = build_universe_rows()
     save_snapshot(rows, day=day)
 
@@ -568,6 +578,22 @@ def build_etf_db(*, force_fetch: bool = True) -> dict[str, Any]:
         encoding="utf-8",
     )
     HTML_PATH.write_text(render_etfdb_html(payload), encoding="utf-8")
+
+    try:
+        from r2_data import publish_etf_db_to_r2
+
+        snap = load_snapshot(day)
+        pub = publish_etf_db_to_r2(payload, snapshot=snap)
+        if pub.get("ok"):
+            print(
+                f"etf_db: published to R2 (snapshot={pub.get('snapshot')}, "
+                f"pruned={pub.get('pruned', 0)})"
+            )
+        elif pub.get("error"):
+            print(f"etf_db: R2 publish skipped: {pub['error']}")
+    except Exception as pub_exc:
+        print(f"etf_db: R2 publish failed: {pub_exc}")
+
     return payload
 
 

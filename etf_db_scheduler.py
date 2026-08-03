@@ -49,6 +49,47 @@ def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
     return not is_kr_equity_trading_day(now_kst.date())
 
 
+def _bootstrap_r2_from_local() -> None:
+    """If disk has a latest.json but we just restarted, push it to R2 once."""
+    try:
+        from etf_db import LATEST_PATH, load_latest, load_snapshot, list_snapshot_days
+        from r2_briefs import r2_configured
+        from r2_data import (
+            ETF_DB_LATEST_KEY,
+            get_json,
+            list_etf_snapshot_days_r2,
+            publish_etf_db_to_r2,
+            upload_etf_snapshot,
+        )
+
+        if not r2_configured() or not LATEST_PATH.is_file():
+            return
+        remote = get_json(ETF_DB_LATEST_KEY)
+        local = load_latest()
+        if not local or not local.get("rows"):
+            return
+        local_gen = str(local.get("generated_at") or "")
+        remote_gen = str((remote or {}).get("generated_at") or "")
+
+        remote_days = set(list_etf_snapshot_days_r2())
+        uploaded = 0
+        for day in list_snapshot_days():
+            if day in remote_days:
+                continue
+            snap = load_snapshot(day)
+            if snap and upload_etf_snapshot(day, snap):
+                uploaded += 1
+
+        if (not remote_gen) or (local_gen and local_gen > remote_gen):
+            day = str(local.get("as_of") or "")[:10]
+            pub = publish_etf_db_to_r2(local, snapshot=load_snapshot(day) if day else None)
+            print(f"etfdb bootstrap R2 latest: {pub}")
+        if uploaded:
+            print(f"etfdb bootstrap: uploaded {uploaded} missing snapshot(s) to R2")
+    except Exception as exc:
+        print(f"etfdb bootstrap R2 skipped: {exc}")
+
+
 def run_scheduled_etf_db() -> bool:
     from etf_db import build_etf_db
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
@@ -101,8 +142,12 @@ def start_etf_db_scheduler() -> None:
         last_slot = state.get("last_etfdb_slot")
         print(
             f"etfdb scheduler active — KRX days at {hour:02d}:{minute:02d} KST "
-            f"(snapshot only, {catchup_minutes}m catch-up)"
+            f"(snapshot + R2 mirror, {catchup_minutes}m catch-up)"
         )
+        try:
+            _bootstrap_r2_from_local()
+        except Exception as boot_exc:
+            print(f"etfdb bootstrap error: {boot_exc}")
 
         while True:
             try:

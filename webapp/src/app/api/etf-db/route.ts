@@ -7,6 +7,7 @@ import {
   reconstructAumHistories,
 } from "@/lib/etfAumHistory";
 import { buildPayloadFromNaver, type EtfDbPayload } from "@/lib/etfDb";
+import { r2Configured, r2GetObjectText } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,10 +15,68 @@ export const maxDuration = 60;
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
+const ETF_DB_LATEST_KEY = "etf_db/latest.json";
+
 type NaverListResponse = {
   resultCode?: string;
   result?: { etfItemList?: unknown[] };
 };
+
+type Overlay = {
+  flowByCode: Record<string, number>;
+  prevAsOf: string | null;
+  flowHistory: EtfDbPayload["flow_history"] | undefined;
+  aumHistory: EtfDbPayload["aum_history"] | undefined;
+  source: "r2" | "bot" | "none";
+};
+
+const EMPTY_OVERLAY: Overlay = {
+  flowByCode: {},
+  prevAsOf: null,
+  flowHistory: undefined,
+  aumHistory: undefined,
+  source: "none",
+};
+
+function overlayFromPayload(data: {
+  prev_as_of?: string | null;
+  rows?: Array<{ code?: string; flow_eok?: number | null }>;
+  flow_history?: EtfDbPayload["flow_history"];
+  aum_history?: EtfDbPayload["aum_history"];
+}): Omit<Overlay, "source"> {
+  const flowByCode: Record<string, number> = {};
+  for (const row of data.rows || []) {
+    if (row.code && row.flow_eok != null && Number.isFinite(row.flow_eok)) {
+      flowByCode[row.code] = Number(row.flow_eok);
+    }
+  }
+  return {
+    flowByCode,
+    prevAsOf: data.prev_as_of ?? null,
+    flowHistory: data.flow_history,
+    aumHistory: data.aum_history,
+  };
+}
+
+function historyDepth(
+  hist: EtfDbPayload["aum_history"] | EtfDbPayload["flow_history"] | undefined,
+): number {
+  if (!hist) return 0;
+  const dates = hist.type?.dates || hist.country?.dates || hist.sector?.dates;
+  return Array.isArray(dates) ? dates.length : 0;
+}
+
+async function fetchR2Overlay(): Promise<Overlay> {
+  if (!r2Configured()) return { ...EMPTY_OVERLAY };
+  try {
+    const text = await r2GetObjectText(ETF_DB_LATEST_KEY);
+    if (!text) return { ...EMPTY_OVERLAY };
+    const data = JSON.parse(text) as Parameters<typeof overlayFromPayload>[0];
+    return { ...overlayFromPayload(data), source: "r2" };
+  } catch {
+    return { ...EMPTY_OVERLAY };
+  }
+}
 
 async function fetchNaverUniverse(): Promise<unknown[]> {
   const res = await fetch(
@@ -49,58 +108,41 @@ async function fetchNaverUniverse(): Promise<unknown[]> {
   return items;
 }
 
-async function fetchBotOverlay(): Promise<{
-  flowByCode: Record<string, number>;
-  prevAsOf: string | null;
-  flowHistory: EtfDbPayload["flow_history"] | undefined;
-  aumHistory: EtfDbPayload["aum_history"] | undefined;
-}> {
+async function fetchBotOverlay(): Promise<Overlay> {
   try {
     const res = await fetch(`${botBaseUrl()}/etfdb.json`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(12_000),
     });
-    if (!res.ok) {
-      return {
-        flowByCode: {},
-        prevAsOf: null,
-        flowHistory: undefined,
-        aumHistory: undefined,
-      };
-    }
-    const data = (await res.json()) as {
-      prev_as_of?: string | null;
-      rows?: Array<{ code?: string; flow_eok?: number | null }>;
-      flow_history?: EtfDbPayload["flow_history"];
-      aum_history?: EtfDbPayload["aum_history"];
-    };
-    const flowByCode: Record<string, number> = {};
-    for (const row of data.rows || []) {
-      if (row.code && row.flow_eok != null && Number.isFinite(row.flow_eok)) {
-        flowByCode[row.code] = Number(row.flow_eok);
-      }
-    }
-    return {
-      flowByCode,
-      prevAsOf: data.prev_as_of ?? null,
-      flowHistory: data.flow_history,
-      aumHistory: data.aum_history,
-    };
+    if (!res.ok) return { ...EMPTY_OVERLAY };
+    const data = (await res.json()) as Parameters<typeof overlayFromPayload>[0];
+    return { ...overlayFromPayload(data), source: "bot" };
   } catch {
-    return {
-      flowByCode: {},
-      prevAsOf: null,
-      flowHistory: undefined,
-      aumHistory: undefined,
-    };
+    return { ...EMPTY_OVERLAY };
   }
+}
+
+/** Prefer R2 (durable); fall back to live bot HTTP if R2 missing/thinner. */
+async function fetchOverlay(): Promise<Overlay> {
+  const [r2, bot] = await Promise.all([fetchR2Overlay(), fetchBotOverlay()]);
+  const r2Score =
+    Object.keys(r2.flowByCode).length +
+    historyDepth(r2.aumHistory) * 10 +
+    historyDepth(r2.flowHistory) * 5;
+  const botScore =
+    Object.keys(bot.flowByCode).length +
+    historyDepth(bot.aumHistory) * 10 +
+    historyDepth(bot.flowHistory) * 5;
+  if (r2Score >= botScore && r2Score > 0) return r2;
+  if (botScore > 0) return bot;
+  return r2.source !== "none" ? r2 : bot;
 }
 
 export async function GET(request: Request) {
   try {
     const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
-    const cacheKey = `etf-db:v1:${equityOnly ? "eq" : "all"}`;
+    const cacheKey = `etf-db:v2:${equityOnly ? "eq" : "all"}`;
 
     const payload = await withServerCache(
       cacheKey,
@@ -109,7 +151,7 @@ export async function GET(request: Request) {
       async () => {
         const [items, overlay] = await Promise.all([
           fetchNaverUniverse(),
-          fetchBotOverlay(),
+          fetchOverlay(),
         ]);
         const built = buildPayloadFromNaver(
           items as Parameters<typeof buildPayloadFromNaver>[0],

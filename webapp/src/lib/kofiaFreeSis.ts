@@ -52,8 +52,12 @@ export type ForcedSellBoard = {
     freesis_fund: boolean;
     freesis_credit: boolean;
     naver_credit: boolean;
+    /** True when board was loaded from Render→R2 cache */
+    r2?: boolean;
   };
   note: string;
+  generated_at?: string;
+  collected_on?: string;
 };
 
 function ymdToIso(ymd: string): string {
@@ -404,11 +408,65 @@ async function tryFreesis(
   }
 }
 
+const CREDIT_MONITOR_R2_KEY = "credit_monitor/latest.json";
+/** Prefer R2 cache for this many hours before forcing a live refresh attempt. */
+const CREDIT_R2_MAX_AGE_HOURS = 36;
+
+function isForcedSellBoard(value: unknown): value is ForcedSellBoard {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Partial<ForcedSellBoard>;
+  return Array.isArray(v.fund_series) && Array.isArray(v.credit_series);
+}
+
+async function loadForcedSellFromR2(): Promise<ForcedSellBoard | null> {
+  try {
+    const { r2Configured, r2GetObjectText } = await import("@/lib/r2");
+    if (!r2Configured()) return null;
+    const text = await r2GetObjectText(CREDIT_MONITOR_R2_KEY);
+    if (!text) return null;
+    const parsed = JSON.parse(text) as unknown;
+    return isForcedSellBoard(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isCreditCacheFresh(board: ForcedSellBoard): boolean {
+  const raw = board.generated_at || board.as_of;
+  if (!raw) return false;
+  const ts = Date.parse(raw);
+  if (!Number.isFinite(ts)) {
+    // as_of is YYYY-MM-DD — treat as KST midnight-ish; accept if within lookback window
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const ageMs = Date.now() - Date.parse(`${raw}T00:00:00+09:00`);
+      return ageMs >= 0 && ageMs <= CREDIT_R2_MAX_AGE_HOURS * 3_600_000;
+    }
+    return false;
+  }
+  const ageH = (Date.now() - ts) / 3_600_000;
+  return ageH >= 0 && ageH <= CREDIT_R2_MAX_AGE_HOURS;
+}
+
 export async function fetchForcedSellBoard(
   lookbackDays = 60,
 ): Promise<ForcedSellBoard> {
   const baseNote =
     "미수 기준 반대매매는 금투협 FreeSIS, 신용·예탁금은 FreeSIS 또는 네이버 증시자금. 통상 1~2영업일 지연.";
+
+  // Prefer Render→R2 cache (FreeSIS often blocked from Vercel US egress).
+  const cached = await loadForcedSellFromR2();
+  if (cached && (cached.fund_series.length > 0 || cached.credit_series.length > 0)) {
+    const ageOk = isCreditCacheFresh(cached);
+    if (ageOk || cached.sources.freesis_fund) {
+      return {
+        ...cached,
+        sources: { ...cached.sources, r2: true },
+        note: cached.note.includes("R2")
+          ? cached.note
+          : `${cached.note} · 출처: Render→R2 캐시`,
+      };
+    }
+  }
 
   const { start, end } = lookbackRange(lookbackDays);
 
@@ -442,9 +500,31 @@ export async function fetchForcedSellBoard(
     freesis_fund: freesis.fund.length > 0,
     freesis_credit: freesis.credit.length > 0,
     naver_credit: freesis.credit.length === 0 && naver.credit_series.length > 0,
+    r2: false,
   };
 
+  // If live FreeSIS failed but R2 has usable data (even stale), prefer R2 over empty.
+  if (
+    !sources.freesis_fund &&
+    cached &&
+    cached.sources.freesis_fund &&
+    cached.fund_series.length > 0
+  ) {
+    return {
+      ...cached,
+      sources: { ...cached.sources, r2: true },
+      note: `${cached.note} · 출처: Render→R2 캐시(라이브 FreeSIS 실패)`,
+    };
+  }
+
   if (!fundForUi.length && !credit_series.length) {
+    if (cached && (cached.fund_series.length || cached.credit_series.length)) {
+      return {
+        ...cached,
+        sources: { ...cached.sources, r2: true },
+        note: `${cached.note} · 출처: Render→R2 캐시(라이브 전부 실패)`,
+      };
+    }
     return {
       as_of: null,
       stress: "calm",
