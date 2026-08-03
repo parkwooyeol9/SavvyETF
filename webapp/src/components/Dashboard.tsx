@@ -20,6 +20,7 @@ import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
+import YenCarryTab from "@/components/YenCarryTab";
 import SimulateTab from "@/components/SimulateTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
@@ -154,6 +155,7 @@ export default function Dashboard() {
       tab === "greenmin" ||
       tab === "esg" ||
       tab === "economy" ||
+      tab === "yencarry" ||
       tab === "eventstudy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
@@ -259,6 +261,8 @@ export default function Dashboard() {
         </EsgTabShell>
       ) : tab === "economy" ? (
         <MacroTab />
+      ) : tab === "yencarry" ? (
+        <YenCarryTab />
       ) : tab === "eventstudy" ? (
         <EventStudyTab />
       ) : tab === "kr" ? (
