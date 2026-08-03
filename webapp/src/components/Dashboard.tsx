@@ -15,6 +15,7 @@ import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
+import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
@@ -156,6 +157,7 @@ export default function Dashboard() {
       tab === "eventstudy" ||
       tab === "etfdb" ||
       tab === "leverage" ||
+      tab === "etfweights" ||
       tab === "etf"
     ) {
       return error
@@ -231,6 +233,8 @@ export default function Dashboard() {
         <EducationTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
+      ) : tab === "etfweights" ? (
+        <EtfWeightMonitorTab />
       ) : tab === "leverage" ? (
         <LeverageEtfTab />
       ) : tab === "geo" ? (

@@ -36,6 +36,7 @@ from etfcheck_scheduler import start_etfcheck_scheduler
 from etf_kor15_scheduler import start_etf_kor15_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from credit_monitor_scheduler import start_credit_monitor_scheduler
+from etf_weight_monitor_scheduler import start_etf_weight_monitor_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -3129,6 +3130,33 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/etf-weights":
+                from etf_weight_monitor import load_universe, weight_monitor_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                ticker = ((query.get("ticker") or [""])[0] or "").strip().upper()
+                if (query.get("universe") or [""])[0] in {"1", "true", "yes"} or not ticker:
+                    try:
+                        payload = {"ok": True, "universe": load_universe()}
+                    except Exception as exc:
+                        payload = {"ok": False, "error": str(exc)}
+                    status = 200 if payload.get("ok") else 503
+                    body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                    self._send_cors_json(body, status=status)
+                    return
+                try:
+                    payload = weight_monitor_payload(ticker)
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "ticker": ticker,
+                        "error": f"etf-weights failed: {exc}",
+                    }
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/etf-new":
                 from etf_new_web import etf_new_payload
 
@@ -3600,6 +3628,7 @@ if __name__ == "__main__":
     start_etf_kor15_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_db_scheduler()
     start_credit_monitor_scheduler()
+    start_etf_weight_monitor_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)

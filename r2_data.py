@@ -44,6 +44,19 @@ def put_json(key: str, payload: dict[str, Any] | list[Any]) -> bool:
     return True
 
 
+def put_bytes(
+    key: str,
+    body: bytes,
+    content_type: str,
+    *,
+    cache_control: str = "public, max-age=120",
+) -> bool:
+    if not r2_configured():
+        return False
+    _put_bytes(_client(), key, body, content_type, cache_control=cache_control)
+    return True
+
+
 def get_json(key: str) -> dict[str, Any] | None:
     if not r2_configured():
         return None
@@ -73,6 +86,12 @@ def list_etf_snapshot_days_r2() -> list[str]:
         if _ymd(day):
             days.append(day)
     return sorted(days)
+
+
+def list_prefix_keys(prefix: str) -> list[str]:
+    if not r2_configured():
+        return []
+    return _list_keys(_client(), prefix)
     """Keep the newest MAX_R2_SNAPSHOTS snapshot objects; delete older keys."""
     if not r2_configured():
         return 0
