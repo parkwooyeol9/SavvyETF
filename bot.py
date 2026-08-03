@@ -3131,10 +3131,32 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 return
 
             if path == "/api/web/etf-weights":
-                from etf_weight_monitor import load_universe, weight_monitor_payload
+                from etf_weight_monitor import (
+                    load_snapshot,
+                    load_universe,
+                    weight_monitor_payload,
+                )
 
                 query = parse_qs(urlparse(self.path).query)
                 ticker = ((query.get("ticker") or [""])[0] or "").strip().upper()
+                as_of = ((query.get("as_of") or [""])[0] or "").strip()
+                if as_of and ticker:
+                    snap = load_snapshot(ticker, as_of)
+                    if snap:
+                        payload = {**snap, "ok": True}
+                    else:
+                        payload = {
+                            "ok": False,
+                            "ticker": ticker,
+                            "as_of": as_of,
+                            "error": f"No snapshot for {ticker} on {as_of}",
+                        }
+                    status = 200 if payload.get("ok") else 404
+                    body = json.dumps(payload, ensure_ascii=False, default=str).encode(
+                        "utf-8"
+                    )
+                    self._send_cors_json(body, status=status)
+                    return
                 if (query.get("universe") or [""])[0] in {"1", "true", "yes"} or not ticker:
                     try:
                         payload = {"ok": True, "universe": load_universe()}

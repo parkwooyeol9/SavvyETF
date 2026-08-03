@@ -119,13 +119,73 @@ async function loadFromR2(ticker: string): Promise<EtfWeightsPayload | null> {
   }
 }
 
+async function loadSnapshotFromR2(
+  ticker: string,
+  asOf: string,
+): Promise<EtfWeightsPayload | null> {
+  if (!r2Configured()) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return null;
+  try {
+    const text = await r2GetObjectText(
+      `etf_weights/${ticker}/snapshots/${asOf}.json`,
+    );
+    if (!text) return null;
+    const snap = JSON.parse(text) as EtfWeightsPayload;
+    snap.ok = true;
+    return snap;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const universeOnly = url.searchParams.get("universe") === "1";
   const ticker = (url.searchParams.get("ticker") || "DRAM").trim().toUpperCase();
-    const cacheKey = universeOnly
-    ? "etf-weights:v3:universe"
-    : `etf-weights:v3:${ticker}`;
+  const asOf = (url.searchParams.get("as_of") || "").trim();
+
+  if (asOf) {
+    try {
+      const r2 = await loadSnapshotFromR2(ticker, asOf);
+      if (r2?.ok) {
+        return NextResponse.json(r2, {
+          headers: { "Cache-Control": cdnCacheHeader("heavy") },
+        });
+      }
+      try {
+        const bot = await fetchBotJson<EtfWeightsPayload>(
+          `/api/web/etf-weights?ticker=${encodeURIComponent(ticker)}&as_of=${encodeURIComponent(asOf)}`,
+          { timeoutMs: 30_000 },
+        );
+        if (bot?.ok) {
+          return NextResponse.json(bot, {
+            headers: { "Cache-Control": cdnCacheHeader("heavy") },
+          });
+        }
+      } catch {
+        /* fall through */
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          ticker,
+          as_of: asOf,
+          error: `No snapshot for ${ticker} on ${asOf}`,
+        } satisfies EtfWeightsPayload,
+        { status: 404 },
+      );
+    } catch (exc) {
+      const message = exc instanceof Error ? exc.message : String(exc);
+      return NextResponse.json(
+        { ok: false, ticker, error: message } satisfies EtfWeightsPayload,
+        { status: 502 },
+      );
+    }
+  }
+
+  const cacheKey = universeOnly
+    ? "etf-weights:v4:universe"
+    : `etf-weights:v4:${ticker}`;
 
   try {
     const payload = await withServerCache(cacheKey, 120_000, 600_000, async () => {
