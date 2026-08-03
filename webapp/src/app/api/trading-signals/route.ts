@@ -13,6 +13,7 @@ import {
   buildAssetSignal,
   buildRiskRegime,
   buildSummary,
+  interpretCryptoPanel,
   pctChange,
   type CryptoIndicator,
   type CryptoPanel,
@@ -415,6 +416,11 @@ async function buildCryptoPanel(macro: {
     ].slice(0, 3);
   }
 
+  const { interpretations, bias_note } = interpretCryptoPanel({
+    signal,
+    indicators,
+  });
+
   return {
     symbol: "BTCUSDT.P",
     label: "BTCUSDT Perpetual",
@@ -422,6 +428,8 @@ async function buildCryptoPanel(macro: {
       "가격·펀딩·OI·L/S·호가: OKX BTC-USDT-SWAP · 도미넌스/유동성: CoinGecko · (Binance 직접 API는 일부 지역 차단 → 퍼프 프록시로 OKX 사용)",
     signal,
     indicators,
+    interpretations,
+    bias_note,
     as_of,
   };
 }
@@ -516,7 +524,7 @@ async function buildPayload(): Promise<TradingSignalsPayload> {
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "trading-signals:v2-crypto",
+      "trading-signals:v3-crypto-interpret",
       120_000,
       600_000,
       () => buildPayload(),

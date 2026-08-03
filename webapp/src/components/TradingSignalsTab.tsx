@@ -278,6 +278,29 @@ export default function TradingSignalsTab() {
                   <CryptoIndicatorGrid items={data.crypto.indicators} />
                 </div>
               ) : null}
+              {data.crypto?.bias_note || data.crypto?.interpretations?.length ? (
+                <div style={{ marginTop: 16 }}>
+                  <h4 className="geo-section-title" style={{ fontSize: "1rem" }}>
+                    현재 데이터 해석
+                  </h4>
+                  {data.crypto.bias_note ? (
+                    <p className="geo-thesis" style={{ marginBottom: 8 }}>
+                      {data.crypto.bias_note}
+                    </p>
+                  ) : null}
+                  {(data.crypto.interpretations || []).length ? (
+                    <ul className="panel-sub">
+                      {data.crypto.interpretations.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="meta-soft" style={{ marginTop: 8 }}>
+                    휴리스틱 해석입니다. OI·L/S·펀딩의 “높다/낮다”는 절대 수준·최근
+                    감각 기준이며, 투자 권유가 아닙니다.
+                  </p>
+                </div>
+              ) : null}
               {data.crypto?.source_note ? (
                 <p className="meta-soft" style={{ marginTop: 10 }}>
                   {data.crypto.source_note}

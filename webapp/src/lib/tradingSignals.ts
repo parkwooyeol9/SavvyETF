@@ -80,6 +80,8 @@ export type CryptoPanel = {
   source_note: string;
   signal: AssetSignal | null;
   indicators: CryptoIndicator[];
+  interpretations: string[];
+  bias_note: string | null;
   as_of: string | null;
 };
 
@@ -545,4 +547,204 @@ export function buildSummary(input: {
 export function fmtCryptoNum(n: number | null | undefined, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   return n.toFixed(digits);
+}
+
+function indValue(
+  indicators: CryptoIndicator[],
+  id: string,
+): number | null {
+  const hit = indicators.find((i) => i.id === id);
+  return hit?.value ?? null;
+}
+
+/**
+ * Rule-based plain-language read of current crypto dashboard values.
+ * Heuristic thresholds for daily monitoring — not predictive.
+ */
+export function interpretCryptoPanel(input: {
+  signal: AssetSignal | null;
+  indicators: CryptoIndicator[];
+}): { interpretations: string[]; bias_note: string | null } {
+  const { signal, indicators } = input;
+  const lines: string[] = [];
+
+  const usdtDom = indValue(indicators, "usdt_dom");
+  const btcDom = indValue(indicators, "btc_dom");
+  const ls = indValue(indicators, "ls_ratio");
+  const fundingPct = indValue(indicators, "funding"); // already *100 in API
+  const oi = indValue(indicators, "oi");
+  const bnOi = indValue(indicators, "bn_oi");
+  const liquidity = indValue(indicators, "liquidity");
+  const book = indValue(indicators, "book");
+  const taker = indValue(indicators, "taker");
+  const volBtc = indValue(indicators, "vol24");
+
+  // Positioning / crowding
+  if (ls != null) {
+    const longPct = (ls / (1 + ls)) * 100;
+    if (ls >= 2.2) {
+      lines.push(
+        `개인·계정 L/S ${ls.toFixed(2)} (롱 약 ${longPct.toFixed(0)}%) — 롱 포지션이 과밀합니다. 되돌림·청산 캐스케이드에 취약합니다.`,
+      );
+    } else if (ls >= 1.7) {
+      lines.push(
+        `L/S ${ls.toFixed(2)} (롱 약 ${longPct.toFixed(0)}%) — 롱 편향이 뚜렷합니다. 추세 추종은 가능하나 과열 구간으로 봅니다.`,
+      );
+    } else if (ls <= 0.85) {
+      lines.push(
+        `L/S ${ls.toFixed(2)} (롱 약 ${longPct.toFixed(0)}%) — 숏이 우세합니다. 숏 스퀴즈 여지를 같이 봅니다.`,
+      );
+    } else {
+      lines.push(
+        `L/S ${ls.toFixed(2)} (롱 약 ${longPct.toFixed(0)}%) — 계정 포지션은 비교적 균형에 가깝습니다.`,
+      );
+    }
+  }
+
+  if (fundingPct != null) {
+    if (fundingPct >= 0.05) {
+      lines.push(
+        `펀딩 ${fundingPct.toFixed(4)}% — 롱이 숏에게 높은 비용을 지불 중(롱 과열). 추세가 꺾이면 청산 압력이 커질 수 있습니다.`,
+      );
+    } else if (fundingPct >= 0.01) {
+      lines.push(
+        `펀딩 ${fundingPct.toFixed(4)}% — 소폭 롱 프리미엄. 과열은 아니나 롱 쪽이 비용을 부담하는 상태입니다.`,
+      );
+    } else if (fundingPct <= -0.01) {
+      lines.push(
+        `펀딩 ${fundingPct.toFixed(4)}% — 음수(숏이 비용 부담). 약세 포지션이 우세하거나 현물 대비 할인 구간일 수 있습니다.`,
+      );
+    } else {
+      lines.push(
+        `펀딩 ${fundingPct.toFixed(4)}% — 중립 부근. 포지션 비용 측면의 왜곡은 크지 않습니다.`,
+      );
+    }
+  }
+
+  // OI / liquidity
+  if (oi != null || bnOi != null) {
+    const oiRef = bnOi ?? oi;
+    const label = bnOi != null ? "Binance BTCUSDT OI" : "OKX 퍼프 OI";
+    if (oiRef != null) {
+      if (oiRef >= 8e9) {
+        lines.push(
+          `${label} ${fmtUsd(oiRef)} — 미결제약정이 높은 편입니다. 레버리지가 두꺼워 변동성 확대 시 청산 규모가 커질 수 있습니다.`,
+        );
+      } else if (oiRef >= 4e9) {
+        lines.push(
+          `${label} ${fmtUsd(oiRef)} — OI는 중간~높은 수준. 추세와 방향이 맞으면 모멘텀, 어긋나면 청산 파동을 같이 봅니다.`,
+        );
+      } else {
+        lines.push(
+          `${label} ${fmtUsd(oiRef)} — OI는 상대적으로 낮은 편. 레버리지 과열 신호는 약합니다.`,
+        );
+      }
+    }
+  }
+
+  if (usdtDom != null) {
+    if (usdtDom >= 8.5) {
+      lines.push(
+        `USDT.D ${usdtDom.toFixed(2)}% — 테더 비중이 높습니다. 대기 자금·위험회피 성격이 강하고, 리스크온 전환 전 “현금 파킹” 구간일 수 있습니다.`,
+      );
+    } else if (usdtDom <= 5.5) {
+      lines.push(
+        `USDT.D ${usdtDom.toFixed(2)}% — 테더 비중이 낮습니다. 자금이 리스크 자산으로 이미 이동한 상태일 수 있습니다.`,
+      );
+    } else {
+      lines.push(
+        `USDT.D ${usdtDom.toFixed(2)}% — 스테이블 비중은 중간 수준입니다.`,
+      );
+    }
+  }
+
+  if (btcDom != null) {
+    if (btcDom >= 55) {
+      lines.push(
+        `BTC.D ${btcDom.toFixed(1)}% — 비트코인 도미넌스가 높습니다. 알트 대비 BTC 편중·안전자산 성격이 강한 구간입니다.`,
+      );
+    } else if (btcDom <= 45) {
+      lines.push(
+        `BTC.D ${btcDom.toFixed(1)}% — 도미넌스가 낮습니다. 알트 시즌/리스크온 확산 가능성을 시사할 수 있습니다.`,
+      );
+    }
+  }
+
+  if (liquidity != null) {
+    if (liquidity >= 3.5) {
+      lines.push(
+        `Crypto Liquidity(Vol/Mcap) ${liquidity.toFixed(2)}% — 거래 활발. 유동성은 충분하나 변동성·회전율도 높은 편입니다.`,
+      );
+    } else if (liquidity <= 1.5) {
+      lines.push(
+        `Crypto Liquidity ${liquidity.toFixed(2)}% — 회전율이 낮습니다. 스프레드·미끄러짐에 유의할 얇은 유동성 구간일 수 있습니다.`,
+      );
+    }
+  }
+
+  if (book != null) {
+    if (book >= 15) {
+      lines.push(
+        `호가 불균형 +${book.toFixed(1)}% — 단기 매수벽(bid)이 두껍습니다. 지지 시도 가능성은 있으나 스푸핑일 수도 있습니다.`,
+      );
+    } else if (book <= -15) {
+      lines.push(
+        `호가 불균형 ${book.toFixed(1)}% — 매도벽(ask)이 두껍습니다. 상방 저항·단기 약세 압력으로 읽을 수 있습니다.`,
+      );
+    }
+  }
+
+  if (taker != null) {
+    if (taker >= 12) {
+      lines.push(
+        `Taker 매수 우세 +${taker.toFixed(1)}% — 공격적 매수가 우세합니다(시장가 매수 압력).`,
+      );
+    } else if (taker <= -12) {
+      lines.push(
+        `Taker 매도 우세 ${taker.toFixed(1)}% — 공격적 매도가 우세합니다(시장가 매도 압력).`,
+      );
+    }
+  }
+
+  if (volBtc != null && volBtc >= 80_000) {
+    lines.push(
+      `퍼프 24h 거래량 ${volBtc.toFixed(0)} BTC — 회전이 큽니다. 뉴스·청산 이벤트와 겹치면 스파이크가 나오기 쉽습니다.`,
+    );
+  }
+
+  // Combine with price signal
+  let bias_note: string | null = null;
+  if (signal) {
+    const crowdedLong =
+      (ls != null && ls >= 1.8) || (fundingPct != null && fundingPct >= 0.02);
+    const crowdedShort =
+      (ls != null && ls <= 0.9) || (fundingPct != null && fundingPct <= -0.01);
+
+    if (signal.signal === "buy" && crowdedLong) {
+      bias_note =
+        `가격 룰은 ${signal.signal_ko}(${signal.score})이지만, 롱 과밀·펀딩 부담이 있어 “추격 매수”보다 눌림/분할이 더 안전한 해석입니다.`;
+    } else if (signal.signal === "sell" && crowdedShort) {
+      bias_note =
+        `가격 룰은 ${signal.signal_ko}(${signal.score})이지만, 숏 우세·음수 펀딩이라 숏 스퀴즈 반등 여지를 같이 봅니다.`;
+    } else if (signal.signal === "buy") {
+      bias_note = `가격 룰 ${signal.signal_ko}(${signal.score}) · 포지션 과열 신호가 크지 않으면 추세 추종 편향으로 읽습니다.`;
+    } else if (signal.signal === "sell") {
+      bias_note = `가격 룰 ${signal.signal_ko}(${signal.score}) · 모멘텀 약화/추세 이탈 쪽으로 해석합니다.`;
+    } else {
+      bias_note = `가격 룰 ${signal.signal_ko}(${signal.score}) · 방향성보다 레벨·과열 지표(L/S·펀딩·OI)를 우선 확인하는 구간입니다.`;
+    }
+  }
+
+  if (!lines.length) {
+    lines.push("해석에 필요한 일부 지표가 비어 있습니다. 잠시 후 새로고침해 주세요.");
+  }
+
+  return { interpretations: lines.slice(0, 8), bias_note };
+}
+
+function fmtUsd(n: number): string {
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  return `$${n.toLocaleString()}`;
 }
