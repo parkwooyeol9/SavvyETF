@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type {
   AssetSignal,
+  CryptoIndicator,
   SignalAction,
   TradingSignalsPayload,
 } from "@/lib/tradingSignals";
@@ -80,7 +81,7 @@ function SignalTable({
               </td>
               <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.score}</td>
               <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                {fmtNum(r.price, r.price != null && r.price >= 100 ? 1 : 2)}
+                {fmtNum(r.price, r.price != null && r.price >= 1000 ? 1 : 2)}
               </td>
               <td className={retClass(r.change_1d_pct)}>
                 {fmtPct(r.change_1d_pct)}
@@ -110,6 +111,22 @@ function SignalTable({
           ) : null}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function CryptoIndicatorGrid({ items }: { items: CryptoIndicator[] }) {
+  return (
+    <div className="macro-snap-grid macro-snap-grid-wide">
+      {items.map((c) => (
+        <article key={c.id} className="macro-snap-card">
+          <span className="macro-snap-label">{c.label}</span>
+          <strong className={`macro-snap-value ${c.tone || "flat"}`}>
+            {c.display}
+          </strong>
+          <em className="macro-snap-sub">{c.note || "—"}</em>
+        </article>
+      ))}
     </div>
   );
 }
@@ -148,7 +165,7 @@ export default function TradingSignalsTab() {
           <div>
             <h2 className="feature-title">트레이딩 시그널</h2>
             <p className="macro-subhead">
-              SPY · QQQ · 섹터 · 테마 · 금/은 · BITO — 룰 기반 Buy/Hold/Sell
+              SPY · QQQ · 섹터 · 테마 · 금/은 · BTCUSDT.P — 룰 기반 Buy/Hold/Sell
             </p>
           </div>
           <button
@@ -199,6 +216,17 @@ export default function TradingSignalsTab() {
               </div>
             </div>
 
+            {(data.methodology || []).length ? (
+              <section className="geo-section" style={{ marginTop: 16 }}>
+                <h3 className="geo-section-title">시그널 근거</h3>
+                <ul className="panel-sub">
+                  {data.methodology.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
             {(data.summary || []).length ? (
               <section className="geo-section" style={{ marginTop: 16 }}>
                 <h3 className="geo-section-title">한줄 요약</h3>
@@ -211,7 +239,7 @@ export default function TradingSignalsTab() {
             ) : null}
 
             <section className="geo-section geo-featured" style={{ marginTop: 18 }}>
-              <h3 className="geo-section-title">코어 · 금속 · 크립토</h3>
+              <h3 className="geo-section-title">코어 · 금속</h3>
               <p className="geo-thesis">
                 추세(SMA) · 모멘텀 · 변동성 · 매크로 오버레이로 Buy/Hold/Sell
               </p>
@@ -232,6 +260,29 @@ export default function TradingSignalsTab() {
                 반도체·바이오·사이버·로봇/AI·ARK 등 테마 ETF
               </p>
               <SignalTable rows={data.themes} />
+            </section>
+
+            <section className="geo-section geo-featured" style={{ marginTop: 24 }}>
+              <h3 className="geo-section-title">암호화폐 · BTCUSDT.P</h3>
+              <p className="geo-thesis">
+                퍼프 가격 시그널 + 시장 참여자가 매일 보는 주요 지표 (테더
+                도미넌스 · L/S · 펀딩 · OI · 유동성)
+              </p>
+              {data.crypto?.signal ? (
+                <SignalTable rows={[data.crypto.signal]} showRs={false} />
+              ) : (
+                <p className="empty">BTCUSDT.P 시그널 없음</p>
+              )}
+              {data.crypto?.indicators?.length ? (
+                <div style={{ marginTop: 14 }}>
+                  <CryptoIndicatorGrid items={data.crypto.indicators} />
+                </div>
+              ) : null}
+              {data.crypto?.source_note ? (
+                <p className="meta-soft" style={{ marginTop: 10 }}>
+                  {data.crypto.source_note}
+                </p>
+              ) : null}
             </section>
 
             <p className="meta-soft" style={{ marginTop: 16 }}>
