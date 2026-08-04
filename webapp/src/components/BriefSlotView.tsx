@@ -15,8 +15,10 @@ export default function BriefSlotView({ slot }: { slot: BriefSlot }) {
   const ageDays = briefSlotAgeDays(slot);
   const stale = isBriefSlotStale(slot);
 
+  const tall = slot.slot === "summary_kor";
+
   return (
-    <article className="slot-card">
+    <article className={`slot-card${tall ? " slot-card-tall" : ""}`}>
       <div className="slot-head">
         <h3 className="slot-title">
           {slot.title}

@@ -218,6 +218,15 @@ a.tab-btn {
   background: #0a0f16;
 }
 
+/* Domestic EOD brief — roughly 2× default iframe height */
+.slot-card-tall .html-frame {
+  min-height: 960px;
+}
+
+.slot-card-tall .slot-image img {
+  max-height: none;
+}
+
 .slot-image {
   margin: 0 0 0.85rem;
 }
@@ -2953,6 +2962,10 @@ a.geo-choke-hl:hover {
 
   .html-frame {
     min-height: 360px;
+  }
+
+  .slot-card-tall .html-frame {
+    min-height: 720px;
   }
 
   .movers-grid {
