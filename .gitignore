@@ -47,6 +47,7 @@ data/etf_us_new/
 data/web_briefs/
 data/etf_db/
 data/etf_weights/
+data/kosdaq_active/
 data/credit_monitor/
 fonts/*.ttf
 data/fonts/

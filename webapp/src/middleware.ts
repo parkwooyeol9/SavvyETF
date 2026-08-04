@@ -19,6 +19,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/geo": { limit: 30, windowMs: 60_000 },
   "/api/yen-carry": { limit: 30, windowMs: 60_000 },
   "/api/trading-signals": { limit: 20, windowMs: 60_000 },
+  "/api/kosdaq-active": { limit: 12, windowMs: 60_000 },
   "/api/green-minerals": { limit: 30, windowMs: 60_000 },
   "/api/ingest": { limit: 60, windowMs: 60_000 },
   "/api/community/posts": { limit: 30, windowMs: 60_000 },

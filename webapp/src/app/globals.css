@@ -4252,3 +4252,123 @@ a.geo-choke-hl:hover {
   border-color: #7f1d1d;
   color: #fca5a5;
 }
+
+/* KOSDAQ Active ETF compare tab */
+.ka-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ka-fund-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.ka-fund-card {
+  border: 1px solid color-mix(in srgb, var(--line, #2a3548) 80%, transparent);
+  border-radius: 10px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--panel, #121826) 88%, transparent);
+}
+.ka-fund-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ka-fund-name {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.ka-fund-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0;
+}
+.ka-fund-meta dt {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+.ka-fund-meta dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ka-fund-top {
+  margin: 0;
+  font-size: 0.86rem;
+}
+.ka-flow-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ka-flow-block h4 {
+  margin: 0 0 6px;
+  font-size: 0.98rem;
+}
+.ka-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.ka-flow-label {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+.ka-weight-cell {
+  position: relative;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2rem;
+}
+.ka-weight-bar {
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  max-width: 100%;
+  border-radius: 2px;
+  background: color-mix(in srgb, #0f766e 70%, #94a3b8);
+}
+.ka-rationale {
+  font-size: 0.82rem;
+  max-width: 28rem;
+}
+.tone-up {
+  color: #34d399;
+}
+.tone-down {
+  color: #f87171;
+}
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.data-table th,
+.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #2a3548) 70%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+.data-table th {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.ka-matrix th:nth-child(n + 4),
+.ka-matrix td:nth-child(n + 4) {
+  text-align: right;
+}
+@media (max-width: 720px) {
+  .ka-hero {
+    flex-direction: column;
+  }
+}

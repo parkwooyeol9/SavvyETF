@@ -37,6 +37,7 @@ from etf_kor15_scheduler import start_etf_kor15_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from credit_monitor_scheduler import start_credit_monitor_scheduler
 from etf_weight_monitor_scheduler import start_etf_weight_monitor_scheduler
+from kosdaq_active_scheduler import start_kosdaq_active_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from reddit_scheduler import start_reddit_scheduler
@@ -3179,6 +3180,37 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/kosdaq-active":
+                from kosdaq_active_monitor import (
+                    collect_all,
+                    compare_payload_from_store,
+                )
+
+                query = parse_qs(urlparse(self.path).query)
+                refresh = ((query.get("refresh") or [""])[0] or "").lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                }
+                try:
+                    if refresh:
+                        payload = collect_all(persist=True)
+                    else:
+                        payload = compare_payload_from_store()
+                        if not payload:
+                            payload = collect_all(persist=True)
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "error": f"kosdaq-active failed: {exc}",
+                    }
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode(
+                    "utf-8"
+                )
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/etf-new":
                 from etf_new_web import etf_new_payload
 
@@ -3651,6 +3683,7 @@ if __name__ == "__main__":
     start_etf_db_scheduler()
     start_credit_monitor_scheduler()
     start_etf_weight_monitor_scheduler()
+    start_kosdaq_active_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_telegram_bot(token)
