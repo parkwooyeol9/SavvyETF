@@ -10,6 +10,8 @@ const UA =
 
 const R2_KEY = "kosdaq100/latest.json";
 const R2_FUND_KEY = "kosdaq100/fundamentals/latest.json";
+export const KOSDAQ100_SCHEDULE_NOTE =
+  "평일 15:45 KST(장마감 후) 데이터·브리핑 갱신";
 
 export type Kosdaq100Constituent = {
   code: string;
@@ -72,6 +74,9 @@ export type Kosdaq100Payload = {
     top_weight: Array<{ code: string; name: string; weight_pct: number }>;
   };
   rows: Kosdaq100Row[];
+  briefing?: string[];
+  briefing_generated_at?: string | null;
+  schedule_note?: string;
   error?: string;
   source?: string;
 };
@@ -562,6 +567,35 @@ function fundCacheFresh(cache: FundCache | null, maxAgeMs: number): boolean {
   return Date.now() - t < maxAgeMs;
 }
 
+function mergeBriefing(
+  payload: Kosdaq100Payload,
+  snapshot: Kosdaq100Payload | null,
+): Kosdaq100Payload {
+  if (!snapshot?.briefing?.length) return payload;
+  return {
+    ...payload,
+    briefing: snapshot.briefing,
+    briefing_generated_at: snapshot.briefing_generated_at ?? null,
+    schedule_note: snapshot.schedule_note || payload.schedule_note,
+  };
+}
+
+export async function loadKosdaq100FromR2(): Promise<Kosdaq100Payload | null> {
+  if (!r2Configured()) return null;
+  try {
+    const text = await r2GetObjectText(R2_KEY);
+    if (!text) return null;
+    const parsed = JSON.parse(text) as Kosdaq100Payload;
+    if (!parsed?.rows?.length) return null;
+    return {
+      ...parsed,
+      schedule_note: parsed.schedule_note || KOSDAQ100_SCHEDULE_NOTE,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function buildKosdaq100Payload(
   options?: { refreshFundamentals?: boolean },
 ): Promise<Kosdaq100Payload> {
@@ -655,10 +689,11 @@ export async function buildKosdaq100Payload(
     universe_as_of: universe.as_of,
     universe_count: rows.length,
     universe_source: universe.source,
+    schedule_note: KOSDAQ100_SCHEDULE_NOTE,
     weight_note:
       "편입비는 코스닥100 유니버스 내 시가총액 비중 근사치입니다(공식 유동주식수 가중과 다를 수 있음).",
     disclaimer:
-      "우량 점수는 ROE·영업이익률·매출성장·부채비율·밸류에이션 휴리스틱입니다. 투자 권유가 아닙니다.",
+      "우량 점수·브리핑은 휴리스틱·공개 데이터 기반이며 투자 권유가 아닙니다.",
     summary: {
       total_mcap: totalMcap || null,
       advancers,
@@ -681,18 +716,6 @@ export async function buildKosdaq100Payload(
     source: "naver+universe",
   };
 
-  if (r2Configured()) {
-    try {
-      await r2PutObject(
-        R2_KEY,
-        Buffer.from(JSON.stringify(payload), "utf8"),
-        "application/json; charset=utf-8",
-        "public, max-age=60",
-      );
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return payload;
+  const snapshot = await loadKosdaq100FromR2();
+  return mergeBriefing(payload, snapshot);
 }
