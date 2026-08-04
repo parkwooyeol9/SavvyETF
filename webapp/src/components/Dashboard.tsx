@@ -25,6 +25,7 @@ import YenCarryTab from "@/components/YenCarryTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import SimulateTab from "@/components/SimulateTab";
+import UsMarketTab from "@/components/UsMarketTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
@@ -286,6 +287,15 @@ export default function Dashboard() {
           <BriefSlotsPanel
             title="시황 브리프"
             emptyText="국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
+            slots={slots}
+          />
+        </>
+      ) : tab === "us" ? (
+        <>
+          <UsMarketTab />
+          <BriefSlotsPanel
+            title="시황 브리프"
+            emptyText="미국 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
             slots={slots}
           />
         </>

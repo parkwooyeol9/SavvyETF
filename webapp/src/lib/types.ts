@@ -141,7 +141,7 @@ export function navGroupForTab(tab: ShellTabId): NavGroupId {
 
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_nxt"],
-  us: ["summary", "summary_pre", "reddit"],
+  us: ["summary", "reddit"],
   etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
   // Priority framing: physical climate (#2) → governance screen (#3) → safety filings
   // Append-only AI gov slots — do not reorder/replace existing entries.
@@ -158,6 +158,7 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
 /** Slots kept in storage/Telegram but hidden from the dashboard tab UI. */
 export const TAB_SLOT_HIDDEN: Partial<Record<TabId, readonly string[]>> = {
   kr: ["summary_kor_intra"],
+  us: ["summary_pre"],
 };
 
 export function isTabId(value: string): value is TabId {
