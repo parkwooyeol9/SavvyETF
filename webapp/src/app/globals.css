@@ -2964,6 +2964,10 @@ a.geo-choke-hl:hover {
     min-height: 360px;
   }
 
+  .slot-card-tall .html-frame {
+    min-height: 720px;
+  }
+
   .movers-grid {
     grid-template-columns: 1fr;
   }
