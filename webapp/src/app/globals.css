@@ -218,13 +218,34 @@ a.tab-btn {
   background: #0a0f16;
 }
 
-/* Domestic EOD brief — roughly 2× default iframe height */
+/* Domestic/US EOD brief — roughly 2× default iframe height */
 .slot-card-tall .html-frame {
   min-height: 960px;
 }
 
 .slot-card-tall .slot-image img {
   max-height: none;
+}
+
+.us-snap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.us-snap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #121820) 88%, transparent);
+}
+
+.us-snap strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
 }
 
 .slot-image {
