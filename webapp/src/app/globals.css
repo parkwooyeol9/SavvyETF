@@ -4372,3 +4372,103 @@ a.geo-choke-hl:hover {
     flex-direction: column;
   }
 }
+
+/* KOSDAQ 100 monitor */
+.kq-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kq-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.kq-stat {
+  border: 1px solid color-mix(in srgb, var(--line, #2a3548) 80%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--panel, #121826) 88%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kq-stat strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+}
+.kq-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.kq-search,
+.kq-select {
+  background: color-mix(in srgb, var(--panel, #121826) 90%, #000);
+  border: 1px solid color-mix(in srgb, var(--line, #2a3548) 80%, transparent);
+  color: inherit;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.kq-search {
+  min-width: min(240px, 100%);
+}
+.kq-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.kq-sort {
+  appearance: none;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.kq-sort:hover {
+  opacity: 1;
+}
+.kq-table {
+  min-width: 1100px;
+}
+.kq-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--line, #2a3548) 80%, transparent);
+}
+.kq-badge-good {
+  color: #34d399;
+  border-color: color-mix(in srgb, #34d399 40%, transparent);
+  background: color-mix(in srgb, #34d399 12%, transparent);
+}
+.kq-badge-ok {
+  color: #93c5fd;
+  border-color: color-mix(in srgb, #93c5fd 40%, transparent);
+  background: color-mix(in srgb, #93c5fd 12%, transparent);
+}
+.kq-badge-warn {
+  color: #fbbf24;
+  border-color: color-mix(in srgb, #fbbf24 40%, transparent);
+  background: color-mix(in srgb, #fbbf24 12%, transparent);
+}
+.kq-drivers {
+  margin-top: 4px;
+  max-width: 12rem;
+  line-height: 1.35;
+}
+@media (max-width: 720px) {
+  .kq-hero {
+    flex-direction: column;
+  }
+}
