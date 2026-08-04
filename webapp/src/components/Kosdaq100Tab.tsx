@@ -159,10 +159,20 @@ export default function Kosdaq100Tab() {
         <div className="kq-hero">
           <div>
             <h2 className="geo-section-title">코스닥100</h2>
-            <p className="geo-thesis">
-              코스닥100 유니버스 {data?.universe_count ?? "—"}종목 · 시총 근사
-              편입비 · 우량 펀더멘털 한눈에
-            </p>
+            {data?.briefing?.length ? (
+              <div className="kq-briefing">
+                {data.briefing.map((line) => (
+                  <p key={line} className="geo-thesis">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="geo-thesis">
+                코스닥100 유니버스 {data?.universe_count ?? "—"}종목 · 시총 근사
+                편입비 · 우량 펀더멘털 한눈에
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -174,7 +184,8 @@ export default function Kosdaq100Tab() {
           </button>
         </div>
         <p className="meta-soft">
-          {data?.as_of ? `기준 ${data.as_of}` : ""}
+          {data?.schedule_note || "평일 15:45 KST(장마감 후) 데이터·브리핑 갱신"}
+          {data?.as_of ? ` · 기준 ${data.as_of}` : ""}
           {data?.generated_at
             ? ` · 조회 ${new Date(data.generated_at).toLocaleString("ko-KR", {
                 hour12: false,
