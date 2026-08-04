@@ -191,7 +191,16 @@ export default function UsMarketTab() {
 
       {data?.ok ? (
         <>
-          {data.note ? <p className="kr-note">{data.note}</p> : null}
+          {(data.interpretation?.length
+            ? data.interpretation
+            : data.note
+              ? [data.note]
+              : []
+          ).map((line) => (
+            <p key={line} className="geo-thesis us-interp-line">
+              {line}
+            </p>
+          ))}
 
           <div className="us-snap-grid">
             {(data.snaps || []).map((card) => (

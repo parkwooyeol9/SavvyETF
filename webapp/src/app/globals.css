@@ -227,6 +227,15 @@ a.tab-btn {
   max-height: none;
 }
 
+.us-interp-line {
+  margin: 0 0 0.35rem;
+  max-width: 72rem;
+}
+
+.us-interp-line + .us-snap-grid {
+  margin-top: 0.75rem;
+}
+
 .us-snap-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
