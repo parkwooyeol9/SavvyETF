@@ -34,6 +34,7 @@ import {
   NAV_GROUPS,
   SHELL_TAB_LABELS,
   TAB_LABELS,
+  TAB_SLOT_HIDDEN,
   TAB_SLOT_ORDER,
   emptyAllBriefs,
   isBriefTabId,
@@ -52,16 +53,18 @@ type BriefsResponse = {
 
 function orderedSlots(tab: TabId, slots: Record<string, BriefSlot>): BriefSlot[] {
   const order = TAB_SLOT_ORDER[tab];
+  const hidden = new Set(TAB_SLOT_HIDDEN[tab] || []);
   const seen = new Set<string>();
   const out: BriefSlot[] = [];
   for (const key of order) {
+    if (hidden.has(key)) continue;
     if (slots[key]) {
       out.push(slots[key]);
       seen.add(key);
     }
   }
   const rest = Object.keys(slots)
-    .filter((k) => !seen.has(k))
+    .filter((k) => !seen.has(k) && !hidden.has(k))
     .sort()
     .map((k) => slots[k]);
   return [...out, ...rest];
