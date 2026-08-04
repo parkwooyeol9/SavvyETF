@@ -16,6 +16,7 @@ import EtfDbTab from "@/components/EtfDbTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
 import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
+import KosdaqActiveTab from "@/components/KosdaqActiveTab";
 import GeoTab from "@/components/GeoTab";
 import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
@@ -162,6 +163,7 @@ export default function Dashboard() {
       tab === "etfdb" ||
       tab === "leverage" ||
       tab === "etfweights" ||
+      tab === "kosdaqactive" ||
       tab === "etf"
     ) {
       return error
@@ -239,6 +241,8 @@ export default function Dashboard() {
         <EtfDbTab />
       ) : tab === "etfweights" ? (
         <EtfWeightMonitorTab />
+      ) : tab === "kosdaqactive" ? (
+        <KosdaqActiveTab />
       ) : tab === "leverage" ? (
         <LeverageEtfTab />
       ) : tab === "geo" ? (

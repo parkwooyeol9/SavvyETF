@@ -12,6 +12,7 @@ export type ShellTabId =
   | "etfdb"
   | "leverage"
   | "etfweights"
+  | "kosdaqactive"
   | "economy"
   | "yencarry"
   | "signals"
@@ -66,6 +67,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "leverage",
   "etfdb",
   "etfweights",
+  "kosdaqactive",
   "esg",
   "geo",
   "aigov",
@@ -88,6 +90,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfdb: "ETF DB",
   leverage: "레버리지 ETF",
   etfweights: "편입비 모니터",
+  kosdaqactive: "코스닥액티브 ETF",
   geo: "지정학",
   aigov: "AI 거버넌스",
   aiinfra: "AI 인프라",
@@ -116,7 +119,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "etf",
     label: "ETF",
-    tabs: ["education", "simulate", "etf", "leverage", "etfdb", "etfweights"],
+    tabs: ["education", "simulate", "etf", "leverage", "etfdb", "etfweights", "kosdaqactive"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {
