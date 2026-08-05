@@ -226,7 +226,7 @@ export async function reconstructAumHistories(opts: {
   const hit = cache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.value;
 
-  const dims: EtfDbDimension[] = ["type", "country", "sector"];
+  const dims: EtfDbDimension[] = ["type", "country", "sector", "index"];
   const codeSet = new Set<string>();
   for (const dim of dims) {
     for (const label of [
@@ -270,6 +270,14 @@ export async function reconstructAumHistories(opts: {
       opts.rows,
       "sector",
       opts.aggregates.sector,
+      prices,
+      dates,
+      opts.liveDay,
+    ),
+    index: buildDimHistory(
+      opts.rows,
+      "index",
+      opts.aggregates.index,
       prices,
       dates,
       opts.liveDay,

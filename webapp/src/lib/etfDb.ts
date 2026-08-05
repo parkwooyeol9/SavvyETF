@@ -1,6 +1,13 @@
 /** Korean listed ETF universe — types, classification, AUM aggregates. */
 
-export type EtfDbDimension = "type" | "country" | "sector";
+import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+
+export type EtfDbDimension = "type" | "country" | "sector" | "index";
+
+export const INDEX_KOSPI = "코스피 추종 자금";
+export const INDEX_KOSDAQ = "코스닥 추종 자금";
+export const INDEX_OTHER = "기타";
+export const INDEX_TRACKING_LABELS = [INDEX_KOSPI, INDEX_KOSDAQ] as const;
 
 export type EtfDbRow = {
   code: string;
@@ -9,6 +16,10 @@ export type EtfDbRow = {
   type: string;
   country: string;
   sector: string;
+  /** 코스피/코스닥 추종 버킷 (벤치마크 기초지수 우선) */
+  index: string;
+  /** Naver 기초지수 (etfBaseIdx), when known */
+  benchmark: string | null;
   price: number | null;
   nav: number | null;
   change_rate: number | null;
@@ -107,11 +118,180 @@ const GICS_SECTOR_RULES: Array<[string, string[]]> = [
 const SECTOR_FALLBACK_RULES: Array<[string, string[]]> = [
   ["레버리지/인버스", ["레버리지", "인버스", "2X", "선물인버스"]],
   ["채권", ["채권", "국채", "회사채", "CD금리", "KOFR", "머니마켓", "단기채", "중장기", "금리"]],
-  // Split KR index trackers by product name (before generic 시장지수).
-  ["코스피 추종 자금", ["코스피", "KOSPI"]],
-  ["코스닥 추종 자금", ["코스닥", "KOSDAQ"]],
-  ["시장지수", ["200", "KRX", "MSCI Korea", "S&P500", "나스닥100"]],
+  ["시장지수", ["200", "코스피", "코스닥", "KRX", "MSCI Korea", "KOSPI", "KOSDAQ", "S&P500", "나스닥100"]],
 ];
+
+const BENCHMARK_CACHE_KEY = "etf_db/benchmarks.json";
+const UA =
+  "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
+
+/**
+ * Map Naver 기초지수 (etfBaseIdx) → 지수 탭 버킷.
+ * Prefer benchmark text; fall back to product name only when benchmark missing.
+ */
+export function classifyIndexBucket(
+  benchmark: string | null | undefined,
+  name: string,
+): string {
+  const primary = (benchmark || "").trim();
+  const primaryUpper = primary.toUpperCase();
+  if (primary) {
+    if (primary.includes("코스닥") || primaryUpper.includes("KOSDAQ")) {
+      return INDEX_KOSDAQ;
+    }
+    if (primary.includes("코스피") || primaryUpper.includes("KOSPI")) {
+      return INDEX_KOSPI;
+    }
+  }
+  // Name fallback (weaker) — only when API benchmark unavailable.
+  const n = name || "";
+  const nUpper = n.toUpperCase();
+  if (n.includes("코스닥") || nUpper.includes("KOSDAQ")) return INDEX_KOSDAQ;
+  if (n.includes("코스피") || nUpper.includes("KOSPI")) return INDEX_KOSPI;
+  return INDEX_OTHER;
+}
+
+/** Likely KR market-index trackers worth resolving via integration API. */
+export function needsBenchmarkLookup(row: Pick<EtfDbRow, "tab_code" | "name">): boolean {
+  if (row.tab_code === 1 || row.tab_code === 3) return true;
+  const n = row.name || "";
+  const u = n.toUpperCase();
+  return (
+    n.includes("코스피") ||
+    n.includes("코스닥") ||
+    u.includes("KOSPI") ||
+    u.includes("KOSDAQ") ||
+    /\b200\b/.test(n) ||
+    /\b150\b/.test(n)
+  );
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  return out;
+}
+
+export async function fetchEtfBaseIndex(code: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://m.stock.naver.com/api/stock/${encodeURIComponent(code)}/integration`,
+      {
+        headers: {
+          "User-Agent": UA,
+          Accept: "application/json",
+          Referer: "https://m.stock.naver.com/",
+        },
+        next: { revalidate: 86_400 },
+      },
+    );
+    if (!res.ok) return null;
+    const payload = (await res.json()) as {
+      totalInfos?: Array<{ code?: string; value?: unknown }>;
+    };
+    for (const info of payload.totalInfos || []) {
+      if (String(info.code || "") === "etfBaseIdx") {
+        const v = String(info.value ?? "").trim();
+        return v || null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+type BenchmarkCache = {
+  generated_at: string;
+  by_code: Record<string, string>;
+};
+
+async function loadBenchmarkCache(): Promise<BenchmarkCache> {
+  if (!r2Configured()) return { generated_at: "", by_code: {} };
+  try {
+    const text = await r2GetObjectText(BENCHMARK_CACHE_KEY);
+    if (!text) return { generated_at: "", by_code: {} };
+    const parsed = JSON.parse(text) as BenchmarkCache;
+    return {
+      generated_at: parsed.generated_at || "",
+      by_code: parsed.by_code || {},
+    };
+  } catch {
+    return { generated_at: "", by_code: {} };
+  }
+}
+
+async function saveBenchmarkCache(cache: BenchmarkCache): Promise<void> {
+  if (!r2Configured()) return;
+  try {
+    await r2PutObject(
+      BENCHMARK_CACHE_KEY,
+      Buffer.from(JSON.stringify(cache), "utf8"),
+      "application/json; charset=utf-8",
+      "public, max-age=3600",
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Attach benchmark + index bucket using R2 cache, optional overlay, then
+ * Naver integration etfBaseIdx for likely trackers still missing.
+ */
+export async function enrichIndexClassification(
+  rows: EtfDbRow[],
+  opts?: { knownByCode?: Record<string, string>; fetchMissing?: boolean },
+): Promise<EtfDbRow[]> {
+  const cache = await loadBenchmarkCache();
+  const known = { ...cache.by_code, ...(opts?.knownByCode || {}) };
+  let cacheDirty = false;
+
+  const missing = rows
+    .filter((r) => !known[r.code] && needsBenchmarkLookup(r))
+    .map((r) => r.code);
+
+  if (opts?.fetchMissing !== false && missing.length) {
+    const fetched = await mapPool(missing.slice(0, 220), 14, async (code) => {
+      const bench = await fetchEtfBaseIndex(code);
+      return [code, bench] as const;
+    });
+    for (const [code, bench] of fetched) {
+      if (bench) {
+        known[code] = bench;
+        cache.by_code[code] = bench;
+        cacheDirty = true;
+      }
+    }
+  }
+
+  if (cacheDirty) {
+    cache.generated_at = new Date().toISOString();
+    void saveBenchmarkCache(cache);
+  }
+
+  return rows.map((row) => {
+    const benchmark = known[row.code] || row.benchmark || null;
+    return {
+      ...row,
+      benchmark,
+      index: classifyIndexBucket(benchmark, row.name),
+    };
+  });
+}
 
 type NaverItem = {
   itemcode?: string;
@@ -196,6 +376,8 @@ export function classifyNaverItem(item: NaverItem): EtfDbRow {
     type: etfType,
     country,
     sector,
+    index: classifyIndexBucket(null, name),
+    benchmark: null,
     price,
     nav,
     change_rate: asFloat(item.changeRate),
@@ -344,6 +526,7 @@ export function buildPayloadFromNaver(
     type: aggregateRows(rows, "type"),
     country: aggregateRows(rows, "country"),
     sector: aggregateRows(rows, "sector"),
+    index: aggregateRows(rows, "index"),
   };
 
   const aum_history = {
@@ -360,6 +543,11 @@ export function buildPayloadFromNaver(
     sector: mergeLiveAumHistory(
       opts?.equityOnly ? undefined : opts?.aumHistory?.sector,
       aggregates.sector,
+      day,
+    ),
+    index: mergeLiveAumHistory(
+      opts?.equityOnly ? undefined : opts?.aumHistory?.index,
+      aggregates.index,
       day,
     ),
   };
@@ -379,6 +567,7 @@ export function buildPayloadFromNaver(
       type: emptyHist,
       country: emptyHist,
       sector: emptyHist,
+      index: emptyHist,
     },
     aum_history,
     rows,
