@@ -92,7 +92,10 @@ GICS_SECTOR_RULES: list[tuple[str, list[str]]] = [
 SECTOR_FALLBACK_RULES: list[tuple[str, list[str]]] = [
     ("레버리지/인버스", ["레버리지", "인버스", "2X", "선물인버스"]),
     ("채권", ["채권", "국채", "회사채", "CD금리", "KOFR", "머니마켓", "단기채", "중장기", "금리"]),
-    ("시장지수", ["200", "코스피", "코스닥", "KRX", "MSCI Korea", "KOSPI", "KOSDAQ", "S&P500", "나스닥100"]),
+    # Split KR index trackers by product name (before generic 시장지수).
+    ("코스피 추종 자금", ["코스피", "KOSPI"]),
+    ("코스닥 추종 자금", ["코스닥", "KOSDAQ"]),
+    ("시장지수", ["200", "KRX", "MSCI Korea", "S&P500", "나스닥100"]),
 ]
 
 MAX_SNAPSHOTS = 90
