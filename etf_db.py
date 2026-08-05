@@ -92,11 +92,14 @@ GICS_SECTOR_RULES: list[tuple[str, list[str]]] = [
 SECTOR_FALLBACK_RULES: list[tuple[str, list[str]]] = [
     ("레버리지/인버스", ["레버리지", "인버스", "2X", "선물인버스"]),
     ("채권", ["채권", "국채", "회사채", "CD금리", "KOFR", "머니마켓", "단기채", "중장기", "금리"]),
-    # Split KR index trackers by product name (before generic 시장지수).
-    ("코스피 추종 자금", ["코스피", "KOSPI"]),
-    ("코스닥 추종 자금", ["코스닥", "KOSDAQ"]),
-    ("시장지수", ["200", "KRX", "MSCI Korea", "S&P500", "나스닥100"]),
+    ("시장지수", ["200", "코스피", "코스닥", "KRX", "MSCI Korea", "KOSPI", "KOSDAQ", "S&P500", "나스닥100"]),
 ]
+
+INDEX_KOSPI = "코스피 추종 자금"
+INDEX_KOSDAQ = "코스닥 추종 자금"
+INDEX_OTHER = "기타"
+
+NAVER_INTEGRATION_URL = "https://m.stock.naver.com/api/stock/{code}/integration"
 
 MAX_SNAPSHOTS = 90
 STALE_HOURS = 6
@@ -122,12 +125,15 @@ def parse_etfdb_dimension(command: str) -> str:
         "업종": "sector",
         "테마": "sector",
         "theme": "sector",
+        "index": "index",
+        "지수": "index",
+        "benchmark": "index",
     }
     key = parts[1].lower()
     if key not in aliases:
         raise ValueError(
-            "Usage: /etfdb [type|country|sector]\n"
-            "예: /etfdb · /etfdb 유형 · /etfdb 국가 · /etfdb 업종"
+            "Usage: /etfdb [type|country|sector|index]\n"
+            "예: /etfdb · /etfdb 유형 · /etfdb 국가 · /etfdb 업종 · /etfdb 지수"
         )
     return aliases[key]
 
@@ -180,6 +186,84 @@ def classify_sector(name: str, tab: int) -> str:
     }.get(tab, "기타")
 
 
+def classify_index_bucket(benchmark: str | None, name: str) -> str:
+    """Map Naver 기초지수 (etfBaseIdx) → 지수 dimension bucket."""
+    primary = (benchmark or "").strip()
+    if primary:
+        upper = primary.upper()
+        if "코스닥" in primary or "KOSDAQ" in upper:
+            return INDEX_KOSDAQ
+        if "코스피" in primary or "KOSPI" in upper:
+            return INDEX_KOSPI
+    n = name or ""
+    n_upper = n.upper()
+    if "코스닥" in n or "KOSDAQ" in n_upper:
+        return INDEX_KOSDAQ
+    if "코스피" in n or "KOSPI" in n_upper:
+        return INDEX_KOSPI
+    return INDEX_OTHER
+
+
+def needs_benchmark_lookup(tab: int, name: str) -> bool:
+    if tab in {1, 3}:
+        return True
+    n = name or ""
+    u = n.upper()
+    return (
+        "코스피" in n
+        or "코스닥" in n
+        or "KOSPI" in u
+        or "KOSDAQ" in u
+        or "200" in n
+        or "150" in n
+    )
+
+
+def fetch_etf_base_index(code: str) -> str | None:
+    try:
+        response = requests.get(
+            NAVER_INTEGRATION_URL.format(code=code),
+            headers=NAVER_HEADERS,
+            timeout=20,
+        )
+        if not response.ok:
+            return None
+        for info in response.json().get("totalInfos") or []:
+            if str(info.get("code") or "") == "etfBaseIdx":
+                value = str(info.get("value") or "").strip()
+                return value or None
+    except Exception:
+        return None
+    return None
+
+
+def enrich_index_classification(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    missing = [
+        r["code"]
+        for r in rows
+        if not r.get("benchmark")
+        and needs_benchmark_lookup(int(r.get("tab_code") or 0), str(r.get("name") or ""))
+    ]
+    found: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=14) as ex:
+        futs = {ex.submit(fetch_etf_base_index, code): code for code in missing[:220]}
+        for fut in as_completed(futs):
+            code = futs[fut]
+            try:
+                bench = fut.result()
+            except Exception:
+                bench = None
+            if bench:
+                found[code] = bench
+    for row in rows:
+        bench = row.get("benchmark") or found.get(row["code"])
+        row["benchmark"] = bench
+        row["index"] = classify_index_bucket(bench, str(row.get("name") or ""))
+    return rows
+
+
 def classify_etf(item: dict[str, Any]) -> dict[str, Any]:
     code = str(item.get("itemcode") or "").strip()
     name = str(item.get("itemname") or "").strip()
@@ -218,6 +302,8 @@ def classify_etf(item: dict[str, Any]) -> dict[str, Any]:
         "type": etf_type,
         "country": country,
         "sector": sector,
+        "index": classify_index_bucket(None, name),
+        "benchmark": None,
         "price": price,
         "nav": nav,
         "change_rate": _as_float(item.get("changeRate")),
@@ -242,6 +328,7 @@ def _as_float(value: Any) -> float | None:
 def build_universe_rows(raw_items: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     items = raw_items if raw_items is not None else fetch_naver_etf_universe()
     rows = [classify_etf(item) for item in items]
+    enrich_index_classification(rows)
     rows.sort(key=lambda r: (-(r.get("aum_eok") or 0), r.get("name") or ""))
     return rows
 
@@ -263,6 +350,8 @@ def save_snapshot(rows: list[dict[str, Any]], *, day: str | None = None) -> Path
             "type": r.get("type"),
             "country": r.get("country"),
             "sector": r.get("sector"),
+            "index": r.get("index"),
+            "benchmark": r.get("benchmark"),
         }
         for r in rows
     ]
@@ -552,16 +641,19 @@ def build_etf_db(*, force_fetch: bool = True) -> dict[str, Any]:
             "type": aggregate(rows, dimension="type", flows=flows),
             "country": aggregate(rows, dimension="country", flows=flows),
             "sector": aggregate(rows, dimension="sector", flows=flows),
+            "index": aggregate(rows, dimension="index", flows=flows),
         },
         "flow_history": {
             "type": flow_history_by_dimension("type"),
             "country": flow_history_by_dimension("country"),
             "sector": flow_history_by_dimension("sector"),
+            "index": flow_history_by_dimension("index"),
         },
         "aum_history": {
             "type": aum_history_by_dimension("type", live_rows=rows, live_day=day),
             "country": aum_history_by_dimension("country", live_rows=rows, live_day=day),
             "sector": aum_history_by_dimension("sector", live_rows=rows, live_day=day),
+            "index": aum_history_by_dimension("index", live_rows=rows, live_day=day),
         },
         "rows": rows,
     }
@@ -630,7 +722,12 @@ def ensure_etf_db(*, max_age_hours: float = STALE_HOURS) -> dict[str, Any]:
 
 def format_etfdb_telegram(payload: dict[str, Any], *, dimension: str = "type") -> str:
     aggs = (payload.get("aggregates") or {}).get(dimension) or []
-    dim_label = {"type": "유형", "country": "국가", "sector": "업종"}.get(dimension, dimension)
+    dim_label = {
+        "type": "유형",
+        "country": "국가",
+        "sector": "업종",
+        "index": "지수",
+    }.get(dimension, dimension)
     total = payload.get("total_aum_eok") or 0
     lines = [
         "<b>🇰🇷 ETF DB</b>",
@@ -703,6 +800,8 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
             "type": r["type"],
             "country": r["country"],
             "sector": r["sector"],
+            "index": r.get("index") or "기타",
+            "benchmark": r.get("benchmark"),
             "aum_eok": r.get("aum_eok") or 0,
             "nav": r.get("nav"),
             "units": r.get("units"),
@@ -952,6 +1051,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
       <button type="button" role="tab" data-dim="type" aria-selected="true">유형</button>
       <button type="button" role="tab" data-dim="country" aria-selected="false">국가</button>
       <button type="button" role="tab" data-dim="sector" aria-selected="false">업종</button>
+      <button type="button" role="tab" data-dim="index" aria-selected="false">지수</button>
     </div>
 
     <div class="layout">
@@ -992,7 +1092,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
   </div>
   <script>
   const DATA = {data_json};
-  const DIM_LABEL = {{ type: "유형", country: "국가", sector: "업종" }};
+  const DIM_LABEL = {{ type: "유형", country: "국가", sector: "업종", index: "지수" }};
   let dim = "type";
   let selected = null;
 

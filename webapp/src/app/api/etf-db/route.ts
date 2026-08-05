@@ -6,7 +6,12 @@ import {
   pickRicherHistory,
   reconstructAumHistories,
 } from "@/lib/etfAumHistory";
-import { buildPayloadFromNaver, type EtfDbPayload } from "@/lib/etfDb";
+import {
+  aggregateRows,
+  buildPayloadFromNaver,
+  enrichIndexClassification,
+  type EtfDbPayload,
+} from "@/lib/etfDb";
 import { r2Configured, r2GetObjectText } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +29,7 @@ type NaverListResponse = {
 
 type Overlay = {
   flowByCode: Record<string, number>;
+  benchmarkByCode: Record<string, string>;
   prevAsOf: string | null;
   flowHistory: EtfDbPayload["flow_history"] | undefined;
   aumHistory: EtfDbPayload["aum_history"] | undefined;
@@ -32,6 +38,7 @@ type Overlay = {
 
 const EMPTY_OVERLAY: Overlay = {
   flowByCode: {},
+  benchmarkByCode: {},
   prevAsOf: null,
   flowHistory: undefined,
   aumHistory: undefined,
@@ -40,18 +47,27 @@ const EMPTY_OVERLAY: Overlay = {
 
 function overlayFromPayload(data: {
   prev_as_of?: string | null;
-  rows?: Array<{ code?: string; flow_eok?: number | null }>;
+  rows?: Array<{
+    code?: string;
+    flow_eok?: number | null;
+    benchmark?: string | null;
+  }>;
   flow_history?: EtfDbPayload["flow_history"];
   aum_history?: EtfDbPayload["aum_history"];
 }): Omit<Overlay, "source"> {
   const flowByCode: Record<string, number> = {};
+  const benchmarkByCode: Record<string, string> = {};
   for (const row of data.rows || []) {
     if (row.code && row.flow_eok != null && Number.isFinite(row.flow_eok)) {
       flowByCode[row.code] = Number(row.flow_eok);
     }
+    if (row.code && row.benchmark) {
+      benchmarkByCode[row.code] = String(row.benchmark);
+    }
   }
   return {
     flowByCode,
+    benchmarkByCode,
     prevAsOf: data.prev_as_of ?? null,
     flowHistory: data.flow_history,
     aumHistory: data.aum_history,
@@ -62,7 +78,11 @@ function historyDepth(
   hist: EtfDbPayload["aum_history"] | EtfDbPayload["flow_history"] | undefined,
 ): number {
   if (!hist) return 0;
-  const dates = hist.type?.dates || hist.country?.dates || hist.sector?.dates;
+  const dates =
+    hist.type?.dates ||
+    hist.country?.dates ||
+    hist.sector?.dates ||
+    hist.index?.dates;
   return Array.isArray(dates) ? dates.length : 0;
 }
 
@@ -142,7 +162,7 @@ async function fetchOverlay(): Promise<Overlay> {
 export async function GET(request: Request) {
   try {
     const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
-    const cacheKey = `etf-db:v2:${equityOnly ? "eq" : "all"}`;
+    const cacheKey = `etf-db:v3:${equityOnly ? "eq" : "all"}`;
 
     const payload = await withServerCache(
       cacheKey,
@@ -164,6 +184,15 @@ export async function GET(request: Request) {
           },
         );
 
+        built.rows = await enrichIndexClassification(built.rows, {
+          knownByCode: overlay.benchmarkByCode,
+          fetchMissing: true,
+        });
+        built.aggregates = {
+          ...built.aggregates,
+          index: aggregateRows(built.rows, "index"),
+        };
+
         try {
           const reconstructed = await reconstructAumHistories({
             rows: built.rows,
@@ -180,6 +209,10 @@ export async function GET(request: Request) {
             sector: pickRicherHistory(
               built.aum_history.sector,
               reconstructed.sector,
+            ),
+            index: pickRicherHistory(
+              built.aum_history.index,
+              reconstructed.index,
             ),
           };
         } catch (histExc) {

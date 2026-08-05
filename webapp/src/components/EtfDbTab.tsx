@@ -15,6 +15,9 @@ import {
 import {
   fmtEok,
   fmtSignedEok,
+  INDEX_KOSDAQ,
+  INDEX_KOSPI,
+  INDEX_TRACKING_LABELS,
   type EtfDbAggregate,
   type EtfDbDimension,
   type EtfDbPayload,
@@ -25,6 +28,7 @@ const DIM_LABEL: Record<EtfDbDimension, string> = {
   type: "유형",
   country: "국가",
   sector: "업종(GICS)",
+  index: "지수",
 };
 
 function signedClass(n?: number | null): string {
@@ -85,8 +89,31 @@ export default function EtfDbTab() {
     setSelected(null);
   }, [equityOnly]);
 
-  const aggregates: EtfDbAggregate[] = data?.aggregates?.[dim] || [];
+  const aggregates: EtfDbAggregate[] = useMemo(() => {
+    const raw = data?.aggregates?.[dim] || [];
+    if (dim === "index") {
+      const filtered = raw.filter((a) =>
+        (INDEX_TRACKING_LABELS as readonly string[]).includes(a.label),
+      );
+      const total = filtered.reduce((s, a) => s + (a.aum_eok || 0), 0) || 1;
+      return filtered.map((a) => ({
+        ...a,
+        aum_share_pct: (100 * (a.aum_eok || 0)) / total,
+      }));
+    }
+    return raw;
+  }, [data, dim]);
   const maxAum = Math.max(...aggregates.map((a) => a.aum_eok || 0), 1);
+
+  const indexUniverse = useMemo(() => {
+    const rows = (data?.rows || []).filter(
+      (r) => r.index === INDEX_KOSPI || r.index === INDEX_KOSDAQ,
+    );
+    return {
+      count: rows.length,
+      aum_eok: rows.reduce((s, r) => s + (r.aum_eok || 0), 0),
+    };
+  }, [data]);
 
   const totalFlow = useMemo(() => {
     if (!aggregates.some((a) => a.flow_available)) return null;
@@ -94,9 +121,12 @@ export default function EtfDbTab() {
   }, [aggregates]);
 
   const selectedAum = useMemo(() => {
-    if (!selected) return data?.total_aum_eok ?? null;
+    if (!selected) {
+      if (dim === "index") return indexUniverse.aum_eok;
+      return data?.total_aum_eok ?? null;
+    }
     return aggregates.find((a) => a.label === selected)?.aum_eok ?? null;
-  }, [selected, aggregates, data]);
+  }, [selected, aggregates, data, dim, indexUniverse]);
 
   const chartKey = selected || "전체";
   const seriesKey = `${equityOnly ? "eq" : "all"}|${dim}|${chartKey}`;
@@ -120,13 +150,20 @@ export default function EtfDbTab() {
 
   const filteredRows: EtfDbRow[] = useMemo(() => {
     let rows = data?.rows || [];
-    if (selected) rows = rows.filter((r) => r[dim] === selected);
+    if (dim === "index" && !selected) {
+      rows = rows.filter(
+        (r) => r.index === INDEX_KOSPI || r.index === INDEX_KOSDAQ,
+      );
+    } else if (selected) {
+      rows = rows.filter((r) => r[dim] === selected);
+    }
     const q = query.trim().toLowerCase();
     if (q) {
       rows = rows.filter(
         (r) =>
           (r.name || "").toLowerCase().includes(q) ||
-          (r.code || "").toLowerCase().includes(q),
+          (r.code || "").toLowerCase().includes(q) ||
+          (r.benchmark || "").toLowerCase().includes(q),
       );
     }
     rows = [...rows];
@@ -185,7 +222,7 @@ export default function EtfDbTab() {
           <h2 className="kr-hero-title">ETF DB</h2>
           <p className="kr-note">
             국내 상장 ETF · 유형/국가/GICS 업종(+바이오·헬스케어·배당·커버드콜·액티브) ·
-            AUM 일별 시계열 · 수급(NAV×Δ설정좌수)
+            지수(네이버 기초지수 기준 코스피·코스닥 추종) · AUM 일별 시계열 · 수급(NAV×Δ설정좌수)
           </p>
         </div>
         <div className="etfdb-hero-actions">
@@ -269,8 +306,14 @@ export default function EtfDbTab() {
               >
                 <span className="etfdb-cat-name">전체</span>
                 <span className="etfdb-cat-sub">
-                  <span>{data.count}종</span>
-                  <span>{fmtEok(data.total_aum_eok)}</span>
+                  <span>
+                    {dim === "index" ? indexUniverse.count : data.count}종
+                  </span>
+                  <span>
+                    {fmtEok(
+                      dim === "index" ? indexUniverse.aum_eok : data.total_aum_eok,
+                    )}
+                  </span>
                 </span>
               </button>
               {aggregates.map((a) => (
@@ -374,6 +417,7 @@ export default function EtfDbTab() {
                     <tr>
                       <th>코드</th>
                       <th>종목</th>
+                      {dim === "index" ? <th>기초지수</th> : null}
                       <th className="num">AUM</th>
                       <th className="num">NAV</th>
                       <th className="num">설정좌수</th>
@@ -388,6 +432,9 @@ export default function EtfDbTab() {
                           <code>{r.code}</code>
                         </td>
                         <td>{r.name}</td>
+                        {dim === "index" ? (
+                          <td className="meta-soft">{r.benchmark || "—"}</td>
+                        ) : null}
                         <td className="num">{fmtEok(r.aum_eok)}</td>
                         <td className="num">
                           {r.nav == null
