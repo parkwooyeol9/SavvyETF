@@ -9,6 +9,9 @@ export const INDEX_KOSDAQ = "코스닥 추종 자금";
 export const INDEX_OTHER = "기타";
 export const INDEX_TRACKING_LABELS = [INDEX_KOSPI, INDEX_KOSDAQ] as const;
 
+export type IndexStyle = "일반" | "레버리지" | "인버스";
+export const INDEX_STYLE_LABELS: IndexStyle[] = ["일반", "레버리지", "인버스"];
+
 export type EtfDbRow = {
   code: string;
   name: string;
@@ -18,6 +21,8 @@ export type EtfDbRow = {
   sector: string;
   /** 코스피/코스닥 추종 버킷 (벤치마크 기초지수 우선) */
   index: string;
+  /** 지수 탭 내 레버리지/인버스 세부 분류 */
+  index_style: IndexStyle;
   /** Naver 기초지수 (etfBaseIdx), when known */
   benchmark: string | null;
   price: number | null;
@@ -27,6 +32,21 @@ export type EtfDbRow = {
   aum_eok: number;
   units: number | null;
   flow_eok: number | null;
+};
+
+export type IndexExposureBreakdown = {
+  label: string;
+  count: number;
+  plain_count: number;
+  lev_count: number;
+  inv_count: number;
+  plain_aum_eok: number;
+  lev_aum_eok: number;
+  inv_aum_eok: number;
+  /** 단순 AUM 합산 */
+  gross_aum_eok: number;
+  /** 일반 + 레버리지×2 − 인버스 */
+  effective_aum_eok: number;
 };
 
 export type EtfDbAggregate = {
@@ -149,6 +169,73 @@ export function classifyIndexBucket(
   if (n.includes("코스닥") || nUpper.includes("KOSDAQ")) return INDEX_KOSDAQ;
   if (n.includes("코스피") || nUpper.includes("KOSPI")) return INDEX_KOSPI;
   return INDEX_OTHER;
+}
+
+/** 레버리지 / 인버스 / 일반 — 상품명·기초지수 키워드 (인버스 우선). */
+export function classifyIndexStyle(
+  name: string,
+  benchmark?: string | null,
+): IndexStyle {
+  const hay = `${name || ""} ${benchmark || ""}`;
+  const upper = hay.toUpperCase();
+  if (
+    hay.includes("인버스") ||
+    upper.includes("INVERSE") ||
+    hay.includes("곱버스")
+  ) {
+    return "인버스";
+  }
+  if (
+    hay.includes("레버리지") ||
+    upper.includes("LEVERAGE") ||
+    /(?:^|[^0-9])2X(?:[^0-9]|$)/i.test(hay) ||
+    hay.includes("2배")
+  ) {
+    return "레버리지";
+  }
+  return "일반";
+}
+
+/**
+ * 유효 추종자금 ≈ 일반 AUM + 레버리지 AUM×2 − 인버스 AUM.
+ * (단순합산 gross와 별도 지표)
+ */
+export function computeIndexExposure(
+  rows: EtfDbRow[],
+  label: string,
+): IndexExposureBreakdown {
+  let plain_aum = 0;
+  let lev_aum = 0;
+  let inv_aum = 0;
+  let plain_count = 0;
+  let lev_count = 0;
+  let inv_count = 0;
+  for (const row of rows) {
+    const aum = row.aum_eok || 0;
+    const style = row.index_style || classifyIndexStyle(row.name, row.benchmark);
+    if (style === "인버스") {
+      inv_aum += aum;
+      inv_count += 1;
+    } else if (style === "레버리지") {
+      lev_aum += aum;
+      lev_count += 1;
+    } else {
+      plain_aum += aum;
+      plain_count += 1;
+    }
+  }
+  return {
+    label,
+    count: plain_count + lev_count + inv_count,
+    plain_count,
+    lev_count,
+    inv_count,
+    plain_aum_eok: plain_aum,
+    lev_aum_eok: lev_aum,
+    inv_aum_eok: inv_aum,
+    gross_aum_eok: plain_aum + lev_aum + inv_aum,
+    effective_aum_eok: plain_aum + lev_aum * 2 - inv_aum,
+  };
 }
 
 /** Likely KR market-index trackers worth resolving via integration API. */
@@ -289,6 +376,7 @@ export async function enrichIndexClassification(
       ...row,
       benchmark,
       index: classifyIndexBucket(benchmark, row.name),
+      index_style: classifyIndexStyle(row.name, benchmark),
     };
   });
 }
@@ -377,6 +465,7 @@ export function classifyNaverItem(item: NaverItem): EtfDbRow {
     country,
     sector,
     index: classifyIndexBucket(null, name),
+    index_style: classifyIndexStyle(name, null),
     benchmark: null,
     price,
     nav,

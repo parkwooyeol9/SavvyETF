@@ -3334,6 +3334,37 @@ a.geo-choke-hl:hover {
   margin: 0.75rem 0;
 }
 
+.etfdb-exposure {
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #121820) 90%, transparent);
+}
+
+.etfdb-exposure-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem 1rem;
+}
+
+.etfdb-exposure-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.etfdb-exposure-grid strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.etfdb-style-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
 .etfdb-stat-k {
   color: var(--muted);
   font-size: 0.78rem;

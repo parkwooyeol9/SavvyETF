@@ -162,7 +162,7 @@ async function fetchOverlay(): Promise<Overlay> {
 export async function GET(request: Request) {
   try {
     const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
-    const cacheKey = `etf-db:v3:${equityOnly ? "eq" : "all"}`;
+    const cacheKey = `etf-db:v4:${equityOnly ? "eq" : "all"}`;
 
     const payload = await withServerCache(
       cacheKey,
