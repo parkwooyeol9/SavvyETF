@@ -13,15 +13,18 @@ import {
 } from "recharts";
 
 import {
+  computeIndexExposure,
   fmtEok,
   fmtSignedEok,
   INDEX_KOSDAQ,
   INDEX_KOSPI,
+  INDEX_STYLE_LABELS,
   INDEX_TRACKING_LABELS,
   type EtfDbAggregate,
   type EtfDbDimension,
   type EtfDbPayload,
   type EtfDbRow,
+  type IndexStyle,
 } from "@/lib/etfDb";
 
 const DIM_LABEL: Record<EtfDbDimension, string> = {
@@ -51,6 +54,7 @@ export default function EtfDbTab() {
   const [loading, setLoading] = useState(true);
   const [dim, setDim] = useState<EtfDbDimension>("type");
   const [selected, setSelected] = useState<string | null>(null);
+  const [indexStyle, setIndexStyle] = useState<IndexStyle | "all">("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"aum" | "flow" | "name">("aum");
   const [equityOnly, setEquityOnly] = useState(true);
@@ -87,7 +91,12 @@ export default function EtfDbTab() {
   // Reset category selection when universe filter changes.
   useEffect(() => {
     setSelected(null);
+    setIndexStyle("all");
   }, [equityOnly]);
+
+  useEffect(() => {
+    setIndexStyle("all");
+  }, [dim, selected]);
 
   const aggregates: EtfDbAggregate[] = useMemo(() => {
     const raw = data?.aggregates?.[dim] || [];
@@ -120,13 +129,34 @@ export default function EtfDbTab() {
     return aggregates.reduce((s, a) => s + (a.flow_eok || 0), 0);
   }, [aggregates]);
 
-  const selectedAum = useMemo(() => {
+  const indexScopeRows = useMemo(() => {
+    let rows = data?.rows || [];
+    if (dim !== "index") return rows;
     if (!selected) {
-      if (dim === "index") return indexUniverse.aum_eok;
-      return data?.total_aum_eok ?? null;
+      rows = rows.filter(
+        (r) => r.index === INDEX_KOSPI || r.index === INDEX_KOSDAQ,
+      );
+    } else {
+      rows = rows.filter((r) => r.index === selected);
     }
+    return rows;
+  }, [data, dim, selected]);
+
+  const indexExposure = useMemo(() => {
+    if (dim !== "index") return null;
+    return computeIndexExposure(
+      indexScopeRows,
+      selected || "코스피·코스닥 추종",
+    );
+  }, [dim, selected, indexScopeRows]);
+
+  const selectedAum = useMemo(() => {
+    if (dim === "index") {
+      return indexExposure?.gross_aum_eok ?? null;
+    }
+    if (!selected) return data?.total_aum_eok ?? null;
     return aggregates.find((a) => a.label === selected)?.aum_eok ?? null;
-  }, [selected, aggregates, data, dim, indexUniverse]);
+  }, [selected, aggregates, data, dim, indexExposure]);
 
   const chartKey = selected || "전체";
   const seriesKey = `${equityOnly ? "eq" : "all"}|${dim}|${chartKey}`;
@@ -150,10 +180,11 @@ export default function EtfDbTab() {
 
   const filteredRows: EtfDbRow[] = useMemo(() => {
     let rows = data?.rows || [];
-    if (dim === "index" && !selected) {
-      rows = rows.filter(
-        (r) => r.index === INDEX_KOSPI || r.index === INDEX_KOSDAQ,
-      );
+    if (dim === "index") {
+      rows = indexScopeRows;
+      if (indexStyle !== "all") {
+        rows = rows.filter((r) => r.index_style === indexStyle);
+      }
     } else if (selected) {
       rows = rows.filter((r) => r[dim] === selected);
     }
@@ -163,7 +194,8 @@ export default function EtfDbTab() {
         (r) =>
           (r.name || "").toLowerCase().includes(q) ||
           (r.code || "").toLowerCase().includes(q) ||
-          (r.benchmark || "").toLowerCase().includes(q),
+          (r.benchmark || "").toLowerCase().includes(q) ||
+          (r.index_style || "").toLowerCase().includes(q),
       );
     }
     rows = [...rows];
@@ -172,7 +204,7 @@ export default function EtfDbTab() {
       rows.sort((a, b) => (b.flow_eok ?? -1e99) - (a.flow_eok ?? -1e99));
     } else rows.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko"));
     return rows;
-  }, [data, selected, dim, query, sort]);
+  }, [data, selected, dim, query, sort, indexScopeRows, indexStyle]);
 
   const chartMode = useMemo<"daily" | "intraday">(() => {
     const hist = data?.aum_history?.[dim];
@@ -248,29 +280,108 @@ export default function EtfDbTab() {
           <div className="etfdb-stats">
             <div>
               <div className="etfdb-stat-k">
-                {equityOnly ? "주식형 ETF" : "상장 ETF"}
+                {dim === "index"
+                  ? selected || "지수 추종"
+                  : equityOnly
+                    ? "주식형 ETF"
+                    : "상장 ETF"}
               </div>
               <div className="etfdb-stat-v">
-                {data.count.toLocaleString("ko-KR")}종
+                {(dim === "index"
+                  ? indexExposure?.count ?? 0
+                  : data.count
+                ).toLocaleString("ko-KR")}
+                종
               </div>
             </div>
             <div>
               <div className="etfdb-stat-k">
-                {selected ? `${selected} AUM` : "AUM 합계"}
+                {dim === "index" ? "단순 AUM 합산" : selected ? `${selected} AUM` : "AUM 합계"}
               </div>
               <div className="etfdb-stat-v">{fmtEok(selectedAum)}</div>
             </div>
-            <div>
-              <div className="etfdb-stat-k">추정 수급</div>
-              <div className={`etfdb-stat-v ${signedClass(totalFlow)}`}>
-                {totalFlow == null
-                  ? data.prev_as_of
-                    ? "부분"
-                    : "대기중"
-                  : fmtSignedEok(totalFlow)}
+            {dim === "index" && indexExposure ? (
+              <div>
+                <div className="etfdb-stat-k" title="일반 + 레버리지×2 − 인버스">
+                  유효 추종자금
+                </div>
+                <div className="etfdb-stat-v">
+                  {fmtEok(indexExposure.effective_aum_eok)}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="etfdb-stat-k">추정 수급</div>
+                <div className={`etfdb-stat-v ${signedClass(totalFlow)}`}>
+                  {totalFlow == null
+                    ? data.prev_as_of
+                      ? "부분"
+                      : "대기중"
+                    : fmtSignedEok(totalFlow)}
+                </div>
+              </div>
+            )}
+          </div>
+          {dim === "index" && indexExposure ? (
+            <div className="etfdb-exposure">
+              <div className="etfdb-exposure-grid">
+                <div>
+                  <span className="meta-soft">일반</span>
+                  <strong>
+                    {indexExposure.plain_count}종 · {fmtEok(indexExposure.plain_aum_eok)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="meta-soft">레버리지</span>
+                  <strong>
+                    {indexExposure.lev_count}종 · {fmtEok(indexExposure.lev_aum_eok)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="meta-soft">인버스</span>
+                  <strong>
+                    {indexExposure.inv_count}종 · {fmtEok(indexExposure.inv_aum_eok)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="meta-soft">유효 추종</span>
+                  <strong>
+                    {fmtEok(indexExposure.effective_aum_eok)}
+                  </strong>
+                  <span className="meta-soft">
+                    = 일반 + 레버×2 − 인버스
+                  </span>
+                </div>
+              </div>
+              <div className="etfdb-style-filters" role="tablist" aria-label="레버리지 분류">
+                <button
+                  type="button"
+                  className={`tab-btn sub ${indexStyle === "all" ? "active" : ""}`}
+                  onClick={() => setIndexStyle("all")}
+                >
+                  전체
+                </button>
+                {INDEX_STYLE_LABELS.map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    className={`tab-btn sub ${indexStyle === style ? "active" : ""}`}
+                    onClick={() => setIndexStyle(style)}
+                  >
+                    {style}
+                    <span className="meta-soft">
+                      {" "}
+                      {style === "일반"
+                        ? indexExposure.plain_count
+                        : style === "레버리지"
+                          ? indexExposure.lev_count
+                          : indexExposure.inv_count}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
+          ) : null}
           <p className="kr-note">
             {data.generated_at_display}
             {equityOnly ? " · 주식형만 (채권·원자재·기타 제외)" : " · 전체 ETF"}
@@ -279,6 +390,9 @@ export default function EtfDbTab() {
               ? "AUM 라이브(당일 포인트) — 일별 히스토리 로딩 전"
               : "AUM 일별 추정(가격×설정좌수 근사) + 당일 라이브"}
             {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : ""}
+            {dim === "index"
+              ? " · 유효 추종자금 = 일반AUM + 레버리지AUM×2 − 인버스AUM"
+              : ""}
           </p>
 
           <div className="tabs etfdb-dim-tabs" role="tablist" aria-label="분류">
@@ -417,6 +531,7 @@ export default function EtfDbTab() {
                     <tr>
                       <th>코드</th>
                       <th>종목</th>
+                      {dim === "index" ? <th>유형</th> : null}
                       {dim === "index" ? <th>기초지수</th> : null}
                       <th className="num">AUM</th>
                       <th className="num">NAV</th>
@@ -432,6 +547,9 @@ export default function EtfDbTab() {
                           <code>{r.code}</code>
                         </td>
                         <td>{r.name}</td>
+                        {dim === "index" ? (
+                          <td>{r.index_style || "일반"}</td>
+                        ) : null}
                         {dim === "index" ? (
                           <td className="meta-soft">{r.benchmark || "—"}</td>
                         ) : null}

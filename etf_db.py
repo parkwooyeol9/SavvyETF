@@ -6,7 +6,7 @@ Classification dimensions:
   - type (유형): Naver ETF tab (국내 시장지수 / 업종·테마 / 파생 / 해외 / …)
   - country (국가): name heuristics + domestic tabs → 한국
   - sector (업종): theme/keyword heuristics with type fallbacks
-
+  - index (지수): Naver 기초지수(etfBaseIdx) → 코스피/코스닥 추종 (+레버/인버스)
 AUM ≈ Naver ``marketSum`` (억원).
 설정좌수 ≈ AUM / NAV (fallback: AUM / price).
 수급(추정) = NAV × Δ설정좌수 (requires prior daily snapshot).
@@ -15,6 +15,7 @@ AUM ≈ Naver ``marketSum`` (억원).
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -204,6 +205,22 @@ def classify_index_bucket(benchmark: str | None, name: str) -> str:
     return INDEX_OTHER
 
 
+def classify_index_style(name: str, benchmark: str | None = None) -> str:
+    """일반 / 레버리지 / 인버스 — 인버스 키워드 우선."""
+    hay = f"{name or ''} {benchmark or ''}"
+    upper = hay.upper()
+    if "인버스" in hay or "INVERSE" in upper or "곱버스" in hay:
+        return "인버스"
+    if (
+        "레버리지" in hay
+        or "LEVERAGE" in upper
+        or "2배" in hay
+        or re.search(r"(?:^|[^0-9])2X(?:[^0-9]|$)", hay, flags=re.I)
+    ):
+        return "레버리지"
+    return "일반"
+
+
 def needs_benchmark_lookup(tab: int, name: str) -> bool:
     if tab in {1, 3}:
         return True
@@ -261,6 +278,7 @@ def enrich_index_classification(rows: list[dict[str, Any]]) -> list[dict[str, An
         bench = row.get("benchmark") or found.get(row["code"])
         row["benchmark"] = bench
         row["index"] = classify_index_bucket(bench, str(row.get("name") or ""))
+        row["index_style"] = classify_index_style(str(row.get("name") or ""), bench)
     return rows
 
 
@@ -303,6 +321,7 @@ def classify_etf(item: dict[str, Any]) -> dict[str, Any]:
         "country": country,
         "sector": sector,
         "index": classify_index_bucket(None, name),
+        "index_style": classify_index_style(name, None),
         "benchmark": None,
         "price": price,
         "nav": nav,
@@ -351,6 +370,7 @@ def save_snapshot(rows: list[dict[str, Any]], *, day: str | None = None) -> Path
             "country": r.get("country"),
             "sector": r.get("sector"),
             "index": r.get("index"),
+            "index_style": r.get("index_style"),
             "benchmark": r.get("benchmark"),
         }
         for r in rows
@@ -801,6 +821,7 @@ def render_etfdb_html(payload: dict[str, Any]) -> str:
             "country": r["country"],
             "sector": r["sector"],
             "index": r.get("index") or "기타",
+            "index_style": r.get("index_style") or "일반",
             "benchmark": r.get("benchmark"),
             "aum_eok": r.get("aum_eok") or 0,
             "nav": r.get("nav"),
