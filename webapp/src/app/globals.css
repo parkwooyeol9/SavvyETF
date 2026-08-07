@@ -4547,6 +4547,35 @@ a.geo-choke-hl:hover {
   }
 }
 
+.us-pf-library {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: end;
+  margin-top: 0.85rem;
+}
+
+.us-pf-library label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.us-pf-library select {
+  min-width: 12rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0a0f16;
+  color: var(--text);
+}
+
+.us-pf-row-active td {
+  background: rgba(96, 165, 250, 0.08);
+}
+
 .us-pf-form,
 .us-pf-trade-form {
   display: flex;

@@ -7,8 +7,46 @@ const YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart";
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
-const STORAGE_KEY = "savvyetf:us-portfolio:v1";
+const STORAGE_KEY_V1 = "savvyetf:us-portfolio:v1";
+const STORAGE_KEY = "savvyetf:us-portfolio:v2";
 const BENCHMARK = "SPY";
+
+/**
+ * Approximate S&P 500 GICS sector weights for active allocation compare.
+ * Illustrative (not live reconstituted). Residual bucketed as 기타.
+ */
+export const SPY_SECTOR_WEIGHTS_PCT: Record<string, number> = {
+  Technology: 32.5,
+  Financials: 13.2,
+  Healthcare: 11.8,
+  "Consumer Cyclical": 10.5,
+  Communication: 9.0,
+  Industrials: 8.2,
+  "Consumer Defensive": 5.8,
+  Energy: 3.4,
+  ETF: 0,
+  "ETF/Index": 0,
+  기타: 5.6,
+};
+
+const SECTOR_LABEL_KO: Record<string, string> = {
+  Technology: "기술",
+  Financials: "금융",
+  Healthcare: "헬스케어",
+  "Consumer Cyclical": "경기소비재",
+  Communication: "통신·미디어",
+  Industrials: "산업재",
+  "Consumer Defensive": "필수소비재",
+  Energy: "에너지",
+  "ETF/Index": "ETF·지수",
+  ETF: "ETF·지수",
+  Cash: "현금",
+  기타: "기타",
+};
+
+export function sectorLabelKo(sector: string): string {
+  return SECTOR_LABEL_KO[sector] || sector;
+}
 
 /** Curated US listed universe for picker + sector attribution. */
 export type UniverseName = {
@@ -228,6 +266,29 @@ export type PortfolioTelegramSnapshot = {
   series_tail: Array<{ date: string; portfolio: number; spy: number }>;
 };
 
+export type SectorWeightCompareRow = {
+  sector: string;
+  label: string;
+  portfolio_pct: number;
+  spy_pct: number;
+  active_pct: number;
+};
+
+export type RiskCompareMetrics = {
+  volatility_pct: number | null;
+  spy_volatility_pct: number | null;
+  max_drawdown_pct: number;
+  spy_max_drawdown_pct: number;
+  sharpe: number | null;
+  spy_sharpe: number | null;
+  beta: number | null;
+  alpha_ann_pct: number | null;
+  tracking_error_pct: number | null;
+  information_ratio: number | null;
+  calmar: number | null;
+  spy_calmar: number | null;
+};
+
 export type UsPortfolioResult = {
   ok: boolean;
   error?: string;
@@ -243,6 +304,9 @@ export type UsPortfolioResult = {
   excess_vs_spy_pct: number;
   week_return_pct: number | null;
   max_drawdown_pct: number;
+  spy_max_drawdown_pct: number;
+  risk: RiskCompareMetrics;
+  sector_weights: SectorWeightCompareRow[];
   holdings: Array<{
     symbol: string;
     shares: number;
@@ -268,9 +332,17 @@ export type StoredUsPortfolio = {
     excess_vs_spy_pct: number;
     week_return_pct: number | null;
     final_value: number;
+    max_drawdown_pct?: number;
+    volatility_pct?: number | null;
     telegram_snapshot: PortfolioTelegramSnapshot;
   }>;
   updated_at: string;
+};
+
+/** Multi-portfolio library persisted in localStorage (v2). */
+export type UsPortfolioLibrary = {
+  active_id: string;
+  portfolios: StoredUsPortfolio[];
 };
 
 function toYahooSymbol(ticker: string): string {
@@ -377,6 +449,145 @@ function maxDrawdown(values: number[]): number {
     if (peak > 0) mdd = Math.min(mdd, v / peak - 1);
   }
   return mdd * 100;
+}
+
+function dailyReturns(values: number[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < values.length; i++) {
+    const prev = values[i - 1]!;
+    const cur = values[i]!;
+    if (prev > 0 && Number.isFinite(cur)) out.push(cur / prev - 1);
+  }
+  return out;
+}
+
+function mean(xs: number[]): number {
+  if (!xs.length) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function stdSample(xs: number[]): number | null {
+  if (xs.length < 2) return null;
+  const m = mean(xs);
+  const v = xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1);
+  return Math.sqrt(v);
+}
+
+function covSample(xs: number[], ys: number[]): number | null {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 2) return null;
+  const mx = mean(xs.slice(0, n));
+  const my = mean(ys.slice(0, n));
+  let s = 0;
+  for (let i = 0; i < n; i++) s += (xs[i]! - mx) * (ys[i]! - my);
+  return s / (n - 1);
+}
+
+export function computeRiskCompare(
+  series: Array<{ portfolio: number; spy: number }>,
+  cumulative_return_pct: number,
+  spy_cumulative_return_pct: number,
+): RiskCompareMetrics {
+  const portVals = series.map((s) => s.portfolio);
+  const spyVals = series.map((s) => s.spy);
+  const max_drawdown_pct = maxDrawdown(portVals);
+  const spy_max_drawdown_pct = maxDrawdown(spyVals);
+  const rp = dailyReturns(portVals);
+  const rb = dailyReturns(spyVals);
+  const n = Math.min(rp.length, rb.length);
+  const rps = rp.slice(0, n);
+  const rbs = rb.slice(0, n);
+  const sp = stdSample(rps);
+  const sb = stdSample(rbs);
+  const volatility_pct = sp != null ? sp * Math.sqrt(252) * 100 : null;
+  const spy_volatility_pct = sb != null ? sb * Math.sqrt(252) * 100 : null;
+  const sharpe =
+    sp != null && sp > 0 ? (mean(rps) * 252) / (sp * Math.sqrt(252)) : null;
+  const spy_sharpe =
+    sb != null && sb > 0 ? (mean(rbs) * 252) / (sb * Math.sqrt(252)) : null;
+  const c = covSample(rps, rbs);
+  const varB = sb != null ? sb * sb : null;
+  const beta = c != null && varB != null && varB > 0 ? c / varB : null;
+  const alpha_ann_pct =
+    beta != null ? (mean(rps) - beta * mean(rbs)) * 252 * 100 : null;
+  const excess = rps.map((r, i) => r - (rbs[i] || 0));
+  const te = stdSample(excess);
+  const tracking_error_pct = te != null ? te * Math.sqrt(252) * 100 : null;
+  const information_ratio =
+    te != null && te > 0 ? (mean(excess) * 252) / (te * Math.sqrt(252)) : null;
+  const calmar =
+    max_drawdown_pct < 0
+      ? cumulative_return_pct / Math.abs(max_drawdown_pct)
+      : null;
+  const spy_calmar =
+    spy_max_drawdown_pct < 0
+      ? spy_cumulative_return_pct / Math.abs(spy_max_drawdown_pct)
+      : null;
+  return {
+    volatility_pct,
+    spy_volatility_pct,
+    max_drawdown_pct,
+    spy_max_drawdown_pct,
+    sharpe,
+    spy_sharpe,
+    beta,
+    alpha_ann_pct,
+    tracking_error_pct,
+    information_ratio,
+    calmar,
+    spy_calmar,
+  };
+}
+
+export function buildSectorWeightCompare(
+  holdings: Array<{ sector: string; market_value: number }>,
+  cash: number,
+  final_value: number,
+): SectorWeightCompareRow[] {
+  const total = final_value > 0 ? final_value : 1;
+  const bySector = new Map<string, number>();
+  for (const h of holdings) {
+    bySector.set(h.sector, (bySector.get(h.sector) || 0) + h.market_value);
+  }
+  if (cash > 1e-6) bySector.set("Cash", (bySector.get("Cash") || 0) + cash);
+
+  const sectors = new Set<string>([
+    ...Object.keys(SPY_SECTOR_WEIGHTS_PCT),
+    ...bySector.keys(),
+  ]);
+  const rows: SectorWeightCompareRow[] = [];
+  for (const sector of sectors) {
+    if (sector === "ETF") continue; // folded into ETF/Index
+    const portfolio_pct = ((bySector.get(sector) || 0) / total) * 100;
+    const spy_pct = sector === "Cash" ? 0 : SPY_SECTOR_WEIGHTS_PCT[sector] ?? 0;
+    if (portfolio_pct < 0.05 && spy_pct < 0.05) continue;
+    rows.push({
+      sector,
+      label: sectorLabelKo(sector),
+      portfolio_pct,
+      spy_pct,
+      active_pct: portfolio_pct - spy_pct,
+    });
+  }
+  rows.sort((a, b) => Math.abs(b.active_pct) - Math.abs(a.active_pct));
+  return rows;
+}
+
+function emptyRisk(): RiskCompareMetrics {
+  return {
+    volatility_pct: null,
+    spy_volatility_pct: null,
+    max_drawdown_pct: 0,
+    spy_max_drawdown_pct: 0,
+    sharpe: null,
+    spy_sharpe: null,
+    beta: null,
+    alpha_ann_pct: null,
+    tracking_error_pct: null,
+    information_ratio: null,
+    calmar: null,
+    spy_calmar: null,
+  };
 }
 
 function weekReturn(series: Array<{ date: string; portfolio: number }>): number | null {
@@ -562,7 +773,9 @@ export async function simulateUsPortfolio(input: {
   const spy_cumulative_return_pct = ((last.spy / initial_cash) - 1) * 100;
   const excess_vs_spy_pct = cumulative_return_pct - spy_cumulative_return_pct;
   const week_return_pct = weekReturn(series);
-  const max_drawdown_pct = maxDrawdown(series.map((s) => s.portfolio));
+  const risk = computeRiskCompare(series, cumulative_return_pct, spy_cumulative_return_pct);
+  const max_drawdown_pct = risk.max_drawdown_pct;
+  const spy_max_drawdown_pct = risk.spy_max_drawdown_pct;
 
   const holdings: UsPortfolioResult["holdings"] = [];
   for (const [sym, shares] of positions) {
@@ -578,6 +791,8 @@ export async function simulateUsPortfolio(input: {
     });
   }
   holdings.sort((a, b) => b.market_value - a.market_value);
+
+  const sector_weights = buildSectorWeightCompare(holdings, cash, final_value);
 
   const stock_attribution: AttributionRow[] = holdings.map((h) => {
     const basis = costBasis.get(h.symbol) || h.market_value;
@@ -604,7 +819,7 @@ export async function simulateUsPortfolio(input: {
   const sector_attribution: AttributionRow[] = [...sectorMap.entries()]
     .map(([sector, v]) => ({
       key: sector,
-      label: sector,
+      label: sectorLabelKo(sector),
       weight_pct: final_value > 0 ? (v.mv / final_value) * 100 : null,
       return_pct: v.basis > 0 ? ((v.mv / v.basis) - 1) * 100 : null,
       contribution_pct: initial_cash > 0 ? ((v.mv - v.basis) / initial_cash) * 100 : 0,
@@ -646,6 +861,9 @@ export async function simulateUsPortfolio(input: {
     excess_vs_spy_pct,
     week_return_pct,
     max_drawdown_pct,
+    spy_max_drawdown_pct,
+    risk,
+    sector_weights,
     holdings,
     stock_attribution,
     sector_attribution,
@@ -691,6 +909,9 @@ function emptyResult(
     excess_vs_spy_pct: 0,
     week_return_pct: null,
     max_drawdown_pct: 0,
+    spy_max_drawdown_pct: 0,
+    risk: emptyRisk(),
+    sector_weights: [],
     holdings: [],
     stock_attribution: [],
     sector_attribution: [],
@@ -700,31 +921,145 @@ function emptyResult(
 }
 
 /** Browser-only persistence helpers */
-export function loadStoredPortfolio(): StoredUsPortfolio | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredUsPortfolio;
-  } catch {
-    return null;
-  }
-}
-
-export function saveStoredPortfolio(store: StoredUsPortfolio): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-}
-
-export function defaultStoredPortfolio(): StoredUsPortfolio {
+export function defaultStoredPortfolio(name = "포트폴리오 1"): StoredUsPortfolio {
   return {
     portfolio_id: newPortfolioId(),
-    name: "내 미국 주식 포트폴리오",
+    name,
     initial_cash: 100_000,
     trades: [],
     history: [],
     updated_at: new Date().toISOString(),
   };
+}
+
+export function defaultPortfolioLibrary(): UsPortfolioLibrary {
+  const first = defaultStoredPortfolio("포트폴리오 1");
+  return { active_id: first.portfolio_id, portfolios: [first] };
+}
+
+function migrateV1ToLibrary(raw: unknown): UsPortfolioLibrary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  // already v2
+  if (Array.isArray(obj.portfolios) && typeof obj.active_id === "string") {
+    const portfolios = obj.portfolios as StoredUsPortfolio[];
+    if (!portfolios.length) return defaultPortfolioLibrary();
+    const active =
+      portfolios.find((p) => p.portfolio_id === obj.active_id)?.portfolio_id ||
+      portfolios[0]!.portfolio_id;
+    return { active_id: active, portfolios };
+  }
+  // legacy single portfolio
+  if (typeof obj.portfolio_id === "string" && Array.isArray(obj.trades)) {
+    const p = obj as unknown as StoredUsPortfolio;
+    return { active_id: p.portfolio_id, portfolios: [p] };
+  }
+  return null;
+}
+
+export function loadPortfolioLibrary(): UsPortfolioLibrary {
+  if (typeof window === "undefined") return defaultPortfolioLibrary();
+  try {
+    const v2 = window.localStorage.getItem(STORAGE_KEY);
+    if (v2) {
+      const parsed = migrateV1ToLibrary(JSON.parse(v2));
+      if (parsed) return parsed;
+    }
+    const v1 = window.localStorage.getItem(STORAGE_KEY_V1);
+    if (v1) {
+      const parsed = migrateV1ToLibrary(JSON.parse(v1));
+      if (parsed) {
+        savePortfolioLibrary(parsed);
+        return parsed;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return defaultPortfolioLibrary();
+}
+
+export function savePortfolioLibrary(lib: UsPortfolioLibrary): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lib));
+}
+
+/** @deprecated use loadPortfolioLibrary */
+export function loadStoredPortfolio(): StoredUsPortfolio | null {
+  const lib = loadPortfolioLibrary();
+  return lib.portfolios.find((p) => p.portfolio_id === lib.active_id) || lib.portfolios[0] || null;
+}
+
+/** @deprecated use savePortfolioLibrary */
+export function saveStoredPortfolio(store: StoredUsPortfolio): void {
+  const lib = loadPortfolioLibrary();
+  const idx = lib.portfolios.findIndex((p) => p.portfolio_id === store.portfolio_id);
+  const portfolios =
+    idx >= 0
+      ? lib.portfolios.map((p, i) => (i === idx ? store : p))
+      : [...lib.portfolios, store];
+  savePortfolioLibrary({ active_id: store.portfolio_id, portfolios });
+}
+
+export function getActivePortfolio(lib: UsPortfolioLibrary): StoredUsPortfolio {
+  return (
+    lib.portfolios.find((p) => p.portfolio_id === lib.active_id) ||
+    lib.portfolios[0] ||
+    defaultStoredPortfolio()
+  );
+}
+
+export function upsertActivePortfolio(
+  lib: UsPortfolioLibrary,
+  store: StoredUsPortfolio,
+): UsPortfolioLibrary {
+  const exists = lib.portfolios.some((p) => p.portfolio_id === store.portfolio_id);
+  const portfolios = exists
+    ? lib.portfolios.map((p) => (p.portfolio_id === store.portfolio_id ? store : p))
+    : [...lib.portfolios, store];
+  return { active_id: store.portfolio_id, portfolios };
+}
+
+export function createPortfolioInLibrary(
+  lib: UsPortfolioLibrary,
+  name?: string,
+): UsPortfolioLibrary {
+  const n = lib.portfolios.length + 1;
+  const created = defaultStoredPortfolio(name || `포트폴리오 ${n}`);
+  return {
+    active_id: created.portfolio_id,
+    portfolios: [...lib.portfolios, created],
+  };
+}
+
+export function duplicatePortfolioInLibrary(
+  lib: UsPortfolioLibrary,
+  sourceId: string,
+): UsPortfolioLibrary {
+  const src = lib.portfolios.find((p) => p.portfolio_id === sourceId);
+  if (!src) return lib;
+  const copy: StoredUsPortfolio = {
+    ...structuredClone(src),
+    portfolio_id: newPortfolioId(),
+    name: `${src.name} 복사`,
+    history: [],
+    updated_at: new Date().toISOString(),
+  };
+  return {
+    active_id: copy.portfolio_id,
+    portfolios: [...lib.portfolios, copy],
+  };
+}
+
+export function deletePortfolioInLibrary(
+  lib: UsPortfolioLibrary,
+  id: string,
+): UsPortfolioLibrary {
+  if (lib.portfolios.length <= 1) return lib;
+  const portfolios = lib.portfolios.filter((p) => p.portfolio_id !== id);
+  const active_id =
+    lib.active_id === id ? portfolios[0]!.portfolio_id : lib.active_id;
+  return { active_id, portfolios };
 }
 
 export function appendHistory(
@@ -738,6 +1073,8 @@ export function appendHistory(
     excess_vs_spy_pct: result.excess_vs_spy_pct,
     week_return_pct: result.week_return_pct,
     final_value: result.final_value,
+    max_drawdown_pct: result.max_drawdown_pct,
+    volatility_pct: result.risk.volatility_pct,
     telegram_snapshot: result.telegram_snapshot,
   };
   const history = [...store.history.filter((h) => h.as_of !== entry.as_of), entry]
@@ -748,6 +1085,34 @@ export function appendHistory(
     history,
     updated_at: new Date().toISOString(),
   };
+}
+
+/** Indexed series (base 100) + tight Y domain for comparison charts. */
+export function buildIndexedChartSeries(
+  series: Array<{ date: string; portfolio: number; spy: number }>,
+): {
+  data: Array<{ t: string; 포트폴리오: number; SPY: number }>;
+  domain: [number, number];
+} {
+  if (!series.length) return { data: [], domain: [95, 105] };
+  const p0 = series[0]!.portfolio || 1;
+  const s0 = series[0]!.spy || 1;
+  const data = series.map((p) => ({
+    t: p.date.slice(5),
+    포트폴리오: Math.round((p.portfolio / p0) * 10000) / 100,
+    SPY: Math.round((p.spy / s0) * 10000) / 100,
+  }));
+  let min = Infinity;
+  let max = -Infinity;
+  for (const d of data) {
+    min = Math.min(min, d.포트폴리오, d.SPY);
+    max = Math.max(max, d.포트폴리오, d.SPY);
+  }
+  if (!(max > min)) {
+    return { data, domain: [min - 1, max + 1] };
+  }
+  const pad = Math.max((max - min) * 0.06, 0.4);
+  return { data, domain: [min - pad, max + pad] };
 }
 
 /** Format telegram-ready text for future bot broadcast */
