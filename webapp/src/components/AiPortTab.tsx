@@ -187,7 +187,7 @@ export default function AiPortTab() {
           <div>
             <h2 className="kr-hero-title">AI포트</h2>
             <p className="kr-hero-sub">
-              「오늘의 트레이딩 아이디어」를 일자별로 누적 추종했을 때의 성과입니다.
+              「AI Pick」을 일자별로 누적 추종했을 때의 성과입니다.
               매일 리밸런싱(전량 교체 후 목표 비중 편입)으로 시뮬레이션합니다.
             </p>
           </div>
@@ -198,7 +198,7 @@ export default function AiPortTab() {
               disabled={loading}
               onClick={() => void applyToday()}
             >
-              {loading ? "계산 중…" : "오늘 아이디어 반영·성과"}
+              {loading ? "계산 중…" : "AI Pick 반영·성과"}
             </button>
             <button
               type="button"
@@ -216,48 +216,32 @@ export default function AiPortTab() {
         <p className="meta-soft">
           스냅샷 {store.snapshots.length}일 · 기록 {store.history.length}회
           {latestSnap ? ` · 최근 반영 ${latestSnap.as_of}` : ""}
-          {ideas?.as_of ? ` · 아이디어 기준 ${ideas.as_of}` : ""}
+          {ideas?.as_of ? ` · AI Pick 기준 ${ideas.as_of}` : ""}
         </p>
         {error ? <p className="empty">{error}</p> : null}
       </section>
 
-      {latestSnap ? (
-        <section className="geo-section" style={{ marginTop: 12 }}>
-          <h3 className="geo-section-title">최근 추종 비중 ({latestSnap.as_of})</h3>
-          <div className="table-wrap" style={{ marginTop: 8 }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>종목</th>
-                  <th className="num">비중</th>
-                </tr>
-              </thead>
-              <tbody>
-                {latestSnap.targets.map((t) => (
-                  <tr key={t.symbol}>
-                    <td>
-                      <strong>{t.symbol}</strong>
-                      <span className="meta-soft"> · {t.name}</span>
-                    </td>
-                    <td className="num">{t.weight_pct.toFixed(1)}%</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td>현금</td>
-                  <td className="num">{latestSnap.cash_pct.toFixed(1)}%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : (
+      {!latestSnap ? (
         <section className="geo-section" style={{ marginTop: 12 }}>
           <p className="empty">
-            아직 반영된 아이디어가 없습니다. 「오늘 아이디어 반영·성과」를 눌러
-            추적을 시작하세요.
+            아직 반영된 AI Pick이 없습니다. 「오늘 아이디어 반영·성과」를 눌러
+            추적을 시작하세요. 종목·비중은{" "}
+            <button
+              type="button"
+              className="ghost-btn"
+              style={{ display: "inline", padding: "0 0.25rem" }}
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("savvyetf-nav-tab", { detail: "ideas" }),
+                );
+              }}
+            >
+              AI Pick
+            </button>
+            탭에서 확인합니다.
           </p>
         </section>
-      )}
+      ) : null}
 
       {result?.ok ? (
         <>
