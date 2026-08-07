@@ -10,6 +10,7 @@ import {
 } from "@/lib/allocation";
 import {
   CATALOG_BY_SYMBOL,
+  ETF_CATALOG,
   etfDisplay,
   type AllocMethod,
   type AssetClass,
