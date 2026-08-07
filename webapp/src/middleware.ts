@@ -6,6 +6,7 @@ import { updateSession } from "@/lib/supabase/middleware";
 
 const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/simulate": { limit: 12, windowMs: 60_000 },
+  "/api/us-portfolio": { limit: 12, windowMs: 60_000 },
   "/api/why-etf": { limit: 20, windowMs: 60_000 },
   "/api/heatmap": { limit: 20, windowMs: 60_000 },
   "/api/kr-market": { limit: 20, windowMs: 60_000 },

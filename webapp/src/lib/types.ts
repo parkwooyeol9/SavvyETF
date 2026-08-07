@@ -3,6 +3,7 @@ export type TabId = "kr" | "us" | "etf" | "esg";
 export type ShellTabId =
   | "main"
   | "simulate"
+  | "usportfolio"
   | "education"
   | "geo"
   | "aigov"
@@ -20,7 +21,7 @@ export type ShellTabId =
   | "eventstudy"
   | TabId;
 
-export type NavGroupId = "main" | "market" | "etf" | "esg";
+export type NavGroupId = "main" | "market" | "etf" | "portfolio" | "esg";
 
 export type BriefSection = {
   heading?: string;
@@ -65,6 +66,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "kosdaq100",
   "education",
   "simulate",
+  "usportfolio",
   "etf",
   "leverage",
   "etfdb",
@@ -88,6 +90,7 @@ export const TAB_LABELS: Record<TabId, string> = {
 export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "ETF 배분",
+  usportfolio: "미국 주식",
   education: "교육",
   etfdb: "ETF DB",
   leverage: "레버리지 ETF",
@@ -122,7 +125,12 @@ export const NAV_GROUPS: Array<{
   {
     id: "etf",
     label: "ETF",
-    tabs: ["education", "simulate", "etf", "leverage", "etfdb", "etfweights", "kosdaqactive"],
+    tabs: ["education", "etf", "leverage", "etfdb", "etfweights", "kosdaqactive"],
+  },
+  {
+    id: "portfolio",
+    label: "포트폴리오",
+    tabs: ["simulate", "usportfolio"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {

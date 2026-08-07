@@ -25,6 +25,7 @@ import YenCarryTab from "@/components/YenCarryTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import SimulateTab from "@/components/SimulateTab";
+import UsPortfolioTab from "@/components/UsPortfolioTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
@@ -154,6 +155,7 @@ export default function Dashboard() {
     if (
       tab === "main" ||
       tab === "simulate" ||
+      tab === "usportfolio" ||
       tab === "education" ||
       tab === "geo" ||
       tab === "aigov" ||
@@ -241,6 +243,8 @@ export default function Dashboard() {
         <MainTab />
       ) : tab === "simulate" ? (
         <SimulateTab />
+      ) : tab === "usportfolio" ? (
+        <UsPortfolioTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "etfdb" ? (
