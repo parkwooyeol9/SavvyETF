@@ -4707,6 +4707,112 @@ a.geo-choke-hl:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.ideas-summary {
+  margin: 10px 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted, #8fa3b8);
+}
+
+.ideas-summary li + li {
+  margin-top: 0.35rem;
+}
+
+.guru-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.guru-card {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border, #2b3648);
+  border-radius: 10px;
+  background: color-mix(in srgb, #141d2b 88%, transparent);
+}
+
+.guru-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.55rem;
+}
+
+.guru-card-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.guru-aum {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: #93c5fd;
+  font-size: 0.95rem;
+}
+
+.guru-idea-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.guru-idea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.guru-idea:hover .guru-idea-title {
+  color: #93c5fd;
+}
+
+.guru-idea-title {
+  font-size: 0.88rem;
+  line-height: 1.35;
+  font-weight: 550;
+}
+
+.guru-highlight-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.guru-highlight {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.guru-rank {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #8fa3b8;
+  padding-top: 0.15rem;
+}
+
+.guru-chip {
+  display: inline-block;
+  margin-bottom: 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: #93c5fd;
+}
+
 .us-pf-split {
   display: grid;
   grid-template-columns: 1fr 1fr;

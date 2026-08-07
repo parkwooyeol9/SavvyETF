@@ -18,8 +18,11 @@ export type ShellTabId =
   | "kosdaq100"
   | "economy"
   | "yencarry"
+  | "ideas"
+  | "gurus"
   | "signals"
   | "eventstudy"
+  | "aiport"
   | TabId;
 
 export type NavGroupId = "main" | "market" | "etf" | "portfolio" | "esg";
@@ -62,12 +65,15 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "us",
   "economy",
   "yencarry",
-  "signals",
+  "ideas",
+  "gurus",
   "eventstudy",
   "kosdaq100",
   "education",
   "simulate",
   "usportfolio",
+  "signals",
+  "aiport",
   "etf",
   "leverage",
   "etfdb",
@@ -106,9 +112,12 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   greenmin: "녹색 광물",
   economy: "경제",
   yencarry: "엔케리 모니터",
+  ideas: "오늘의 트레이딩 아이디어",
+  gurus: "월가 구루",
   signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
+  aiport: "AI포트",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -123,7 +132,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "economy", "yencarry", "signals", "eventstudy", "kosdaq100"],
+    tabs: ["kr", "us", "economy", "yencarry", "ideas", "gurus", "eventstudy", "kosdaq100"],
   },
   {
     id: "etf",
@@ -133,7 +142,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["simulate", "usportfolio"],
+    tabs: ["simulate", "usportfolio", "signals", "aiport"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {
