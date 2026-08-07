@@ -4546,3 +4546,72 @@ a.geo-choke-hl:hover {
     flex-direction: column;
   }
 }
+
+.us-pf-form,
+.us-pf-trade-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.us-pf-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.us-pf-form input,
+.us-pf-trade-form input,
+.us-pf-trade-form select {
+  min-width: 7rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0a0f16;
+  color: var(--text);
+}
+
+.us-pf-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.us-pf-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.us-pf-stats strong {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.us-pf-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.us-pf-tg {
+  margin-top: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0a0f16;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  overflow: auto;
+}
+
+@media (max-width: 800px) {
+  .us-pf-split {
+    grid-template-columns: 1fr;
+  }
+}
