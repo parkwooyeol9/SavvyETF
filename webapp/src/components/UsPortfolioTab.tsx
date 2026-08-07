@@ -14,17 +14,22 @@ import {
 
 import {
   appendHistory,
-  defaultStoredPortfolio,
+  buildIndexedChartSeries,
+  createPortfolioInLibrary,
+  deletePortfolioInLibrary,
+  duplicatePortfolioInLibrary,
   formatTelegramPortfolioBrief,
-  loadStoredPortfolio,
-  newTradeId,
-  saveStoredPortfolio,
+  getActivePortfolio,
+  loadPortfolioLibrary,
+  savePortfolioLibrary,
+  upsertActivePortfolio,
   US_PORTFOLIO_UNIVERSE,
   type PortfolioTrade,
   type PriceMode,
   type SizeMode,
   type StoredUsPortfolio,
   type TradeSide,
+  type UsPortfolioLibrary,
   type UsPortfolioResult,
 } from "@/lib/usPortfolio";
 
@@ -39,6 +44,11 @@ function fmtPct(n?: number | null, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}%`;
+}
+
+function fmtNum(n?: number | null, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toFixed(digits);
 }
 
 function fmtUsd(n?: number | null): string {
@@ -64,8 +74,8 @@ function tradeSizeLabel(t: PortfolioTrade): string {
 }
 
 export default function UsPortfolioTab() {
-  const [store, setStore] = useState<StoredUsPortfolio | null>(null);
-  const [result, setResult] = useState<UsPortfolioResult | null>(null);
+  const [lib, setLib] = useState<UsPortfolioLibrary | null>(null);
+  const [resultCache, setResultCache] = useState<Record<string, UsPortfolioResult>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,9 +93,24 @@ export default function UsPortfolioTab() {
   const [universeSector, setUniverseSector] = useState<string>("all");
 
   useEffect(() => {
-    const existing = loadStoredPortfolio();
-    setStore(existing || defaultStoredPortfolio());
+    setLib(loadPortfolioLibrary());
   }, []);
+
+  const store = lib ? getActivePortfolio(lib) : null;
+  const result = store ? resultCache[store.portfolio_id] || null : null;
+
+  const persistLib = useCallback((next: UsPortfolioLibrary) => {
+    setLib(next);
+    savePortfolioLibrary(next);
+  }, []);
+
+  const persistActive = useCallback(
+    (nextStore: StoredUsPortfolio) => {
+      if (!lib) return;
+      persistLib(upsertActivePortfolio(lib, nextStore));
+    },
+    [lib, persistLib],
+  );
 
   useEffect(() => {
     if (side === "buy" && sizeMode === "all") {
@@ -93,11 +118,6 @@ export default function UsPortfolioTab() {
       setSizeValue("10000");
     }
   }, [side, sizeMode]);
-
-  const persist = useCallback((next: StoredUsPortfolio) => {
-    setStore(next);
-    saveStoredPortfolio(next);
-  }, []);
 
   const run = useCallback(
     async (s: StoredUsPortfolio) => {
@@ -117,18 +137,18 @@ export default function UsPortfolioTab() {
         const json = (await res.json()) as UsPortfolioResult;
         if (!json.ok) {
           setError(json.error || "시뮬레이션 실패");
-          setResult(json);
+          setResultCache((prev) => ({ ...prev, [s.portfolio_id]: json }));
           return;
         }
-        setResult(json);
-        persist(appendHistory(s, json));
+        setResultCache((prev) => ({ ...prev, [s.portfolio_id]: json }));
+        persistActive(appendHistory(s, json));
       } catch (exc) {
         setError(exc instanceof Error ? exc.message : String(exc));
       } finally {
         setLoading(false);
       }
     },
-    [persist],
+    [persistActive],
   );
 
   const filteredUniverse = useMemo(() => {
@@ -165,7 +185,8 @@ export default function UsPortfolioTab() {
   const onSizeModeChange = (mode: SizeMode) => {
     setSizeMode(mode);
     if (mode === "notional") setSizeValue((v) => (v && Number(v) > 0 ? v : "10000"));
-    else if (mode === "weight_pct") setSizeValue((v) => (v && Number(v) > 0 && Number(v) <= 100 ? v : "10"));
+    else if (mode === "weight_pct")
+      setSizeValue((v) => (v && Number(v) > 0 && Number(v) <= 100 ? v : "10"));
     else if (mode === "shares") setSizeValue((v) => (v && Number(v) > 0 ? v : "10"));
     else setSizeValue("");
   };
@@ -176,7 +197,7 @@ export default function UsPortfolioTab() {
     if (!sym || !date) return;
 
     const trade: PortfolioTrade = {
-      id: newTradeId(),
+      id: `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       symbol: sym,
       side,
       date,
@@ -216,18 +237,17 @@ export default function UsPortfolioTab() {
       }
     }
 
-    const next = {
+    persistActive({
       ...store,
       trades: [...store.trades, trade],
       updated_at: new Date().toISOString(),
-    };
-    persist(next);
+    });
     setError(null);
   };
 
   const removeTrade = (id: string) => {
     if (!store) return;
-    persist({
+    persistActive({
       ...store,
       trades: store.trades.filter((t) => t.id !== id),
       updated_at: new Date().toISOString(),
@@ -239,13 +259,36 @@ export default function UsPortfolioTab() {
     setError(null);
   };
 
-  const chartData = useMemo(
-    () =>
-      (result?.series || []).map((p) => ({
-        t: p.date.slice(5),
-        포트폴리오: Math.round(p.portfolio),
-        SPY: Math.round(p.spy),
-      })),
+  const switchPortfolio = (id: string) => {
+    if (!lib) return;
+    persistLib({ ...lib, active_id: id });
+    setError(null);
+  };
+
+  const createPortfolio = () => {
+    if (!lib) return;
+    persistLib(createPortfolioInLibrary(lib));
+    setError(null);
+  };
+
+  const duplicatePortfolio = () => {
+    if (!lib || !store) return;
+    persistLib(duplicatePortfolioInLibrary(lib, store.portfolio_id));
+    setError(null);
+  };
+
+  const deletePortfolio = () => {
+    if (!lib || !store) return;
+    if (lib.portfolios.length <= 1) {
+      setError("최소 1개의 포트폴리오는 유지해야 합니다.");
+      return;
+    }
+    persistLib(deletePortfolioInLibrary(lib, store.portfolio_id));
+    setError(null);
+  };
+
+  const chartPack = useMemo(
+    () => buildIndexedChartSeries(result?.series || []),
     [result],
   );
 
@@ -253,7 +296,30 @@ export default function UsPortfolioTab() {
     ? formatTelegramPortfolioBrief(result.telegram_snapshot)
     : "";
 
-  if (!store) {
+  const libraryCompare = useMemo(() => {
+    if (!lib) return [];
+    return lib.portfolios.map((p) => {
+      const cached = resultCache[p.portfolio_id];
+      const lastHist = p.history.length ? p.history[p.history.length - 1] : null;
+      return {
+        id: p.portfolio_id,
+        name: p.name,
+        trades: p.trades.length,
+        active: p.portfolio_id === lib.active_id,
+        cumulative_return_pct:
+          cached?.ok ? cached.cumulative_return_pct : lastHist?.cumulative_return_pct ?? null,
+        excess_vs_spy_pct:
+          cached?.ok ? cached.excess_vs_spy_pct : lastHist?.excess_vs_spy_pct ?? null,
+        max_drawdown_pct:
+          cached?.ok ? cached.max_drawdown_pct : lastHist?.max_drawdown_pct ?? null,
+        volatility_pct:
+          cached?.ok ? cached.risk.volatility_pct : lastHist?.volatility_pct ?? null,
+        final_value: cached?.ok ? cached.final_value : lastHist?.final_value ?? null,
+      };
+    });
+  }, [lib, resultCache]);
+
+  if (!lib || !store) {
     return <p className="empty">포트폴리오 불러오는 중…</p>;
   }
 
@@ -264,8 +330,8 @@ export default function UsPortfolioTab() {
           <div>
             <h2 className="kr-hero-title">미국 주식 포트폴리오</h2>
             <p className="kr-hero-sub">
-              로그인 없이 브라우저에 저장 · 시가/종가 편출입 · 금액·비중·수량 기준 · SPY 대비
-              성과 · 텔레그램 송출용 스냅샷 준비
+              로그인 없이 로컬 다중 저장 · 시가/종가 편출입 · SPY 대비 업종·리스크 비교 ·
+              텔레그램 스냅샷 준비
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -279,14 +345,42 @@ export default function UsPortfolioTab() {
             </button>
           </div>
         </div>
-        <p className="meta-soft">
-          ID {store.portfolio_id} · 누적 기록 {store.history.length}회
-          {store.updated_at
-            ? ` · 저장 ${new Date(store.updated_at).toLocaleString("ko-KR", {
-                hour12: false,
-              })}`
-            : ""}
-        </p>
+
+        <div className="us-pf-library">
+          <label>
+            활성 포트폴리오
+            <select
+              value={store.portfolio_id}
+              onChange={(e) => switchPortfolio(e.target.value)}
+            >
+              {lib.portfolios.map((p, i) => (
+                <option key={p.portfolio_id} value={p.portfolio_id}>
+                  {p.name || `포트폴리오 ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="tab-btn" onClick={createPortfolio}>
+            새 포트폴리오
+          </button>
+          <button type="button" className="ghost-btn" onClick={duplicatePortfolio}>
+            복제
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={deletePortfolio}
+            disabled={lib.portfolios.length <= 1}
+          >
+            삭제
+          </button>
+          <span className="meta-soft">
+            {lib.portfolios.length}개 저장 · 기록 {store.history.length}회
+            {store.updated_at
+              ? ` · ${new Date(store.updated_at).toLocaleString("ko-KR", { hour12: false })}`
+              : ""}
+          </span>
+        </div>
       </section>
 
       <section className="geo-section" style={{ marginTop: 12 }}>
@@ -296,7 +390,11 @@ export default function UsPortfolioTab() {
             <input
               value={store.name}
               onChange={(e) =>
-                persist({ ...store, name: e.target.value, updated_at: new Date().toISOString() })
+                persistActive({
+                  ...store,
+                  name: e.target.value,
+                  updated_at: new Date().toISOString(),
+                })
               }
             />
           </label>
@@ -308,7 +406,7 @@ export default function UsPortfolioTab() {
               step={1000}
               value={store.initial_cash}
               onChange={(e) =>
-                persist({
+                persistActive({
                   ...store,
                   initial_cash: Number(e.target.value) || 0,
                   updated_at: new Date().toISOString(),
@@ -507,17 +605,28 @@ export default function UsPortfolioTab() {
                 <strong>{fmtUsd(result.cash)}</strong>
               </div>
             </div>
-            <div className="kr-chart" style={{ height: 280, marginTop: 12 }}>
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              차트는 시작일=100 지수화 · Y축을 데이터 구간에 맞춰 확대합니다.
+            </p>
+            <div className="kr-chart" style={{ height: 300, marginTop: 8 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <LineChart
+                  data={chartPack.data}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
                   <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
                   <YAxis
+                    domain={chartPack.domain}
+                    allowDataOverflow
                     tick={{ fill: "#8fa3b8", fontSize: 10 }}
-                    width={64}
-                    tickFormatter={(v: number) => `$${Math.round(v / 1000)}k`}
+                    width={52}
+                    tickFormatter={(v: number) => v.toFixed(1)}
                   />
-                  <Tooltip contentStyle={tooltipStyle} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(v: number) => [`${Number(v).toFixed(2)}`, undefined]}
+                  />
                   <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
                   <Line
                     type="monotone"
@@ -525,6 +634,7 @@ export default function UsPortfolioTab() {
                     stroke="#60a5fa"
                     strokeWidth={2.2}
                     dot={false}
+                    isAnimationActive={false}
                   />
                   <Line
                     type="monotone"
@@ -532,6 +642,7 @@ export default function UsPortfolioTab() {
                     stroke="#94a3b8"
                     strokeWidth={1.6}
                     dot={false}
+                    isAnimationActive={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -539,10 +650,146 @@ export default function UsPortfolioTab() {
           </section>
 
           <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
+            <h3 className="geo-section-title">벤치마크 대비 리스크·성과</h3>
+            <p className="meta-soft">
+              일간 수익률 기준 연환산(252일). Sharpe/IR은 무위험금리 0 가정.
+            </p>
+            <div className="table-wrap" style={{ marginTop: 8 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>지표</th>
+                    <th className="num">포트폴리오</th>
+                    <th className="num">SPY</th>
+                    <th className="num">차이/상대</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>누적 수익률</td>
+                    <td className={`num ${tone(result.cumulative_return_pct)}`}>
+                      {fmtPct(result.cumulative_return_pct)}
+                    </td>
+                    <td className={`num ${tone(result.spy_cumulative_return_pct)}`}>
+                      {fmtPct(result.spy_cumulative_return_pct)}
+                    </td>
+                    <td className={`num ${tone(result.excess_vs_spy_pct)}`}>
+                      {fmtPct(result.excess_vs_spy_pct)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>변동성(연)</td>
+                    <td className="num">{fmtPct(result.risk.volatility_pct)}</td>
+                    <td className="num">{fmtPct(result.risk.spy_volatility_pct)}</td>
+                    <td className="num">
+                      {result.risk.volatility_pct != null &&
+                      result.risk.spy_volatility_pct != null
+                        ? fmtPct(result.risk.volatility_pct - result.risk.spy_volatility_pct)
+                        : "—"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>MDD</td>
+                    <td className="num">{fmtPct(result.risk.max_drawdown_pct)}</td>
+                    <td className="num">{fmtPct(result.risk.spy_max_drawdown_pct)}</td>
+                    <td className="num">
+                      {fmtPct(
+                        result.risk.max_drawdown_pct - result.risk.spy_max_drawdown_pct,
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Sharpe</td>
+                    <td className="num">{fmtNum(result.risk.sharpe)}</td>
+                    <td className="num">{fmtNum(result.risk.spy_sharpe)}</td>
+                    <td className="num">
+                      {result.risk.sharpe != null && result.risk.spy_sharpe != null
+                        ? fmtNum(result.risk.sharpe - result.risk.spy_sharpe)
+                        : "—"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Beta</td>
+                    <td className="num" colSpan={2}>
+                      {fmtNum(result.risk.beta)}
+                    </td>
+                    <td className="num meta-soft">vs SPY</td>
+                  </tr>
+                  <tr>
+                    <td>Alpha(연)</td>
+                    <td className={`num ${tone(result.risk.alpha_ann_pct)}`} colSpan={2}>
+                      {fmtPct(result.risk.alpha_ann_pct)}
+                    </td>
+                    <td className="num meta-soft">CAPM</td>
+                  </tr>
+                  <tr>
+                    <td>Tracking Error</td>
+                    <td className="num" colSpan={2}>
+                      {fmtPct(result.risk.tracking_error_pct)}
+                    </td>
+                    <td className="num meta-soft">연환산</td>
+                  </tr>
+                  <tr>
+                    <td>Information Ratio</td>
+                    <td className={`num ${tone(result.risk.information_ratio)}`} colSpan={2}>
+                      {fmtNum(result.risk.information_ratio)}
+                    </td>
+                    <td className="num meta-soft">초과/TE</td>
+                  </tr>
+                  <tr>
+                    <td>Calmar</td>
+                    <td className="num">{fmtNum(result.risk.calmar)}</td>
+                    <td className="num">{fmtNum(result.risk.spy_calmar)}</td>
+                    <td className="num">
+                      {result.risk.calmar != null && result.risk.spy_calmar != null
+                        ? fmtNum(result.risk.calmar - result.risk.spy_calmar)
+                        : "—"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
             <div className="us-pf-split">
               <div>
-                <h3 className="geo-section-title">종목 성과 분해</h3>
-                <AttrTable rows={result.stock_attribution} />
+                <h3 className="geo-section-title">업종 비중 vs S&P500</h3>
+                <p className="meta-soft">
+                  포트 평가액 비중 vs 참고용 S&P500 업종 가중(근사). Active = 포트 − SPY.
+                </p>
+                <div className="table-wrap" style={{ marginTop: 8 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>업종</th>
+                        <th className="num">포트</th>
+                        <th className="num">SPY</th>
+                        <th className="num">Active</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!result.sector_weights.length ? (
+                        <tr>
+                          <td colSpan={4} className="empty">
+                            —
+                          </td>
+                        </tr>
+                      ) : (
+                        result.sector_weights.map((r) => (
+                          <tr key={r.sector}>
+                            <td>{r.label}</td>
+                            <td className="num">{r.portfolio_pct.toFixed(1)}%</td>
+                            <td className="num">{r.spy_pct.toFixed(1)}%</td>
+                            <td className={`num ${tone(r.active_pct)}`}>
+                              {fmtPct(r.active_pct, 1)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <div>
                 <h3 className="geo-section-title">업종 성과 분해</h3>
@@ -551,18 +798,79 @@ export default function UsPortfolioTab() {
             </div>
           </section>
 
+          <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
+            <h3 className="geo-section-title">종목 성과 분해</h3>
+            <AttrTable rows={result.stock_attribution} />
+          </section>
+
+          <section className="geo-section" style={{ marginTop: 16 }}>
+            <h3 className="geo-section-title">저장된 포트폴리오 비교</h3>
+            <p className="meta-soft">
+              브라우저 localStorage에 여러 포트가 독립 저장됩니다. 각 포트를 선택해
+              시뮬레이션하면 최근 결과가 비교표에 반영됩니다.
+            </p>
+            <div className="table-wrap" style={{ marginTop: 8 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>포트폴리오</th>
+                    <th className="num">매매</th>
+                    <th className="num">누적</th>
+                    <th className="num">vs SPY</th>
+                    <th className="num">Vol</th>
+                    <th className="num">MDD</th>
+                    <th className="num">평가액</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {libraryCompare.map((row) => (
+                    <tr key={row.id} className={row.active ? "us-pf-row-active" : undefined}>
+                      <td>
+                        <strong>{row.name}</strong>
+                        {row.active ? (
+                          <span className="meta-soft"> · 활성</span>
+                        ) : null}
+                      </td>
+                      <td className="num">{row.trades}</td>
+                      <td className={`num ${tone(row.cumulative_return_pct)}`}>
+                        {fmtPct(row.cumulative_return_pct)}
+                      </td>
+                      <td className={`num ${tone(row.excess_vs_spy_pct)}`}>
+                        {fmtPct(row.excess_vs_spy_pct)}
+                      </td>
+                      <td className="num">{fmtPct(row.volatility_pct)}</td>
+                      <td className="num">{fmtPct(row.max_drawdown_pct)}</td>
+                      <td className="num">{fmtUsd(row.final_value)}</td>
+                      <td>
+                        {!row.active ? (
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => switchPortfolio(row.id)}
+                          >
+                            열기
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section className="geo-section" style={{ marginTop: 16 }}>
             <h3 className="geo-section-title">텔레그램 송출 미리보기</h3>
             <p className="meta-soft">
-              주간 누적·SPY 초과·업종/종목 분해가 `telegram_snapshot`으로 저장됩니다. 봇
-              연동 시 이 텍스트를 그대로 보낼 수 있습니다.
+              주간 누적·SPY 초과·업종/종목 분해가 `telegram_snapshot`으로 저장됩니다.
             </p>
             <pre className="us-pf-tg">{telegramPreview}</pre>
           </section>
 
           {store.history.length ? (
             <section className="geo-section" style={{ marginTop: 16 }}>
-              <h3 className="geo-section-title">누적 성과 기록 (로컬)</h3>
+              <h3 className="geo-section-title">활성 포트 누적 기록</h3>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -571,6 +879,8 @@ export default function UsPortfolioTab() {
                       <th>누적</th>
                       <th>주간</th>
                       <th>vs SPY</th>
+                      <th>Vol</th>
+                      <th>MDD</th>
                       <th>평가액</th>
                     </tr>
                   </thead>
@@ -587,6 +897,8 @@ export default function UsPortfolioTab() {
                         <td className={tone(h.excess_vs_spy_pct)}>
                           {fmtPct(h.excess_vs_spy_pct)}
                         </td>
+                        <td>{fmtPct(h.volatility_pct ?? null)}</td>
+                        <td>{fmtPct(h.max_drawdown_pct ?? null)}</td>
                         <td>{fmtUsd(h.final_value)}</td>
                       </tr>
                     ))}
@@ -596,6 +908,52 @@ export default function UsPortfolioTab() {
             </section>
           ) : null}
         </>
+      ) : null}
+
+      {!result?.ok && libraryCompare.some((r) => r.cumulative_return_pct != null) ? (
+        <section className="geo-section" style={{ marginTop: 16 }}>
+          <h3 className="geo-section-title">저장된 포트폴리오 비교</h3>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>포트폴리오</th>
+                  <th className="num">누적</th>
+                  <th className="num">vs SPY</th>
+                  <th className="num">평가액</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {libraryCompare.map((row) => (
+                  <tr key={row.id} className={row.active ? "us-pf-row-active" : undefined}>
+                    <td>
+                      <strong>{row.name}</strong>
+                    </td>
+                    <td className={`num ${tone(row.cumulative_return_pct)}`}>
+                      {fmtPct(row.cumulative_return_pct)}
+                    </td>
+                    <td className={`num ${tone(row.excess_vs_spy_pct)}`}>
+                      {fmtPct(row.excess_vs_spy_pct)}
+                    </td>
+                    <td className="num">{fmtUsd(row.final_value)}</td>
+                    <td>
+                      {!row.active ? (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => switchPortfolio(row.id)}
+                        >
+                          열기
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
     </div>
   );
