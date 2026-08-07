@@ -10,30 +10,186 @@ const UA =
 const STORAGE_KEY = "savvyetf:us-portfolio:v1";
 const BENCHMARK = "SPY";
 
-/** Lightweight sector tags for attribution (extend as needed). */
-const SECTOR_HINTS: Array<{ sector: string; tokens: string[] }> = [
-  { sector: "Technology", tokens: ["AAPL", "MSFT", "NVDA", "AVGO", "AMD", "INTC", "CRM", "ORCL", "ADBE", "CSCO", "QCOM", "TXN", "AMAT", "MU", "SNPS", "CDNS"] },
-  { sector: "Communication", tokens: ["GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS"] },
-  { sector: "Consumer Cyclical", tokens: ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "LOW", "BKNG", "TJX"] },
-  { sector: "Consumer Defensive", tokens: ["WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "CL", "MDLZ"] },
-  { sector: "Financials", tokens: ["JPM", "BAC", "WFC", "GS", "MS", "BLK", "SCHW", "C", "AXP", "V", "MA", "PYPL"] },
-  { sector: "Healthcare", tokens: ["UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT", "AMGN", "ISRG"] },
-  { sector: "Energy", tokens: ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX"] },
-  { sector: "Industrials", tokens: ["CAT", "GE", "HON", "UPS", "RTX", "BA", "DE", "LMT", "UNP"] },
-  { sector: "ETF/Index", tokens: ["SPY", "QQQ", "IWM", "DIA", "VTI", "VOO", "IVV", "ARKK"] },
+/** Curated US listed universe for picker + sector attribution. */
+export type UniverseName = {
+  symbol: string;
+  name: string;
+};
+
+export type UniverseSector = {
+  sector: string;
+  sector_ko: string;
+  names: UniverseName[];
+};
+
+export const US_PORTFOLIO_UNIVERSE: UniverseSector[] = [
+  {
+    sector: "Technology",
+    sector_ko: "기술",
+    names: [
+      { symbol: "AAPL", name: "Apple" },
+      { symbol: "MSFT", name: "Microsoft" },
+      { symbol: "NVDA", name: "NVIDIA" },
+      { symbol: "AVGO", name: "Broadcom" },
+      { symbol: "AMD", name: "AMD" },
+      { symbol: "INTC", name: "Intel" },
+      { symbol: "CRM", name: "Salesforce" },
+      { symbol: "ORCL", name: "Oracle" },
+      { symbol: "ADBE", name: "Adobe" },
+      { symbol: "CSCO", name: "Cisco" },
+      { symbol: "QCOM", name: "Qualcomm" },
+      { symbol: "TXN", name: "Texas Instruments" },
+      { symbol: "AMAT", name: "Applied Materials" },
+      { symbol: "MU", name: "Micron" },
+      { symbol: "SNPS", name: "Synopsys" },
+      { symbol: "CDNS", name: "Cadence" },
+      { symbol: "PLTR", name: "Palantir" },
+      { symbol: "IBM", name: "IBM" },
+    ],
+  },
+  {
+    sector: "Communication",
+    sector_ko: "통신·미디어",
+    names: [
+      { symbol: "GOOGL", name: "Alphabet A" },
+      { symbol: "GOOG", name: "Alphabet C" },
+      { symbol: "META", name: "Meta" },
+      { symbol: "NFLX", name: "Netflix" },
+      { symbol: "DIS", name: "Disney" },
+      { symbol: "CMCSA", name: "Comcast" },
+      { symbol: "T", name: "AT&T" },
+      { symbol: "VZ", name: "Verizon" },
+      { symbol: "TMUS", name: "T-Mobile" },
+    ],
+  },
+  {
+    sector: "Consumer Cyclical",
+    sector_ko: "경기소비재",
+    names: [
+      { symbol: "AMZN", name: "Amazon" },
+      { symbol: "TSLA", name: "Tesla" },
+      { symbol: "HD", name: "Home Depot" },
+      { symbol: "MCD", name: "McDonald's" },
+      { symbol: "NKE", name: "Nike" },
+      { symbol: "SBUX", name: "Starbucks" },
+      { symbol: "LOW", name: "Lowe's" },
+      { symbol: "BKNG", name: "Booking" },
+      { symbol: "TJX", name: "TJX" },
+    ],
+  },
+  {
+    sector: "Consumer Defensive",
+    sector_ko: "필수소비재",
+    names: [
+      { symbol: "WMT", name: "Walmart" },
+      { symbol: "COST", name: "Costco" },
+      { symbol: "PG", name: "P&G" },
+      { symbol: "KO", name: "Coca-Cola" },
+      { symbol: "PEP", name: "PepsiCo" },
+      { symbol: "PM", name: "Philip Morris" },
+      { symbol: "MO", name: "Altria" },
+      { symbol: "CL", name: "Colgate" },
+      { symbol: "MDLZ", name: "Mondelez" },
+    ],
+  },
+  {
+    sector: "Financials",
+    sector_ko: "금융",
+    names: [
+      { symbol: "JPM", name: "JPMorgan" },
+      { symbol: "BAC", name: "Bank of America" },
+      { symbol: "WFC", name: "Wells Fargo" },
+      { symbol: "GS", name: "Goldman Sachs" },
+      { symbol: "MS", name: "Morgan Stanley" },
+      { symbol: "BLK", name: "BlackRock" },
+      { symbol: "SCHW", name: "Schwab" },
+      { symbol: "C", name: "Citigroup" },
+      { symbol: "AXP", name: "American Express" },
+      { symbol: "V", name: "Visa" },
+      { symbol: "MA", name: "Mastercard" },
+      { symbol: "PYPL", name: "PayPal" },
+    ],
+  },
+  {
+    sector: "Healthcare",
+    sector_ko: "헬스케어",
+    names: [
+      { symbol: "UNH", name: "UnitedHealth" },
+      { symbol: "JNJ", name: "J&J" },
+      { symbol: "LLY", name: "Eli Lilly" },
+      { symbol: "ABBV", name: "AbbVie" },
+      { symbol: "MRK", name: "Merck" },
+      { symbol: "PFE", name: "Pfizer" },
+      { symbol: "TMO", name: "Thermo Fisher" },
+      { symbol: "ABT", name: "Abbott" },
+      { symbol: "AMGN", name: "Amgen" },
+      { symbol: "ISRG", name: "Intuitive Surgical" },
+    ],
+  },
+  {
+    sector: "Energy",
+    sector_ko: "에너지",
+    names: [
+      { symbol: "XOM", name: "Exxon" },
+      { symbol: "CVX", name: "Chevron" },
+      { symbol: "COP", name: "ConocoPhillips" },
+      { symbol: "SLB", name: "Schlumberger" },
+      { symbol: "EOG", name: "EOG" },
+      { symbol: "MPC", name: "Marathon" },
+      { symbol: "PSX", name: "Phillips 66" },
+    ],
+  },
+  {
+    sector: "Industrials",
+    sector_ko: "산업재",
+    names: [
+      { symbol: "CAT", name: "Caterpillar" },
+      { symbol: "GE", name: "GE" },
+      { symbol: "HON", name: "Honeywell" },
+      { symbol: "UPS", name: "UPS" },
+      { symbol: "RTX", name: "RTX" },
+      { symbol: "BA", name: "Boeing" },
+      { symbol: "DE", name: "Deere" },
+      { symbol: "LMT", name: "Lockheed" },
+      { symbol: "UNP", name: "Union Pacific" },
+    ],
+  },
+  {
+    sector: "ETF/Index",
+    sector_ko: "ETF·지수",
+    names: [
+      { symbol: "SPY", name: "S&P 500 ETF" },
+      { symbol: "QQQ", name: "Nasdaq-100 ETF" },
+      { symbol: "IWM", name: "Russell 2000 ETF" },
+      { symbol: "DIA", name: "Dow ETF" },
+      { symbol: "VTI", name: "Total Market" },
+      { symbol: "VOO", name: "Vanguard S&P500" },
+      { symbol: "IVV", name: "iShares S&P500" },
+      { symbol: "ARKK", name: "ARK Innovation" },
+    ],
+  },
 ];
+
+const SECTOR_HINTS: Array<{ sector: string; tokens: string[] }> = US_PORTFOLIO_UNIVERSE.map(
+  (u) => ({ sector: u.sector, tokens: u.names.map((n) => n.symbol) }),
+);
 
 export type PriceMode = "open" | "close";
 export type TradeSide = "buy" | "sell";
+/** How the trade size is specified */
+export type SizeMode = "notional" | "weight_pct" | "shares" | "all";
 
 export type PortfolioTrade = {
   id: string;
   symbol: string;
   side: TradeSide;
   date: string; // YYYY-MM-DD
-  /** shares if set; else notional USD */
+  /** Exact share count */
   shares?: number | null;
+  /** USD notional at trade price */
   notional_usd?: number | null;
+  /** % of mark-to-market portfolio equity at trade time */
+  weight_pct?: number | null;
   price_mode: PriceMode;
   note?: string;
 };
@@ -309,6 +465,17 @@ export async function simulateUsPortfolio(input: {
     tradeIdxByDate.set(t.date, list);
   }
 
+  const equityAt = (day: string, mode: PriceMode): number => {
+    let equity = cash;
+    for (const [s, sh] of positions) {
+      const b = ohlcMap.get(s)?.get(day);
+      if (!b) continue;
+      const p = pickPrice(b, mode);
+      if (p > 0) equity += sh * p;
+    }
+    return equity;
+  };
+
   for (const day of calendar) {
     const dayTrades = tradeIdxByDate.get(day) || [];
     for (const trade of dayTrades) {
@@ -319,9 +486,14 @@ export async function simulateUsPortfolio(input: {
       if (!(px > 0)) continue;
 
       if (trade.side === "buy") {
-        let shares = trade.shares && trade.shares > 0 ? trade.shares : 0;
-        if (!shares && trade.notional_usd && trade.notional_usd > 0) {
+        let shares = 0;
+        if (trade.shares && trade.shares > 0) {
+          shares = trade.shares;
+        } else if (trade.notional_usd && trade.notional_usd > 0) {
           shares = trade.notional_usd / px;
+        } else if (trade.weight_pct && trade.weight_pct > 0) {
+          const equity = equityAt(day, trade.price_mode);
+          shares = (equity * (trade.weight_pct / 100)) / px;
         }
         if (!(shares > 0)) continue;
         const cost = shares * px;
@@ -335,8 +507,20 @@ export async function simulateUsPortfolio(input: {
       } else {
         const held = positions.get(sym) || 0;
         if (!(held > 0)) continue;
-        let shares = trade.shares && trade.shares > 0 ? trade.shares : held;
+        let shares = 0;
+        if (trade.shares && trade.shares > 0) {
+          shares = trade.shares;
+        } else if (trade.notional_usd && trade.notional_usd > 0) {
+          shares = trade.notional_usd / px;
+        } else if (trade.weight_pct && trade.weight_pct > 0) {
+          const equity = equityAt(day, trade.price_mode);
+          shares = (equity * (trade.weight_pct / 100)) / px;
+        } else {
+          // no size → sell all
+          shares = held;
+        }
         shares = Math.min(shares, held);
+        if (!(shares > 0)) continue;
         cash += shares * px;
         const left = held - shares;
         if (left <= 1e-8) {
