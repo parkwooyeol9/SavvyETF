@@ -161,6 +161,7 @@ export const ETF_CATALOG: EtfMeta[] = [
   { symbol: "305080.KS", name: "TIGER 미국채10년선물", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "IEF", dividendStyle: "bond_income" },
   { symbol: "453850.KS", name: "ACE 미국30년국채액티브", group: "채권", assetClass: "bond", region: "us", listing: "kr", featured: true, counterpart: "TLT", dividendStyle: "bond_income" },
   { symbol: "114260.KS", name: "KODEX 국고채", group: "채권", assetClass: "bond", region: "korea", listing: "kr", featured: true, counterpart: "BND", dividendStyle: "bond_income" },
+  { symbol: "153130.KS", name: "KODEX 단기채권", group: "채권", assetClass: "bond", region: "korea", listing: "kr", featured: true, dividendStyle: "bond_income" },
   { symbol: "148070.KS", name: "KIWOOM 국고채10년", group: "채권", assetClass: "bond", region: "korea", listing: "kr", dividendStyle: "bond_income" },
   { symbol: "411060.KS", name: "ACE KRX금현물", group: "대안", assetClass: "alt", region: "global", listing: "kr", featured: true, counterpart: "GLD" },
   { symbol: "132030.KS", name: "KODEX 골드선물(H)", group: "대안", assetClass: "alt", region: "global", listing: "kr", counterpart: "IAU" },

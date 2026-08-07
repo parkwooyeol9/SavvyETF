@@ -97,16 +97,6 @@ function toYahooSymbol(ticker: string): string {
   return symbol.replace(/\./g, "-");
 }
 
-function rangeForDays(days: number): string {
-  if (days <= 30) return "1mo";
-  if (days <= 100) return "3mo";
-  if (days <= 200) return "6mo";
-  if (days <= 400) return "1y";
-  if (days <= 800) return "2y";
-  if (days <= 2000) return "5y";
-  return "max";
-}
-
 export async function fetchDailyCloses(
   symbol: string,
   startDate: string,
@@ -114,9 +104,11 @@ export async function fetchDailyCloses(
 ): Promise<PricePoint[]> {
   const start = new Date(`${startDate}T00:00:00Z`).getTime();
   const end = new Date(`${endDate}T23:59:59Z`).getTime();
-  const days = Math.max(1, Math.round((end - start) / 86_400_000));
+  // period1/period2 returns reliable daily bars for KR ETFs; range=max often sparsifies.
+  const period1 = Math.floor((start - 7 * 86_400_000) / 1000);
+  const period2 = Math.floor(end / 1000) + 86_400;
   const yahooSym = toYahooSymbol(symbol);
-  const url = `${YAHOO_CHART}/${encodeURIComponent(yahooSym)}?range=${rangeForDays(days)}&interval=1d&includePrePost=false`;
+  const url = `${YAHOO_CHART}/${encodeURIComponent(yahooSym)}?period1=${period1}&period2=${period2}&interval=1d&includePrePost=false`;
 
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
