@@ -30,6 +30,7 @@ import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import SimulateTab from "@/components/SimulateTab";
 import UsPortfolioTab from "@/components/UsPortfolioTab";
 import AiPortTab from "@/components/AiPortTab";
+import CorridorTab from "@/components/CorridorTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
@@ -198,7 +199,8 @@ export default function Dashboard() {
       tab === "kosdaqactive" ||
       tab === "countryetf" ||
       tab === "etf" ||
-      tab === "aiport"
+      tab === "aiport" ||
+      tab === "corridor"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -277,6 +279,8 @@ export default function Dashboard() {
         <TradingIdeasTab />
       ) : tab === "aiport" ? (
         <AiPortTab />
+      ) : tab === "corridor" ? (
+        <CorridorTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "etfdb" ? (
