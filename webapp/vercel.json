@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/warm-cache",
-      "schedule": "*/2 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ]
 }
