@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import {
+  FINANCE_WATCHLIST,
   GURU_DISCLAIMER,
   GURU_METHODOLOGY,
   GURU_ROSTER,
   GURU_SCHEDULE_NOTE,
+  allGuruProfiles,
   buildWallStreetGurusPayload,
   briefingAsOfKst,
   type RawGuruItem,
@@ -94,15 +96,18 @@ async function collectGuruHeadlines(): Promise<RawGuruItem[]> {
   const marketWatchQ =
     'site:marketwatch.com (Buffett OR Dalio OR Ackman OR Griffin OR "Paul Singer" OR Tepper OR Grantham OR Druckenmiller OR Cohen OR Soros OR Bridgewater OR Citadel OR Elliott)';
 
+  const watchlistQ =
+    '("Mohamed El-Erian" OR "Howard Marks" OR Damodaran OR "Matt Levine" OR "Money Stuff" OR "Adam Tooze" OR "Martin Wolf" OR "Michael Pettis" OR "Ruchir Sharma" OR "Lyn Alden" OR "Liz Ann Sonders" OR "Jim Bianco" OR "Torsten Slok" OR "Claudia Sahm" OR "Robin Brooks" OR "Scott Galloway") (market OR Fed OR rates OR economy OR valuation OR bonds OR China OR stocks)';
+
   const feeds: Array<Promise<RawGuruItem[]>> = [
     fetchFeed(googleNewsUrl(broadQ), "Google News", 30),
     fetchFeed(googleNewsUrl(marketWatchQ), "MarketWatch via GN", 20),
+    fetchFeed(googleNewsUrl(watchlistQ), "Watchlist via GN", 35),
   ];
 
-  // Per-guru feeds (top of roster) for coverage depth
-  for (const guru of GURU_ROSTER) {
+  for (const guru of allGuruProfiles()) {
     feeds.push(
-      fetchFeed(googleNewsUrl(guru.search_q), "Google News", 8, guru.id),
+      fetchFeed(googleNewsUrl(guru.search_q), "Google News", 6, guru.id),
     );
   }
 
@@ -110,10 +115,29 @@ async function collectGuruHeadlines(): Promise<RawGuruItem[]> {
   return batches.flat();
 }
 
+function emptyPayload(error: string): WallStreetGurusPayload {
+  return {
+    ok: false,
+    generated_at: new Date().toISOString(),
+    as_of_kst: briefingAsOfKst(),
+    schedule_note: GURU_SCHEDULE_NOTE,
+    disclaimer: GURU_DISCLAIMER,
+    methodology: GURU_METHODOLOGY,
+    summary: [],
+    highlighted: [],
+    hedge_funds: [],
+    investors: [],
+    watchlist: FINANCE_WATCHLIST.map((guru) => ({ guru, ideas: [] })),
+    roster: GURU_ROSTER,
+    sources_note: "",
+    error,
+  };
+}
+
 export async function GET() {
   try {
     const payload = await withServerCache(
-      `wall-street-gurus:v1:${briefingAsOfKst()}`,
+      `wall-street-gurus:v2-watchlist:${briefingAsOfKst()}`,
       180_000,
       900_000,
       async () => {
@@ -126,21 +150,6 @@ export async function GET() {
     });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
-    const empty: WallStreetGurusPayload = {
-      ok: false,
-      generated_at: new Date().toISOString(),
-      as_of_kst: briefingAsOfKst(),
-      schedule_note: GURU_SCHEDULE_NOTE,
-      disclaimer: GURU_DISCLAIMER,
-      methodology: GURU_METHODOLOGY,
-      summary: [],
-      highlighted: [],
-      hedge_funds: [],
-      investors: [],
-      roster: GURU_ROSTER,
-      sources_note: "",
-      error: message,
-    };
-    return NextResponse.json(empty, { status: 502 });
+    return NextResponse.json(emptyPayload(message), { status: 502 });
   }
 }

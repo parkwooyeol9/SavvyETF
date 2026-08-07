@@ -107,8 +107,12 @@ export default function WallStreetGurusTab() {
     void load();
   }, [load]);
 
-  const guruName = (id: string) =>
-    data?.roster.find((g) => g.id === id)?.name_ko || id;
+  const guruName = (id: string) => {
+    const fromRoster = data?.roster.find((g) => g.id === id);
+    if (fromRoster) return fromRoster.name_ko;
+    const fromWatch = data?.watchlist?.find((d) => d.guru.id === id)?.guru;
+    return fromWatch?.name_ko || id;
+  };
 
   return (
     <div className="panel-stack wall-street-gurus">
@@ -193,6 +197,87 @@ export default function WallStreetGurusTab() {
       </section>
 
       <section className="geo-section" style={{ marginTop: 16 }}>
+        <h3 className="geo-section-title">파이낸스 워치리스트</h3>
+        <p className="meta-soft">
+          펀드매니저가 아닌 매크로·밸류에이션·시장구조 공개 코멘테이터입니다.
+          공개 경력(대학·기관·매체)을 확인한 뒤 등재했습니다. Howard Marks는
+          Oaktree 공동창업자이지만, 이 섹션에서는 Memo·리스크 코멘트 추적용으로
+          포함합니다.
+        </p>
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>이름</th>
+                <th>전문</th>
+                <th>팔로우 이유</th>
+                <th>주요 소스</th>
+                <th>빈도</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.watchlist || []).map((desk) => {
+                const g = desk.guru;
+                return (
+                  <tr key={g.id}>
+                    <td>
+                      <strong>{g.name_ko}</strong>
+                      <div className="meta-soft">{g.name}</div>
+                      <div className="meta-soft">{g.firm}</div>
+                    </td>
+                    <td className="meta-soft">
+                      {g.expertise_ko || g.expertise || g.style_ko}
+                    </td>
+                    <td className="meta-soft">
+                      {g.why_follow_ko || g.why_follow || "—"}
+                    </td>
+                    <td className="meta-soft">{g.best_source || "—"}</td>
+                    <td className="meta-soft">
+                      {g.frequency_ko || g.frequency || "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="guru-grid" style={{ marginTop: 12 }}>
+          {(data?.watchlist || []).map((desk) => (
+            <article key={desk.guru.id} className="guru-card">
+              <header className="guru-card-head">
+                <div>
+                  <h3 className="guru-card-name">
+                    {desk.guru.name_ko}
+                    <span className="meta-soft"> · {desk.guru.name}</span>
+                  </h3>
+                  <p className="meta-soft">
+                    {desk.guru.best_source || desk.guru.firm}
+                    {desk.guru.frequency_ko
+                      ? ` · ${desk.guru.frequency_ko}`
+                      : ""}
+                  </p>
+                  {desk.guru.verified_note ? (
+                    <p className="meta-soft">{desk.guru.verified_note}</p>
+                  ) : null}
+                </div>
+              </header>
+              {!desk.ideas.length ? (
+                <p className="empty">최근 7일 공개 헤드라인 없음</p>
+              ) : (
+                <ul className="guru-idea-list">
+                  {desk.ideas.map((idea) => (
+                    <li key={idea.id}>
+                      <IdeaLink idea={idea} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="geo-section" style={{ marginTop: 16 }}>
         <h3 className="geo-section-title">구루 명단</h3>
         <div className="table-wrap" style={{ marginTop: 8 }}>
           <table className="data-table">
@@ -214,7 +299,11 @@ export default function WallStreetGurusTab() {
                   </td>
                   <td>{g.firm}</td>
                   <td>
-                    {g.category === "hedge_fund" ? "헷지펀드" : "투자자"}
+                    {g.category === "hedge_fund"
+                      ? "헷지펀드"
+                      : g.category === "analyst"
+                        ? "워치리스트"
+                        : "투자자"}
                   </td>
                   <td className="num" title={g.aum_note}>
                     {fmtAum(g.aum_usd_bn)}
