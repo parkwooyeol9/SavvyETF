@@ -19,8 +19,10 @@ import {
   loadStoredPortfolio,
   newTradeId,
   saveStoredPortfolio,
+  US_PORTFOLIO_UNIVERSE,
   type PortfolioTrade,
   type PriceMode,
+  type SizeMode,
   type StoredUsPortfolio,
   type TradeSide,
   type UsPortfolioResult,
@@ -53,6 +55,14 @@ function tone(n?: number | null): string {
   return n > 0 ? "up" : "down";
 }
 
+function tradeSizeLabel(t: PortfolioTrade): string {
+  if (t.shares != null && t.shares > 0) return `${t.shares}주`;
+  if (t.weight_pct != null && t.weight_pct > 0) return `포트 ${t.weight_pct}%`;
+  if (t.notional_usd != null && t.notional_usd > 0) return fmtUsd(t.notional_usd);
+  if (t.side === "sell") return "전량";
+  return "—";
+}
+
 export default function UsPortfolioTab() {
   const [store, setStore] = useState<StoredUsPortfolio | null>(null);
   const [result, setResult] = useState<UsPortfolioResult | null>(null);
@@ -67,13 +77,22 @@ export default function UsPortfolioTab() {
     return d.toISOString().slice(0, 10);
   });
   const [priceMode, setPriceMode] = useState<PriceMode>("close");
-  const [notional, setNotional] = useState("10000");
-  const [shares, setShares] = useState("");
+  const [sizeMode, setSizeMode] = useState<SizeMode>("notional");
+  const [sizeValue, setSizeValue] = useState("10000");
+  const [universeQuery, setUniverseQuery] = useState("");
+  const [universeSector, setUniverseSector] = useState<string>("all");
 
   useEffect(() => {
     const existing = loadStoredPortfolio();
     setStore(existing || defaultStoredPortfolio());
   }, []);
+
+  useEffect(() => {
+    if (side === "buy" && sizeMode === "all") {
+      setSizeMode("notional");
+      setSizeValue("10000");
+    }
+  }, [side, sizeMode]);
 
   const persist = useCallback((next: StoredUsPortfolio) => {
     setStore(next);
@@ -112,30 +131,98 @@ export default function UsPortfolioTab() {
     [persist],
   );
 
+  const filteredUniverse = useMemo(() => {
+    const q = universeQuery.trim().toUpperCase();
+    return US_PORTFOLIO_UNIVERSE.map((sec) => ({
+      ...sec,
+      names: sec.names.filter((n) => {
+        if (universeSector !== "all" && sec.sector !== universeSector) return false;
+        if (!q) return true;
+        return (
+          n.symbol.includes(q) ||
+          n.name.toUpperCase().includes(q) ||
+          sec.sector_ko.includes(universeQuery.trim()) ||
+          sec.sector.toUpperCase().includes(q)
+        );
+      }),
+    })).filter((sec) => sec.names.length > 0);
+  }, [universeQuery, universeSector]);
+
+  const universeCount = useMemo(
+    () => US_PORTFOLIO_UNIVERSE.reduce((n, s) => n + s.names.length, 0),
+    [],
+  );
+
+  const sizePlaceholder =
+    sizeMode === "notional"
+      ? "금액 USD"
+      : sizeMode === "weight_pct"
+        ? "포트폴리오 %"
+        : sizeMode === "shares"
+          ? "수량(주)"
+          : "전량";
+
+  const onSizeModeChange = (mode: SizeMode) => {
+    setSizeMode(mode);
+    if (mode === "notional") setSizeValue((v) => (v && Number(v) > 0 ? v : "10000"));
+    else if (mode === "weight_pct") setSizeValue((v) => (v && Number(v) > 0 && Number(v) <= 100 ? v : "10"));
+    else if (mode === "shares") setSizeValue((v) => (v && Number(v) > 0 ? v : "10"));
+    else setSizeValue("");
+  };
+
   const addTrade = () => {
     if (!store) return;
     const sym = symbol.trim().toUpperCase();
     if (!sym || !date) return;
+
     const trade: PortfolioTrade = {
       id: newTradeId(),
       symbol: sym,
       side,
       date,
       price_mode: priceMode,
-      shares: shares.trim() ? Number(shares) : null,
-      notional_usd: !shares.trim() && notional.trim() ? Number(notional) : null,
+      shares: null,
+      notional_usd: null,
+      weight_pct: null,
     };
-    if (!(trade.shares || trade.notional_usd)) {
-      setError("수량 또는 금액(USD)을 입력하세요.");
-      return;
+
+    if (sizeMode === "all") {
+      if (side !== "sell") {
+        setError("전량은 매도에만 사용할 수 있습니다.");
+        return;
+      }
+    } else {
+      const n = Number(sizeValue);
+      if (!(n > 0)) {
+        setError(
+          sizeMode === "weight_pct"
+            ? "포트폴리오 비중(%)을 입력하세요."
+            : sizeMode === "shares"
+              ? "수량을 입력하세요."
+              : "금액(USD)을 입력하세요.",
+        );
+        return;
+      }
+      if (sizeMode === "weight_pct") {
+        if (n > 100) {
+          setError("포트폴리오 비중은 100% 이하로 입력하세요.");
+          return;
+        }
+        trade.weight_pct = n;
+      } else if (sizeMode === "shares") {
+        trade.shares = n;
+      } else {
+        trade.notional_usd = n;
+      }
     }
+
     const next = {
       ...store,
       trades: [...store.trades, trade],
       updated_at: new Date().toISOString(),
     };
     persist(next);
-    setShares("");
+    setError(null);
   };
 
   const removeTrade = (id: string) => {
@@ -145,6 +232,11 @@ export default function UsPortfolioTab() {
       trades: store.trades.filter((t) => t.id !== id),
       updated_at: new Date().toISOString(),
     });
+  };
+
+  const pickSymbol = (sym: string) => {
+    setSymbol(sym);
+    setError(null);
   };
 
   const chartData = useMemo(
@@ -172,8 +264,8 @@ export default function UsPortfolioTab() {
           <div>
             <h2 className="kr-hero-title">미국 주식 포트폴리오</h2>
             <p className="kr-hero-sub">
-              로그인 없이 브라우저에 저장 · 시가/종가 편출입 · SPY 대비 성과 · 업종·종목
-              분해 · 텔레그램 송출용 스냅샷 준비
+              로그인 없이 브라우저에 저장 · 시가/종가 편출입 · 금액·비중·수량 기준 · SPY 대비
+              성과 · 텔레그램 송출용 스냅샷 준비
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -226,7 +318,62 @@ export default function UsPortfolioTab() {
           </label>
         </div>
 
-        <div className="us-pf-trade-form">
+        <h3 className="geo-section-title" style={{ marginTop: 14 }}>
+          매매 유니버스
+        </h3>
+        <p className="meta-soft">
+          미국 상장 주요 {universeCount}종 · 클릭하면 티커가 선택됩니다. 목록에 없어도 직접
+          입력 가능합니다.
+        </p>
+        <div className="us-pf-universe-toolbar">
+          <input
+            value={universeQuery}
+            onChange={(e) => setUniverseQuery(e.target.value)}
+            placeholder="티커·종목명 검색 (예: NVDA, Apple)"
+          />
+          <select
+            value={universeSector}
+            onChange={(e) => setUniverseSector(e.target.value)}
+          >
+            <option value="all">전체 업종</option>
+            {US_PORTFOLIO_UNIVERSE.map((s) => (
+              <option key={s.sector} value={s.sector}>
+                {s.sector_ko}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="us-pf-universe">
+          {!filteredUniverse.length ? (
+            <p className="empty">검색 결과가 없습니다. 티커를 직접 입력해 주세요.</p>
+          ) : (
+            filteredUniverse.map((sec) => (
+              <div key={sec.sector} className="us-pf-universe-sector">
+                <div className="us-pf-universe-sector-label">{sec.sector_ko}</div>
+                <div className="us-pf-universe-chips">
+                  {sec.names.map((n) => (
+                    <button
+                      key={n.symbol}
+                      type="button"
+                      className={
+                        symbol.toUpperCase() === n.symbol
+                          ? "us-pf-chip us-pf-chip-active"
+                          : "us-pf-chip"
+                      }
+                      title={n.name}
+                      onClick={() => pickSymbol(n.symbol)}
+                    >
+                      <strong>{n.symbol}</strong>
+                      <span>{n.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="us-pf-trade-form" style={{ marginTop: 14 }}>
           <input
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
@@ -244,21 +391,37 @@ export default function UsPortfolioTab() {
             <option value="close">종가</option>
             <option value="open">시가</option>
           </select>
+          <select
+            value={sizeMode}
+            onChange={(e) => onSizeModeChange(e.target.value as SizeMode)}
+          >
+            <option value="notional">금액(USD)</option>
+            <option value="weight_pct">포트폴리오 %</option>
+            <option value="shares">수량(주)</option>
+            {side === "sell" ? <option value="all">전량 매도</option> : null}
+          </select>
           <input
-            value={notional}
-            onChange={(e) => setNotional(e.target.value)}
-            placeholder="금액 USD"
-            disabled={Boolean(shares.trim())}
-          />
-          <input
-            value={shares}
-            onChange={(e) => setShares(e.target.value)}
-            placeholder="수량(선택)"
+            type="number"
+            min={0}
+            step={sizeMode === "weight_pct" ? 1 : sizeMode === "shares" ? 1 : 100}
+            value={sizeValue}
+            onChange={(e) => setSizeValue(e.target.value)}
+            placeholder={sizePlaceholder}
+            disabled={sizeMode === "all"}
           />
           <button type="button" className="tab-btn" onClick={addTrade}>
             추가
           </button>
         </div>
+        <p className="meta-soft" style={{ marginTop: 6 }}>
+          {sizeMode === "weight_pct"
+            ? "포트폴리오 %: 해당 시점 평가액(현금+보유) 대비 비중으로 체결합니다."
+            : sizeMode === "notional"
+              ? "금액(USD): 시가/종가 기준으로 수량을 환산합니다."
+              : sizeMode === "shares"
+                ? "수량(주): 입력한 주수만큼 체결합니다."
+                : "전량 매도: 해당 종목 보유분 전체를 매도합니다."}
+        </p>
 
         <div className="table-wrap" style={{ marginTop: 10 }}>
           <table className="data-table">
@@ -268,7 +431,7 @@ export default function UsPortfolioTab() {
                 <th>종목</th>
                 <th>구분</th>
                 <th>가격</th>
-                <th>수량/금액</th>
+                <th>수량/금액/비중</th>
                 <th />
               </tr>
             </thead>
@@ -276,7 +439,7 @@ export default function UsPortfolioTab() {
               {!store.trades.length ? (
                 <tr>
                   <td colSpan={6} className="empty">
-                    편출입을 추가한 뒤 시뮬레이션을 실행하세요.
+                    유니버스에서 종목을 고르거나 티커를 입력한 뒤 편출입을 추가하세요.
                   </td>
                 </tr>
               ) : (
@@ -290,13 +453,7 @@ export default function UsPortfolioTab() {
                       </td>
                       <td>{t.side === "buy" ? "편입" : "편출"}</td>
                       <td>{t.price_mode === "open" ? "시가" : "종가"}</td>
-                      <td>
-                        {t.shares
-                          ? `${t.shares}주`
-                          : t.notional_usd
-                            ? fmtUsd(t.notional_usd)
-                            : "—"}
-                      </td>
+                      <td>{tradeSizeLabel(t)}</td>
                       <td>
                         <button
                           type="button"
