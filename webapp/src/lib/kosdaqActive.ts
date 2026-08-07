@@ -252,13 +252,25 @@ async function fetchNaverMeta(ticker: string): Promise<{
         issuerName?: string;
         marketValue?: unknown;
         totalNav?: unknown;
+        marketValueRaw?: unknown;
       };
     };
     const ind = data.etfKeyIndicator || {};
+    // Prefer 순자산(totalNav) for AUM; 시가총액(marketValue) is a fallback only.
+    const aum =
+      parseAumEok(ind.totalNav) ??
+      (ind.marketValueRaw != null
+        ? parseAumEok(
+            typeof ind.marketValueRaw === "number"
+              ? ind.marketValueRaw
+              : Number(String(ind.marketValueRaw).replace(/,/g, "")),
+          )
+        : null) ??
+      parseAumEok(ind.marketValue);
     return {
       name: data.stockName,
       issuer: ind.issuerName,
-      aum_krw_eok: parseAumEok(ind.marketValue ?? ind.totalNav),
+      aum_krw_eok: aum,
     };
   } catch {
     return {};

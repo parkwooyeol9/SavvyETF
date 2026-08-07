@@ -23,8 +23,13 @@ function fmtPp(n?: number | null, digits = 2): string {
 
 function fmtAum(n?: number | null): string {
   if (n == null || !Number.isFinite(n) || n <= 0) return "—";
-  if (n >= 1000) return `${(n / 1000).toFixed(2)}조`;
-  return `${n.toFixed(0)}억`;
+  // aum_krw_eok is in 억원; 1조 = 10,000억
+  if (n >= 10_000) {
+    return `${(n / 10_000).toLocaleString("ko-KR", {
+      maximumFractionDigits: 1,
+    })}조`;
+  }
+  return `${n.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
 }
 
 function WeightCell({ pct }: { pct?: number | null }) {
@@ -50,7 +55,7 @@ function FundCard({ fund }: { fund: FundSnapshot }) {
       <p className="meta-soft">{fund.issuer}</p>
       <dl className="ka-fund-meta">
         <div>
-          <dt>AUM</dt>
+          <dt>순자산</dt>
           <dd>{fmtAum(fund.aum_krw_eok)}</dd>
         </div>
         <div>

@@ -348,7 +348,7 @@ def fetch_fund_snapshot(meta: dict[str, str]) -> dict[str, Any]:
     if not as_of:
         as_of = _now_kst().strftime("%Y-%m-%d")
 
-    aum = _parse_aum_eok(naver_meta.get("market_value") or naver_meta.get("total_nav"))
+    aum = _parse_aum_eok(naver_meta.get("total_nav") or naver_meta.get("market_value"))
 
     return {
         "ok": True,

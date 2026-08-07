@@ -92,7 +92,7 @@ export async function GET(req: Request) {
   const { freshMs, staleMs } = cacheTtls();
   const cacheKey = refresh
     ? `kosdaq-active:refresh:${Date.now()}`
-    : "kosdaq-active:v1";
+    : "kosdaq-active:v2";
 
   try {
     const payload = await withServerCache(cacheKey, freshMs, staleMs, () =>
