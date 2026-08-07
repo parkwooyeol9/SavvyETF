@@ -24,6 +24,7 @@ import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import YenCarryTab from "@/components/YenCarryTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
+import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import SimulateTab from "@/components/SimulateTab";
@@ -176,6 +177,7 @@ export default function Dashboard() {
       tab === "economy" ||
       tab === "yencarry" ||
       tab === "ideas" ||
+      tab === "gurus" ||
       tab === "signals" ||
       tab === "eventstudy" ||
       tab === "kosdaq100" ||
@@ -258,6 +260,8 @@ export default function Dashboard() {
         <SimulateTab />
       ) : tab === "usportfolio" ? (
         <UsPortfolioTab />
+      ) : tab === "signals" ? (
+        <TradingSignalsTab />
       ) : tab === "aiport" ? (
         <AiPortTab />
       ) : tab === "education" ? (
@@ -298,8 +302,8 @@ export default function Dashboard() {
         <YenCarryTab />
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
-      ) : tab === "signals" ? (
-        <TradingSignalsTab />
+      ) : tab === "gurus" ? (
+        <WallStreetGurusTab />
       ) : tab === "eventstudy" ? (
         <EventStudyTab />
       ) : tab === "kosdaq100" ? (

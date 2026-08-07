@@ -19,6 +19,7 @@ export type ShellTabId =
   | "economy"
   | "yencarry"
   | "ideas"
+  | "gurus"
   | "signals"
   | "eventstudy"
   | "aiport"
@@ -65,12 +66,13 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "economy",
   "yencarry",
   "ideas",
-  "signals",
+  "gurus",
   "eventstudy",
   "kosdaq100",
   "education",
   "simulate",
   "usportfolio",
+  "signals",
   "aiport",
   "etf",
   "leverage",
@@ -111,6 +113,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   economy: "경제",
   yencarry: "엔케리 모니터",
   ideas: "오늘의 트레이딩 아이디어",
+  gurus: "월가 구루",
   signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
@@ -129,7 +132,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "economy", "yencarry", "ideas", "signals", "eventstudy", "kosdaq100"],
+    tabs: ["kr", "us", "economy", "yencarry", "ideas", "gurus", "eventstudy", "kosdaq100"],
   },
   {
     id: "etf",
@@ -139,7 +142,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["simulate", "usportfolio", "aiport"],
+    tabs: ["simulate", "usportfolio", "signals", "aiport"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {
