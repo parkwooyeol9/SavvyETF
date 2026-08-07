@@ -261,7 +261,13 @@ export const DEFAULT_CAPITAL: Record<ListingMarket, number> = {
   kr: 10_000_000,
 };
 
-export type AllocMethod = "equal" | "inv_vol" | "asset" | "region" | "dividend";
+export type AllocMethod =
+  | "equal"
+  | "inv_vol"
+  | "asset"
+  | "region"
+  | "dividend"
+  | "custom";
 
 export const ALLOC_METHODS: Array<{
   id: AllocMethod;
@@ -277,6 +283,11 @@ export const ALLOC_METHODS: Array<{
     id: "inv_vol",
     label: "변동성 배분",
     blurb: "구간 일수익률로 σ를 구한 뒤 w_i ∝ 1/σ_i (역변동성).",
+  },
+  {
+    id: "custom",
+    label: "직접 비중",
+    blurb: "ETF별 목표 편입비(%)를 직접 입력합니다. 합계 100%.",
   },
   {
     id: "asset",

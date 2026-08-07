@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     const result = await simulateAllocation({
       tickers,
       weights: body.weights,
-      method: body.method || "equal",
+      method: body.method || (body.weights?.length ? "custom" : "equal"),
       asset_targets: body.asset_targets,
       region_targets: body.region_targets,
       dividend_targets: body.dividend_targets,

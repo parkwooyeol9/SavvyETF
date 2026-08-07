@@ -3,13 +3,23 @@
 import { resolveMethodWeights } from "@/lib/allocation";
 import type { VolDiag } from "@/lib/allocation";
 import {
-  ETF_CATALOG,
+  ASSET_LABELS,
+  DIVIDEND_LABELS,
+  REGION_LABELS,
+  type RegionBucket,
+} from "@/lib/allocation";
+import {
+  CATALOG_BY_SYMBOL,
   etfDisplay,
   type AllocMethod,
   type AssetClass,
   type DividendStyle,
 } from "@/lib/etfCatalog";
-import type { RegionBucket } from "@/lib/allocation";
+import {
+  computeRiskCompare,
+  type AttributionRow,
+  type RiskCompareMetrics,
+} from "@/lib/usPortfolio";
 
 export type PricePoint = { date: string; close: number };
 
@@ -40,6 +50,9 @@ export type SimulateResult = {
   region_targets?: Record<string, number>;
   dividend_targets?: Record<string, number>;
   vol_diagnostics?: VolDiag[];
+  week_return_pct?: number | null;
+  risk?: RiskCompareMetrics;
+  bucket_attribution?: AttributionRow[];
   metrics?: {
     portfolio: SimMetrics;
     benchmark: SimMetrics;
@@ -54,6 +67,8 @@ export type SimulateResult = {
     standalone_return_pct: number;
     weighted_contribution_pct: number;
     annual_vol_pct?: number;
+    asset_class?: string | null;
+    region?: string | null;
   }>;
   series?: {
     date: string[];
@@ -214,6 +229,69 @@ function downsample<T>(arr: T[], maxPoints = 400): T[] {
   return out;
 }
 
+function weekReturnFromCum(
+  dates: string[],
+  cum: number[],
+): number | null {
+  if (dates.length < 2 || cum.length < 2) return null;
+  const last = dates[dates.length - 1]!;
+  const end = new Date(`${last}T00:00:00Z`);
+  const weekAgo = new Date(end.getTime() - 7 * 86_400_000).toISOString().slice(0, 10);
+  let baseIdx = 0;
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i]! <= weekAgo) baseIdx = i;
+  }
+  const base = cum[baseIdx]!;
+  const lastV = cum[cum.length - 1]!;
+  if (!(base > 0)) return null;
+  return ((lastV / base) - 1) * 100;
+}
+
+function buildBucketAttribution(
+  contributions: NonNullable<SimulateResult["contributions"]>,
+  method: AllocMethod,
+): AttributionRow[] {
+  const map = new Map<string, { label: string; weight: number; contrib: number }>();
+  for (const c of contributions) {
+    if (!(c.weight_pct > 0)) continue;
+    let key = "기타";
+    let label = "기타";
+    const meta = CATALOG_BY_SYMBOL[c.ticker];
+    if (method === "region") {
+      const r = (c.region || meta?.region) as RegionBucket | undefined;
+      if (r) {
+        key = r;
+        label = REGION_LABELS[r] || r;
+      }
+    } else if (method === "dividend") {
+      const d = meta?.dividendStyle as DividendStyle | undefined;
+      if (d) {
+        key = d;
+        label = DIVIDEND_LABELS[d] || d;
+      }
+    } else {
+      const ac = (c.asset_class || meta?.assetClass) as AssetClass | undefined;
+      if (ac) {
+        key = ac;
+        label = ASSET_LABELS[ac] || ac;
+      }
+    }
+    const cur = map.get(key) || { label, weight: 0, contrib: 0 };
+    cur.weight += c.weight_pct;
+    cur.contrib += c.weighted_contribution_pct;
+    map.set(key, cur);
+  }
+  return [...map.entries()]
+    .map(([k, v]) => ({
+      key: k,
+      label: v.label,
+      weight_pct: round(v.weight, 2),
+      return_pct: v.weight > 0 ? round((v.contrib / v.weight) * 100, 2) : null,
+      contribution_pct: round(v.contrib, 2),
+    }))
+    .sort((a, b) => b.contribution_pct - a.contribution_pct);
+}
+
 export async function simulateAllocation(input: {
   tickers: string[];
   weights?: number[];
@@ -241,7 +319,7 @@ export async function simulateAllocation(input: {
     ? `^${rawBench.slice(1).toUpperCase()}`
     : rawBench.toUpperCase();
   const needed = [...new Set([...tickers, benchmark])];
-  const rawMethod = input.method || "equal";
+  const rawMethod = input.method || (input.weights?.length ? "custom" : "equal");
   const method: AllocMethod = rawMethod === "asset_631" ? "asset" : rawMethod;
 
   const seriesMap: Record<string, PricePoint[]> = {};
@@ -275,10 +353,18 @@ export async function simulateAllocation(input: {
   let usedMethod: AllocMethod = method;
   let volDiagnostics: VolDiag[] | undefined;
 
-  if (input.weights && input.weights.length === tickers.length && !input.method) {
+  if (
+    input.weights &&
+    input.weights.length === tickers.length &&
+    (method === "custom" || !input.method)
+  ) {
     const sum = input.weights.reduce((a, b) => a + b, 0);
     if (sum <= 0) return { ok: false, error: "Weights must sum to a positive number" };
     weights = input.weights.map((w) => w / sum);
+    usedMethod = "custom";
+    methodNote = "직접 입력한 편입비(%)를 정규화해 사용했습니다.";
+  } else if (method === "custom") {
+    return { ok: false, error: "직접 비중 모드에서는 ETF별 비중(%)을 입력하세요.", method };
   } else {
     const resolved = resolveMethodWeights({
       method,
@@ -341,6 +427,7 @@ export async function simulateAllocation(input: {
   const contributions = tickers.map((t, j) => {
     const standalone = legCums[t][legCums[t].length - 1] - 1;
     const { name } = etfDisplay(t);
+    const meta = CATALOG_BY_SYMBOL[t];
     return {
       ticker: t,
       name,
@@ -350,8 +437,23 @@ export async function simulateAllocation(input: {
       annual_vol_pct: volByTicker.has(t)
         ? round(volByTicker.get(t) as number, 2)
         : undefined,
+      asset_class: meta?.assetClass ?? null,
+      region: meta?.region ?? null,
     };
   });
+
+  const portMdd = round(maxDrawdown(portCum), 2);
+  const benchMdd = round(maxDrawdown(benchCum), 2);
+  const totalReturn = portStats.total_return_pct;
+  const benchTotal = benchStats.total_return_pct;
+  const riskSeries = dates.map((d, i) => ({
+    date: d,
+    portfolio: portCum[i]! * capital,
+    spy: benchCum[i]! * capital,
+  }));
+  const risk = computeRiskCompare(riskSeries, totalReturn, benchTotal);
+  const wr = weekReturnFromCum(dates, portCum);
+  const bucket_attribution = buildBucketAttribution(contributions, usedMethod);
 
   return {
     ok: true,
@@ -373,15 +475,18 @@ export async function simulateAllocation(input: {
       annual_vol_pct: round(d.annual_vol_pct, 2),
       inv_vol_weight: round(d.inv_vol_weight, 6),
     })),
+    week_return_pct: wr == null ? null : round(wr, 2),
+    risk,
+    bucket_attribution,
     metrics: {
       portfolio: {
         ...portStats,
-        max_drawdown_pct: round(maxDrawdown(portCum), 2),
+        max_drawdown_pct: portMdd,
         final_value: round(portCum[portCum.length - 1] * capital, 2),
       },
       benchmark: {
         ...benchStats,
-        max_drawdown_pct: round(maxDrawdown(benchCum), 2),
+        max_drawdown_pct: benchMdd,
         final_value: round(benchCum[benchCum.length - 1] * capital, 2),
       },
       equal_weight: {

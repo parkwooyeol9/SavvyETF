@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import EquityChart from "@/components/EquityChart";
 import {
@@ -12,6 +12,19 @@ import {
   REGION_LABELS,
   type RegionBucket,
 } from "@/lib/allocation";
+import {
+  appendEtfAllocHistory,
+  createEtfAllocInLibrary,
+  defaultStoredEtfAlloc,
+  deleteEtfAllocInLibrary,
+  duplicateEtfAllocInLibrary,
+  getActiveEtfAlloc,
+  loadEtfAllocLibrary,
+  saveEtfAllocLibrary,
+  upsertActiveEtfAlloc,
+  type EtfAllocLibrary,
+  type StoredEtfAlloc,
+} from "@/lib/etfAllocStore";
 import {
   ALLOC_METHODS,
   ASSET_631_BASKET,
@@ -32,16 +45,15 @@ import {
 } from "@/lib/etfCatalog";
 import type { SimulateResult } from "@/lib/simulate";
 
-function yearsAgo(years: number): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - years);
-  return d.toISOString().slice(0, 10);
-}
-
-function fmtPct(n?: number | null): string {
+function fmtPct(n?: number | null, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}%`;
+  return `${sign}${n.toFixed(digits)}%`;
+}
+
+function fmtNum(n?: number | null, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toFixed(digits);
 }
 
 function fmtMoney(n: number | null | undefined, listing: ListingMarket): string {
@@ -52,7 +64,8 @@ function fmtMoney(n: number | null | undefined, listing: ListingMarket): string 
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
-function retClass(n: number): string {
+function retClass(n?: number | null): string {
+  if (n == null) return "";
   if (n > 0.05) return "up";
   if (n < -0.05) return "down";
   return "flat";
@@ -109,38 +122,55 @@ function formatEtfChoice(symbol: string): string {
   return name && name !== code ? `${name} (${code})` : code;
 }
 
-function defaultFreeSelected(listing: ListingMarket): string[] {
-  if (listing === "kr") {
-    return ["360750.KS", "133690.KS", "453850.KS", "411060.KS"];
-  }
-  return ["SPY", "QQQ", "TLT", "GLD"];
+function equalizeCustomWeights(tickers: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  const eq = 100 / Math.max(tickers.length, 1);
+  for (const t of tickers) out[t] = Math.round(eq * 10) / 10;
+  return out;
 }
 
 export default function SimulateTab() {
-  const [listing, setListing] = useState<ListingMarket>("us");
-  const [method, setMethod] = useState<AllocMethod>("equal");
-  const [freeSelected, setFreeSelected] = useState<string[]>(defaultFreeSelected("us"));
-  const [assetTargets, setAssetTargets] =
-    useState<Record<AssetClass, number>>(DEFAULT_ASSET_TARGETS);
-  const [assetPicks, setAssetPicks] =
-    useState<Record<AssetClass, string[]>>(defaultAssetPicks("us"));
-  const [regionTargets, setRegionTargets] =
-    useState<Record<RegionBucket, number>>(DEFAULT_REGION_TARGETS);
-  const [regionPicks, setRegionPicks] =
-    useState<Record<RegionBucket, string[]>>(defaultRegionPicks("us"));
-  const [dividendTargets, setDividendTargets] =
-    useState<Record<DividendStyle, number>>(DEFAULT_DIVIDEND_TARGETS);
-  const [dividendPicks, setDividendPicks] =
-    useState<Record<DividendStyle, string[]>>(defaultDividendPicks("us"));
-
-  const [startDate, setStartDate] = useState(yearsAgo(3));
-  const [capital, setCapital] = useState(DEFAULT_CAPITAL.us);
-  const [benchmark, setBenchmark] = useState<string>(BENCHMARK_OPTIONS[0].id);
+  const [lib, setLib] = useState<EtfAllocLibrary | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<SimulateResult | null>(null);
+  const [resultCache, setResultCache] = useState<Record<string, SimulateResult>>({});
   const [error, setError] = useState<string | null>(null);
+  const [telegramPreview, setTelegramPreview] = useState("");
+
+  useEffect(() => {
+    setLib(loadEtfAllocLibrary());
+  }, []);
+
+  const store = lib ? getActiveEtfAlloc(lib) : null;
+  const result = store ? resultCache[store.portfolio_id] || null : null;
+
+  const persistLib = useCallback((next: EtfAllocLibrary) => {
+    setLib(next);
+    saveEtfAllocLibrary(next);
+  }, []);
+
+  const persistActive = useCallback(
+    (next: StoredEtfAlloc) => {
+      if (!lib) return;
+      persistLib(upsertActiveEtfAlloc(lib, { ...next, updated_at: new Date().toISOString() }));
+    },
+    [lib, persistLib],
+  );
+
+  const listing = store?.listing || "us";
+  const method = store?.method || "equal";
+  const freeSelected = store?.freeSelected || [];
+  const customWeights = store?.customWeights || {};
+  const assetTargets = store?.assetTargets || DEFAULT_ASSET_TARGETS;
+  const assetPicks = store?.assetPicks || defaultAssetPicks("us");
+  const regionTargets = store?.regionTargets || DEFAULT_REGION_TARGETS;
+  const regionPicks = store?.regionPicks || defaultRegionPicks("us");
+  const dividendTargets = store?.dividendTargets || DEFAULT_DIVIDEND_TARGETS;
+  const dividendPicks = store?.dividendPicks || defaultDividendPicks("us");
+  const startDate = store?.start_date || "";
+  const capital = store?.initial_capital || DEFAULT_CAPITAL.us;
+  const benchmark = store?.benchmark || "^GSPC";
 
   const catalog = useMemo(() => catalogForListing(listing), [listing]);
   const featured = useMemo(() => catalog.filter((e) => e.featured), [catalog]);
@@ -175,6 +205,10 @@ export default function SimulateTab() {
     (a, k) => a + (Number(dividendTargets[k]) || 0),
     0,
   );
+  const customSum = freeSelected.reduce(
+    (a, t) => a + (Number(customWeights[t]) || 0),
+    0,
+  );
 
   const selectedTickers = useMemo(() => {
     if (method === "asset") {
@@ -207,80 +241,97 @@ export default function SimulateTab() {
   function etfsForAsset(cls: AssetClass): EtfMeta[] {
     return catalog.filter((e) => e.assetClass === cls);
   }
-
   function etfsForRegion(region: RegionBucket): EtfMeta[] {
     return catalog.filter((e) => e.region === region);
   }
-
   function etfsForDividend(style: DividendStyle): EtfMeta[] {
     return catalog.filter((e) => e.dividendStyle === style);
   }
 
   function switchListing(next: ListingMarket) {
-    if (next === listing) return;
-    setListing(next);
-    setResult(null);
+    if (!store || next === listing) return;
+    const mappedFree = (() => {
+      const mapped = mapList(freeSelected, next);
+      return mapped.length ? mapped : defaultStoredEtfAlloc("x", next).freeSelected;
+    })();
+    persistActive({
+      ...store,
+      listing: next,
+      initial_capital: DEFAULT_CAPITAL[next],
+      freeSelected: mappedFree,
+      customWeights: equalizeCustomWeights(mappedFree),
+      assetPicks: (() => {
+        const mapped: Record<AssetClass, string[]> = {
+          equity: mapList(assetPicks.equity, next),
+          bond: mapList(assetPicks.bond, next),
+          alt: mapList(assetPicks.alt, next),
+        };
+        const fallback = defaultAssetPicks(next);
+        for (const k of ASSET_KEYS) {
+          if (!mapped[k].length) mapped[k] = fallback[k];
+        }
+        return mapped;
+      })(),
+      regionPicks: (() => {
+        const mapped = {} as Record<RegionBucket, string[]>;
+        const fallback = defaultRegionPicks(next);
+        for (const k of REGION_KEYS) {
+          mapped[k] = mapList(regionPicks[k], next);
+          if (!mapped[k].length) mapped[k] = fallback[k];
+        }
+        return mapped;
+      })(),
+      dividendPicks: defaultDividendPicks(next),
+      dividendTargets: { ...DEFAULT_DIVIDEND_TARGETS },
+    });
     setError(null);
     setShowAll(false);
     setQuery("");
-    setCapital(DEFAULT_CAPITAL[next]);
-    // Keep the user's index benchmark across listing switches.
-
-    setFreeSelected((prev) => {
-      const mapped = mapList(prev, next);
-      return mapped.length ? mapped : defaultFreeSelected(next);
-    });
-    setAssetPicks((prev) => {
-      const mapped: Record<AssetClass, string[]> = {
-        equity: mapList(prev.equity, next),
-        bond: mapList(prev.bond, next),
-        alt: mapList(prev.alt, next),
-      };
-      const fallback = defaultAssetPicks(next);
-      for (const k of ASSET_KEYS) {
-        if (!mapped[k].length) mapped[k] = fallback[k];
-      }
-      return mapped;
-    });
-    setRegionPicks((prev) => {
-      const mapped = {} as Record<RegionBucket, string[]>;
-      const fallback = defaultRegionPicks(next);
-      for (const k of REGION_KEYS) {
-        mapped[k] = mapList(prev[k], next);
-        if (!mapped[k].length) mapped[k] = fallback[k];
-      }
-      return mapped;
-    });
-    // Dividend style taxonomy differs by listing (KR high-div ≈ domestic,
-    // KR intl_div ≈ US high-yield listed locally), so reset to the market basket.
-    setDividendPicks(defaultDividendPicks(next));
-    setDividendTargets({ ...DEFAULT_DIVIDEND_TARGETS });
   }
 
   function toggleFree(symbol: string) {
-    setFreeSelected((prev) => {
-      if (prev.includes(symbol)) return prev.filter((s) => s !== symbol);
-      if (prev.length >= 20) {
+    if (!store) return;
+    let next = freeSelected;
+    if (freeSelected.includes(symbol)) {
+      next = freeSelected.filter((s) => s !== symbol);
+    } else {
+      if (freeSelected.length >= 20) {
         setError("최대 20개까지 선택할 수 있습니다.");
-        return prev;
+        return;
       }
-      setError(null);
-      return [...prev, symbol];
-    });
+      next = [...freeSelected, symbol];
+    }
+    const weights = { ...customWeights };
+    for (const t of Object.keys(weights)) {
+      if (!next.includes(t)) delete weights[t];
+    }
+    for (const t of next) {
+      if (weights[t] == null) weights[t] = 0;
+    }
+    if (method === "custom" || Object.values(weights).every((v) => !v)) {
+      Object.assign(weights, equalizeCustomWeights(next));
+    }
+    persistActive({ ...store, freeSelected: next, customWeights: weights });
+    setError(null);
   }
 
   function toggleBucket(
     list: string[],
     symbol: string,
-    setList: (next: string[]) => void,
+    apply: (next: string[]) => void,
   ) {
-    if (list.includes(symbol)) setList(list.filter((s) => s !== symbol));
-    else setList([...list, symbol]);
+    if (list.includes(symbol)) apply(list.filter((s) => s !== symbol));
+    else apply([...list, symbol]);
   }
 
   async function run() {
+    if (!store) return;
     if (!selectedTickers.length) {
       setError("ETF를 하나 이상 선택하세요.");
+      return;
+    }
+    if (method === "custom" && Math.abs(customSum - 100) > 0.5) {
+      setError(`직접 비중 합계가 100%가 되어야 합니다 (현재 ${customSum.toFixed(1)}%).`);
       return;
     }
     if (method === "asset" && Math.abs(assetSum - 100) > 0.5) {
@@ -334,6 +385,9 @@ export default function SimulateTab() {
           start_date: startDate,
           initial_capital: capital,
           benchmark,
+          ...(method === "custom"
+            ? { weights: selectedTickers.map((t) => Number(customWeights[t]) || 0) }
+            : {}),
           ...(method === "asset" ? { asset_targets: assetTargets } : {}),
           ...(method === "region" ? { region_targets: regionTargets } : {}),
           ...(method === "dividend" ? { dividend_targets: dividendTargets } : {}),
@@ -341,13 +395,16 @@ export default function SimulateTab() {
       });
       const data = (await res.json()) as SimulateResult;
       if (!data.ok) {
-        setResult(null);
         setError(data.error || "시뮬레이션 실패");
+        setResultCache((prev) => ({ ...prev, [store.portfolio_id]: data }));
       } else {
-        setResult(data);
+        setResultCache((prev) => ({ ...prev, [store.portfolio_id]: data }));
+        const withHist = appendEtfAllocHistory(store, data, data.risk || null);
+        persistActive(withHist);
+        const last = withHist.history[withHist.history.length - 1];
+        setTelegramPreview(last?.telegram_brief || "");
       }
     } catch (exc) {
-      setResult(null);
       setError(exc instanceof Error ? exc.message : "시뮬레이션 실패");
     } finally {
       setLoading(false);
@@ -358,11 +415,41 @@ export default function SimulateTab() {
     if (!result?.series) return null;
     const benchName = benchmarkLabel(result.benchmark || benchmark);
     return {
-      Portfolio: result.series.portfolio as number[],
-      [`Benchmark (${benchName})`]: result.series.benchmark as number[],
-      "Equal weight": result.series.equal_weight as number[],
+      포트폴리오: result.series.portfolio as number[],
+      [`벤치 (${benchName})`]: result.series.benchmark as number[],
+      "균등비중": result.series.equal_weight as number[],
     };
   }, [result, benchmark]);
+
+  const libraryCompare = useMemo(() => {
+    if (!lib) return [];
+    return lib.portfolios.map((p) => {
+      const cached = resultCache[p.portfolio_id];
+      const last = p.history.length ? p.history[p.history.length - 1] : null;
+      return {
+        id: p.portfolio_id,
+        name: p.name,
+        method: p.method,
+        active: p.portfolio_id === lib.active_id,
+        cumulative_return_pct:
+          cached?.ok && cached.metrics
+            ? cached.metrics.portfolio.total_return_pct
+            : last?.cumulative_return_pct ?? null,
+        excess_vs_benchmark_pct:
+          cached?.ok && cached.metrics
+            ? cached.metrics.excess_vs_benchmark_pct
+            : last?.excess_vs_benchmark_pct ?? null,
+        max_drawdown_pct:
+          cached?.ok && cached.metrics
+            ? cached.metrics.portfolio.max_drawdown_pct
+            : last?.max_drawdown_pct ?? null,
+        final_value:
+          cached?.ok && cached.metrics
+            ? cached.metrics.portfolio.final_value
+            : last?.final_value ?? null,
+      };
+    });
+  }, [lib, resultCache]);
 
   function renderChip(e: EtfMeta, on: boolean, onClick: () => void) {
     return (
@@ -379,6 +466,10 @@ export default function SimulateTab() {
     );
   }
 
+  if (!lib || !store) {
+    return <p className="empty">포트폴리오 불러오는 중…</p>;
+  }
+
   const currencyHint = listing === "kr" ? "원" : "$";
 
   return (
@@ -387,10 +478,63 @@ export default function SimulateTab() {
         <div className="feature-head">
           <h2 className="feature-title">ETF 배분</h2>
           <p className="feature-lead">
-            상장 국가를 고른 뒤 배분 방식과 ETF를 맞추면, 그 시점부터 지금까지의 성과를
-            계산합니다. 한국 상장 상품으로도 미국 포트폴리오와 유사한 구성을 만들 수
-            있습니다 (예: SPY → TIGER 미국S&P500).
+            로그인 없이 다중 포트폴리오 저장 · 직접 편입비 · 벤치 대비 리스크·성과 분해.
+            한국 상장 상품으로도 미국 포트와 유사한 구성을 만들 수 있습니다.
           </p>
+        </div>
+
+        <div className="us-pf-library" style={{ marginBottom: 12 }}>
+          <label>
+            활성 포트폴리오
+            <select
+              value={store.portfolio_id}
+              onChange={(e) => {
+                persistLib({ ...lib, active_id: e.target.value });
+                setError(null);
+              }}
+            >
+              {lib.portfolios.map((p, i) => (
+                <option key={p.portfolio_id} value={p.portfolio_id}>
+                  {p.name || `포트폴리오 ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="tab-btn"
+            onClick={() => persistLib(createEtfAllocInLibrary(lib))}
+          >
+            새 포트폴리오
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => persistLib(duplicateEtfAllocInLibrary(lib, store.portfolio_id))}
+          >
+            복제
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            disabled={lib.portfolios.length <= 1}
+            onClick={() => persistLib(deleteEtfAllocInLibrary(lib, store.portfolio_id))}
+          >
+            삭제
+          </button>
+          <span className="meta-soft">
+            {lib.portfolios.length}개 저장 · 기록 {store.history.length}회
+          </span>
+        </div>
+
+        <div className="sim-controls" style={{ marginBottom: 10 }}>
+          <label className="field">
+            <span>포트 이름</span>
+            <input
+              value={store.name}
+              onChange={(e) => persistActive({ ...store, name: e.target.value })}
+            />
+          </label>
         </div>
 
         <h3 className="subhead">상장국가</h3>
@@ -417,7 +561,7 @@ export default function SimulateTab() {
               type="date"
               value={startDate}
               max={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => persistActive({ ...store, start_date: e.target.value })}
             />
           </label>
           <label className="field">
@@ -428,13 +572,19 @@ export default function SimulateTab() {
               step={listing === "kr" ? 100_000 : 1000}
               value={capital}
               onChange={(e) =>
-                setCapital(Number(e.target.value) || DEFAULT_CAPITAL[listing])
+                persistActive({
+                  ...store,
+                  initial_capital: Number(e.target.value) || DEFAULT_CAPITAL[listing],
+                })
               }
             />
           </label>
           <label className="field">
             <span>벤치마크</span>
-            <select value={benchmark} onChange={(e) => setBenchmark(e.target.value)}>
+            <select
+              value={benchmark}
+              onChange={(e) => persistActive({ ...store, benchmark: e.target.value })}
+            >
               {BENCHMARK_OPTIONS.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.label}
@@ -466,7 +616,13 @@ export default function SimulateTab() {
               key={m.id}
               type="button"
               className={`method-card ${method === m.id ? "on" : ""}`}
-              onClick={() => setMethod(m.id)}
+              onClick={() => {
+                const patch: Partial<StoredEtfAlloc> = { method: m.id };
+                if (m.id === "custom" && freeSelected.length) {
+                  patch.customWeights = equalizeCustomWeights(freeSelected);
+                }
+                persistActive({ ...store, ...patch });
+              }}
             >
               <strong>{m.label}</strong>
               <span>{m.blurb}</span>
@@ -474,17 +630,23 @@ export default function SimulateTab() {
           ))}
         </div>
 
-        {method === "equal" || method === "inv_vol" ? (
+        {method === "equal" || method === "inv_vol" || method === "custom" ? (
           <>
             <h3 className="subhead">
-              {method === "inv_vol"
-                ? "ETF 선택 (역변동성 가중)"
-                : "ETF 선택 (동일가중)"}
+              {method === "custom"
+                ? "ETF 선택 · 직접 편입비"
+                : method === "inv_vol"
+                  ? "ETF 선택 (역변동성 가중)"
+                  : "ETF 선택 (동일가중)"}
             </h3>
             <p className="meta-soft">
-              {method === "inv_vol"
-                ? "선택한 각 ETF의 시뮬레이션 구간 일수익률 표준편차 σ를 구한 뒤, 비중 w_i = (1/σ_i) / Σ(1/σ_j) 로 둡니다."
-                : "선택 N개에 대해 w_i = 1/N."}
+              {method === "custom"
+                ? `각 ETF 목표 비중(%)을 입력하세요. 합계 ${customSum.toFixed(1)}%${
+                    Math.abs(customSum - 100) > 0.5 ? " ← 100%로 맞춰 주세요" : " ✓"
+                  }`
+                : method === "inv_vol"
+                  ? "선택한 각 ETF의 시뮬레이션 구간 일수익률 표준편차 σ를 구한 뒤, 비중 w_i = (1/σ_i) / Σ(1/σ_j) 로 둡니다."
+                  : "선택 N개에 대해 w_i = 1/N."}
             </p>
             <div className="etf-chip-row">
               {featured.map((e) =>
@@ -523,6 +685,56 @@ export default function SimulateTab() {
                 ))}
               </div>
             ) : null}
+
+            {method === "custom" && freeSelected.length ? (
+              <div className="bucket-stack" style={{ marginTop: 12 }}>
+                {freeSelected.map((t) => {
+                  const { code, name } = etfDisplay(t);
+                  return (
+                    <div className="bucket-row" key={t}>
+                      <div className="bucket-head">
+                        <strong>
+                          {name} <span className="meta-soft">({code})</span>
+                        </strong>
+                        <label className="bucket-pct">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.1}
+                            value={customWeights[t] ?? 0}
+                            onChange={(e) =>
+                              persistActive({
+                                ...store,
+                                customWeights: {
+                                  ...customWeights,
+                                  [t]: Number(e.target.value) || 0,
+                                },
+                              })
+                            }
+                          />
+                          %
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="btn-row basket-row">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() =>
+                      persistActive({
+                        ...store,
+                        customWeights: equalizeCustomWeights(freeSelected),
+                      })
+                    }
+                  >
+                    균등 비중으로 맞추기
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : null}
 
@@ -547,10 +759,13 @@ export default function SimulateTab() {
                         step={1}
                         value={assetTargets[k]}
                         onChange={(e) =>
-                          setAssetTargets((prev) => ({
-                            ...prev,
-                            [k]: Number(e.target.value) || 0,
-                          }))
+                          persistActive({
+                            ...store,
+                            assetTargets: {
+                              ...assetTargets,
+                              [k]: Number(e.target.value) || 0,
+                            },
+                          })
                         }
                       />
                       %
@@ -562,7 +777,10 @@ export default function SimulateTab() {
                       .map((e) =>
                         renderChip(e, assetPicks[k].includes(e.symbol), () =>
                           toggleBucket(assetPicks[k], e.symbol, (next) =>
-                            setAssetPicks((prev) => ({ ...prev, [k]: next })),
+                            persistActive({
+                              ...store,
+                              assetPicks: { ...assetPicks, [k]: next },
+                            }),
                           ),
                         ),
                       )}
@@ -574,10 +792,13 @@ export default function SimulateTab() {
               <button
                 type="button"
                 className="btn ghost"
-                onClick={() => {
-                  setAssetTargets({ ...DEFAULT_ASSET_TARGETS });
-                  setAssetPicks(defaultAssetPicks(listing));
-                }}
+                onClick={() =>
+                  persistActive({
+                    ...store,
+                    assetTargets: { ...DEFAULT_ASSET_TARGETS },
+                    assetPicks: defaultAssetPicks(listing),
+                  })
+                }
               >
                 기본 6:3:1 복원
               </button>
@@ -605,23 +826,31 @@ export default function SimulateTab() {
                         step={1}
                         value={regionTargets[k]}
                         onChange={(e) =>
-                          setRegionTargets((prev) => ({
-                            ...prev,
-                            [k]: Number(e.target.value) || 0,
-                          }))
+                          persistActive({
+                            ...store,
+                            regionTargets: {
+                              ...regionTargets,
+                              [k]: Number(e.target.value) || 0,
+                            },
+                          })
                         }
                       />
                       %
                     </label>
                   </div>
                   <div className="etf-chip-row">
-                    {etfsForRegion(k).map((e) =>
-                      renderChip(e, regionPicks[k].includes(e.symbol), () =>
-                        toggleBucket(regionPicks[k], e.symbol, (next) =>
-                          setRegionPicks((prev) => ({ ...prev, [k]: next })),
+                    {etfsForRegion(k)
+                      .slice(0, 10)
+                      .map((e) =>
+                        renderChip(e, regionPicks[k].includes(e.symbol), () =>
+                          toggleBucket(regionPicks[k], e.symbol, (next) =>
+                            persistActive({
+                              ...store,
+                              regionPicks: { ...regionPicks, [k]: next },
+                            }),
+                          ),
                         ),
-                      ),
-                    )}
+                      )}
                   </div>
                 </div>
               ))}
@@ -630,12 +859,15 @@ export default function SimulateTab() {
               <button
                 type="button"
                 className="btn ghost"
-                onClick={() => {
-                  setRegionTargets({ ...DEFAULT_REGION_TARGETS });
-                  setRegionPicks(defaultRegionPicks(listing));
-                }}
+                onClick={() =>
+                  persistActive({
+                    ...store,
+                    regionTargets: { ...DEFAULT_REGION_TARGETS },
+                    regionPicks: defaultRegionPicks(listing),
+                  })
+                }
               >
-                기본 60/10/10/10/10 복원
+                기본 60/10×4 복원
               </button>
             </div>
           </>
@@ -645,8 +877,7 @@ export default function SimulateTab() {
           <>
             <h3 className="subhead">배당 유형 목표 비중 · ETF</h3>
             <p className="meta-soft">
-              퀄리티 배당·고배당·해외배당·월배당(커버드콜)·채권 대표 유형으로 소득형
-              포트폴리오를 구성합니다. 합계 {dividendSum.toFixed(1)}%
+              합계 {dividendSum.toFixed(1)}%
               {Math.abs(dividendSum - 100) > 0.5 ? " ← 100%로 맞춰 주세요" : " ✓"}
             </p>
             <div className="bucket-stack">
@@ -662,10 +893,13 @@ export default function SimulateTab() {
                         step={1}
                         value={dividendTargets[k]}
                         onChange={(e) =>
-                          setDividendTargets((prev) => ({
-                            ...prev,
-                            [k]: Number(e.target.value) || 0,
-                          }))
+                          persistActive({
+                            ...store,
+                            dividendTargets: {
+                              ...dividendTargets,
+                              [k]: Number(e.target.value) || 0,
+                            },
+                          })
                         }
                       />
                       %
@@ -675,7 +909,10 @@ export default function SimulateTab() {
                     {etfsForDividend(k).map((e) =>
                       renderChip(e, dividendPicks[k].includes(e.symbol), () =>
                         toggleBucket(dividendPicks[k], e.symbol, (next) =>
-                          setDividendPicks((prev) => ({ ...prev, [k]: next })),
+                          persistActive({
+                            ...store,
+                            dividendPicks: { ...dividendPicks, [k]: next },
+                          }),
                         ),
                       ),
                     )}
@@ -687,10 +924,13 @@ export default function SimulateTab() {
               <button
                 type="button"
                 className="btn ghost"
-                onClick={() => {
-                  setDividendTargets({ ...DEFAULT_DIVIDEND_TARGETS });
-                  setDividendPicks(defaultDividendPicks(listing));
-                }}
+                onClick={() =>
+                  persistActive({
+                    ...store,
+                    dividendTargets: { ...DEFAULT_DIVIDEND_TARGETS },
+                    dividendPicks: defaultDividendPicks(listing),
+                  })
+                }
               >
                 기본 30/20/15/15/20 복원
               </button>
@@ -708,132 +948,387 @@ export default function SimulateTab() {
       </section>
 
       {result?.ok && result.metrics && chartSeries && result.series ? (
-        <section className="feature-block">
-          <div className="feature-head">
-            <h2 className="feature-title">성과 요약</h2>
-            <p className="feature-lead">
-              {result.start_date} → {result.end_date} · {result.trading_days} 거래일 · 초기{" "}
-              {fmtMoney(result.initial_capital, listing)} ·{" "}
-              {METHOD_LABEL[result.method || "equal"] || result.method}
-            </p>
-            {result.method_note ? (
-              <p className="meta-soft">{result.method_note}</p>
-            ) : null}
-          </div>
+        <>
+          <section className="feature-block">
+            <div className="feature-head">
+              <h2 className="feature-title">성과 요약</h2>
+              <p className="feature-lead">
+                {result.start_date} → {result.end_date} · {result.trading_days} 거래일 · 초기{" "}
+                {fmtMoney(result.initial_capital, listing)} ·{" "}
+                {METHOD_LABEL[result.method || "equal"] || result.method}
+              </p>
+              {result.method_note ? (
+                <p className="meta-soft">{result.method_note}</p>
+              ) : null}
+            </div>
 
-          <div className="stat-row">
-            <div className="stat">
-              <span className="stat-label">최종 자산</span>
-              <span className="stat-value">
-                {fmtMoney(result.metrics.portfolio.final_value, listing)}
-              </span>
+            <div className="stat-row">
+              <div className="stat">
+                <span className="stat-label">최종 자산</span>
+                <span className="stat-value">
+                  {fmtMoney(result.metrics.portfolio.final_value, listing)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">총수익</span>
+                <span
+                  className={`stat-value ${retClass(result.metrics.portfolio.total_return_pct)}`}
+                >
+                  {fmtPct(result.metrics.portfolio.total_return_pct)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">주간</span>
+                <span className={`stat-value ${retClass(result.week_return_pct)}`}>
+                  {fmtPct(result.week_return_pct)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">연환산 수익 / 변동성</span>
+                <span className="stat-value">
+                  {fmtPct(result.metrics.portfolio.annual_return_pct)} /{" "}
+                  {result.metrics.portfolio.annual_vol_pct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">Sharpe</span>
+                <span className="stat-value">
+                  {result.metrics.portfolio.sharpe.toFixed(2)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">최대낙폭</span>
+                <span className="stat-value down">
+                  {fmtPct(result.metrics.portfolio.max_drawdown_pct)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">벤치 대비 초과</span>
+                <span
+                  className={`stat-value ${retClass(result.metrics.excess_vs_benchmark_pct)}`}
+                >
+                  {fmtPct(result.metrics.excess_vs_benchmark_pct)}
+                </span>
+              </div>
+              <div className="stat">
+                <span className="stat-label">배분 효과 (vs 균등)</span>
+                <span
+                  className={`stat-value ${retClass(result.metrics.allocation_effect_pct)}`}
+                >
+                  {fmtPct(result.metrics.allocation_effect_pct)}
+                </span>
+              </div>
             </div>
-            <div className="stat">
-              <span className="stat-label">총수익</span>
-              <span className={`stat-value ${retClass(result.metrics.portfolio.total_return_pct)}`}>
-                {fmtPct(result.metrics.portfolio.total_return_pct)}
-              </span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">연환산 수익 / 변동성</span>
-              <span className="stat-value">
-                {fmtPct(result.metrics.portfolio.annual_return_pct)} /{" "}
-                {result.metrics.portfolio.annual_vol_pct.toFixed(1)}%
-              </span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">Sharpe</span>
-              <span className="stat-value">{result.metrics.portfolio.sharpe.toFixed(2)}</span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">최대낙폭</span>
-              <span className="stat-value down">
-                {fmtPct(result.metrics.portfolio.max_drawdown_pct)}
-              </span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">벤치 대비 초과</span>
-              <span
-                className={`stat-value ${retClass(result.metrics.excess_vs_benchmark_pct)}`}
-              >
-                {fmtPct(result.metrics.excess_vs_benchmark_pct)}
-              </span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">배분 효과 (vs 균등)</span>
-              <span
-                className={`stat-value ${retClass(result.metrics.allocation_effect_pct)}`}
-              >
-                {fmtPct(result.metrics.allocation_effect_pct)}
-              </span>
-            </div>
-          </div>
 
-          <h3 className="subhead">자산 곡선</h3>
-          <EquityChart
-            dates={result.series.date}
-            series={chartSeries}
-            height={340}
-            currency={listing === "kr" ? "KRW" : "USD"}
-          />
+            <h3 className="subhead">자산 곡선 (시작=100)</h3>
+            <p className="meta-soft">지수화 + Y축 타이트 스케일로 벤치·균등비중과 비교합니다.</p>
+            <EquityChart
+              dates={result.series.date}
+              series={chartSeries}
+              height={340}
+              currency={listing === "kr" ? "KRW" : "USD"}
+              indexed
+            />
+          </section>
 
-          <h3 className="subhead">산출 비중 · 기여도</h3>
-          <div className="contrib-table-wrap">
-            <table className="contrib-table">
-              <thead>
-                <tr>
-                  <th>상품</th>
-                  <th>비중</th>
-                  {result.method === "inv_vol" ? <th>연환산 σ</th> : null}
-                  <th>개별 수익</th>
-                  <th>기여</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(result.contributions || [])
-                  .filter((c) => c.weight_pct > 0)
-                  .map((c) => {
-                    const { code, name } = etfDisplay(c.ticker);
-                    return (
-                      <tr key={c.ticker}>
-                        <td>
-                          <div className="etf-result-cell">
-                            <span className="etf-result-name">{name}</span>
-                            <span className="etf-result-code">{code}</span>
-                          </div>
-                        </td>
-                        <td>{c.weight_pct.toFixed(1)}%</td>
-                        {result.method === "inv_vol" ? (
-                          <td>
-                            {c.annual_vol_pct != null
-                              ? `${c.annual_vol_pct.toFixed(1)}%`
-                              : "—"}
-                          </td>
-                        ) : null}
-                        <td className={retClass(c.standalone_return_pct)}>
-                          {fmtPct(c.standalone_return_pct)}
-                        </td>
-                        <td className={retClass(c.weighted_contribution_pct)}>
-                          {fmtPct(c.weighted_contribution_pct)}
-                        </td>
+          {result.risk ? (
+            <section className="feature-block">
+              <h3 className="subhead">벤치마크 대비 리스크·성과</h3>
+              <p className="meta-soft">일간 수익률 기준 연환산(252일). Sharpe/IR은 무위험금리 0 가정.</p>
+              <div className="contrib-table-wrap">
+                <table className="contrib-table">
+                  <thead>
+                    <tr>
+                      <th>지표</th>
+                      <th>포트폴리오</th>
+                      <th>벤치</th>
+                      <th>차이/상대</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>누적 수익률</td>
+                      <td className={retClass(result.metrics.portfolio.total_return_pct)}>
+                        {fmtPct(result.metrics.portfolio.total_return_pct)}
+                      </td>
+                      <td className={retClass(result.metrics.benchmark.total_return_pct)}>
+                        {fmtPct(result.metrics.benchmark.total_return_pct)}
+                      </td>
+                      <td className={retClass(result.metrics.excess_vs_benchmark_pct)}>
+                        {fmtPct(result.metrics.excess_vs_benchmark_pct)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>변동성(연)</td>
+                      <td>{fmtPct(result.risk.volatility_pct)}</td>
+                      <td>{fmtPct(result.risk.spy_volatility_pct)}</td>
+                      <td>
+                        {result.risk.volatility_pct != null &&
+                        result.risk.spy_volatility_pct != null
+                          ? fmtPct(result.risk.volatility_pct - result.risk.spy_volatility_pct)
+                          : "—"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>MDD</td>
+                      <td>{fmtPct(result.risk.max_drawdown_pct)}</td>
+                      <td>{fmtPct(result.risk.spy_max_drawdown_pct)}</td>
+                      <td>
+                        {fmtPct(
+                          result.risk.max_drawdown_pct - result.risk.spy_max_drawdown_pct,
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Sharpe</td>
+                      <td>{fmtNum(result.risk.sharpe)}</td>
+                      <td>{fmtNum(result.risk.spy_sharpe)}</td>
+                      <td>
+                        {result.risk.sharpe != null && result.risk.spy_sharpe != null
+                          ? fmtNum(result.risk.sharpe - result.risk.spy_sharpe)
+                          : "—"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Beta</td>
+                      <td colSpan={2}>{fmtNum(result.risk.beta)}</td>
+                      <td className="meta-soft">vs 벤치</td>
+                    </tr>
+                    <tr>
+                      <td>Alpha(연)</td>
+                      <td className={retClass(result.risk.alpha_ann_pct)} colSpan={2}>
+                        {fmtPct(result.risk.alpha_ann_pct)}
+                      </td>
+                      <td className="meta-soft">CAPM</td>
+                    </tr>
+                    <tr>
+                      <td>Tracking Error</td>
+                      <td colSpan={2}>{fmtPct(result.risk.tracking_error_pct)}</td>
+                      <td className="meta-soft">연환산</td>
+                    </tr>
+                    <tr>
+                      <td>Information Ratio</td>
+                      <td className={retClass(result.risk.information_ratio)} colSpan={2}>
+                        {fmtNum(result.risk.information_ratio)}
+                      </td>
+                      <td className="meta-soft">초과/TE</td>
+                    </tr>
+                    <tr>
+                      <td>Calmar</td>
+                      <td>{fmtNum(result.risk.calmar)}</td>
+                      <td>{fmtNum(result.risk.spy_calmar)}</td>
+                      <td>
+                        {result.risk.calmar != null && result.risk.spy_calmar != null
+                          ? fmtNum(result.risk.calmar - result.risk.spy_calmar)
+                          : "—"}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="feature-block">
+            <div className="us-pf-split">
+              <div>
+                <h3 className="subhead">종목 성과 분해</h3>
+                <div className="contrib-table-wrap">
+                  <table className="contrib-table">
+                    <thead>
+                      <tr>
+                        <th>상품</th>
+                        <th>비중</th>
+                        {result.method === "inv_vol" ? <th>연환산 σ</th> : null}
+                        <th>개별 수익</th>
+                        <th>기여</th>
                       </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
+                    </thead>
+                    <tbody>
+                      {(result.contributions || [])
+                        .filter((c) => c.weight_pct > 0)
+                        .map((c) => {
+                          const { code, name } = etfDisplay(c.ticker);
+                          return (
+                            <tr key={c.ticker}>
+                              <td>
+                                <div className="etf-result-cell">
+                                  <span className="etf-result-name">{name}</span>
+                                  <span className="etf-result-code">{code}</span>
+                                </div>
+                              </td>
+                              <td>{c.weight_pct.toFixed(1)}%</td>
+                              {result.method === "inv_vol" ? (
+                                <td>
+                                  {c.annual_vol_pct != null
+                                    ? `${c.annual_vol_pct.toFixed(1)}%`
+                                    : "—"}
+                                </td>
+                              ) : null}
+                              <td className={retClass(c.standalone_return_pct)}>
+                                {fmtPct(c.standalone_return_pct)}
+                              </td>
+                              <td className={retClass(c.weighted_contribution_pct)}>
+                                {fmtPct(c.weighted_contribution_pct)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h3 className="subhead">버킷 성과 분해</h3>
+                <p className="meta-soft">
+                  {result.method === "region"
+                    ? "국가"
+                    : result.method === "dividend"
+                      ? "배당 유형"
+                      : "자산군"}{" "}
+                  기준으로 비중·기여를 집계합니다.
+                </p>
+                <div className="contrib-table-wrap">
+                  <table className="contrib-table">
+                    <thead>
+                      <tr>
+                        <th>버킷</th>
+                        <th>비중</th>
+                        <th>기여</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!(result.bucket_attribution || []).length ? (
+                        <tr>
+                          <td colSpan={3} className="empty">
+                            —
+                          </td>
+                        </tr>
+                      ) : (
+                        (result.bucket_attribution || []).map((b) => (
+                          <tr key={b.key}>
+                            <td>{b.label}</td>
+                            <td>{fmtPct(b.weight_pct, 1)}</td>
+                            <td className={retClass(b.contribution_pct)}>
+                              {fmtPct(b.contribution_pct)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
 
-          <div className="compare-note">
-            <p>
-              균등 비중 최종 {fmtMoney(result.metrics.equal_weight.final_value, listing)} (
-              {fmtPct(result.metrics.equal_weight.total_return_pct)}, MDD{" "}
-              {fmtPct(result.metrics.equal_weight.max_drawdown_pct)}) · 벤치마크{" "}
-              {benchmarkLabel(result.benchmark || benchmark)} 최종{" "}
-              {fmtMoney(result.metrics.benchmark.final_value, listing)} (
-              {fmtPct(result.metrics.benchmark.total_return_pct)})
-            </p>
-          </div>
-        </section>
+            <div className="compare-note">
+              <p>
+                균등 비중 최종 {fmtMoney(result.metrics.equal_weight.final_value, listing)} (
+                {fmtPct(result.metrics.equal_weight.total_return_pct)}, MDD{" "}
+                {fmtPct(result.metrics.equal_weight.max_drawdown_pct)}) · 벤치마크{" "}
+                {benchmarkLabel(result.benchmark || benchmark)} 최종{" "}
+                {fmtMoney(result.metrics.benchmark.final_value, listing)} (
+                {fmtPct(result.metrics.benchmark.total_return_pct)})
+              </p>
+            </div>
+          </section>
+
+          <section className="feature-block">
+            <h3 className="subhead">저장된 포트폴리오 비교</h3>
+            <div className="contrib-table-wrap">
+              <table className="contrib-table">
+                <thead>
+                  <tr>
+                    <th>포트폴리오</th>
+                    <th>방식</th>
+                    <th>누적</th>
+                    <th>vs 벤치</th>
+                    <th>MDD</th>
+                    <th>평가액</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {libraryCompare.map((row) => (
+                    <tr key={row.id} className={row.active ? "us-pf-row-active" : undefined}>
+                      <td>
+                        <strong>{row.name}</strong>
+                        {row.active ? <span className="meta-soft"> · 활성</span> : null}
+                      </td>
+                      <td>{METHOD_LABEL[row.method] || row.method}</td>
+                      <td className={retClass(row.cumulative_return_pct)}>
+                        {fmtPct(row.cumulative_return_pct)}
+                      </td>
+                      <td className={retClass(row.excess_vs_benchmark_pct)}>
+                        {fmtPct(row.excess_vs_benchmark_pct)}
+                      </td>
+                      <td>{fmtPct(row.max_drawdown_pct)}</td>
+                      <td>{fmtMoney(row.final_value, listing)}</td>
+                      <td>
+                        {!row.active ? (
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => persistLib({ ...lib, active_id: row.id })}
+                          >
+                            열기
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {telegramPreview ? (
+            <section className="feature-block">
+              <h3 className="subhead">텔레그램 송출 미리보기</h3>
+              <pre className="us-pf-tg">{telegramPreview}</pre>
+            </section>
+          ) : null}
+
+          {store.history.length ? (
+            <section className="feature-block">
+              <h3 className="subhead">활성 포트 누적 기록</h3>
+              <div className="contrib-table-wrap">
+                <table className="contrib-table">
+                  <thead>
+                    <tr>
+                      <th>기준일</th>
+                      <th>방식</th>
+                      <th>누적</th>
+                      <th>주간</th>
+                      <th>vs 벤치</th>
+                      <th>MDD</th>
+                      <th>평가액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...store.history].reverse().map((h) => (
+                      <tr key={h.as_of}>
+                        <td>{h.as_of}</td>
+                        <td>{METHOD_LABEL[h.method] || h.method}</td>
+                        <td className={retClass(h.cumulative_return_pct)}>
+                          {fmtPct(h.cumulative_return_pct)}
+                        </td>
+                        <td className={retClass(h.week_return_pct)}>
+                          {fmtPct(h.week_return_pct)}
+                        </td>
+                        <td className={retClass(h.excess_vs_benchmark_pct)}>
+                          {fmtPct(h.excess_vs_benchmark_pct)}
+                        </td>
+                        <td>{fmtPct(h.max_drawdown_pct)}</td>
+                        <td>{fmtMoney(h.final_value, listing)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

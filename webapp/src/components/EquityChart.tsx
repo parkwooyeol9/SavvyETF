@@ -18,9 +18,12 @@ type Props = {
   series: Record<string, number[]>;
   height?: number;
   currency?: "USD" | "KRW";
+  /** Index to 100 at start and tighten Y domain for comparison. */
+  indexed?: boolean;
 };
 
-function formatAxis(v: number, currency: "USD" | "KRW"): string {
+function formatAxis(v: number, currency: "USD" | "KRW", indexed: boolean): string {
+  if (indexed) return v.toFixed(1);
   if (currency === "KRW") {
     if (v >= 1_000_000) return `₩${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1)}M`;
     if (v >= 1000) return `₩${(v / 1000).toFixed(0)}k`;
@@ -30,7 +33,8 @@ function formatAxis(v: number, currency: "USD" | "KRW"): string {
   return `$${v}`;
 }
 
-function formatTooltip(v: number, currency: "USD" | "KRW"): string {
+function formatTooltip(v: number, currency: "USD" | "KRW", indexed: boolean): string {
+  if (indexed) return Number(v).toFixed(2);
   if (currency === "KRW") {
     return `₩${Math.round(v).toLocaleString("ko-KR")}`;
   }
@@ -42,13 +46,43 @@ export default function EquityChart({
   series,
   height = 320,
   currency = "USD",
+  indexed = false,
 }: Props) {
   const keys = Object.keys(series);
+  const bases: Record<string, number> = {};
+  for (const k of keys) {
+    bases[k] = indexed && series[k]?.[0] ? series[k][0]! : 1;
+  }
+
   const data = dates.map((date, i) => {
     const row: Record<string, string | number> = { date };
-    for (const k of keys) row[k] = series[k][i];
+    for (const k of keys) {
+      const raw = series[k]?.[i] ?? 0;
+      row[k] = indexed
+        ? Math.round((raw / (bases[k] || 1)) * 10000) / 100
+        : raw;
+    }
     return row;
   });
+
+  let domain: [number, number] | undefined;
+  if (indexed && data.length) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const row of data) {
+      for (const k of keys) {
+        const v = Number(row[k]);
+        if (Number.isFinite(v)) {
+          min = Math.min(min, v);
+          max = Math.max(max, v);
+        }
+      }
+    }
+    if (max > min) {
+      const pad = Math.max((max - min) * 0.06, 0.4);
+      domain = [min - pad, max + pad];
+    }
+  }
 
   return (
     <div className="chart-wrap" style={{ height }}>
@@ -62,9 +96,11 @@ export default function EquityChart({
             tickFormatter={(v: string) => (v ? v.slice(2, 7) : "")}
           />
           <YAxis
+            domain={domain}
+            allowDataOverflow={Boolean(indexed)}
             tick={{ fill: "#8fa3b8", fontSize: 11 }}
-            width={currency === "KRW" ? 72 : 64}
-            tickFormatter={(v: number) => formatAxis(v, currency)}
+            width={indexed ? 52 : currency === "KRW" ? 72 : 64}
+            tickFormatter={(v: number) => formatAxis(v, currency, indexed)}
           />
           <Tooltip
             contentStyle={{
@@ -75,7 +111,7 @@ export default function EquityChart({
             }}
             labelStyle={{ color: "#8fa3b8" }}
             formatter={(value: number, name: string) => [
-              formatTooltip(Number(value), currency),
+              formatTooltip(Number(value), currency, indexed),
               name,
             ]}
           />
@@ -88,8 +124,8 @@ export default function EquityChart({
               name={k}
               stroke={COLORS[i % COLORS.length]}
               dot={false}
-              strokeWidth={k === "portfolio" || k === "Portfolio" ? 2.4 : 1.6}
-              isAnimationActive
+              strokeWidth={k === "portfolio" || k === "Portfolio" || k === "포트폴리오" ? 2.4 : 1.6}
+              isAnimationActive={!indexed}
               animationDuration={700}
             />
           ))}
