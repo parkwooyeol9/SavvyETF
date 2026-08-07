@@ -4707,6 +4707,18 @@ a.geo-choke-hl:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.ideas-summary {
+  margin: 10px 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted, #8fa3b8);
+}
+
+.ideas-summary li + li {
+  margin-top: 0.35rem;
+}
+
 .us-pf-split {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -23,10 +23,12 @@ import KrMarketTab from "@/components/KrMarketTab";
 import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import YenCarryTab from "@/components/YenCarryTab";
+import TradingIdeasTab from "@/components/TradingIdeasTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import SimulateTab from "@/components/SimulateTab";
 import UsPortfolioTab from "@/components/UsPortfolioTab";
+import AiPortTab from "@/components/AiPortTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
@@ -41,6 +43,7 @@ import {
   TAB_SLOT_ORDER,
   emptyAllBriefs,
   isBriefTabId,
+  isShellTabId,
   navGroupForTab,
   type TabId,
 } from "@/lib/types";
@@ -135,8 +138,14 @@ export default function Dashboard() {
     const id = window.setInterval(() => void load(), 60_000);
     const onFocus = () => void load();
     const onNav = (e: Event) => {
-      const next = (e as CustomEvent<ShellTabId>).detail;
-      if (next) setTab(next);
+      const detail = (e as CustomEvent<ShellTabId | { tab?: string }>).detail;
+      const next =
+        typeof detail === "string"
+          ? detail
+          : detail && typeof detail === "object"
+            ? detail.tab
+            : undefined;
+      if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
     window.addEventListener("savvyetf-nav-tab", onNav);
@@ -166,6 +175,7 @@ export default function Dashboard() {
       tab === "esg" ||
       tab === "economy" ||
       tab === "yencarry" ||
+      tab === "ideas" ||
       tab === "signals" ||
       tab === "eventstudy" ||
       tab === "kosdaq100" ||
@@ -174,7 +184,8 @@ export default function Dashboard() {
       tab === "etfweights" ||
       tab === "kosdaqactive" ||
       tab === "countryetf" ||
-      tab === "etf"
+      tab === "etf" ||
+      tab === "aiport"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -247,6 +258,8 @@ export default function Dashboard() {
         <SimulateTab />
       ) : tab === "usportfolio" ? (
         <UsPortfolioTab />
+      ) : tab === "aiport" ? (
+        <AiPortTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "etfdb" ? (
@@ -283,6 +296,8 @@ export default function Dashboard() {
         <MacroTab />
       ) : tab === "yencarry" ? (
         <YenCarryTab />
+      ) : tab === "ideas" ? (
+        <TradingIdeasTab />
       ) : tab === "signals" ? (
         <TradingSignalsTab />
       ) : tab === "eventstudy" ? (
