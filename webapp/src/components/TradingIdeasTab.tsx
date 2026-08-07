@@ -58,10 +58,10 @@ export default function TradingIdeasTab() {
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">오늘의 트레이딩 아이디어</h2>
+            <h2 className="kr-hero-title">AI Pick</h2>
             <p className="kr-hero-sub">
               프로젝트 내 시그널·리스크 레짐으로 매수/매도 후보와 제안 비중을 조합합니다.
-              향후 AI 자동매매 근거 · 포트폴리오 → AI포트에서 추종 성과 추적
+              향후 AI 자동매매 근거 · AI포트에서 추종 성과를 추적할 수 있습니다.
             </p>
           </div>
           <div className="kr-hero-actions">

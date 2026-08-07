@@ -262,6 +262,8 @@ export default function Dashboard() {
         <UsPortfolioTab />
       ) : tab === "signals" ? (
         <TradingSignalsTab />
+      ) : tab === "ideas" ? (
+        <TradingIdeasTab />
       ) : tab === "aiport" ? (
         <AiPortTab />
       ) : tab === "education" ? (
@@ -300,8 +302,6 @@ export default function Dashboard() {
         <MacroTab />
       ) : tab === "yencarry" ? (
         <YenCarryTab />
-      ) : tab === "ideas" ? (
-        <TradingIdeasTab />
       ) : tab === "gurus" ? (
         <WallStreetGurusTab />
       ) : tab === "eventstudy" ? (
