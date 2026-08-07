@@ -434,7 +434,7 @@ async function buildCryptoPanel(macro: {
   };
 }
 
-export async function buildTradingSignalsPayload(): Promise<TradingSignalsPayload> {
+async function buildPayload(): Promise<TradingSignalsPayload> {
   const generated_at = new Date().toISOString();
   const symbols = Array.from(
     new Set(["^VIX", ...ALL_SIGNAL_SPECS.map((s) => s.symbol)]),
@@ -527,7 +527,7 @@ export async function GET() {
       "trading-signals:v3-crypto-interpret",
       120_000,
       600_000,
-      () => buildTradingSignalsPayload(),
+      () => buildPayload(),
     );
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahoo") },
