@@ -136,8 +136,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), 60_000);
+    // Poll every 3 minutes while the tab is visible (was 60s) to cut origin transfer.
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      void load();
+    }, 180_000);
     const onFocus = () => void load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
     const onNav = (e: Event) => {
       const detail = (e as CustomEvent<ShellTabId | { tab?: string }>).detail;
       const next =
@@ -149,10 +158,12 @@ export default function Dashboard() {
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("savvyetf-nav-tab", onNav);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("savvyetf-nav-tab", onNav);
     };
   }, [load]);

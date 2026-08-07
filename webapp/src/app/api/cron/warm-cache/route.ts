@@ -6,15 +6,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Keep only high-traffic / latency-sensitive paths warm.
+ * Heavy panels (geo, heatmap, green-minerals) stay on-demand to cut Fast Origin Transfer.
+ * Schedule: vercel.json every 10 minutes (was every 2).
+ */
 const WARM_PATHS = [
   "/api/kr-market",
   "/api/etf-kor15",
   "/api/etf-new",
   "/api/briefs",
-  "/api/geo?range=1y",
-  "/api/green-minerals",
   "/api/ai-gov",
-  "/api/heatmap?universe=etf&prefer=local",
 ] as const;
 
 function secretsEqual(a: string, b: string): boolean {

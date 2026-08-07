@@ -10,10 +10,10 @@ export const CACHE_TIER = {
   etfSlow: { sMaxAge: 300, swr: 600 },
   /** ETF new listings — 5 min UI poll */
   etfNew: { sMaxAge: 120, swr: 300 },
-  /** R2 brief snapshots */
-  briefs: { sMaxAge: 60, swr: 300 },
+  /** R2 brief snapshots — slightly longer CDN TTL to cut origin hits from polling */
+  briefs: { sMaxAge: 120, swr: 300 },
   /** Yahoo / RSS backed panels */
-  yahoo: { sMaxAge: 120, swr: 600 },
+  yahoo: { sMaxAge: 180, swr: 600 },
   /** Heavy Naver + bot overlays (etf-db, kr-leverage) */
   heavy: { sMaxAge: 180, swr: 600 },
   /** KRX short balance — updates slowly intraday */
