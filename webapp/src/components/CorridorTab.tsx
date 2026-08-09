@@ -32,6 +32,65 @@ const BUY_HOLD_COLOR = "#94a3b8";
 
 const DELAY_OPTIONS = [0, 1, 3, 5, 10, 20];
 
+const STRATEGY_THEORY: Array<{
+  name: string;
+  onUp: string;
+  onDown: string;
+  character: string;
+  related?: boolean;
+}> = [
+  {
+    name: "Constant Mix",
+    onUp: "주식 매도",
+    onDown: "주식 매수",
+    character: "역추세·리밸런싱",
+    related: true,
+  },
+  {
+    name: "Corridor Rebalancing",
+    onUp: "범위 이탈 시 매도",
+    onDown: "범위 이탈 시 매수",
+    character: "역추세",
+    related: true,
+  },
+  {
+    name: "CPPI",
+    onUp: "주식 확대",
+    onDown: "주식 축소",
+    character: "추세추종·원금방어",
+  },
+  {
+    name: "TIPP",
+    onUp: "주식 확대",
+    onDown: "주식 축소",
+    character: "고점 기준 이익 방어",
+  },
+  {
+    name: "Volatility Targeting",
+    onUp: "변동성 하락 시 확대",
+    onDown: "변동성 상승 시 축소",
+    character: "위험 일정화",
+  },
+  {
+    name: "Trend Following",
+    onUp: "상승 추세면 확대",
+    onDown: "하락 추세면 축소",
+    character: "추세추종",
+  },
+  {
+    name: "Risk Parity",
+    onUp: "위험기여도 감소 시 확대",
+    onDown: "위험기여도 증가 시 축소",
+    character: "위험균형",
+  },
+  {
+    name: "Value Averaging",
+    onUp: "목표 가치 초과 시 매도",
+    onDown: "목표 가치 미달 시 매수",
+    character: "적립식 역추세",
+  },
+];
+
 function fmtPct(n?: number | null, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
@@ -518,6 +577,85 @@ export default function CorridorTab() {
           ) : null}
         </>
       ) : null}
+
+      <section className="geo-section corridor-theory" style={{ marginTop: 20 }}>
+        <h3 className="geo-section-title">이론 정리 · 관련 자산배분 전략</h3>
+        <p className="meta-soft" style={{ marginTop: 6 }}>
+          이 탭의 모형은 <strong>Corridor Rebalancing</strong>입니다. 목표 비중을
+          중심으로 상·하한(corridor)을 두고, 범위 안에 있을 때는 방임하다가 이탈이
+          확인되면(선택적으로 N거래일 지연 후) 주식을 줄이거나 늘리는{" "}
+          <strong>역추세·리밸런싱</strong> 계열입니다. 목표 비중으로 주기적으로
+          되돌리는 Constant Mix와 같은 방향이며, 주가 상승 시 주식을 더 사는
+          CPPI·TIPP·Trend Following 등 추세추종 계열과는 반대입니다.
+        </p>
+        <div className="table-wrap" style={{ marginTop: 10 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>전략</th>
+                <th>주가 상승 시</th>
+                <th>주가 하락 시</th>
+                <th>성격</th>
+              </tr>
+            </thead>
+            <tbody>
+              {STRATEGY_THEORY.map((row) => (
+                <tr
+                  key={row.name}
+                  className={row.related ? "corridor-row-active" : undefined}
+                >
+                  <td>
+                    {row.name}
+                    {row.related ? (
+                      <span className="corridor-theory-tag">이 탭</span>
+                    ) : null}
+                  </td>
+                  <td>{row.onUp}</td>
+                  <td>{row.onDown}</td>
+                  <td>{row.character}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <ul className="corridor-theory-notes">
+          <li>
+            <strong>Constant Mix</strong> — 주식·채권 비중을 일정 비율로 유지.
+            상승 후 주식 매도, 하락 후 주식 매수로 변동성을 줄이고 평균회귀
+            수익을 노림.
+          </li>
+          <li>
+            <strong>Corridor Rebalancing</strong> — Constant Mix의 거래비용
+            완화형. 밴드 안에서는 리밸하지 않고, 이탈 시에만 매매(이 탭: 지연
+            일수·밴드시/여유/목표비중 선택 가능).
+          </li>
+          <li>
+            <strong>CPPI</strong> (Constant Proportion Portfolio Insurance) —
+            바닥 자산(floor) 위 잉여분만 배수(multiplier)로 주식에 배분. 상승 시
+            주식 확대, 하락 시 축소로 원금 방어.
+          </li>
+          <li>
+            <strong>TIPP</strong> — CPPI 변형으로 floor를 고점 성과에 연동해
+            이미 번 이익을 잠그는 구조.
+          </li>
+          <li>
+            <strong>Volatility Targeting</strong> — 실현·예상 변동성이 목표보다
+            높으면 위험자산 축소, 낮으면 확대로 포트 변동성을 일정하게 유지.
+          </li>
+          <li>
+            <strong>Trend Following</strong> — 이동평균 등 추세 신호에 따라 위험
+            익스포저를 확대·축소. 역추세 리밸런싱과 반대 방향의 매매.
+          </li>
+          <li>
+            <strong>Risk Parity</strong> — 자산별 위험 기여도를 균등(또는 목표)
+            하게 맞추도록 비중을 조정. 변동성·상관 변화에 반응.
+          </li>
+          <li>
+            <strong>Value Averaging</strong> — 적립 경로상 “목표 평가액”을 정해
+            두고, 초과면 매도·미달이면 매수하는 규칙적 역추세 적립.
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }

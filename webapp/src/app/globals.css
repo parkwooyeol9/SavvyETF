@@ -4896,6 +4896,40 @@ a.guru-idea:hover .guru-idea-title {
   background: rgba(96, 165, 250, 0.08);
 }
 
+.corridor-theory-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.14);
+  vertical-align: middle;
+}
+
+.corridor-theory-notes {
+  margin: 0.85rem 0 0;
+  padding-left: 1.15rem;
+  color: var(--muted, #8fa3b8);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.corridor-theory-notes li + li {
+  margin-top: 0.45rem;
+}
+
+.corridor-theory-notes strong {
+  color: #d7e3f0;
+  font-weight: 600;
+}
+
+.corridor-theory .meta-soft strong {
+  color: #d7e3f0;
+  font-weight: 600;
+}
+
 .us-pf-split {
   display: grid;
   grid-template-columns: 1fr 1fr;
