@@ -4828,7 +4828,8 @@ a.guru-idea:hover .guru-idea-title {
   color: var(--muted, #8fa3b8);
 }
 
-.corridor-controls input {
+.corridor-controls input,
+.corridor-controls select {
   width: 6.5rem;
   padding: 0.4rem 0.55rem;
   border-radius: 8px;
@@ -4838,8 +4839,95 @@ a.guru-idea:hover .guru-idea-title {
   font-variant-numeric: tabular-nums;
 }
 
+.corridor-controls select {
+  width: 8.5rem;
+}
+
+.corridor-scenario-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.corridor-scenario-head select {
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2b3648);
+  background: #0a0f16;
+  color: #e8eef5;
+  min-width: 12rem;
+}
+
+.corridor-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.corridor-scenario-card {
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, #2b3648);
+  background: rgba(10, 15, 22, 0.65);
+}
+
+.corridor-scenario-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.corridor-scenario-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2b3648);
+  background: #0a0f16;
+  color: #e8eef5;
+  font-weight: 600;
+}
+
 .corridor-row-active {
   background: rgba(96, 165, 250, 0.08);
+}
+
+.corridor-theory-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.14);
+  vertical-align: middle;
+}
+
+.corridor-theory-notes {
+  margin: 0.85rem 0 0;
+  padding-left: 1.15rem;
+  color: var(--muted, #8fa3b8);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.corridor-theory-notes li + li {
+  margin-top: 0.45rem;
+}
+
+.corridor-theory-notes strong {
+  color: #d7e3f0;
+  font-weight: 600;
+}
+
+.corridor-theory .meta-soft strong {
+  color: #d7e3f0;
+  font-weight: 600;
 }
 
 .us-pf-split {
