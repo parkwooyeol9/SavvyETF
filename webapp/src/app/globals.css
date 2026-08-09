@@ -4839,6 +4839,10 @@ a.guru-idea:hover .guru-idea-title {
   font-variant-numeric: tabular-nums;
 }
 
+.corridor-controls input[type="date"] {
+  width: 9.5rem;
+}
+
 .corridor-controls select {
   width: 8.5rem;
 }
