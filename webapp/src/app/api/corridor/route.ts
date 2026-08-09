@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { runCorridorAnalysis, type CorridorRequest } from "@/lib/corridor";
+import {
+  runCorridorAnalysis,
+  type CorridorRequest,
+  type CorridorScenarioConfig,
+  type RebalanceTargetMode,
+} from "@/lib/corridor";
 import { cdnCacheHeader } from "@/lib/apiCache";
 
 export const runtime = "nodejs";
@@ -34,7 +39,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as CorridorRequest;
+    const raw = (await req.json()) as CorridorRequest & {
+      scenarios?: unknown;
+    };
+    const body: CorridorRequest = {
+      ...raw,
+      scenarios: normalizeScenarios(raw.scenarios),
+    };
     const payload = await runCorridorAnalysis(body);
     return NextResponse.json(payload, {
       status: payload.ok ? 200 : 400,
@@ -52,4 +63,32 @@ function num(v: string | null): number | undefined {
   if (v == null || v === "") return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizeScenarios(raw: unknown): CorridorScenarioConfig[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: CorridorScenarioConfig[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const lower_pct = Number(o.lower_pct);
+    const upper_pct = Number(o.upper_pct);
+    const delay_days = Number(o.delay_days ?? 0);
+    const rebalance_to = String(o.rebalance_to || "band") as RebalanceTargetMode;
+    if (!Number.isFinite(lower_pct) || !Number.isFinite(upper_pct)) continue;
+    out.push({
+      id: typeof o.id === "string" ? o.id : undefined,
+      label: typeof o.label === "string" ? o.label : undefined,
+      lower_pct,
+      upper_pct,
+      delay_days: Number.isFinite(delay_days) ? delay_days : 0,
+      rebalance_to:
+        rebalance_to === "cushion" || rebalance_to === "target" ? rebalance_to : "band",
+      cushion_pct:
+        o.cushion_pct != null && Number.isFinite(Number(o.cushion_pct))
+          ? Number(o.cushion_pct)
+          : 5,
+    });
+  }
+  return out.length ? out : undefined;
 }

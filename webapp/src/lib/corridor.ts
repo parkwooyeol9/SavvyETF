@@ -1,7 +1,9 @@
 /**
  * Corridor (band) rebalancing — equity weight bands for asset-allocation funds.
  * Default: KODEX 200 30% + KODEX 단기채권 70% from 2020-01 first session.
- * If equity weight > upper → sell down to upper; if < lower → buy up to lower.
+ *
+ * After band touch, wait `delay_days` trading days (still outside) then rebalance.
+ * Rebalance destination: band edge, inner cushion, or target weight.
  */
 
 import { CATALOG_BY_SYMBOL } from "@/lib/etfCatalog";
@@ -11,13 +13,27 @@ export const CORRIDOR_DEFAULTS = {
   equity_symbol: "069500.KS",
   bond_symbol: "153130.KS",
   target_equity_pct: 30,
-  upper_pct: 50,
-  lower_pct: 20,
   start_date: "2020-01-02",
   initial_value: 100_000_000,
+  max_scenarios: 5,
 } as const;
 
-export type CorridorMode = "corridor" | "buy_hold" | "monthly";
+export type RebalanceTargetMode = "band" | "cushion" | "target";
+
+export type CorridorScenarioConfig = {
+  id?: string;
+  label?: string;
+  lower_pct: number;
+  upper_pct: number;
+  /** Trading days after first band touch before rebalancing. 0 = same day. */
+  delay_days: number;
+  /** Where to set equity weight when rebalancing. */
+  rebalance_to: RebalanceTargetMode;
+  /** Percentage points inside the band when rebalance_to === "cushion". */
+  cushion_pct?: number;
+};
+
+export type CorridorMode = "corridor" | "buy_hold";
 
 export type CorridorMetrics = {
   total_return_pct: number;
@@ -43,8 +59,11 @@ export type CorridorScenario = {
   id: string;
   label: string;
   mode: CorridorMode;
-  upper_pct: number | null;
   lower_pct: number | null;
+  upper_pct: number | null;
+  delay_days: number | null;
+  rebalance_to: RebalanceTargetMode | null;
+  cushion_pct: number | null;
   metrics: CorridorMetrics;
   series: CorridorSeriesPoint[];
 };
@@ -59,25 +78,42 @@ export type CorridorPayload = {
   equity: { symbol: string; name: string };
   bond: { symbol: string; name: string };
   target_equity_pct: number;
-  upper_pct: number;
-  lower_pct: number;
   initial_value: number;
-  primary: CorridorScenario;
-  baselines: CorridorScenario[];
-  /** Sensitivity grid: vary upper/lower around the primary bands */
-  sensitivity: Array<{
-    upper_pct: number;
-    lower_pct: number;
-    total_return_pct: number;
-    cagr_pct: number;
-    annual_vol_pct: number;
-    sharpe: number;
-    max_drawdown_pct: number;
-    rebalance_count: number;
-  }>;
+  scenarios: CorridorScenario[];
+  buy_hold: CorridorScenario;
   note: string;
   disclaimer: string;
 };
+
+export const DEFAULT_SCENARIOS: CorridorScenarioConfig[] = [
+  {
+    id: "c1",
+    label: "Corridor 1",
+    lower_pct: 20,
+    upper_pct: 50,
+    delay_days: 0,
+    rebalance_to: "band",
+    cushion_pct: 5,
+  },
+  {
+    id: "c2",
+    label: "Corridor 2",
+    lower_pct: 25,
+    upper_pct: 50,
+    delay_days: 5,
+    rebalance_to: "band",
+    cushion_pct: 5,
+  },
+  {
+    id: "c3",
+    label: "Corridor 3",
+    lower_pct: 20,
+    upper_pct: 50,
+    delay_days: 5,
+    rebalance_to: "cushion",
+    cushion_pct: 5,
+  },
+];
 
 function round(n: number, d = 2): number {
   const f = 10 ** d;
@@ -127,7 +163,7 @@ function metricsFromSeries(
   }
   const values = series.map((s) => s.value);
   const final_value = values[values.length - 1]!;
-  const total_return_pct = ((final_value / initial) - 1) * 100;
+  const total_return_pct = (final_value / initial - 1) * 100;
 
   const rets: number[] = [];
   for (let i = 1; i < values.length; i++) {
@@ -135,13 +171,13 @@ function metricsFromSeries(
     if (prev > 0) rets.push(values[i]! / prev - 1);
   }
   const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
-  const varSum = rets.reduce((a, r) => a + (r - mean) ** 2, 0) / Math.max(1, rets.length - 1);
+  const varSum =
+    rets.reduce((a, r) => a + (r - mean) ** 2, 0) / Math.max(1, rets.length - 1);
   const dailyVol = Math.sqrt(varSum);
   const annual_vol_pct = dailyVol * Math.sqrt(252) * 100;
   const cagr_pct =
     (Math.pow(final_value / initial, 252 / Math.max(1, rets.length)) - 1) * 100;
-  const sharpe =
-    annual_vol_pct > 1e-9 ? (cagr_pct - 0) / annual_vol_pct : 0;
+  const sharpe = annual_vol_pct > 1e-9 ? (cagr_pct - 0) / annual_vol_pct : 0;
 
   let peak = values[0]!;
   let maxDd = 0;
@@ -178,23 +214,76 @@ function downsampleSeries(
   return out;
 }
 
+function rebalanceLabel(mode: RebalanceTargetMode, cushion_pct: number): string {
+  if (mode === "target") return "목표비중";
+  if (mode === "cushion") return `여유 ${cushion_pct}%p`;
+  return "밴드시";
+}
+
+export function scenarioLabel(cfg: CorridorScenarioConfig, index: number): string {
+  if (cfg.label?.trim()) return cfg.label.trim();
+  const delay = cfg.delay_days ?? 0;
+  const cushion = cfg.cushion_pct ?? 5;
+  return `C${index + 1} ${cfg.lower_pct}–${cfg.upper_pct}% · D${delay} · ${rebalanceLabel(cfg.rebalance_to, cushion)}`;
+}
+
+/** Equity weight to set after a confirmed breach. */
+export function resolveRebalanceWeight(input: {
+  side: "upper" | "lower";
+  upper: number;
+  lower: number;
+  target: number;
+  rebalance_to: RebalanceTargetMode;
+  cushion_pct: number;
+}): number {
+  const { side, upper, lower, target, rebalance_to, cushion_pct } = input;
+  const cushion = Math.max(0, cushion_pct);
+
+  if (rebalance_to === "target") {
+    return clamp(target, lower, upper);
+  }
+
+  if (rebalance_to === "cushion") {
+    if (side === "upper") {
+      // Sell past the upper edge toward target (more generous / leave room).
+      const w = upper - cushion / 100;
+      return clamp(Math.max(w, target), lower, upper);
+    }
+    const w = lower + cushion / 100;
+    return clamp(Math.min(w, target), lower, upper);
+  }
+
+  // band edge
+  return side === "upper" ? upper : lower;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
 function runPath(input: {
   dates: string[];
   eq: number[];
   bond: number[];
   target: number;
-  upper: number | null;
-  lower: number | null;
-  mode: CorridorMode;
   initial: number;
   id: string;
   label: string;
+  mode: CorridorMode;
+  cfg?: CorridorScenarioConfig;
 }): CorridorScenario {
-  const { dates, eq, bond, target, upper, lower, mode, initial, id, label } = input;
+  const { dates, eq, bond, target, initial, id, label, mode, cfg } = input;
+  const upper = cfg != null ? cfg.upper_pct / 100 : null;
+  const lower = cfg != null ? cfg.lower_pct / 100 : null;
+  const delay_days = cfg != null ? Math.max(0, Math.floor(cfg.delay_days)) : null;
+  const rebalance_to = cfg?.rebalance_to ?? null;
+  const cushion_pct = cfg != null ? Math.max(0, cfg.cushion_pct ?? 5) : null;
+
   let eqVal = initial * target;
   let bondVal = initial * (1 - target);
   let rebalance_count = 0;
-  let lastMonth = dates[0]!.slice(0, 7);
+  let pendingSide: "upper" | "lower" | null = null;
+  let pendingSince: number | null = null;
   const series: CorridorSeriesPoint[] = [];
 
   for (let i = 0; i < dates.length; i++) {
@@ -209,29 +298,43 @@ function runPath(input: {
     let w = total > 0 ? eqVal / total : target;
     let rebalanced = false;
 
-    if (mode === "monthly") {
-      const month = dates[i]!.slice(0, 7);
-      if (month !== lastMonth) {
-        eqVal = total * target;
-        bondVal = total * (1 - target);
-        w = target;
-        rebalance_count += 1;
-        rebalanced = true;
-        lastMonth = month;
-      }
-    } else if (mode === "corridor" && upper != null && lower != null) {
-      if (w > upper) {
-        eqVal = total * upper;
-        bondVal = total * (1 - upper);
-        w = upper;
-        rebalance_count += 1;
-        rebalanced = true;
-      } else if (w < lower) {
-        eqVal = total * lower;
-        bondVal = total * (1 - lower);
-        w = lower;
-        rebalance_count += 1;
-        rebalanced = true;
+    if (
+      mode === "corridor" &&
+      upper != null &&
+      lower != null &&
+      delay_days != null &&
+      rebalance_to != null &&
+      cushion_pct != null
+    ) {
+      const outsideUpper = w > upper;
+      const outsideLower = w < lower;
+
+      if (!outsideUpper && !outsideLower) {
+        pendingSide = null;
+        pendingSince = null;
+      } else {
+        const side: "upper" | "lower" = outsideUpper ? "upper" : "lower";
+        if (pendingSide !== side) {
+          pendingSide = side;
+          pendingSince = i;
+        }
+        if (pendingSince != null && i - pendingSince >= delay_days) {
+          const dest = resolveRebalanceWeight({
+            side,
+            upper,
+            lower,
+            target,
+            rebalance_to,
+            cushion_pct,
+          });
+          eqVal = total * dest;
+          bondVal = total * (1 - dest);
+          w = dest;
+          rebalance_count += 1;
+          rebalanced = true;
+          pendingSide = null;
+          pendingSince = null;
+        }
       }
     }
 
@@ -248,22 +351,55 @@ function runPath(input: {
     id,
     label,
     mode,
-    upper_pct: upper != null ? round(upper * 100, 1) : null,
     lower_pct: lower != null ? round(lower * 100, 1) : null,
+    upper_pct: upper != null ? round(upper * 100, 1) : null,
+    delay_days,
+    rebalance_to,
+    cushion_pct,
     metrics: metricsFromSeries(series, initial, rebalance_count),
     series: downsampleSeries(series),
   };
+}
+
+function validateScenario(
+  cfg: CorridorScenarioConfig,
+  target_equity_pct: number,
+  index: number,
+): string | null {
+  const { lower_pct, upper_pct, delay_days, rebalance_to } = cfg;
+  if (!(lower_pct >= 0 && upper_pct <= 100 && lower_pct < upper_pct)) {
+    return `시나리오 ${index + 1}: 하단 < 상단, 0~100% 범위를 확인하세요.`;
+  }
+  if (target_equity_pct < lower_pct || target_equity_pct > upper_pct) {
+    return `시나리오 ${index + 1}: 목표 주식 비중은 하단~상단 corridor 안에 있어야 합니다.`;
+  }
+  if (!(Number.isFinite(delay_days) && delay_days >= 0 && delay_days <= 60)) {
+    return `시나리오 ${index + 1}: 지연 거래일은 0~60이어야 합니다.`;
+  }
+  if (rebalance_to !== "band" && rebalance_to !== "cushion" && rebalance_to !== "target") {
+    return `시나리오 ${index + 1}: 리밸 목표(band/cushion/target)를 확인하세요.`;
+  }
+  if (rebalance_to === "cushion") {
+    const c = cfg.cushion_pct ?? 5;
+    if (!(c >= 0 && c < upper_pct - lower_pct)) {
+      return `시나리오 ${index + 1}: 여유폭(cushion)은 밴드 폭보다 작아야 합니다.`;
+    }
+  }
+  return null;
 }
 
 export type CorridorRequest = {
   equity_symbol?: string;
   bond_symbol?: string;
   target_equity_pct?: number;
-  upper_pct?: number;
-  lower_pct?: number;
   start_date?: string;
   end_date?: string;
   initial_value?: number;
+  /** Multi-scenario compare. Falls back to DEFAULT_SCENARIOS. */
+  scenarios?: CorridorScenarioConfig[];
+  /** Legacy single-band fields — mapped to one scenario if scenarios omitted. */
+  upper_pct?: number;
+  lower_pct?: number;
 };
 
 export async function runCorridorAnalysis(
@@ -272,8 +408,6 @@ export async function runCorridorAnalysis(
   const equity_symbol = (req.equity_symbol || CORRIDOR_DEFAULTS.equity_symbol).toUpperCase();
   const bond_symbol = (req.bond_symbol || CORRIDOR_DEFAULTS.bond_symbol).toUpperCase();
   const target_equity_pct = req.target_equity_pct ?? CORRIDOR_DEFAULTS.target_equity_pct;
-  const upper_pct = req.upper_pct ?? CORRIDOR_DEFAULTS.upper_pct;
-  const lower_pct = req.lower_pct ?? CORRIDOR_DEFAULTS.lower_pct;
   const start_date = req.start_date || CORRIDOR_DEFAULTS.start_date;
   const end_date = req.end_date || new Date().toISOString().slice(0, 10);
   const initial_value = req.initial_value ?? CORRIDOR_DEFAULTS.initial_value;
@@ -281,11 +415,29 @@ export async function runCorridorAnalysis(
   if (!(target_equity_pct > 0 && target_equity_pct < 100)) {
     return emptyErr("목표 주식 비중은 0~100% 사이여야 합니다.");
   }
-  if (!(lower_pct >= 0 && upper_pct <= 100 && lower_pct < upper_pct)) {
-    return emptyErr("하단 < 상단, 0~100% 범위를 확인하세요.");
+
+  let scenarioCfgs: CorridorScenarioConfig[];
+  if (Array.isArray(req.scenarios) && req.scenarios.length > 0) {
+    scenarioCfgs = req.scenarios.slice(0, CORRIDOR_DEFAULTS.max_scenarios);
+  } else if (req.upper_pct != null && req.lower_pct != null) {
+    scenarioCfgs = [
+      {
+        id: "c1",
+        label: "Corridor 1",
+        lower_pct: req.lower_pct,
+        upper_pct: req.upper_pct,
+        delay_days: 0,
+        rebalance_to: "band",
+        cushion_pct: 5,
+      },
+    ];
+  } else {
+    scenarioCfgs = DEFAULT_SCENARIOS.map((s) => ({ ...s }));
   }
-  if (target_equity_pct < lower_pct || target_equity_pct > upper_pct) {
-    return emptyErr("목표 주식 비중은 하단~상단 corridor 안에 있어야 합니다.");
+
+  for (let i = 0; i < scenarioCfgs.length; i++) {
+    const err = validateScenario(scenarioCfgs[i]!, target_equity_pct, i);
+    if (err) return emptyErr(err);
   }
 
   let eqPts;
@@ -305,89 +457,31 @@ export async function runCorridorAnalysis(
   }
 
   const target = target_equity_pct / 100;
-  const upper = upper_pct / 100;
-  const lower = lower_pct / 100;
 
-  const primary = runPath({
+  const scenarios = scenarioCfgs.map((cfg, index) =>
+    runPath({
+      dates,
+      eq,
+      bond,
+      target,
+      initial: initial_value,
+      id: cfg.id || `c${index + 1}`,
+      label: scenarioLabel(cfg, index),
+      mode: "corridor",
+      cfg,
+    }),
+  );
+
+  const buy_hold = runPath({
     dates,
     eq,
     bond,
     target,
-    upper,
-    lower,
-    mode: "corridor",
     initial: initial_value,
-    id: "corridor",
-    label: `Corridor ${lower_pct}–${upper_pct}%`,
+    id: "buy_hold",
+    label: "Buy & Hold",
+    mode: "buy_hold",
   });
-
-  const baselines: CorridorScenario[] = [
-    runPath({
-      dates,
-      eq,
-      bond,
-      target,
-      upper: null,
-      lower: null,
-      mode: "buy_hold",
-      initial: initial_value,
-      id: "buy_hold",
-      label: "Buy & Hold (리밸런싱 없음)",
-    }),
-    runPath({
-      dates,
-      eq,
-      bond,
-      target,
-      upper: null,
-      lower: null,
-      mode: "monthly",
-      initial: initial_value,
-      id: "monthly",
-      label: "월간 목표비중 리밸런싱",
-    }),
-  ];
-
-  const bandPairs: Array<[number, number]> = [
-    [lower_pct, upper_pct],
-    [Math.max(0, target_equity_pct - 5), Math.min(100, target_equity_pct + 5)],
-    [Math.max(0, target_equity_pct - 10), Math.min(100, target_equity_pct + 10)],
-    [20, 40],
-    [20, 50],
-    [10, 50],
-    [25, 35],
-  ];
-  const seen = new Set<string>();
-  const sensitivity: CorridorPayload["sensitivity"] = [];
-  for (const [lo, hi] of bandPairs) {
-    if (!(lo < target_equity_pct && target_equity_pct < hi)) continue;
-    const key = `${lo}-${hi}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const sc = runPath({
-      dates,
-      eq,
-      bond,
-      target,
-      upper: hi / 100,
-      lower: lo / 100,
-      mode: "corridor",
-      initial: initial_value,
-      id: key,
-      label: `${lo}–${hi}%`,
-    });
-    sensitivity.push({
-      upper_pct: hi,
-      lower_pct: lo,
-      total_return_pct: sc.metrics.total_return_pct,
-      cagr_pct: sc.metrics.cagr_pct,
-      annual_vol_pct: sc.metrics.annual_vol_pct,
-      sharpe: sc.metrics.sharpe,
-      max_drawdown_pct: sc.metrics.max_drawdown_pct,
-      rebalance_count: sc.metrics.rebalance_count,
-    });
-  }
-  sensitivity.sort((a, b) => b.sharpe - a.sharpe);
 
   return {
     ok: true,
@@ -398,14 +492,11 @@ export async function runCorridorAnalysis(
     equity: { symbol: equity_symbol, name: etfName(equity_symbol) },
     bond: { symbol: bond_symbol, name: etfName(bond_symbol) },
     target_equity_pct,
-    upper_pct,
-    lower_pct,
     initial_value,
-    primary,
-    baselines,
-    sensitivity,
+    scenarios,
+    buy_hold,
     note:
-      "주식 비중이 상단을 초과하면 상단까지 매도, 하단을 하회하면 하단까지 매수합니다. 목표 비중으로 되돌리지 않고 밴드 경계에서 멈춥니다.",
+      "밴드 터치 후 N거래일 동안 이탈이 유지되면 리밸런싱합니다. 리밸 목표는 밴드시(상·하한), 여유(밴드 안쪽), 목표비중 중 선택할 수 있습니다.",
     disclaimer:
       "과거 시뮬레이션이며 비용·세금·추적오차는 단순화했습니다. 투자 권유가 아닙니다.",
   };
@@ -428,20 +519,20 @@ function emptyErr(error: string): CorridorPayload {
       name: etfName(CORRIDOR_DEFAULTS.bond_symbol),
     },
     target_equity_pct: CORRIDOR_DEFAULTS.target_equity_pct,
-    upper_pct: CORRIDOR_DEFAULTS.upper_pct,
-    lower_pct: CORRIDOR_DEFAULTS.lower_pct,
     initial_value: CORRIDOR_DEFAULTS.initial_value,
-    primary: {
-      id: "corridor",
-      label: "—",
-      mode: "corridor",
-      upper_pct: null,
+    scenarios: [],
+    buy_hold: {
+      id: "buy_hold",
+      label: "Buy & Hold",
+      mode: "buy_hold",
       lower_pct: null,
+      upper_pct: null,
+      delay_days: null,
+      rebalance_to: null,
+      cushion_pct: null,
       metrics: metricsFromSeries([], CORRIDOR_DEFAULTS.initial_value, 0),
       series: [],
     },
-    baselines: [],
-    sensitivity: [],
     note: "",
     disclaimer: "",
   };
