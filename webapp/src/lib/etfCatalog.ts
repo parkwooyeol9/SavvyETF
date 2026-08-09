@@ -189,6 +189,11 @@ export function catalogForListing(listing: ListingMarket): EtfMeta[] {
   return ETF_CATALOG.filter((e) => e.listing === listing);
 }
 
+/** KR-listed equity/bond universe used by ETF 배분 · 자산군 배분 (상장국가 한국). */
+export function corridorBmUniverse(assetClass: "equity" | "bond"): EtfMeta[] {
+  return catalogForListing("kr").filter((e) => e.assetClass === assetClass);
+}
+
 export function featuredEtfs(listing: ListingMarket = "us"): EtfMeta[] {
   return catalogForListing(listing).filter((e) => e.featured);
 }

@@ -19,6 +19,11 @@ import {
   type CorridorScenarioConfig,
   type RebalanceTargetMode,
 } from "@/lib/corridor";
+import {
+  CATALOG_BY_SYMBOL,
+  corridorBmUniverse,
+  etfDisplay,
+} from "@/lib/etfCatalog";
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -127,6 +132,12 @@ function newScenario(index: number, targetPct: number): CorridorScenarioConfig {
 }
 
 export default function CorridorTab() {
+  const equityOptions = useMemo(() => corridorBmUniverse("equity"), []);
+  const bondOptions = useMemo(() => corridorBmUniverse("bond"), []);
+  const [equitySymbol, setEquitySymbol] = useState<string>(
+    CORRIDOR_DEFAULTS.equity_symbol,
+  );
+  const [bondSymbol, setBondSymbol] = useState<string>(CORRIDOR_DEFAULTS.bond_symbol);
   const [target, setTarget] = useState<number>(CORRIDOR_DEFAULTS.target_equity_pct);
   const [scenarios, setScenarios] = useState<CorridorScenarioConfig[]>(() =>
     DEFAULT_SCENARIOS.map((s) => ({ ...s })),
@@ -136,6 +147,13 @@ export default function CorridorTab() {
   const [error, setError] = useState<string | null>(null);
   const [weightFocus, setWeightFocus] = useState(0);
 
+  const equityLabel =
+    CATALOG_BY_SYMBOL[equitySymbol]?.name ||
+    etfDisplay(equitySymbol).name ||
+    equitySymbol;
+  const bondLabel =
+    CATALOG_BY_SYMBOL[bondSymbol]?.name || etfDisplay(bondSymbol).name || bondSymbol;
+
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -144,8 +162,8 @@ export default function CorridorTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          equity_symbol: CORRIDOR_DEFAULTS.equity_symbol,
-          bond_symbol: CORRIDOR_DEFAULTS.bond_symbol,
+          equity_symbol: equitySymbol,
+          bond_symbol: bondSymbol,
           target_equity_pct: target,
           start_date: CORRIDOR_DEFAULTS.start_date,
           scenarios,
@@ -160,7 +178,7 @@ export default function CorridorTab() {
     } finally {
       setLoading(false);
     }
-  }, [target, scenarios, weightFocus]);
+  }, [equitySymbol, bondSymbol, target, scenarios, weightFocus]);
 
   useEffect(() => {
     void run();
@@ -211,7 +229,7 @@ export default function CorridorTab() {
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">비중 한도</h2>
+            <h2 className="kr-hero-title">비중조절전략</h2>
             <p className="kr-hero-sub">
               여러 corridor 설정(상·하단, 터치 후 지연 일수, 리밸 목표)을 동시에
               비교합니다. 밴드 이탈이 N거래일 유지된 뒤에만 리밸런싱합니다.
@@ -229,9 +247,8 @@ export default function CorridorTab() {
           </div>
         </div>
         <p className="meta-soft">
-          기본: {CORRIDOR_DEFAULTS.start_date}~ ·{" "}
-          {data?.equity.name || "KODEX 200"} {target}% +{" "}
-          {data?.bond.name || "KODEX 단기채권"} {100 - target}% · 초기{" "}
+          기본: {CORRIDOR_DEFAULTS.start_date}~ · {data?.equity.name || equityLabel}{" "}
+          {target}% + {data?.bond.name || bondLabel} {100 - target}% · 초기{" "}
           {fmtKrw(CORRIDOR_DEFAULTS.initial_value)}
         </p>
         {data?.ok ? (
@@ -243,8 +260,48 @@ export default function CorridorTab() {
       </section>
 
       <section className="geo-section" style={{ marginTop: 12 }}>
-        <h3 className="geo-section-title">공통 설정</h3>
-        <div className="corridor-controls">
+        <h3 className="geo-section-title">공통 설정 · 벤치마크 ETF</h3>
+        <p className="meta-soft" style={{ marginTop: 6 }}>
+          ETF 배분 탭에서 상장국가=한국 · 자산군 배분일 때 고를 수 있는 주식·채권
+          ETF와 동일합니다.
+        </p>
+        <div className="corridor-controls corridor-bm-controls">
+          <label className="corridor-bm-field">
+            주식 BM
+            <select
+              value={equitySymbol}
+              onChange={(e) => setEquitySymbol(e.target.value)}
+              size={Math.min(8, Math.max(4, equityOptions.length))}
+              aria-label="주식 벤치마크 ETF"
+            >
+              {equityOptions.map((e) => {
+                const { code } = etfDisplay(e.symbol);
+                return (
+                  <option key={e.symbol} value={e.symbol}>
+                    {e.name} ({code}) · {e.group}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label className="corridor-bm-field">
+            채권 BM
+            <select
+              value={bondSymbol}
+              onChange={(e) => setBondSymbol(e.target.value)}
+              size={Math.min(8, Math.max(4, bondOptions.length))}
+              aria-label="채권 벤치마크 ETF"
+            >
+              {bondOptions.map((e) => {
+                const { code } = etfDisplay(e.symbol);
+                return (
+                  <option key={e.symbol} value={e.symbol}>
+                    {e.name} ({code}) · {e.group}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
           <label>
             목표 주식%
             <input

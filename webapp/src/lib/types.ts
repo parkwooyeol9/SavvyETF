@@ -120,7 +120,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
   aiport: "AI포트",
-  corridor: "비중 한도",
+  corridor: "비중조절전략",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
