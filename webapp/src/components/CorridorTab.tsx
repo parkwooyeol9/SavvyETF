@@ -35,8 +35,6 @@ const tooltipStyle = {
 const LINE_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"];
 const BUY_HOLD_COLOR = "#94a3b8";
 
-const DELAY_OPTIONS = [0, 1, 3, 5, 10, 20];
-
 const STRATEGY_THEORY: Array<{
   name: string;
   onUp: string;
@@ -398,18 +396,21 @@ export default function CorridorTab() {
                 </label>
                 <label>
                   지연(거래일)
-                  <select
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    step={1}
                     value={s.delay_days}
-                    onChange={(e) =>
-                      updateScenario(index, { delay_days: Number(e.target.value) })
-                    }
-                  >
-                    {DELAY_OPTIONS.map((d) => (
-                      <option key={d} value={d}>
-                        {d === 0 ? "당일(0)" : `${d}일`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      updateScenario(index, {
+                        delay_days: Number.isFinite(n)
+                          ? Math.max(0, Math.min(60, Math.floor(n)))
+                          : 0,
+                      });
+                    }}
+                  />
                 </label>
                 <label>
                   리밸 목표
