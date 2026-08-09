@@ -12,7 +12,7 @@ import { fetchDailyCloses } from "@/lib/simulate";
 export const CORRIDOR_DEFAULTS = {
   equity_symbol: "069500.KS",
   bond_symbol: "153130.KS",
-  target_equity_pct: 30,
+  target_equity_pct: 45,
   start_date: "2020-01-02",
   initial_value: 100_000_000,
   max_scenarios: 5,
@@ -89,8 +89,8 @@ export const DEFAULT_SCENARIOS: CorridorScenarioConfig[] = [
   {
     id: "c1",
     label: "Corridor 1",
-    lower_pct: 20,
-    upper_pct: 50,
+    lower_pct: 30,
+    upper_pct: 60,
     delay_days: 0,
     rebalance_to: "band",
     cushion_pct: 5,
@@ -98,8 +98,8 @@ export const DEFAULT_SCENARIOS: CorridorScenarioConfig[] = [
   {
     id: "c2",
     label: "Corridor 2",
-    lower_pct: 25,
-    upper_pct: 50,
+    lower_pct: 35,
+    upper_pct: 60,
     delay_days: 5,
     rebalance_to: "band",
     cushion_pct: 5,
@@ -107,8 +107,8 @@ export const DEFAULT_SCENARIOS: CorridorScenarioConfig[] = [
   {
     id: "c3",
     label: "Corridor 3",
-    lower_pct: 20,
-    upper_pct: 50,
+    lower_pct: 40,
+    upper_pct: 60,
     delay_days: 5,
     rebalance_to: "cushion",
     cushion_pct: 5,
