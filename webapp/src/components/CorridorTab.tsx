@@ -138,6 +138,7 @@ export default function CorridorTab() {
     CORRIDOR_DEFAULTS.equity_symbol,
   );
   const [bondSymbol, setBondSymbol] = useState<string>(CORRIDOR_DEFAULTS.bond_symbol);
+  const [startDate, setStartDate] = useState<string>(CORRIDOR_DEFAULTS.start_date);
   const [target, setTarget] = useState<number>(CORRIDOR_DEFAULTS.target_equity_pct);
   const [scenarios, setScenarios] = useState<CorridorScenarioConfig[]>(() =>
     DEFAULT_SCENARIOS.map((s) => ({ ...s })),
@@ -165,7 +166,7 @@ export default function CorridorTab() {
           equity_symbol: equitySymbol,
           bond_symbol: bondSymbol,
           target_equity_pct: target,
-          start_date: CORRIDOR_DEFAULTS.start_date,
+          start_date: startDate,
           scenarios,
         }),
       });
@@ -178,7 +179,7 @@ export default function CorridorTab() {
     } finally {
       setLoading(false);
     }
-  }, [equitySymbol, bondSymbol, target, scenarios, weightFocus]);
+  }, [equitySymbol, bondSymbol, startDate, target, scenarios, weightFocus]);
 
   useEffect(() => {
     void run();
@@ -247,8 +248,8 @@ export default function CorridorTab() {
           </div>
         </div>
         <p className="meta-soft">
-          기본: {CORRIDOR_DEFAULTS.start_date}~ · {data?.equity.name || equityLabel}{" "}
-          {target}% + {data?.bond.name || bondLabel} {100 - target}% · 초기{" "}
+          시작 {startDate}~ · {data?.equity.name || equityLabel} {target}% +{" "}
+          {data?.bond.name || bondLabel} {100 - target}% · 초기{" "}
           {fmtKrw(CORRIDOR_DEFAULTS.initial_value)}
         </p>
         {data?.ok ? (
@@ -301,6 +302,16 @@ export default function CorridorTab() {
                 );
               })}
             </select>
+          </label>
+          <label>
+            시작일
+            <input
+              type="date"
+              min="2000-01-01"
+              max={new Date().toISOString().slice(0, 10)}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value || CORRIDOR_DEFAULTS.start_date)}
+            />
           </label>
           <label>
             목표 주식%
