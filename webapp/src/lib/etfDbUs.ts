@@ -4,6 +4,7 @@
  */
 
 import { reconstructUsHistories } from "@/lib/etfDbUsHistory";
+import { uniqueUsUniverse } from "@/lib/etfDbUsUniverse";
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
 
 export type EtfDbUsDimension = "type" | "region" | "sector" | "theme";
@@ -51,6 +52,10 @@ export type EtfDbUsTickerSeries = {
   nav: Array<number | null>;
   units: Array<number | null>;
   aum_mn: Array<number | null>;
+  /** Daily NAV×Δunits ($M) */
+  flow_daily_mn: Array<number | null>;
+  /** Cumulative Σ daily flow ($M) — ETF 수급 계정 */
+  flow_cum_mn: Array<number | null>;
 };
 
 export type EtfDbUsPayload = {
@@ -67,9 +72,11 @@ export type EtfDbUsPayload = {
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   /** AUM-weighted NAV index (100 = period start) */
   nav_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
-  /** Sum of member units (≈ flat under price backfill) */
-  units_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
-  /** Per-ticker ~1y NAV / units / AUM for charts */
+  /** Cumulative ETF 수급 account: Σ (NAV × Δunits) in $M */
+  flow_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Daily ETF 수급: NAV × Δunits in $M */
+  flow_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Per-ticker ~1y NAV / units / AUM / flow for charts */
   ticker_series: Record<string, EtfDbUsTickerSeries>;
   history_note: string;
   rows: EtfDbUsRow[];
@@ -88,124 +95,11 @@ const UA =
  * Themes of interest (watch): precious metals, defense, nuclear, rare earths,
  * oil, tanker/war shipping (BWET), uranium, etc.
  */
-export const US_ETF_UNIVERSE: EtfDbUsMeta[] = [
-  // —— Broad equity / index ——
-  { symbol: "SPY", name: "SPDR S&P 500", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "대형주" },
-  { symbol: "IVV", name: "iShares Core S&P 500", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "대형주" },
-  { symbol: "VOO", name: "Vanguard S&P 500", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "대형주" },
-  { symbol: "QQQ", name: "Invesco QQQ", type: "미국 시장지수", region: "미국", sector: "IT", theme: "나스닥100" },
-  { symbol: "VTI", name: "Vanguard Total Stock", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "전체시장" },
-  { symbol: "IWM", name: "iShares Russell 2000", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "소형주" },
-  { symbol: "DIA", name: "SPDR Dow Jones", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "대형주" },
-  { symbol: "MDY", name: "SPDR S&P MidCap 400", type: "미국 시장지수", region: "미국", sector: "시장지수", theme: "중형주" },
+export const US_ETF_UNIVERSE: EtfDbUsMeta[] = uniqueUsUniverse();
 
-  // —— International equity ——
-  { symbol: "EFA", name: "iShares MSCI EAFE", type: "해외 주식", region: "글로벌", sector: "시장지수", theme: "선진국" },
-  { symbol: "VEA", name: "Vanguard FTSE Developed", type: "해외 주식", region: "글로벌", sector: "시장지수", theme: "선진국" },
-  { symbol: "EEM", name: "iShares MSCI Emerging", type: "해외 주식", region: "신흥", sector: "시장지수", theme: "신흥국" },
-  { symbol: "VWO", name: "Vanguard FTSE EM", type: "해외 주식", region: "신흥", sector: "시장지수", theme: "신흥국" },
-  { symbol: "EWJ", name: "iShares MSCI Japan", type: "해외 주식", region: "일본", sector: "시장지수", theme: "국가" },
-  { symbol: "EWY", name: "iShares MSCI South Korea", type: "해외 주식", region: "한국", sector: "시장지수", theme: "국가" },
-  { symbol: "MCHI", name: "iShares MSCI China", type: "해외 주식", region: "중국", sector: "시장지수", theme: "국가" },
-  { symbol: "FXI", name: "iShares China Large-Cap", type: "해외 주식", region: "중국", sector: "시장지수", theme: "국가" },
-  { symbol: "INDA", name: "iShares MSCI India", type: "해외 주식", region: "인도", sector: "시장지수", theme: "국가" },
-  { symbol: "VGK", name: "Vanguard FTSE Europe", type: "해외 주식", region: "유럽", sector: "시장지수", theme: "국가" },
-  { symbol: "EWZ", name: "iShares MSCI Brazil", type: "해외 주식", region: "브라질", sector: "시장지수", theme: "국가" },
+const EQUITY_TYPES = new Set(["미국 시장지수", "업종/테마", "원자재", "파생"]);
 
-  // —— Sectors ——
-  { symbol: "XLK", name: "Technology Select", type: "업종/테마", region: "미국", sector: "IT", theme: "섹터" },
-  { symbol: "XLF", name: "Financial Select", type: "업종/테마", region: "미국", sector: "금융", theme: "섹터" },
-  { symbol: "XLE", name: "Energy Select", type: "업종/테마", region: "미국", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "XLV", name: "Health Care Select", type: "업종/테마", region: "미국", sector: "헬스케어", theme: "섹터" },
-  { symbol: "XLI", name: "Industrial Select", type: "업종/테마", region: "미국", sector: "산업재", theme: "섹터" },
-  { symbol: "XLY", name: "Consumer Discretionary", type: "업종/테마", region: "미국", sector: "경기소비재", theme: "섹터" },
-  { symbol: "XLP", name: "Consumer Staples", type: "업종/테마", region: "미국", sector: "필수소비재", theme: "섹터" },
-  { symbol: "XLU", name: "Utilities Select", type: "업종/테마", region: "미국", sector: "유틸리티", theme: "섹터" },
-  { symbol: "XLB", name: "Materials Select", type: "업종/테마", region: "미국", sector: "소재", theme: "섹터" },
-  { symbol: "XLRE", name: "Real Estate Select", type: "업종/테마", region: "미국", sector: "부동산", theme: "섹터" },
-  { symbol: "XLC", name: "Communication Services", type: "업종/테마", region: "미국", sector: "커뮤니케이션", theme: "섹터" },
-  { symbol: "SMH", name: "VanEck Semiconductor", type: "업종/테마", region: "미국", sector: "IT", theme: "반도체" },
-  { symbol: "SOXX", name: "iShares Semiconductor", type: "업종/테마", region: "미국", sector: "IT", theme: "반도체" },
-  { symbol: "XBI", name: "SPDR S&P Biotech", type: "업종/테마", region: "미국", sector: "헬스케어", theme: "바이오" },
-  { symbol: "IBB", name: "iShares Biotechnology", type: "업종/테마", region: "미국", sector: "헬스케어", theme: "바이오" },
-  { symbol: "XOP", name: "SPDR Oil & Gas Exploration", type: "업종/테마", region: "미국", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "OIH", name: "VanEck Oil Services", type: "업종/테마", region: "미국", sector: "에너지", theme: "원유·에너지", watch: true },
-
-  // —— Precious metals (귀금속) ——
-  { symbol: "GLD", name: "SPDR Gold Shares", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "IAU", name: "iShares Gold Trust", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "GLDM", name: "SPDR Gold MiniShares", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "SGOL", name: "abrdn Physical Gold", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "SLV", name: "iShares Silver Trust", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "SIVR", name: "abrdn Physical Silver", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "PPLT", name: "abrdn Physical Platinum", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "PALL", name: "abrdn Physical Palladium", type: "원자재", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "GDX", name: "VanEck Gold Miners", type: "업종/테마", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "GDXJ", name: "VanEck Junior Gold Miners", type: "업종/테마", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-  { symbol: "SIL", name: "Global X Silver Miners", type: "업종/테마", region: "글로벌", sector: "소재", theme: "귀금속", watch: true },
-
-  // —— Defense / aerospace (방산) ——
-  { symbol: "ITA", name: "iShares U.S. Aerospace & Defense", type: "업종/테마", region: "미국", sector: "산업재", theme: "방산", watch: true },
-  { symbol: "PPA", name: "Invesco Aerospace & Defense", type: "업종/테마", region: "미국", sector: "산업재", theme: "방산", watch: true },
-  { symbol: "XAR", name: "SPDR S&P Aerospace & Defense", type: "업종/테마", region: "미국", sector: "산업재", theme: "방산", watch: true },
-  { symbol: "DFEN", name: "Direxion Daily Aerospace & Defense Bull 3X", type: "파생", region: "미국", sector: "산업재", theme: "방산", watch: true },
-  { symbol: "SHLD", name: "Global X Defense Tech", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "방산", watch: true },
-  { symbol: "NATO", name: "Themes Transatlantic Defense", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "방산", watch: true },
-
-  // —— Nuclear / uranium (원전) ——
-  { symbol: "NLR", name: "VanEck Uranium & Nuclear", type: "업종/테마", region: "글로벌", sector: "유틸리티", theme: "원전·우라늄", watch: true },
-  { symbol: "URA", name: "Global X Uranium", type: "업종/테마", region: "글로벌", sector: "에너지", theme: "원전·우라늄", watch: true },
-  { symbol: "URNM", name: "Sprott Uranium Miners", type: "업종/테마", region: "글로벌", sector: "에너지", theme: "원전·우라늄", watch: true },
-  { symbol: "URAN", name: "Themes Uranium & Nuclear", type: "업종/테마", region: "글로벌", sector: "에너지", theme: "원전·우라늄", watch: true },
-
-  // —— Rare earth / strategic minerals (희토류·전략자원) ——
-  { symbol: "REMX", name: "VanEck Rare Earth/Strategic Metals", type: "업종/테마", region: "글로벌", sector: "소재", theme: "희토류·전략금속", watch: true },
-  { symbol: "LIT", name: "Global X Lithium & Battery Tech", type: "업종/테마", region: "글로벌", sector: "소재", theme: "희토류·전략금속", watch: true },
-  { symbol: "SETM", name: "Sprott Critical Materials", type: "업종/테마", region: "글로벌", sector: "소재", theme: "희토류·전략금속", watch: true },
-  { symbol: "COPX", name: "Global X Copper Miners", type: "업종/테마", region: "글로벌", sector: "소재", theme: "희토류·전략금속", watch: true },
-  { symbol: "PICK", name: "iShares MSCI Global Metals & Mining", type: "업종/테마", region: "글로벌", sector: "소재", theme: "희토류·전략금속", watch: true },
-  { symbol: "XME", name: "SPDR S&P Metals & Mining", type: "업종/테마", region: "미국", sector: "소재", theme: "희토류·전략금속", watch: true },
-
-  // —— Oil / energy commodities ——
-  { symbol: "USO", name: "United States Oil Fund", type: "원자재", region: "글로벌", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "BNO", name: "United States Brent Oil", type: "원자재", region: "글로벌", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "DBO", name: "Invesco DB Oil", type: "원자재", region: "글로벌", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "UNG", name: "United States Natural Gas", type: "원자재", region: "글로벌", sector: "에너지", theme: "원유·에너지", watch: true },
-  { symbol: "DBC", name: "Invesco DB Commodity", type: "원자재", region: "글로벌", sector: "소재", theme: "원자재바스켓" },
-  { symbol: "PDBC", name: "Invesco Optimum Yield Commodity", type: "원자재", region: "글로벌", sector: "소재", theme: "원자재바스켓" },
-
-  // —— War / shipping / geopolitics (전쟁·해운) ——
-  { symbol: "BWET", name: "Breakwave Tanker Shipping", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "전쟁·해운", watch: true },
-  { symbol: "BDRY", name: "Breakwave Dry Bulk Shipping", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "전쟁·해운", watch: true },
-  { symbol: "SEA", name: "US Global Sea to Sky Cargo", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "전쟁·해운", watch: true },
-  { symbol: "BOAT", name: "SonicShares Global Shipping", type: "업종/테마", region: "글로벌", sector: "산업재", theme: "전쟁·해운", watch: true },
-
-  // —— Bonds ——
-  { symbol: "BND", name: "Vanguard Total Bond", type: "채권", region: "미국", sector: "채권", theme: "채권" },
-  { symbol: "AGG", name: "iShares Core US Aggregate Bond", type: "채권", region: "미국", sector: "채권", theme: "채권" },
-  { symbol: "TLT", name: "iShares 20+ Year Treasury", type: "채권", region: "미국", sector: "채권", theme: "장기국채" },
-  { symbol: "IEF", name: "iShares 7-10 Year Treasury", type: "채권", region: "미국", sector: "채권", theme: "중기국채" },
-  { symbol: "SHY", name: "iShares 1-3 Year Treasury", type: "채권", region: "미국", sector: "채권", theme: "단기국채" },
-  { symbol: "TIP", name: "iShares TIPS Bond", type: "채권", region: "미국", sector: "채권", theme: "물가연동" },
-  { symbol: "LQD", name: "iShares IG Corporate Bond", type: "채권", region: "미국", sector: "채권", theme: "회사채" },
-  { symbol: "HYG", name: "iShares High Yield Corporate", type: "채권", region: "미국", sector: "채권", theme: "하이일드" },
-  { symbol: "JNK", name: "SPDR Bloomberg High Yield", type: "채권", region: "미국", sector: "채권", theme: "하이일드" },
-  { symbol: "EMB", name: "iShares JP Morgan USD EM Bond", type: "채권", region: "신흥", sector: "채권", theme: "신흥국채" },
-
-  // —— Dividend / income ——
-  { symbol: "SCHD", name: "Schwab US Dividend Equity", type: "업종/테마", region: "미국", sector: "배당", theme: "배당" },
-  { symbol: "VIG", name: "Vanguard Dividend Appreciation", type: "업종/테마", region: "미국", sector: "배당", theme: "배당" },
-  { symbol: "VYM", name: "Vanguard High Dividend Yield", type: "업종/테마", region: "미국", sector: "배당", theme: "배당" },
-  { symbol: "JEPI", name: "JPMorgan Equity Premium Income", type: "업종/테마", region: "미국", sector: "배당", theme: "커버드콜" },
-  { symbol: "JEPQ", name: "JPMorgan Nasdaq Equity Premium", type: "업종/테마", region: "미국", sector: "배당", theme: "커버드콜" },
-
-  // —— Alts ——
-  { symbol: "VNQ", name: "Vanguard Real Estate", type: "기타", region: "미국", sector: "부동산", theme: "리츠" },
-  { symbol: "BITO", name: "ProShares Bitcoin Strategy", type: "기타", region: "글로벌", sector: "기타", theme: "암호화폐" },
-];
-
-const EQUITY_TYPES = new Set(["미국 시장지수", "해외 주식", "업종/테마", "파생"]);
-
+/** Equity filter: US market / sector-theme / derivative equity products. */
 export function isEquityUsEtf(row: Pick<EtfDbUsRow, "type" | "sector">): boolean {
   if (!EQUITY_TYPES.has(row.type)) return false;
   if (row.sector === "채권") return false;
@@ -495,7 +389,8 @@ export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> 
     aggregates: payload.aggregates,
     aum_history: payload.aum_history,
     nav_history: payload.nav_history,
-    units_history: payload.units_history,
+    flow_history: payload.flow_history,
+    flow_daily_history: payload.flow_daily_history,
     ticker_series: payload.ticker_series,
     history_note: payload.history_note,
   });
@@ -654,13 +549,15 @@ export async function buildEtfDbUsPayload(opts?: {
     aggregates,
     aum_history: hist.aum_history,
     nav_history: hist.nav_history,
-    units_history: hist.units_history,
+    flow_history: hist.flow_history,
+    flow_daily_history: hist.flow_daily_history,
     ticker_series: hist.ticker_series,
     history_note: hist.method_note,
     rows,
     note:
-      "수급 = NAV×Δ설정좌수(백만달러). 귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전쟁·전략자원 테마를 우선 포함. " +
-      "유니버스는 미국 상장 ETF 핵심·테마 추적 세트이며 점진 확장합니다.",
+      "ETF 수급 계정 = 각 시점 NAV×Δ설정좌수를 일별로 산출한 뒤 누적(이어붙임). 단위 $M. " +
+      "유니버스는 미국 주요 업종·테마 ETF(AUM 내림차순 적재). 채권·신흥국 제외. " +
+      "귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전략 테마 포함.",
   };
 }
 
