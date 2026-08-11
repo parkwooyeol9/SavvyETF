@@ -25,7 +25,8 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const cacheKey = `etf-db-us:${url.searchParams.get("equity") || "0"}:${url.searchParams.get("watch") || "0"}`;
-    const payload = await withServerCache(cacheKey, 120_000, 300_000, () =>
+    // History rebuild is heavier — keep warm for 10 minutes.
+    const payload = await withServerCache(cacheKey, 600_000, 900_000, () =>
       handle(req),
     );
     return NextResponse.json(payload, {
