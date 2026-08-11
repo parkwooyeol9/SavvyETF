@@ -13,6 +13,7 @@ import BriefSlotView from "@/components/BriefSlotView";
 import EsgTabShell from "@/components/EsgTabShell";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
+import EtfDbUsTab from "@/components/EtfDbUsTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
 import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
@@ -194,6 +195,7 @@ export default function Dashboard() {
       tab === "eventstudy" ||
       tab === "kosdaq100" ||
       tab === "etfdb" ||
+      tab === "etfdbus" ||
       tab === "leverage" ||
       tab === "etfweights" ||
       tab === "kosdaqactive" ||
@@ -285,6 +287,8 @@ export default function Dashboard() {
         <EducationTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
+      ) : tab === "etfdbus" ? (
+        <EtfDbUsTab />
       ) : tab === "etfweights" ? (
         <EtfWeightMonitorTab />
       ) : tab === "kosdaqactive" ? (
