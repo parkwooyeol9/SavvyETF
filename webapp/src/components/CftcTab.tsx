@@ -12,7 +12,12 @@ import {
   YAxis,
 } from "recharts";
 
-import type { CftcMarketId, CftcMarketSeries, CftcPayload } from "@/lib/cftc";
+import type {
+  CftcMarketId,
+  CftcMarketSeries,
+  CftcPayload,
+  CftcSpreadSeries,
+} from "@/lib/cftc";
 
 function fmtNet(n?: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -20,9 +25,24 @@ function fmtNet(n?: number | null): string {
   return `${sign}${Math.round(n).toLocaleString("en-US")}`;
 }
 
+function fmtPct(n?: number | null, digits = 1): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${n.toFixed(digits)}%`;
+}
+
+function fmtPx(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 function signedClass(n?: number | null): string {
   if (n == null || n === 0) return "";
   return n > 0 ? "up" : "down";
+}
+
+function primaryNet(m: CftcMarketSeries | null | undefined): number | null {
+  if (!m?.latest) return null;
+  return m.latest.net_mm ?? m.latest.net_noncomm;
 }
 
 const GROUP_ORDER = ["금속", "에너지", "농산물"] as const;
@@ -35,6 +55,7 @@ export default function CftcTab() {
   const [groupFilter, setGroupFilter] = useState<"전체" | (typeof GROUP_ORDER)[number]>(
     "전체",
   );
+  const [spreadFocus, setSpreadFocus] = useState<string>("gold_silver");
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -54,6 +75,11 @@ export default function CftcTab() {
           prev
         );
       });
+      if (json.spreads?.length) {
+        setSpreadFocus((prev) =>
+          json.spreads.some((s) => s.id === prev) ? prev : json.spreads[0]!.id,
+        );
+      }
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : "로드 실패");
     } finally {
@@ -80,29 +106,57 @@ export default function CftcTab() {
     return data?.markets.find((m) => m.id === focus) || null;
   }, [data, focus]);
 
+  const activeSpread: CftcSpreadSeries | null = useMemo(() => {
+    return data?.spreads?.find((s) => s.id === spreadFocus) || null;
+  }, [data, spreadFocus]);
+
   const chartData = useMemo(() => {
     const series = focusMarket?.series || [];
     if (!series.length) return [];
     const step = Math.max(1, Math.ceil(series.length / 100));
-    const out: Array<{ label: string; net: number; oi: number }> = [];
+    const out: Array<{
+      label: string;
+      net_mm: number | null;
+      net_nc: number | null;
+      pct_oi: number | null;
+      price: number | null;
+    }> = [];
     for (let i = 0; i < series.length; i += step) {
       const p = series[i]!;
       out.push({
         label: p.date.slice(2),
-        net: p.net_noncomm,
-        oi: p.open_interest,
+        net_mm: p.net_mm,
+        net_nc: p.net_noncomm,
+        pct_oi: p.net_pct_oi,
+        price: p.price,
       });
     }
     const last = series[series.length - 1]!;
     if (out.length && out[out.length - 1]!.label !== last.date.slice(2)) {
       out.push({
         label: last.date.slice(2),
-        net: last.net_noncomm,
-        oi: last.open_interest,
+        net_mm: last.net_mm,
+        net_nc: last.net_noncomm,
+        pct_oi: last.net_pct_oi,
+        price: last.price,
       });
     }
     return out;
   }, [focusMarket]);
+
+  const spreadChartData = useMemo(() => {
+    const series = activeSpread?.series || [];
+    if (!series.length) return [];
+    const step = Math.max(1, Math.ceil(series.length / 100));
+    const out: Array<{ label: string; value: number | null }> = [];
+    for (let i = 0; i < series.length; i += step) {
+      out.push({
+        label: series[i]!.date.slice(2),
+        value: series[i]!.value,
+      });
+    }
+    return out;
+  }, [activeSpread]);
 
   return (
     <section className="panel etfdb-panel">
@@ -110,8 +164,8 @@ export default function CftcTab() {
         <div>
           <h2 className="kr-hero-title">CFTC 투기적 순매수</h2>
           <p className="kr-note">
-            Non-Commercial Long − Short (Legacy Futures Only). 금·은·원유를 포함한
-            주요 원자재 주간 포지션. {data?.schedule_note}
+            Managed Money(주) · Non-Commercial(보조) · %OI · 역사 퍼센타일 · Yahoo
+            선물 가격. {data?.schedule_note}
           </p>
         </div>
         <div className="etfdb-hero-actions">
@@ -132,20 +186,22 @@ export default function CftcTab() {
               <div className="etfdb-stat-v">{data.as_of || "—"}</div>
             </div>
             <div>
-              <div className="etfdb-stat-k">스냅샷</div>
-              <div className="etfdb-stat-v">{data.generated_at_display}</div>
+              <div className="etfdb-stat-k">다음 COT(금)</div>
+              <div className="etfdb-stat-v">{data.next_cot_friday || "—"}</div>
             </div>
             <div>
-              <div className="etfdb-stat-k">시장</div>
-              <div className="etfdb-stat-v">
-                {data.markets.filter((m) => m.latest).length}종
+              <div className="etfdb-stat-k">VIX</div>
+              <div className="etfdb-stat-v">{fmtPx(data.vix?.price)}</div>
+            </div>
+            <div>
+              <div className="etfdb-stat-k">스냅샷</div>
+              <div className="etfdb-stat-v" style={{ fontSize: "0.95rem" }}>
+                {data.generated_at_display}
+                {data.from_cache ? " · 캐시" : ""}
               </div>
             </div>
           </div>
-          <p className="kr-note">
-            {data.source}
-            {data.from_cache ? " · R2 캐시" : " · 라이브"}
-          </p>
+          <p className="kr-note">{data.source}</p>
           <p className="meta-soft">{data.note}</p>
 
           {watchCards.length ? (
@@ -157,9 +213,16 @@ export default function CftcTab() {
                   className={`etfdbus-watch-card ${focus === m.id ? "active" : ""}`}
                   onClick={() => setFocus(m.id)}
                 >
-                  <strong>{m.label}</strong>
-                  <span className={signedClass(m.latest?.net_noncomm)}>
-                    {fmtNet(m.latest?.net_noncomm)}
+                  <strong>
+                    {m.label}
+                    {m.extreme ? ` · ${m.extreme}` : ""}
+                  </strong>
+                  <span className={signedClass(primaryNet(m))}>
+                    MM {fmtNet(primaryNet(m))}
+                  </span>
+                  <span>
+                    %OI {fmtPct(m.latest?.net_pct_oi)} · Pctl{" "}
+                    {m.latest?.percentile != null ? `${m.latest.percentile}` : "—"}
                   </span>
                   <span className={signedClass(m.latest?.net_chg)}>
                     WoW {fmtNet(m.latest?.net_chg)}
@@ -171,7 +234,10 @@ export default function CftcTab() {
 
           <div className="etfdbus-chart-head" style={{ marginTop: 12 }}>
             <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-              {focusMarket?.label || "시장"} · 투기적 순매수
+              {focusMarket?.label || "시장"} · MM 순매수 + 가격
+              {focusMarket?.extreme ? (
+                <span className="etfdb-chart-mode">{focusMarket.extreme}</span>
+              ) : null}
             </h3>
             <select
               className="etfdb-search"
@@ -184,6 +250,7 @@ export default function CftcTab() {
                 .map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.group} · {m.label}
+                    {m.extreme ? ` (${m.extreme})` : ""}
                   </option>
                 ))}
             </select>
@@ -208,47 +275,57 @@ export default function CftcTab() {
                     tickFormatter={(v) => Math.round(Number(v)).toLocaleString("en-US")}
                   />
                   <YAxis
-                    yAxisId="oi"
+                    yAxisId="px"
                     orientation="right"
                     tick={{ fill: "#8fa3b8", fontSize: 11 }}
                     width={64}
-                    tickFormatter={(v) =>
-                      Math.abs(Number(v)) >= 1e6
-                        ? `${(Number(v) / 1e6).toFixed(1)}M`
-                        : Math.round(Number(v) / 1e3) + "k"
-                    }
+                    tickFormatter={(v) => fmtPx(Number(v))}
                   />
                   <Tooltip
                     contentStyle={{
                       background: "#141d2b",
                       border: "1px solid #2b3648",
                     }}
-                    formatter={(v, name) =>
-                      String(name).includes("OI")
-                        ? Math.round(Number(v)).toLocaleString("en-US")
-                        : fmtNet(Number(v))
-                    }
+                    formatter={(v, name) => {
+                      const n = typeof v === "number" ? v : null;
+                      if (String(name).includes("가격")) return fmtPx(n);
+                      if (String(name).includes("%OI")) return fmtPct(n);
+                      return fmtNet(n);
+                    }}
                   />
                   <Legend />
                   <Line
                     yAxisId="net"
                     type="monotone"
-                    dataKey="net"
-                    name="투기적 순매수"
+                    dataKey="net_mm"
+                    name="Managed Money"
                     stroke="#fbbf24"
                     strokeWidth={2}
                     dot={false}
+                    connectNulls
                     isAnimationActive={false}
                   />
                   <Line
-                    yAxisId="oi"
+                    yAxisId="net"
                     type="monotone"
-                    dataKey="oi"
-                    name="미결제약정(OI)"
-                    stroke="#60a5fa"
-                    strokeWidth={1.4}
+                    dataKey="net_nc"
+                    name="Non-Comm"
+                    stroke="#a78bfa"
+                    strokeWidth={1.3}
                     strokeDasharray="4 3"
                     dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    yAxisId="px"
+                    type="monotone"
+                    dataKey="price"
+                    name={`${focusMarket?.yahoo || ""} 가격`}
+                    stroke="#34d399"
+                    strokeWidth={1.6}
+                    dot={false}
+                    connectNulls
                     isAnimationActive={false}
                   />
                 </ComposedChart>
@@ -257,6 +334,72 @@ export default function CftcTab() {
               <p className="empty">시계열 없음</p>
             )}
           </div>
+
+          {data.spreads?.length ? (
+            <>
+              <div className="etfdbus-chart-head" style={{ marginTop: 14 }}>
+                <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
+                  상대가치 스프레드
+                </h3>
+                <div className="etfdbus-series-tabs" role="tablist">
+                  {data.spreads.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`tab-btn sub ${spreadFocus === s.id ? "active" : ""}`}
+                      onClick={() => setSpreadFocus(s.id)}
+                    >
+                      {s.label}
+                      {s.latest != null
+                        ? ` · ${s.latest.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+                        : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="etfdb-chart" style={{ minHeight: 240, height: 260 }}>
+                {spreadChartData.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={spreadChartData}>
+                      <CartesianGrid stroke="rgba(43,54,72,0.8)" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: "#8fa3b8", fontSize: 11 }}
+                        minTickGap={28}
+                      />
+                      <YAxis
+                        tick={{ fill: "#8fa3b8", fontSize: 11 }}
+                        width={56}
+                        tickFormatter={(v) =>
+                          Number(v).toLocaleString("en-US", {
+                            maximumFractionDigits: 2,
+                          })
+                        }
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#141d2b",
+                          border: "1px solid #2b3648",
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        name={activeSpread?.label || "spread"}
+                        stroke="#38bdf8"
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="empty">스프레드 없음</p>
+                )}
+              </div>
+            </>
+          ) : null}
 
           <div className="etfdb-toolbar">
             <h3 className="etfdb-detail-title">시장별 최신 포지션</h3>
@@ -280,11 +423,12 @@ export default function CftcTab() {
                 <tr>
                   <th>그룹</th>
                   <th>시장</th>
-                  <th className="num">순매수</th>
+                  <th className="num">MM 순매수</th>
+                  <th className="num">NC 순매수</th>
+                  <th className="num">%OI</th>
+                  <th className="num">Pctl</th>
                   <th className="num">WoW</th>
-                  <th className="num">Long</th>
-                  <th className="num">Short</th>
-                  <th className="num">OI</th>
+                  <th className="num">가격</th>
                   <th className="num">보고일</th>
                 </tr>
               </thead>
@@ -305,28 +449,26 @@ export default function CftcTab() {
                     style={{ cursor: m.series.length ? "pointer" : undefined }}
                   >
                     <td className="meta-soft">{m.group}</td>
-                    <td>{m.label}</td>
+                    <td>
+                      {m.label}
+                      {m.extreme ? (
+                        <span className="meta-soft"> · {m.extreme}</span>
+                      ) : null}
+                    </td>
+                    <td className={`num ${signedClass(m.latest?.net_mm)}`}>
+                      {fmtNet(m.latest?.net_mm)}
+                    </td>
                     <td className={`num ${signedClass(m.latest?.net_noncomm)}`}>
                       {fmtNet(m.latest?.net_noncomm)}
+                    </td>
+                    <td className="num">{fmtPct(m.latest?.net_pct_oi)}</td>
+                    <td className="num">
+                      {m.latest?.percentile != null ? m.latest.percentile : "—"}
                     </td>
                     <td className={`num ${signedClass(m.latest?.net_chg)}`}>
                       {fmtNet(m.latest?.net_chg)}
                     </td>
-                    <td className="num">
-                      {m.latest
-                        ? Math.round(m.latest.long).toLocaleString("en-US")
-                        : "—"}
-                    </td>
-                    <td className="num">
-                      {m.latest
-                        ? Math.round(m.latest.short).toLocaleString("en-US")
-                        : "—"}
-                    </td>
-                    <td className="num">
-                      {m.latest
-                        ? Math.round(m.latest.open_interest).toLocaleString("en-US")
-                        : "—"}
-                    </td>
+                    <td className="num">{fmtPx(m.latest?.price)}</td>
                     <td className="num meta-soft">{m.latest?.date || "—"}</td>
                   </tr>
                 ))}
