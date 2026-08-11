@@ -1,5 +1,5 @@
-import { uniqueUsUniverse, US_ETF_UNIVERSE_META } from "../src/lib/etfDbUsUniverse.ts";
-import { buildEtfDbUsPayload, US_ETF_UNIVERSE } from "../src/lib/etfDbUs.ts";
+import { uniqueUsUniverse, US_ETF_UNIVERSE_META } from "../src/lib/etfDbUsUniverse";
+import { buildEtfDbUsPayload, US_ETF_UNIVERSE } from "../src/lib/etfDbUs";
 
 async function main() {
   console.log("meta", US_ETF_UNIVERSE_META);
