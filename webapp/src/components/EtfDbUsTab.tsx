@@ -127,7 +127,7 @@ export default function EtfDbUsTab() {
   const [sort, setSort] = useState<"turnover" | "aum" | "flow" | "name" | "change">(
     "turnover",
   );
-  const [equityOnly, setEquityOnly] = useState(false);
+  const [equityOnly, setEquityOnly] = useState(true);
   const [watchOnly, setWatchOnly] = useState(false);
   const [seriesKind, setSeriesKind] = useState<SeriesKind>("turnover_cum");
   const [showFlowPanel, setShowFlowPanel] = useState(false);
@@ -438,8 +438,8 @@ export default function EtfDbUsTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB(US)</h2>
           <p className="kr-note">
-            주 지표는 거래대금(종가×거래량). 섹터·테마별 합산·누적으로 어디 거래가
-            몰리는지 봅니다. ETF 수급(NAV×Δ좌수)은 사이드에 유지합니다.
+            미국 주식형 ETF AUM 상위 약 1,000종. 주 지표는 거래대금(종가×거래량).
+            유형·지역·섹터·테마로 분류하고, ETF 수급(NAV×Δ좌수)은 사이드에 유지합니다.
           </p>
         </div>
         <div className="etfdb-hero-actions">
@@ -521,7 +521,7 @@ export default function EtfDbUsTab() {
 
           <p className="kr-note">
             {data.generated_at_display}
-            {equityOnly ? " · 주식형만" : " · 전체(원자재 포함)"}
+            {equityOnly ? " · 주식형 필터 ON" : " · 유니버스 전체"}
             {watchOnly ? " · 관심 테마만" : ""}
             {" · "}
             {chartMode === "intraday"

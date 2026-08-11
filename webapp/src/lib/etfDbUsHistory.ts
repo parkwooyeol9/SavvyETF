@@ -31,9 +31,11 @@ const LOOKBACK_DAYS = 400;
 const TOP_PER_LABEL = 12;
 const TOP_FOR_TOTAL = 50;
 const MAX_LABELS = 18;
-const FETCH_CONCURRENCY = 10;
+const FETCH_CONCURRENCY = 12;
 const CACHE_TTL_MS = 30 * 60_000;
 const MAX_SNAP_OVERLAY = 60;
+/** Cap Yahoo history fetches — full 1000-ticker charts would time out. */
+const HISTORY_SYMBOL_CAP = 160;
 
 export type UsHistoryBundle = {
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
@@ -492,6 +494,39 @@ function buildDimHistories(
   };
 }
 
+function pickHistorySymbols(rows: EtfDbUsRow[]): string[] {
+  const dims: EtfDbUsDimension[] = ["type", "region", "sector", "theme"];
+  const picked: string[] = [];
+  const push = (sym: string | undefined) => {
+    if (!sym) return;
+    picked.push(sym.toUpperCase());
+  };
+
+  for (const r of rows) {
+    if (r.watch) push(r.symbol);
+  }
+  for (const r of [...rows].sort((a, b) => (b.aum_mn || 0) - (a.aum_mn || 0)).slice(0, 80)) {
+    push(r.symbol);
+  }
+  for (const r of [...rows]
+    .sort((a, b) => (b.turnover_mn || 0) - (a.turnover_mn || 0))
+    .slice(0, 40)) {
+    push(r.symbol);
+  }
+  for (const dim of dims) {
+    const labels = [
+      ...new Set(rows.map((r) => String(r[dim] || "기타"))),
+    ].slice(0, MAX_LABELS);
+    for (const label of labels) {
+      for (const r of pickSample(rows, dim, label)) push(r.symbol);
+    }
+    for (const r of pickSample(rows, dim, "전체")) push(r.symbol);
+  }
+
+  const unique = [...new Set(picked)];
+  return unique.slice(0, HISTORY_SYMBOL_CAP);
+}
+
 export async function reconstructUsHistories(opts: {
   rows: EtfDbUsRow[];
   aggregates: Record<EtfDbUsDimension, EtfDbUsAggregate[]>;
@@ -499,19 +534,12 @@ export async function reconstructUsHistories(opts: {
   equityOnly: boolean;
   watchOnly: boolean;
 }): Promise<UsHistoryBundle> {
-  const cacheKey = `v3turn|${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
+  const cacheKey = `v4turn|${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
   const hit = memCache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.value;
 
   const dims: EtfDbUsDimension[] = ["type", "region", "sector", "theme"];
-  const codes = [
-    ...new Set(
-      opts.rows
-        .map((r) => r.symbol)
-        .filter((s) => !!s)
-        .map((s) => s.toUpperCase()),
-    ),
-  ];
+  const codes = pickHistorySymbols(opts.rows);
   const [fetched, overlay] = await Promise.all([
     mapPool(codes, FETCH_CONCURRENCY, async (sym) => {
       try {
@@ -526,7 +554,9 @@ export async function reconstructUsHistories(opts: {
   const prices = toPriceMap(bars);
   const dates = unionSortedDates(bars).slice(-260);
 
-  const ticker_series = buildTickerSeries(opts.rows, bars, dates, overlay);
+  // Ticker series only for symbols we actually charted (UI clicks those rows).
+  const seriesRows = opts.rows.filter((r) => bars.has(r.symbol.toUpperCase()));
+  const ticker_series = buildTickerSeries(seriesRows, bars, dates, overlay);
 
   const aum_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const nav_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
@@ -564,7 +594,8 @@ export async function reconstructUsHistories(opts: {
     flow_daily_history,
     ticker_series,
     method_note:
-      "거래대금 = 종가×거래량($M). 섹터/테마별 일별 합산 후 누적해 어디 거래가 몰리는지 봅니다. " +
+      `거래대금 = 종가×거래량($M). 섹터/테마별 일별 합산 후 누적. ` +
+      `히스토리 차트는 AUM·거래대금 상위 및 워치 테마 중심 ${codes.length}종 샘플. ` +
       "AUM은 Yahoo 종가 비율 복원. ETF 수급(NAV×Δ좌수)은 사이드에 유지하며, " +
       (snapDays.size
         ? `R2 스냅샷 ${snapDays.size}일로 Δ좌수를 보정합니다.`

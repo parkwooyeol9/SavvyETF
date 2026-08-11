@@ -18,6 +18,8 @@ export type EtfDbUsMeta = {
   theme: string;
   /** Force-include in priority theme monitoring */
   watch?: boolean;
+  /** Universe-build AUM seed ($M) */
+  aum_seed_mn?: number;
 };
 
 export type EtfDbUsRow = EtfDbUsMeta & {
@@ -113,9 +115,9 @@ const UA =
  */
 export const US_ETF_UNIVERSE: EtfDbUsMeta[] = uniqueUsUniverse();
 
-const EQUITY_TYPES = new Set(["미국 시장지수", "업종/테마", "원자재", "파생"]);
+const EQUITY_TYPES = new Set(["미국 시장지수", "업종/테마", "파생"]);
 
-/** Equity filter: US market / sector-theme / derivative equity products. */
+/** Equity filter: US market / sector-theme / leveraged equity. */
 export function isEquityUsEtf(row: Pick<EtfDbUsRow, "type" | "sector">): boolean {
   if (!EQUITY_TYPES.has(row.type)) return false;
   if (row.sector === "채권") return false;
@@ -354,15 +356,136 @@ async function fetchChartFallback(symbol: string): Promise<YahooQuote | null> {
   }
 }
 
-async function fetchYahooQuotes(symbols: string[]): Promise<Map<string, YahooQuote>> {
+async function fetchYahooQuotes(
+  symbols: string[],
+  opts?: { preferAumFrom?: Record<string, { aum_mn?: number }> },
+): Promise<Map<string, YahooQuote>> {
   const out = new Map<string, YahooQuote>();
-  const results = await mapPool(symbols, 8, async (sym) => {
+  if (!symbols.length) return out;
+  const prefer = opts?.preferAumFrom || {};
+
+  // 1) Batch v7 quotes for price / volume (fast).
+  try {
+    const jar = await getYahooCrumb();
+    const chunkSize = 80;
+    for (let i = 0; i < symbols.length; i += chunkSize) {
+      const chunk = symbols.slice(i, i + chunkSize);
+      const url =
+        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(","))}` +
+        `&fields=symbol,regularMarketPrice,regularMarketChangePercent,regularMarketVolume,sharesOutstanding` +
+        `&crumb=${encodeURIComponent(jar.crumb)}`;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": UA,
+            Cookie: jar.cookie,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (res.status === 401) {
+          yahooJar = null;
+          break;
+        }
+        if (!res.ok) continue;
+        const json = (await res.json()) as {
+          quoteResponse?: {
+            result?: Array<{
+              symbol?: string;
+              regularMarketPrice?: number;
+              regularMarketChangePercent?: number;
+              regularMarketVolume?: number;
+              sharesOutstanding?: number;
+            }>;
+          };
+        };
+        for (const r of json.quoteResponse?.result || []) {
+          const sym = (r.symbol || "").toUpperCase();
+          if (!sym) continue;
+          const px = num(r.regularMarketPrice);
+          const chg = num(r.regularMarketChangePercent);
+          const prevAum = prefer[sym]?.aum_mn;
+          out.set(sym, {
+            symbol: sym,
+            price: px,
+            change_pct: chg,
+            nav: px,
+            total_assets:
+              prevAum != null && prevAum > 0 ? prevAum * 1_000_000 : null,
+            shares: num(r.sharesOutstanding),
+            volume: num(r.regularMarketVolume),
+          });
+        }
+      } catch {
+        /* continue chunks */
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // 2) Fresh AUM via quoteSummary — prioritize symbols lacking snapshot AUM,
+  //    then top names by current price presence (cap to keep latency bounded).
+  const missingAum = symbols.filter((s) => {
+    const q = out.get(s.toUpperCase());
+    return !q || q.total_assets == null || !(q.total_assets > 0);
+  });
+  const haveAum = symbols.filter((s) => !missingAum.includes(s));
+  const refreshCap = 220;
+  const refreshList = [
+    ...missingAum,
+    ...haveAum.slice(0, Math.max(0, refreshCap - missingAum.length)),
+  ].slice(0, refreshCap);
+
+  const summaries = await mapPool(refreshList, 16, async (sym) => {
     const q = (await fetchOneYahooQuote(sym)) || (await fetchChartFallback(sym));
     return q;
   });
-  for (const q of results) {
-    if (q) out.set(q.symbol, q);
+  for (const q of summaries) {
+    if (!q) continue;
+    const prev = out.get(q.symbol);
+    out.set(q.symbol, {
+      symbol: q.symbol,
+      price: q.price ?? prev?.price ?? null,
+      change_pct: q.change_pct ?? prev?.change_pct ?? null,
+      nav: q.nav ?? prev?.nav ?? q.price ?? prev?.price ?? null,
+      total_assets: q.total_assets ?? prev?.total_assets ?? null,
+      shares: q.shares ?? prev?.shares ?? null,
+      volume: q.volume ?? prev?.volume ?? null,
+    });
   }
+
+  // 3) Chart fallback for any still missing price.
+  const missingPx = symbols.filter((s) => {
+    const q = out.get(s.toUpperCase());
+    return !q || q.price == null;
+  });
+  if (missingPx.length) {
+    const charts = await mapPool(missingPx.slice(0, 80), 12, (sym) =>
+      fetchChartFallback(sym),
+    );
+    for (const q of charts) {
+      if (!q) continue;
+      const prev = out.get(q.symbol);
+      out.set(q.symbol, {
+        ...(prev || {
+          symbol: q.symbol,
+          price: null,
+          change_pct: null,
+          nav: null,
+          total_assets: null,
+          shares: null,
+          volume: null,
+        }),
+        price: q.price ?? prev?.price ?? null,
+        change_pct: q.change_pct ?? prev?.change_pct ?? null,
+        nav: prev?.nav ?? q.nav ?? q.price,
+        volume: prev?.volume ?? q.volume,
+      });
+    }
+  }
+
   return out;
 }
 
@@ -504,27 +627,45 @@ export async function buildEtfDbUsPayload(opts?: {
 }): Promise<EtfDbUsPayload> {
   let metas = [...US_ETF_UNIVERSE];
   if (opts?.watchOnly) metas = metas.filter((m) => m.watch);
-  const quotes = await fetchYahooQuotes(metas.map((m) => m.symbol));
   const prev = await loadPrevUsSnapshot();
+  const seedAum: Record<string, { aum_mn?: number }> = {};
+  for (const m of metas) {
+    if (m.aum_seed_mn != null && m.aum_seed_mn > 0) {
+      seedAum[m.symbol.toUpperCase()] = { aum_mn: m.aum_seed_mn };
+    }
+  }
+  const preferAum = { ...seedAum, ...(prev?.by_code || {}) };
+  const quotes = await fetchYahooQuotes(
+    metas.map((m) => m.symbol),
+    { preferAumFrom: preferAum },
+  );
   const today = new Date().toISOString().slice(0, 10);
 
   let rows: EtfDbUsRow[] = metas.map((m) => {
     const q = quotes.get(m.symbol.toUpperCase());
+    const prevRow = prev?.by_code[m.symbol.toUpperCase()];
     const price = q?.price ?? null;
     const nav = q?.nav ?? price;
     const change = q?.change_pct ?? null;
     const assets = q?.total_assets ?? null;
-    const aum_mn = assets != null && assets > 0 ? assets / 1_000_000 : 0;
+    let aum_mn = assets != null && assets > 0 ? assets / 1_000_000 : 0;
+    // Prefer live AUM; fall back to previous snapshot so ranking stays stable if Yahoo gaps.
+    if (!(aum_mn > 0) && prevRow?.aum_mn != null && prevRow.aum_mn > 0) {
+      aum_mn = prevRow.aum_mn;
+    }
     let units = q?.shares ?? null;
     if ((units == null || !(units > 0)) && nav != null && nav > 0 && aum_mn > 0) {
       units = (aum_mn * 1_000_000) / nav;
+    }
+    if ((units == null || !(units > 0)) && prevRow?.units != null && prevRow.units > 0) {
+      units = prevRow.units;
     }
     const volume = q?.volume ?? null;
     const turnover_mn =
       price != null && price > 0 && volume != null && volume > 0
         ? (price * volume) / 1_000_000
         : null;
-    const prevUnits = prev?.by_code[m.symbol.toUpperCase()]?.units;
+    const prevUnits = prevRow?.units;
     // Same calendar day → don't treat as a new flow day
     const flow_mn =
       prev?.as_of && prev.as_of !== today
@@ -544,12 +685,20 @@ export async function buildEtfDbUsPayload(opts?: {
     };
   });
 
-  // Prefer turnover sort for live ranking; fill missing turnover from chart later via hist pin.
+  // Live AUM rank — keep top 1000 equity names (universe is already ~1000).
+  rows.sort(
+    (a, b) =>
+      (b.aum_mn || 0) - (a.aum_mn || 0) ||
+      (b.turnover_mn || 0) - (a.turnover_mn || 0),
+  );
+  if (opts?.equityOnly) rows = rows.filter(isEquityUsEtf);
+  if (rows.length > 1000) rows = rows.slice(0, 1000);
+
+  // Prefer turnover sort for table default after AUM cap.
   rows.sort(
     (a, b) =>
       (b.turnover_mn || 0) - (a.turnover_mn || 0) || (b.aum_mn || 0) - (a.aum_mn || 0),
   );
-  if (opts?.equityOnly) rows = rows.filter(isEquityUsEtf);
 
   const aggregates = {
     type: aggregateUsRows(rows, "type"),
@@ -600,7 +749,7 @@ export async function buildEtfDbUsPayload(opts?: {
     ok: true,
     generated_at: now.toISOString(),
     generated_at_display: display,
-    source: `yahoo quote+volume · tracked ${metas.length} · quoted ${quoted} · history ${histDays}d`,
+    source: `yahoo · US equity AUM top~1000 · tracked ${metas.length} · quoted ${quoted} · history ${histDays}d`,
     count: rows.length,
     total_aum_mn: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
     total_turnover_mn,
@@ -618,8 +767,9 @@ export async function buildEtfDbUsPayload(opts?: {
     history_note: hist.method_note,
     rows,
     note:
-      "주 지표는 거래대금(종가×거래량, $M). 섹터/테마별 일별 합산·누적으로 어디 거래가 몰리는지 봅니다. " +
-      "ETF 수급(NAV×Δ좌수)은 사이드에 유지(스냅샷 축적 후 유의미). 채권·신흥국 제외.",
+      "미국 주식형 ETF를 AUM 기준 상위 약 1,000종 모니터링합니다. " +
+      "주 지표는 거래대금(종가×거래량, $M). 유형·지역·섹터·테마로 분류합니다. " +
+      "ETF 수급(NAV×Δ좌수)은 사이드에 유지(스냅샷 축적 후 유의미).",
   };
 }
 
