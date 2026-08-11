@@ -357,25 +357,10 @@ function sumMemberFlows(
   kind: "daily" | "cum",
 ): Array<number | null> {
   const series = memberSymbols
-    .map((s) => ticker_series[s])
+    .map((s) => ticker_series[s] || ticker_series[s.toUpperCase()])
     .filter(Boolean) as EtfDbUsTickerSeries[];
   if (!series.length) return dates.map(() => null);
 
-  if (kind === "daily") {
-    return dates.map((_, i) => {
-      let sum = 0;
-      let hit = 0;
-      for (const ts of series) {
-        const v = ts.flow_daily_mn[i];
-        if (v == null || !Number.isFinite(v)) continue;
-        sum += v;
-        hit += 1;
-      }
-      return hit ? sum : null;
-    });
-  }
-
-  // Cumulative account = stitch of summed daily flows (not sum of cum series)
   const daily = dates.map((_, i) => {
     let sum = 0;
     let hit = 0;
@@ -385,9 +370,10 @@ function sumMemberFlows(
       sum += v;
       hit += 1;
     }
+    // Members present but all null that day → null; otherwise include zeros in the sum.
     return hit ? sum : null;
   });
-  return toCumFlow(daily);
+  return kind === "daily" ? daily : toCumFlow(daily);
 }
 
 function buildDimHistories(
@@ -435,14 +421,23 @@ function buildDimHistories(
       label === "전체"
         ? rows.map((r) => r.symbol)
         : rows.filter((r) => r[dimension] === label).map((r) => r.symbol);
-    // Prefer sample symbols that actually have series; fall back to all members
-    const withSeries = members.filter((s) => ticker_series[s]);
-    const use =
-      withSeries.length > 0
-        ? withSeries
-        : sample.map((r) => r.symbol).filter((s) => ticker_series[s]);
-    flowDailySeries[label] = sumMemberFlows(use, ticker_series, dates, "daily");
-    flowSeries[label] = sumMemberFlows(use, ticker_series, dates, "cum");
+    const use = members.filter((s) => ticker_series[s]);
+    const daily = sumMemberFlows(use, ticker_series, dates, "daily");
+    // Pin latest point to live NAV×Δunits sum so the chart always has a real end value.
+    if (dates.length) {
+      const liveMembers =
+        label === "전체" ? rows : rows.filter((r) => r[dimension] === label);
+      const liveFlows = liveMembers
+        .map((r) => r.flow_mn)
+        .filter((v): v is number => v != null && Number.isFinite(v));
+      if (liveFlows.length) {
+        daily[dates.length - 1] = liveFlows.reduce((s, v) => s + v, 0);
+      } else if (use.length && daily[dates.length - 1] == null) {
+        daily[dates.length - 1] = 0;
+      }
+    }
+    flowDailySeries[label] = daily;
+    flowSeries[label] = toCumFlow(daily);
   }
 
   return {
@@ -460,27 +455,20 @@ export async function reconstructUsHistories(opts: {
   equityOnly: boolean;
   watchOnly: boolean;
 }): Promise<UsHistoryBundle> {
-  const cacheKey = `${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
+  const cacheKey = `v2|${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
   const hit = memCache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.value;
 
   const dims: EtfDbUsDimension[] = ["type", "region", "sector", "theme"];
-  const codeSet = new Set<string>();
-  for (const dim of dims) {
-    for (const label of [
-      "전체",
-      ...opts.aggregates[dim].slice(0, MAX_LABELS - 1).map((a) => a.label),
-    ]) {
-      for (const row of pickSample(opts.rows, dim, label)) {
-        codeSet.add(row.symbol);
-      }
-    }
-  }
-  for (const row of opts.rows) {
-    if (row.watch || (row.aum_mn || 0) > 3_000) codeSet.add(row.symbol);
-  }
-
-  const codes = [...codeSet];
+  // Fetch prices for the full universe so sector/theme flow sums include every member.
+  const codes = [
+    ...new Set(
+      opts.rows
+        .map((r) => r.symbol)
+        .filter((s) => !!s)
+        .map((s) => s.toUpperCase()),
+    ),
+  ];
   const [fetched, overlay] = await Promise.all([
     mapPool(codes, FETCH_CONCURRENCY, async (sym) => {
       try {
@@ -494,10 +482,7 @@ export async function reconstructUsHistories(opts: {
   const prices = new Map(fetched);
   const dates = unionSortedDates(prices).slice(-260);
 
-  const tickerRows = opts.rows.filter(
-    (r) => r.watch || codeSet.has(r.symbol),
-  );
-  const ticker_series = buildTickerSeries(tickerRows, prices, dates, overlay);
+  const ticker_series = buildTickerSeries(opts.rows, prices, dates, overlay);
 
   const aum_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const nav_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
