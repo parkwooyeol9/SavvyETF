@@ -23,14 +23,29 @@ import {
   type EtfDbUsRow,
 } from "@/lib/etfDbUs";
 
-type SeriesKind = "aum" | "flow_cum" | "flow_daily" | "nav";
+type SeriesKind = "aum" | "flow_cum" | "flow_daily";
 
 const DIM_LABEL: Record<EtfDbUsDimension, string> = {
   type: "유형",
   region: "지역",
-  sector: "업종",
+  sector: "섹터",
   theme: "테마",
 };
+
+const FLOW_COLORS = [
+  "#fbbf24",
+  "#34d399",
+  "#60a5fa",
+  "#f472b6",
+  "#a78bfa",
+  "#fb7185",
+  "#2dd4bf",
+  "#facc15",
+  "#38bdf8",
+  "#c084fc",
+  "#4ade80",
+  "#e879f9",
+];
 
 const WATCH_THEMES = [
   "귀금속",
@@ -55,17 +70,30 @@ function nowClock(): string {
   });
 }
 
+function padDomain(values: Array<number | null | undefined>): [number, number] {
+  const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
+  if (!nums.length) return [-1, 1];
+  let min = Math.min(...nums);
+  let max = Math.max(...nums);
+  if (min === max) {
+    const pad = Math.max(Math.abs(min) * 0.08, 1);
+    return [min - pad, max + pad];
+  }
+  const pad = (max - min) * 0.08;
+  return [min - pad, max + pad];
+}
+
 export default function EtfDbUsTab() {
   const [data, setData] = useState<EtfDbUsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dim, setDim] = useState<EtfDbUsDimension>("theme");
+  const [dim, setDim] = useState<EtfDbUsDimension>("sector");
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"aum" | "flow" | "name" | "change">("aum");
   const [equityOnly, setEquityOnly] = useState(false);
   const [watchOnly, setWatchOnly] = useState(false);
-  const [seriesKind, setSeriesKind] = useState<SeriesKind>("flow_cum");
+  const [seriesKind, setSeriesKind] = useState<SeriesKind>("flow_daily");
   const [focusSymbol, setFocusSymbol] = useState<string>("GLD");
   const [intraday, setIntraday] = useState<Array<{ t: string; aum: number }>>([]);
   const seriesKeyRef = useRef("");
@@ -170,18 +198,38 @@ export default function EtfDbUsTab() {
 
   const activeHistory: EtfDbUsHistory | undefined = useMemo(() => {
     if (!data) return undefined;
-    if (seriesKind === "nav") return data.nav_history?.[dim];
     if (seriesKind === "flow_cum") return data.flow_history?.[dim];
     if (seriesKind === "flow_daily") return data.flow_daily_history?.[dim];
     return data.aum_history?.[dim];
   }, [data, dim, seriesKind]);
 
+  /** 전체 선택 시 수급 탭은 섹터/테마별 합산 라인을 함께 표시 */
+  const multiFlowMode =
+    selected == null && (seriesKind === "flow_cum" || seriesKind === "flow_daily");
+
+  const multiLabels = useMemo(() => {
+    if (!multiFlowMode || !activeHistory) return [] as string[];
+    const keys = Object.keys(activeHistory.series || {}).filter((k) => k !== "전체");
+    // Prefer aggregate AUM order
+    const ordered = (aggregates || []).map((a) => a.label).filter((l) => keys.includes(l));
+    const rest = keys.filter((k) => !ordered.includes(k));
+    return [...ordered, ...rest].slice(0, 12);
+  }, [multiFlowMode, activeHistory, aggregates]);
+
   const chartMode = useMemo<"daily" | "intraday">(() => {
+    if (multiFlowMode) {
+      const has = multiLabels.some((lab) => {
+        const vals = activeHistory?.series?.[lab] || [];
+        return vals.filter((v) => v != null).length >= 2;
+      });
+      if ((activeHistory?.dates?.length || 0) >= 2 && has) return "daily";
+      return "intraday";
+    }
     const vals = activeHistory?.series?.[chartKey] || [];
     const nonempty = vals.filter((v) => v != null).length;
     if ((activeHistory?.dates?.length || 0) >= 2 && nonempty >= 2) return "daily";
     return "intraday";
-  }, [activeHistory, chartKey]);
+  }, [activeHistory, chartKey, multiFlowMode, multiLabels]);
 
   const chartData = useMemo(() => {
     if (chartMode === "intraday" && seriesKind === "aum") {
@@ -194,51 +242,108 @@ export default function EtfDbUsTab() {
       return pts.map((p) => ({ label: p.t, value: p.aum }));
     }
     const dates = activeHistory?.dates || [];
-    const vals = activeHistory?.series?.[chartKey] || [];
-    // Downsample for readable chart (~120 pts)
+    if (!dates.length) return [];
     const step = Math.max(1, Math.ceil(dates.length / 120));
-    const points: Array<{ label: string; value: number | null }> = [];
-    for (let i = 0; i < dates.length; i += step) {
-      points.push({
-        label: dates[i]!.slice(5), // MM-DD
-        value: vals[i] ?? null,
-      });
-    }
+    const indices: number[] = [];
+    for (let i = 0; i < dates.length; i += step) indices.push(i);
     const lastIdx = dates.length - 1;
-    if (
-      lastIdx >= 0 &&
-      points.length &&
-      points[points.length - 1]!.label !== dates[lastIdx]!.slice(5)
-    ) {
-      points.push({
-        label: dates[lastIdx]!.slice(5),
-        value: vals[lastIdx] ?? null,
+    if (lastIdx >= 0 && indices[indices.length - 1] !== lastIdx) indices.push(lastIdx);
+
+    if (multiFlowMode) {
+      return indices.map((i) => {
+        const row: Record<string, string | number | null> = {
+          label: dates[i]!.slice(5),
+        };
+        for (const lab of multiLabels) {
+          row[lab] = activeHistory?.series?.[lab]?.[i] ?? null;
+        }
+        return row;
       });
     }
+
+    const vals = activeHistory?.series?.[chartKey] || [];
+    const points = indices.map((i) => ({
+      label: dates[i]!.slice(5),
+      value: vals[i] ?? null,
+    }));
     if (seriesKind === "aum" && selectedAum != null && points.length) {
       points[points.length - 1]!.value = selectedAum;
     }
     return points;
-  }, [chartMode, intraday, selectedAum, activeHistory, chartKey, seriesKind]);
+  }, [
+    chartMode,
+    intraday,
+    selectedAum,
+    activeHistory,
+    chartKey,
+    seriesKind,
+    multiFlowMode,
+    multiLabels,
+  ]);
+
+  const categoryDomain = useMemo(() => {
+    if (multiFlowMode) {
+      const vals: number[] = [];
+      for (const row of chartData) {
+        for (const lab of multiLabels) {
+          const v = (row as Record<string, string | number | null>)[lab];
+          if (typeof v === "number") vals.push(v);
+        }
+      }
+      return padDomain(vals);
+    }
+    return padDomain(
+      chartData.map((r) => {
+        const v = (r as { value?: number | null }).value;
+        return typeof v === "number" ? v : null;
+      }),
+    );
+  }, [chartData, multiFlowMode, multiLabels]);
 
   const tickerChartData = useMemo(() => {
     const ts = data?.ticker_series?.[focusSymbol];
     if (!ts?.dates?.length) return [];
-    const step = Math.max(1, Math.ceil(ts.dates.length / 120));
+    const step = Math.max(1, Math.ceil(ts.dates.length / 140));
     const out: Array<{
       label: string;
-      nav: number | null;
+      aum: number | null;
       flow_cum: number | null;
     }> = [];
     for (let i = 0; i < ts.dates.length; i += step) {
       out.push({
         label: ts.dates[i]!.slice(5),
-        nav: ts.nav[i] ?? null,
+        aum: ts.aum_mn[i] ?? null,
         flow_cum: ts.flow_cum_mn?.[i] ?? null,
       });
     }
+    const last = ts.dates.length - 1;
+    if (last >= 0 && out.length) {
+      const lastLabel = ts.dates[last]!.slice(5);
+      if (out[out.length - 1]!.label !== lastLabel) {
+        out.push({
+          label: lastLabel,
+          aum: ts.aum_mn[last] ?? null,
+          flow_cum: ts.flow_cum_mn?.[last] ?? null,
+        });
+      } else {
+        out[out.length - 1] = {
+          label: lastLabel,
+          aum: ts.aum_mn[last] ?? null,
+          flow_cum: ts.flow_cum_mn?.[last] ?? null,
+        };
+      }
+    }
     return out;
   }, [data, focusSymbol]);
+
+  const tickerAumDomain = useMemo(
+    () => padDomain(tickerChartData.map((r) => r.aum)),
+    [tickerChartData],
+  );
+  const tickerFlowDomain = useMemo(
+    () => padDomain(tickerChartData.map((r) => r.flow_cum)),
+    [tickerChartData],
+  );
 
   const focusOptions = useMemo(() => {
     const series = data?.ticker_series || {};
@@ -251,7 +356,6 @@ export default function EtfDbUsTab() {
     (v: unknown) => {
       const n = typeof v === "number" ? v : null;
       if (n == null) return "—";
-      if (seriesKind === "nav") return n.toFixed(1);
       if (seriesKind === "flow_cum" || seriesKind === "flow_daily") {
         return fmtSignedUsdMn(n);
       }
@@ -265,9 +369,11 @@ export default function EtfDbUsTab() {
       ? "AUM"
       : seriesKind === "flow_cum"
         ? "ETF 수급(누적)"
-        : seriesKind === "flow_daily"
-          ? "ETF 수급(일별)"
-          : "NAV 지수";
+        : "ETF 수급(일별)";
+
+  const chartHeading = multiFlowMode
+    ? `${seriesTitle} · ${DIM_LABEL[dim]}별 합산`
+    : `${seriesTitle} · ${chartKey}`;
 
   const watchThemeAggs = useMemo(() => {
     const themeAggs = data?.aggregates?.theme || [];
@@ -432,7 +538,7 @@ export default function EtfDbUsTab() {
             <div className="etfdb-main">
               <div className="etfdbus-chart-head">
                 <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-                  {seriesTitle} · {chartKey}
+                  {chartHeading}
                   <span className="etfdb-chart-mode">
                     {chartMode === "intraday" && seriesKind === "aum"
                       ? "라이브"
@@ -442,10 +548,9 @@ export default function EtfDbUsTab() {
                 <div className="etfdbus-series-tabs" role="tablist" aria-label="시계열">
                   {(
                     [
-                      ["aum", "AUM"],
-                      ["flow_cum", "ETF 수급"],
                       ["flow_daily", "수급(일별)"],
-                      ["nav", "NAV"],
+                      ["flow_cum", "ETF 수급"],
+                      ["aum", "AUM"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -459,10 +564,13 @@ export default function EtfDbUsTab() {
                   ))}
                 </div>
               </div>
-              <div className="etfdb-chart">
+              <div className="etfdb-chart etfdbus-chart-lg">
                 {chartData.length ? (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <ComposedChart data={chartData}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={chartData}
+                      margin={{ top: 8, right: 12, left: 4, bottom: 4 }}
+                    >
                       <defs>
                         <linearGradient id="aumUsFill" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#34d399" stopOpacity={0.35} />
@@ -478,8 +586,9 @@ export default function EtfDbUsTab() {
                       <YAxis
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
                         tickFormatter={(v) => String(valueFormatter(Number(v)))}
-                        width={68}
-                        domain={["auto", "auto"]}
+                        width={72}
+                        domain={categoryDomain}
+                        allowDataOverflow
                       />
                       <Tooltip
                         formatter={(v) => valueFormatter(v)}
@@ -489,33 +598,51 @@ export default function EtfDbUsTab() {
                         }}
                       />
                       <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        name={`${chartKey} ${seriesTitle}`}
-                        stroke={
-                          seriesKind === "flow_cum" || seriesKind === "flow_daily"
-                            ? "#fbbf24"
-                            : seriesKind === "nav"
-                              ? "#60a5fa"
+                      {multiFlowMode ? (
+                        multiLabels.map((lab, i) => (
+                          <Line
+                            key={lab}
+                            type="monotone"
+                            dataKey={lab}
+                            name={lab}
+                            stroke={FLOW_COLORS[i % FLOW_COLORS.length]}
+                            strokeWidth={1.8}
+                            dot={false}
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                        ))
+                      ) : (
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          name={`${chartKey} ${seriesTitle}`}
+                          stroke={
+                            seriesKind === "flow_cum" || seriesKind === "flow_daily"
+                              ? "#fbbf24"
                               : "#34d399"
-                        }
-                        fill="url(#aumUsFill)"
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
+                          }
+                          fill="url(#aumUsFill)"
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="empty">시계열 불러오는 중…</p>
+                  <p className="empty">
+                    {seriesKind === "aum"
+                      ? "시계열 불러오는 중…"
+                      : "수급 시계열 없음 · 일별 스냅샷이 쌓이면 섹터 합산이 채워집니다"}
+                  </p>
                 )}
               </div>
 
               <div className="etfdbus-chart-head" style={{ marginTop: 14 }}>
                 <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-                  종목 NAV · ETF 수급(누적) (1년)
+                  종목 AUM · ETF 수급(누적)
                 </h3>
                 <select
                   className="etfdb-search"
@@ -531,10 +658,19 @@ export default function EtfDbUsTab() {
                   ))}
                 </select>
               </div>
-              <div className="etfdb-chart">
+              <div className="etfdb-chart etfdbus-chart-lg">
                 {tickerChartData.length ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ComposedChart data={tickerChartData}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={tickerChartData}
+                      margin={{ top: 8, right: 16, left: 4, bottom: 4 }}
+                    >
+                      <defs>
+                        <linearGradient id="tickerAumFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#34d399" stopOpacity={0.28} />
+                          <stop offset="100%" stopColor="#34d399" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid stroke="rgba(43,54,72,0.8)" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="label"
@@ -542,26 +678,27 @@ export default function EtfDbUsTab() {
                         minTickGap={28}
                       />
                       <YAxis
-                        yAxisId="nav"
+                        yAxisId="aum"
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
-                        width={52}
-                        domain={["auto", "auto"]}
+                        width={68}
+                        tickFormatter={(v) => fmtUsdMn(Number(v))}
+                        domain={tickerAumDomain}
+                        allowDataOverflow
                       />
                       <YAxis
                         yAxisId="flow"
                         orientation="right"
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
-                        width={64}
+                        width={72}
                         tickFormatter={(v) => fmtSignedUsdMn(Number(v))}
-                        domain={["auto", "auto"]}
+                        domain={tickerFlowDomain}
+                        allowDataOverflow
                       />
                       <Tooltip
                         formatter={(v, name) =>
                           String(name).includes("수급")
                             ? fmtSignedUsdMn(typeof v === "number" ? v : null)
-                            : typeof v === "number"
-                              ? v.toFixed(2)
-                              : "—"
+                            : fmtUsdMn(typeof v === "number" ? v : null)
                         }
                         contentStyle={{
                           background: "#141d2b",
@@ -569,12 +706,13 @@ export default function EtfDbUsTab() {
                         }}
                       />
                       <Legend />
-                      <Line
-                        yAxisId="nav"
+                      <Area
+                        yAxisId="aum"
                         type="monotone"
-                        dataKey="nav"
-                        name={`${focusSymbol} NAV`}
-                        stroke="#60a5fa"
+                        dataKey="aum"
+                        name={`${focusSymbol} AUM`}
+                        stroke="#34d399"
+                        fill="url(#tickerAumFill)"
                         strokeWidth={2}
                         dot={false}
                         connectNulls
@@ -586,7 +724,7 @@ export default function EtfDbUsTab() {
                         dataKey="flow_cum"
                         name={`${focusSymbol} ETF 수급`}
                         stroke="#fbbf24"
-                        strokeWidth={1.8}
+                        strokeWidth={2}
                         dot={false}
                         connectNulls
                         isAnimationActive={false}

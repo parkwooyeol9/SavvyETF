@@ -3447,6 +3447,11 @@ a.geo-choke-hl:hover {
   margin-bottom: 0.85rem;
 }
 
+.etfdbus-chart-lg {
+  height: min(52vh, 440px);
+  min-height: 320px;
+}
+
 .etfdb-toolbar {
   display: flex;
   flex-wrap: wrap;
