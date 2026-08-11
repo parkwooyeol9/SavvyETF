@@ -11,6 +11,7 @@ export type ShellTabId =
   | "esgreg"
   | "greenmin"
   | "etfdb"
+  | "etfdbus"
   | "leverage"
   | "etfweights"
   | "kosdaqactive"
@@ -79,6 +80,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "etf",
   "leverage",
   "etfdb",
+  "etfdbus",
   "etfweights",
   "kosdaqactive",
   "countryetf",
@@ -103,6 +105,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   usportfolio: "미국 주식",
   education: "교육",
   etfdb: "ETF DB",
+  etfdbus: "ETF DB(US)",
   leverage: "레버리지 ETF",
   etfweights: "편입비 모니터",
   kosdaqactive: "코스닥액티브 ETF",
@@ -140,7 +143,16 @@ export const NAV_GROUPS: Array<{
   {
     id: "etf",
     label: "ETF",
-    tabs: ["education", "etf", "leverage", "etfdb", "etfweights", "kosdaqactive", "countryetf"],
+    tabs: [
+      "education",
+      "etf",
+      "leverage",
+      "etfdb",
+      "etfdbus",
+      "etfweights",
+      "kosdaqactive",
+      "countryetf",
+    ],
   },
   {
     id: "portfolio",

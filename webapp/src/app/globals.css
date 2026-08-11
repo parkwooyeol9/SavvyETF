@@ -3502,6 +3502,46 @@ a.geo-choke-hl:hover {
   text-align: right;
 }
 
+.etfdbus-watch {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.55rem;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.etfdbus-watch-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, #2b3648);
+  background: rgba(10, 15, 22, 0.65);
+  color: #e8eef5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.etfdbus-watch-card:hover,
+.etfdbus-watch-card.active {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.etfdbus-watch-card strong {
+  font-size: 0.86rem;
+}
+
+.etfdbus-watch-card span {
+  font-size: 0.75rem;
+  color: var(--muted, #8fa3b8);
+}
+
+.etfdbus-watch-row {
+  background: rgba(52, 211, 153, 0.04);
+}
+
 @media (max-width: 900px) {
   .etfdb-layout {
     grid-template-columns: 1fr;
