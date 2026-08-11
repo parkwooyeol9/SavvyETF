@@ -81,9 +81,9 @@ export const CFTC_MARKET_SPECS: CftcMarketSpec[] = [
   },
   {
     id: "natgas",
-    label: "천연가스",
+    label: "천연가스 (Henry Hub)",
     group: "에너지",
-    market_name: "NATURAL GAS - NEW YORK MERCANTILE EXCHANGE",
+    market_name: "HENRY HUB - NEW YORK MERCANTILE EXCHANGE",
   },
   {
     id: "corn",
