@@ -19,6 +19,7 @@ export type ShellTabId =
   | "kosdaq100"
   | "economy"
   | "yencarry"
+  | "cftc"
   | "ideas"
   | "gurus"
   | "signals"
@@ -27,7 +28,7 @@ export type ShellTabId =
   | "corridor"
   | TabId;
 
-export type NavGroupId = "main" | "market" | "etf" | "portfolio" | "esg";
+export type NavGroupId = "main" | "market" | "etf" | "commodity" | "portfolio" | "esg";
 
 export type BriefSection = {
   heading?: string;
@@ -67,6 +68,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "us",
   "economy",
   "yencarry",
+  "cftc",
   "gurus",
   "eventstudy",
   "kosdaq100",
@@ -117,6 +119,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   greenmin: "녹색 광물",
   economy: "경제",
   yencarry: "엔케리 모니터",
+  cftc: "CFTC",
   ideas: "AI Pick",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
@@ -138,7 +141,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "economy", "yencarry", "gurus", "eventstudy", "kosdaq100"],
+    tabs: ["kr", "us", "gurus", "eventstudy", "kosdaq100"],
   },
   {
     id: "etf",
@@ -153,6 +156,11 @@ export const NAV_GROUPS: Array<{
       "kosdaqactive",
       "countryetf",
     ],
+  },
+  {
+    id: "commodity",
+    label: "원자재",
+    tabs: ["economy", "yencarry", "cftc"],
   },
   {
     id: "portfolio",
