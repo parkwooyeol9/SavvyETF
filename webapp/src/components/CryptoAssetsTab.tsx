@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
+  Bar,
   CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,9 +16,12 @@ import {
 } from "recharts";
 
 import type {
+  BtcCandle,
   CryptoAssetRow,
   CryptoAssetsPayload,
   CryptoIndicator,
+  CryptoStrategy,
+  FuturesPanel,
   KimchiRow,
 } from "@/lib/cryptoAssets";
 
@@ -23,7 +30,8 @@ function fmtUsd(n: number | null | undefined): string {
   if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
   if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1) return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  if (n >= 1)
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   return `$${n.toPrecision(4)}`;
 }
 
@@ -38,9 +46,20 @@ function fmtKrw(n: number | null | undefined): string {
   return `${Math.round(n).toLocaleString("ko-KR")}원`;
 }
 
+function fmtPx(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
+}
+
 function toneClass(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n) || n === 0) return "flat";
   return n > 0 ? "up" : "down";
+}
+
+function actionClass(action: string | undefined): string {
+  if (action === "buy") return "up";
+  if (action === "sell") return "down";
+  return "flat";
 }
 
 function Sparkline({ values }: { values: number[] }) {
@@ -180,13 +199,446 @@ function KimchiTable({ rows }: { rows: KimchiRow[] }) {
   );
 }
 
+function FuturesCharts({ futures }: { futures: FuturesPanel }) {
+  const oiData = useMemo(
+    () =>
+      futures.oi_series.map((p) => ({
+        label: p.label.slice(5),
+        oi: p.value / 1e9,
+      })),
+    [futures.oi_series],
+  );
+  const lsData = useMemo(
+    () =>
+      futures.ls_series.map((p) => ({
+        label: p.label.slice(5),
+        ls: p.value,
+      })),
+    [futures.ls_series],
+  );
+  const fundingData = useMemo(
+    () =>
+      futures.funding_series.map((p) => ({
+        label: p.label.slice(5),
+        funding: p.value,
+      })),
+    [futures.funding_series],
+  );
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gap: 16,
+        marginTop: 8,
+      }}
+    >
+      <div>
+        <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
+          OI (USD, 1H · 최근 72)
+        </h4>
+        <div className="geo-chart-wrap" style={{ height: 180 }}>
+          {oiData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={oiData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="oiFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#38bdf8" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  minTickGap={28}
+                />
+                <YAxis
+                  width={40}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  tickFormatter={(v) => `${Number(v).toFixed(2)}B`}
+                />
+                <Tooltip
+                  formatter={(v) =>
+                    typeof v === "number" ? `$${v.toFixed(3)}B` : "—"
+                  }
+                  contentStyle={{
+                    background: "rgba(15,23,42,0.92)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="oi"
+                  name="OI"
+                  stroke="#38bdf8"
+                  fill="url(#oiFill)"
+                  strokeWidth={1.6}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="geo-chart-empty">OI 시계열 없음</div>
+          )}
+        </div>
+      </div>
+      <div>
+        <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
+          L/S Ratio (1H · 최근 72)
+        </h4>
+        <div className="geo-chart-wrap" style={{ height: 180 }}>
+          {lsData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={lsData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="lsFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  minTickGap={28}
+                />
+                <YAxis
+                  width={36}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  domain={["auto", "auto"]}
+                />
+                <Tooltip
+                  formatter={(v) =>
+                    typeof v === "number" ? v.toFixed(2) : "—"
+                  }
+                  contentStyle={{
+                    background: "rgba(15,23,42,0.92)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="ls"
+                  name="L/S"
+                  stroke="#a78bfa"
+                  fill="url(#lsFill)"
+                  strokeWidth={1.6}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="geo-chart-empty">L/S 시계열 없음</div>
+          )}
+        </div>
+      </div>
+      <div style={{ gridColumn: "1 / -1" }}>
+        <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
+          Funding Rate 이력 (%)
+        </h4>
+        <div className="geo-chart-wrap" style={{ height: 140 }}>
+          {fundingData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={fundingData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  minTickGap={28}
+                />
+                <YAxis
+                  width={44}
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  tickFormatter={(v) => Number(v).toFixed(3)}
+                />
+                <Tooltip
+                  formatter={(v) =>
+                    typeof v === "number" ? `${v.toFixed(4)}%` : "—"
+                  }
+                  contentStyle={{
+                    background: "rgba(15,23,42,0.92)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar
+                  dataKey="funding"
+                  name="Funding %"
+                  fill="rgba(52,211,153,0.55)"
+                  isAnimationActive={false}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="geo-chart-empty">펀딩 이력 없음</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BtcLiveChart({
+  candles,
+  interval,
+  strategy,
+}: {
+  candles: BtcCandle[];
+  interval: string;
+  strategy: CryptoStrategy | null;
+}) {
+  const data = useMemo(
+    () =>
+      candles.map((c) => ({
+        label: c.label.slice(5),
+        close: c.close,
+        sma20: c.sma20,
+        sma50: c.sma50,
+        volume: c.volume,
+        support: strategy?.support ?? null,
+        resistance: strategy?.resistance ?? null,
+      })),
+    [candles, strategy],
+  );
+  const last = candles.at(-1);
+
+  return (
+    <div>
+      <div className="etfdbus-chart-head">
+        <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
+          BTCUSDT.P 라이브 ({interval})
+          {last ? (
+            <span className="etfdb-chart-mode">
+              {fmtPx(last.close)} · {last.label}
+            </span>
+          ) : null}
+        </h3>
+      </div>
+      <div className="geo-chart-wrap etfdbus-chart-lg" style={{ height: 320 }}>
+        {data.length ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart
+              data={data}
+              margin={{ top: 8, right: 12, left: 4, bottom: 4 }}
+            >
+              <defs>
+                <linearGradient id="btcFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34d399" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                minTickGap={32}
+              />
+              <YAxis
+                yAxisId="px"
+                domain={["auto", "auto"]}
+                width={64}
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                tickFormatter={(v) =>
+                  Number(v).toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  })
+                }
+              />
+              <YAxis
+                yAxisId="vol"
+                orientation="right"
+                hide
+                domain={[0, "auto"]}
+              />
+              <Tooltip
+                formatter={(v, name) => {
+                  if (typeof v !== "number") return "—";
+                  if (String(name).includes("Vol")) return `${v.toFixed(1)} BTC`;
+                  return fmtPx(v);
+                }}
+                contentStyle={{
+                  background: "rgba(15,23,42,0.92)",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              />
+              <Legend />
+              <Bar
+                yAxisId="vol"
+                dataKey="volume"
+                name="Vol"
+                fill="rgba(148,163,184,0.22)"
+                isAnimationActive={false}
+              />
+              <Area
+                yAxisId="px"
+                type="monotone"
+                dataKey="close"
+                name="Close"
+                stroke="#34d399"
+                fill="url(#btcFill)"
+                strokeWidth={1.8}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                yAxisId="px"
+                type="monotone"
+                dataKey="sma20"
+                name="SMA20"
+                stroke="#fbbf24"
+                strokeWidth={1.2}
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+              <Line
+                yAxisId="px"
+                type="monotone"
+                dataKey="sma50"
+                name="SMA50"
+                stroke="#60a5fa"
+                strokeWidth={1.2}
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+              {strategy?.support != null ? (
+                <Line
+                  yAxisId="px"
+                  type="monotone"
+                  dataKey="support"
+                  name="Support"
+                  stroke="#f87171"
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ) : null}
+              {strategy?.resistance != null ? (
+                <Line
+                  yAxisId="px"
+                  type="monotone"
+                  dataKey="resistance"
+                  name="Resistance"
+                  stroke="#fb923c"
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ) : null}
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="geo-chart-empty">BTC 차트 없음</div>
+        )}
+      </div>
+      <p className="meta-soft" style={{ marginTop: 6 }}>
+        OKX BTC-USDT-SWAP {interval} · 약 60초마다 자동 갱신 · SMA20/50 + 최근
+        48H 고저 지지/저항
+      </p>
+    </div>
+  );
+}
+
+function StrategyPanel({ strategy }: { strategy: CryptoStrategy }) {
+  return (
+    <div className="geo-composite macro-stress" style={{ marginTop: 12 }}>
+      <div
+        className="geo-score-ring"
+        data-level={
+          strategy.action === "buy"
+            ? "cool"
+            : strategy.action === "sell"
+              ? "hot"
+              : "warm"
+        }
+      >
+        <span className={`geo-score-num ${actionClass(strategy.action)}`}>
+          {strategy.action_ko}
+        </span>
+        <span className="geo-score-label">점수 {strategy.score}</span>
+      </div>
+      <div className="geo-composite-body">
+        <h3>{strategy.title}</h3>
+        <p className="geo-thesis">{strategy.summary}</p>
+        {strategy.bias_note ? (
+          <p className="meta-soft" style={{ marginTop: 6 }}>
+            {strategy.bias_note}
+          </p>
+        ) : null}
+        <div className="macro-snap-grid" style={{ marginTop: 12 }}>
+          <article className="macro-snap-card">
+            <span className="macro-snap-label">진입</span>
+            <strong className="macro-snap-value" style={{ fontSize: "0.92rem" }}>
+              {strategy.entry}
+            </strong>
+          </article>
+          <article className="macro-snap-card">
+            <span className="macro-snap-label">손절 / 리스크</span>
+            <strong className="macro-snap-value" style={{ fontSize: "0.92rem" }}>
+              {strategy.stop}
+            </strong>
+          </article>
+          <article className="macro-snap-card">
+            <span className="macro-snap-label">목표가</span>
+            <strong className="macro-snap-value" style={{ fontSize: "0.92rem" }}>
+              {strategy.targets.join(" · ") || "—"}
+            </strong>
+          </article>
+          <article className="macro-snap-card">
+            <span className="macro-snap-label">무효 조건</span>
+            <strong className="macro-snap-value" style={{ fontSize: "0.92rem" }}>
+              {strategy.invalidation}
+            </strong>
+          </article>
+        </div>
+        {strategy.drivers.length ? (
+          <p className="meta-soft" style={{ marginTop: 10 }}>
+            드라이버: {strategy.drivers.join(" · ")}
+          </p>
+        ) : null}
+        {strategy.risk_notes.length ? (
+          <ul className="panel-sub" style={{ marginTop: 8 }}>
+            {strategy.risk_notes.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function CryptoAssetsTab() {
   const [data, setData] = useState<CryptoAssetsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [liveTick, setLiveTick] = useState(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/crypto-assets", { cache: "no-store" });
@@ -195,16 +647,25 @@ export default function CryptoAssetsTab() {
         throw new Error(json.error || `HTTP ${res.status}`);
       }
       setData(json);
+      setLiveTick((n) => n + 1);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
-      setData(null);
+      if (!silent) setData(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Live refresh ~60s
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void load(true);
+    }, 60_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
   const fngChart = useMemo(
@@ -222,8 +683,8 @@ export default function CryptoAssetsTab() {
     "usdt_dom",
     "kimchi_btc",
     "fear_greed",
-    "funding",
     "total_mcap",
+    "liquidity",
   ];
   const highlight = (data?.indicators || []).filter((i) =>
     highlightIds.includes(i.id),
@@ -239,8 +700,8 @@ export default function CryptoAssetsTab() {
           <div>
             <h2 className="feature-title">가상자산</h2>
             <p className="macro-subhead">
-              BTC·ETH 등 주요 코인 · BTC/ETH/USDT 도미넌스 · 김치 프리미엄 ·
-              Fear&Greed · 펀딩
+              BTC 선물 OI·L/S·펀딩 · 김치·도미넌스 · 라이브 차트 기반 룰 매매
+              시나리오
             </p>
           </div>
           <button
@@ -253,7 +714,9 @@ export default function CryptoAssetsTab() {
           </button>
         </div>
 
-        {loading && !data ? <p className="empty">가상자산 불러오는 중…</p> : null}
+        {loading && !data ? (
+          <p className="empty">가상자산 불러오는 중…</p>
+        ) : null}
         {error ? <p className="empty warn">{error}</p> : null}
 
         {data ? (
@@ -261,11 +724,24 @@ export default function CryptoAssetsTab() {
             <p className="macro-schedule">{data.schedule_note}</p>
             <p className="meta-soft">
               {data.generated_at_display} · {data.source}
+              {liveTick > 1 ? ` · live #${liveTick}` : ""}
             </p>
             <p className="kr-note">{data.note}</p>
 
+            {data.strategy ? <StrategyPanel strategy={data.strategy} /> : null}
+
+            <BtcLiveChart
+              candles={data.btc_chart || []}
+              interval={data.btc_chart_interval || "1H"}
+              strategy={data.strategy}
+            />
+
+            <h3 className="geo-section-title">BTC 선물 · 포지셔닝</h3>
+            <IndicatorGrid items={data.futures?.indicators || []} />
+            {data.futures ? <FuturesCharts futures={data.futures} /> : null}
+
             {data.interpretations?.length ? (
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginTop: 16, marginBottom: 12 }}>
                 <h3 className="geo-section-title">현재 데이터 해석</h3>
                 <ul className="panel-sub">
                   {data.interpretations.map((line) => (
@@ -278,9 +754,8 @@ export default function CryptoAssetsTab() {
               </div>
             ) : null}
 
-            <h3 className="geo-section-title">핵심 보조지표</h3>
+            <h3 className="geo-section-title">시장 보조지표</h3>
             <IndicatorGrid items={highlight} />
-
             {rest.length ? (
               <>
                 <h3 className="geo-section-title">추가 지표</h3>
@@ -308,8 +783,16 @@ export default function CryptoAssetsTab() {
                   >
                     <defs>
                       <linearGradient id="fngFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                        <stop
+                          offset="0%"
+                          stopColor="#f59e0b"
+                          stopOpacity={0.35}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#f59e0b"
+                          stopOpacity={0}
+                        />
                       </linearGradient>
                     </defs>
                     <CartesianGrid
