@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -17,9 +18,12 @@ import {
   fmtUsdMn,
   type EtfDbUsAggregate,
   type EtfDbUsDimension,
+  type EtfDbUsHistory,
   type EtfDbUsPayload,
   type EtfDbUsRow,
 } from "@/lib/etfDbUs";
+
+type SeriesKind = "aum" | "nav" | "units";
 
 const DIM_LABEL: Record<EtfDbUsDimension, string> = {
   type: "유형",
@@ -61,6 +65,8 @@ export default function EtfDbUsTab() {
   const [sort, setSort] = useState<"aum" | "flow" | "name" | "change">("aum");
   const [equityOnly, setEquityOnly] = useState(false);
   const [watchOnly, setWatchOnly] = useState(false);
+  const [seriesKind, setSeriesKind] = useState<SeriesKind>("aum");
+  const [focusSymbol, setFocusSymbol] = useState<string>("GLD");
   const [intraday, setIntraday] = useState<Array<{ t: string; aum: number }>>([]);
   const seriesKeyRef = useRef("");
 
@@ -78,6 +84,15 @@ export default function EtfDbUsTab() {
         }
         setData(json);
         setError(null);
+        const symbols = Object.keys(json.ticker_series || {});
+        setFocusSymbol((prev) => {
+          if (symbols.includes(prev)) return prev;
+          return (
+            json.rows.find((r) => r.watch && symbols.includes(r.symbol))?.symbol ||
+            symbols[0] ||
+            prev
+          );
+        });
       } catch (exc) {
         setError(exc instanceof Error ? exc.message : "로드 실패");
       } finally {
@@ -153,41 +168,94 @@ export default function EtfDbUsTab() {
     return rows;
   }, [data, selected, dim, query, sort]);
 
+  const activeHistory: EtfDbUsHistory | undefined = useMemo(() => {
+    if (!data) return undefined;
+    if (seriesKind === "nav") return data.nav_history?.[dim];
+    if (seriesKind === "units") return data.units_history?.[dim];
+    return data.aum_history?.[dim];
+  }, [data, dim, seriesKind]);
+
   const chartMode = useMemo<"daily" | "intraday">(() => {
-    const hist = data?.aum_history?.[dim];
-    const vals = hist?.series?.[chartKey] || [];
+    const vals = activeHistory?.series?.[chartKey] || [];
     const nonempty = vals.filter((v) => v != null).length;
-    if ((hist?.dates?.length || 0) >= 2 && nonempty >= 2) return "daily";
+    if ((activeHistory?.dates?.length || 0) >= 2 && nonempty >= 2) return "daily";
     return "intraday";
-  }, [data, dim, chartKey]);
+  }, [activeHistory, chartKey]);
 
   const chartData = useMemo(() => {
-    if (chartMode === "intraday") {
+    if (chartMode === "intraday" && seriesKind === "aum") {
       const pts =
         intraday.length > 0
           ? intraday
           : selectedAum != null
             ? [{ t: nowClock(), aum: selectedAum }]
             : [];
-      return pts.map((p) => ({ label: p.t, aum: p.aum }));
+      return pts.map((p) => ({ label: p.t, value: p.aum }));
     }
-    const hist = data?.aum_history?.[dim];
-    const dates = hist?.dates || [];
-    const vals = hist?.series?.[chartKey] || [];
-    const today = data?.as_of;
-    const points = dates.map((date, i) => ({
-      label: date,
-      aum: vals[i] ?? null,
-    }));
-    if (selectedAum != null && today) {
-      if (points.length && points[points.length - 1]!.label === today) {
-        points[points.length - 1]!.aum = selectedAum;
-      } else {
-        points.push({ label: today, aum: selectedAum });
-      }
+    const dates = activeHistory?.dates || [];
+    const vals = activeHistory?.series?.[chartKey] || [];
+    // Downsample for readable chart (~120 pts)
+    const step = Math.max(1, Math.ceil(dates.length / 120));
+    const points: Array<{ label: string; value: number | null }> = [];
+    for (let i = 0; i < dates.length; i += step) {
+      points.push({
+        label: dates[i]!.slice(5), // MM-DD
+        value: vals[i] ?? null,
+      });
+    }
+    const lastIdx = dates.length - 1;
+    if (
+      lastIdx >= 0 &&
+      points.length &&
+      points[points.length - 1]!.label !== dates[lastIdx]!.slice(5)
+    ) {
+      points.push({
+        label: dates[lastIdx]!.slice(5),
+        value: vals[lastIdx] ?? null,
+      });
+    }
+    if (seriesKind === "aum" && selectedAum != null && points.length) {
+      points[points.length - 1]!.value = selectedAum;
     }
     return points;
-  }, [chartMode, intraday, selectedAum, data, dim, chartKey]);
+  }, [chartMode, intraday, selectedAum, activeHistory, chartKey, seriesKind]);
+
+  const tickerChartData = useMemo(() => {
+    const ts = data?.ticker_series?.[focusSymbol];
+    if (!ts?.dates?.length) return [];
+    const step = Math.max(1, Math.ceil(ts.dates.length / 120));
+    const out: Array<{ label: string; nav: number | null; units: number | null }> =
+      [];
+    for (let i = 0; i < ts.dates.length; i += step) {
+      out.push({
+        label: ts.dates[i]!.slice(5),
+        nav: ts.nav[i] ?? null,
+        units: ts.units[i] ?? null,
+      });
+    }
+    return out;
+  }, [data, focusSymbol]);
+
+  const focusOptions = useMemo(() => {
+    const series = data?.ticker_series || {};
+    return (data?.rows || [])
+      .filter((r) => series[r.symbol])
+      .map((r) => ({ symbol: r.symbol, name: r.name, watch: !!r.watch }));
+  }, [data]);
+
+  const valueFormatter = useCallback(
+    (v: unknown) => {
+      const n = typeof v === "number" ? v : null;
+      if (n == null) return "—";
+      if (seriesKind === "nav") return n.toFixed(1);
+      if (seriesKind === "units") {
+        if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+        return Math.round(n).toLocaleString("en-US");
+      }
+      return fmtUsdMn(n);
+    },
+    [seriesKind],
+  );
 
   const watchThemeAggs = useMemo(() => {
     const themeAggs = data?.aggregates?.theme || [];
@@ -288,13 +356,14 @@ export default function EtfDbUsTab() {
             {watchOnly ? " · 관심 테마만" : ""}
             {" · "}
             {chartMode === "intraday"
-              ? "AUM 라이브 — 일별 히스토리 축적 전"
-              : `AUM 일별 · ${chartData.length}일`}
+              ? "라이브 포인트"
+              : `1년 시계열 · ${data.aum_history?.[dim]?.dates?.length || chartData.length}거래일`}
             {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : " · 수급은 익일부터 산출"}
             {" · "}
             {data.source}
           </p>
           <p className="meta-soft">{data.note}</p>
+          <p className="meta-soft">{data.history_note}</p>
 
           <div className="tabs etfdb-dim-tabs" role="tablist" aria-label="분류">
             {(Object.keys(DIM_LABEL) as EtfDbUsDimension[]).map((id) => (
@@ -349,15 +418,42 @@ export default function EtfDbUsTab() {
             </aside>
 
             <div className="etfdb-main">
-              <h3 className="etfdb-detail-title" style={{ marginBottom: "0.5rem" }}>
-                AUM 합산 · {chartKey}
-                <span className="etfdb-chart-mode">
-                  {chartMode === "intraday" ? "라이브" : `일별 · ${chartData.length}일`}
-                </span>
-              </h3>
+              <div className="etfdbus-chart-head">
+                <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
+                  {seriesKind === "aum"
+                    ? "AUM"
+                    : seriesKind === "nav"
+                      ? "NAV 지수"
+                      : "설정좌수"}{" "}
+                  · {chartKey}
+                  <span className="etfdb-chart-mode">
+                    {chartMode === "intraday"
+                      ? "라이브"
+                      : `1년 · ${activeHistory?.dates?.length || 0}일`}
+                  </span>
+                </h3>
+                <div className="etfdbus-series-tabs" role="tablist" aria-label="시계열">
+                  {(
+                    [
+                      ["aum", "AUM"],
+                      ["nav", "NAV"],
+                      ["units", "설정좌수"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`tab-btn sub ${seriesKind === id ? "active" : ""}`}
+                      onClick={() => setSeriesKind(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="etfdb-chart">
                 {chartData.length ? (
-                  <ResponsiveContainer width="100%" height={260}>
+                  <ResponsiveContainer width="100%" height={280}>
                     <ComposedChart data={chartData}>
                       <defs>
                         <linearGradient id="aumUsFill" x1="0" y1="0" x2="0" y2="1">
@@ -373,12 +469,12 @@ export default function EtfDbUsTab() {
                       />
                       <YAxis
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
-                        tickFormatter={(v) => fmtUsdMn(Number(v))}
-                        width={64}
+                        tickFormatter={(v) => String(valueFormatter(Number(v)))}
+                        width={68}
                         domain={["auto", "auto"]}
                       />
                       <Tooltip
-                        formatter={(v) => fmtUsdMn(typeof v === "number" ? v : null)}
+                        formatter={(v) => valueFormatter(v)}
                         contentStyle={{
                           background: "#141d2b",
                           border: "1px solid #2b3648",
@@ -387,18 +483,108 @@ export default function EtfDbUsTab() {
                       <Legend />
                       <Area
                         type="monotone"
-                        dataKey="aum"
-                        name={`${chartKey} AUM`}
+                        dataKey="value"
+                        name={
+                          seriesKind === "aum"
+                            ? `${chartKey} AUM`
+                            : seriesKind === "nav"
+                              ? `${chartKey} NAV(100=시작)`
+                              : `${chartKey} 설정좌수`
+                        }
                         stroke="#34d399"
                         fill="url(#aumUsFill)"
                         strokeWidth={2}
-                        dot={{ r: chartData.length < 3 ? 4 : 2 }}
+                        dot={false}
                         connectNulls
+                        isAnimationActive={false}
                       />
                     </ComposedChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="empty">AUM 데이터를 불러오는 중…</p>
+                  <p className="empty">시계열 불러오는 중…</p>
+                )}
+              </div>
+
+              <div className="etfdbus-chart-head" style={{ marginTop: 14 }}>
+                <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
+                  종목 NAV · 설정좌수 (1년)
+                </h3>
+                <select
+                  className="etfdb-search"
+                  value={focusSymbol}
+                  onChange={(e) => setFocusSymbol(e.target.value)}
+                  aria-label="종목 선택"
+                >
+                  {focusOptions.map((o) => (
+                    <option key={o.symbol} value={o.symbol}>
+                      {o.watch ? "★ " : ""}
+                      {o.symbol} · {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="etfdb-chart">
+                {tickerChartData.length ? (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart data={tickerChartData}>
+                      <CartesianGrid stroke="rgba(43,54,72,0.8)" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: "#8fa3b8", fontSize: 11 }}
+                        minTickGap={28}
+                      />
+                      <YAxis
+                        yAxisId="nav"
+                        tick={{ fill: "#8fa3b8", fontSize: 11 }}
+                        width={52}
+                        domain={["auto", "auto"]}
+                      />
+                      <YAxis
+                        yAxisId="units"
+                        orientation="right"
+                        tick={{ fill: "#8fa3b8", fontSize: 11 }}
+                        width={56}
+                        tickFormatter={(v) =>
+                          Math.abs(Number(v)) >= 1e6
+                            ? `${(Number(v) / 1e6).toFixed(1)}M`
+                            : String(Math.round(Number(v)))
+                        }
+                        domain={["auto", "auto"]}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#141d2b",
+                          border: "1px solid #2b3648",
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        yAxisId="nav"
+                        type="monotone"
+                        dataKey="nav"
+                        name={`${focusSymbol} NAV`}
+                        stroke="#60a5fa"
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                      <Line
+                        yAxisId="units"
+                        type="monotone"
+                        dataKey="units"
+                        name={`${focusSymbol} 설정좌수`}
+                        stroke="#fbbf24"
+                        strokeWidth={1.6}
+                        strokeDasharray="4 3"
+                        dot={false}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="empty">종목 시계열 없음</p>
                 )}
               </div>
 
@@ -441,7 +627,20 @@ export default function EtfDbUsTab() {
                   </thead>
                   <tbody>
                     {filteredRows.slice(0, 400).map((r) => (
-                      <tr key={r.symbol} className={r.watch ? "etfdbus-watch-row" : undefined}>
+                      <tr
+                        key={r.symbol}
+                        className={
+                          r.symbol === focusSymbol
+                            ? "etfdbus-watch-row etfdbus-focus-row"
+                            : r.watch
+                              ? "etfdbus-watch-row"
+                              : undefined
+                        }
+                        onClick={() => {
+                          if (data.ticker_series?.[r.symbol]) setFocusSymbol(r.symbol);
+                        }}
+                        style={{ cursor: data.ticker_series?.[r.symbol] ? "pointer" : undefined }}
+                      >
                         <td>
                           <code>{r.symbol}</code>
                         </td>

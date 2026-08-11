@@ -3,6 +3,7 @@
  * Mirrors Korean ETF DB dimensions (type / region / sector / theme).
  */
 
+import { reconstructUsHistories } from "@/lib/etfDbUsHistory";
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
 
 export type EtfDbUsDimension = "type" | "region" | "sector" | "theme";
@@ -43,6 +44,15 @@ export type EtfDbUsHistory = {
   series: Record<string, Array<number | null>>;
 };
 
+export type EtfDbUsTickerSeries = {
+  symbol: string;
+  name: string;
+  dates: string[];
+  nav: Array<number | null>;
+  units: Array<number | null>;
+  aum_mn: Array<number | null>;
+};
+
 export type EtfDbUsPayload = {
   ok: boolean;
   generated_at: string;
@@ -55,6 +65,13 @@ export type EtfDbUsPayload = {
   equity_only?: boolean;
   aggregates: Record<EtfDbUsDimension, EtfDbUsAggregate[]>;
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** AUM-weighted NAV index (100 = period start) */
+  nav_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Sum of member units (≈ flat under price backfill) */
+  units_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Per-ticker ~1y NAV / units / AUM for charts */
+  ticker_series: Record<string, EtfDbUsTickerSeries>;
+  history_note: string;
   rows: EtfDbUsRow[];
   note: string;
   error?: string;
@@ -477,6 +494,10 @@ export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> 
     })),
     aggregates: payload.aggregates,
     aum_history: payload.aum_history,
+    nav_history: payload.nav_history,
+    units_history: payload.units_history,
+    ticker_series: payload.ticker_series,
+    history_note: payload.history_note,
   });
   const buf = Buffer.from(body, "utf8");
   try {
@@ -598,28 +619,13 @@ export async function buildEtfDbUsPayload(opts?: {
     theme: aggregateUsRows(rows, "theme"),
   };
 
-  // Prefer prior R2 aggregates history if present
-  let priorHist: Record<EtfDbUsDimension, EtfDbUsHistory> | undefined;
-  if (r2Configured()) {
-    try {
-      const text = await r2GetObjectText(ETF_DB_US_LATEST_KEY);
-      if (text) {
-        const parsed = JSON.parse(text) as {
-          aum_history?: Record<EtfDbUsDimension, EtfDbUsHistory>;
-        };
-        priorHist = parsed.aum_history;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const aum_history = {
-    type: mergeLiveAumHistory(priorHist?.type, aggregates.type, today),
-    region: mergeLiveAumHistory(priorHist?.region, aggregates.region, today),
-    sector: mergeLiveAumHistory(priorHist?.sector, aggregates.sector, today),
-    theme: mergeLiveAumHistory(priorHist?.theme, aggregates.theme, today),
-  };
+  const hist = await reconstructUsHistories({
+    rows,
+    aggregates,
+    liveDay: today,
+    equityOnly: !!opts?.equityOnly,
+    watchOnly: !!opts?.watchOnly,
+  });
 
   const now = new Date();
   const display = new Intl.DateTimeFormat("ko-KR", {
@@ -633,19 +639,24 @@ export async function buildEtfDbUsPayload(opts?: {
   }).format(now);
 
   const quoted = rows.filter((r) => r.price != null || r.aum_mn > 0).length;
+  const histDays = hist.aum_history.theme?.dates?.length || 0;
 
   return {
     ok: true,
     generated_at: now.toISOString(),
     generated_at_display: display,
-    source: `yahoo quote · tracked ${metas.length} · quoted ${quoted}`,
+    source: `yahoo quote · tracked ${metas.length} · quoted ${quoted} · history ${histDays}d`,
     count: rows.length,
     total_aum_mn: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
     prev_as_of: prev?.as_of && prev.as_of !== today ? prev.as_of : null,
     as_of: today,
     equity_only: !!opts?.equityOnly,
     aggregates,
-    aum_history,
+    aum_history: hist.aum_history,
+    nav_history: hist.nav_history,
+    units_history: hist.units_history,
+    ticker_series: hist.ticker_series,
+    history_note: hist.method_note,
     rows,
     note:
       "수급 = NAV×Δ설정좌수(백만달러). 귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전쟁·전략자원 테마를 우선 포함. " +
