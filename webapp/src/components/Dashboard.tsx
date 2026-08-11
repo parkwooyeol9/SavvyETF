@@ -25,6 +25,7 @@ import LeverageEtfTab from "@/components/LeverageEtfTab";
 import MacroTab from "@/components/MacroTab";
 import YenCarryTab from "@/components/YenCarryTab";
 import CftcTab from "@/components/CftcTab";
+import CryptoAssetsTab from "@/components/CryptoAssetsTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
@@ -191,6 +192,7 @@ export default function Dashboard() {
       tab === "economy" ||
       tab === "yencarry" ||
       tab === "cftc" ||
+      tab === "crypto" ||
       tab === "ideas" ||
       tab === "gurus" ||
       tab === "signals" ||
@@ -325,6 +327,8 @@ export default function Dashboard() {
         <YenCarryTab />
       ) : tab === "cftc" ? (
         <CftcTab />
+      ) : tab === "crypto" ? (
+        <CryptoAssetsTab />
       ) : tab === "gurus" ? (
         <WallStreetGurusTab />
       ) : tab === "eventstudy" ? (

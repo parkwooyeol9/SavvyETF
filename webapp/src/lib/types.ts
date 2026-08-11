@@ -20,6 +20,7 @@ export type ShellTabId =
   | "economy"
   | "yencarry"
   | "cftc"
+  | "crypto"
   | "ideas"
   | "gurus"
   | "signals"
@@ -69,6 +70,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "economy",
   "yencarry",
   "cftc",
+  "crypto",
   "gurus",
   "eventstudy",
   "kosdaq100",
@@ -120,6 +122,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   economy: "경제",
   yencarry: "엔케리 모니터",
   cftc: "CFTC",
+  crypto: "가상자산",
   ideas: "AI Pick",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
@@ -160,7 +163,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "commodity",
     label: "원자재",
-    tabs: ["economy", "yencarry", "cftc"],
+    tabs: ["economy", "yencarry", "cftc", "crypto"],
   },
   {
     id: "portfolio",
