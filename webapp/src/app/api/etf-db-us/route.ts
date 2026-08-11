@@ -9,7 +9,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 async function handle(req: Request): Promise<EtfDbUsPayload> {
   const url = new URL(req.url);
