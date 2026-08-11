@@ -27,6 +27,10 @@ export type EtfDbUsRow = EtfDbUsMeta & {
   /** AUM in $ millions */
   aum_mn: number;
   units: number | null;
+  /** Shares traded (latest session) */
+  volume: number | null;
+  /** Trading value $M: price × volume / 1e6 */
+  turnover_mn: number | null;
   /** Estimated creation/redemption flow in $ millions: NAV × Δshares / 1e6 */
   flow_mn: number | null;
 };
@@ -36,6 +40,9 @@ export type EtfDbUsAggregate = {
   count: number;
   aum_mn: number;
   aum_share_pct: number;
+  /** Sum of member turnover $M (latest day) */
+  turnover_mn: number;
+  turnover_share_pct: number;
   flow_mn: number | null;
   flow_available: boolean;
 };
@@ -52,6 +59,10 @@ export type EtfDbUsTickerSeries = {
   nav: Array<number | null>;
   units: Array<number | null>;
   aum_mn: Array<number | null>;
+  /** Daily close×volume ($M) */
+  turnover_daily_mn: Array<number | null>;
+  /** Cumulative Σ daily turnover ($M) */
+  turnover_cum_mn: Array<number | null>;
   /** Daily NAV×Δunits ($M) */
   flow_daily_mn: Array<number | null>;
   /** Cumulative Σ daily flow ($M) — ETF 수급 계정 */
@@ -65,6 +76,7 @@ export type EtfDbUsPayload = {
   source: string;
   count: number;
   total_aum_mn: number;
+  total_turnover_mn: number;
   prev_as_of: string | null;
   as_of?: string | null;
   equity_only?: boolean;
@@ -72,11 +84,15 @@ export type EtfDbUsPayload = {
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   /** AUM-weighted NAV index (100 = period start) */
   nav_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Cumulative 거래대금: Σ (close×volume) in $M */
+  turnover_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  /** Daily 거래대금: close×volume in $M */
+  turnover_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   /** Cumulative ETF 수급 account: Σ (NAV × Δunits) in $M */
   flow_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   /** Daily ETF 수급: NAV × Δunits in $M */
   flow_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
-  /** Per-ticker ~1y NAV / units / AUM / flow for charts */
+  /** Per-ticker ~1y series for charts */
   ticker_series: Record<string, EtfDbUsTickerSeries>;
   history_note: string;
   rows: EtfDbUsRow[];
@@ -118,25 +134,31 @@ export function aggregateUsRows(
       count: 0,
       aum_mn: 0,
       aum_share_pct: 0,
+      turnover_mn: 0,
+      turnover_share_pct: 0,
       flow_mn: 0,
       flow_available: false,
     };
     bucket.count += 1;
     bucket.aum_mn += row.aum_mn || 0;
+    bucket.turnover_mn += row.turnover_mn || 0;
     if (row.flow_mn != null) {
       bucket.flow_mn = (bucket.flow_mn || 0) + row.flow_mn;
       bucket.flow_available = true;
     }
     buckets.set(key, bucket);
   }
-  const total = [...buckets.values()].reduce((s, b) => s + b.aum_mn, 0) || 1;
-  return [...buckets.values()]
+  const list = [...buckets.values()];
+  const totalAum = list.reduce((s, b) => s + b.aum_mn, 0) || 1;
+  const totalTurn = list.reduce((s, b) => s + b.turnover_mn, 0) || 1;
+  return list
     .map((b) => ({
       ...b,
-      aum_share_pct: (100 * b.aum_mn) / total,
+      aum_share_pct: (100 * b.aum_mn) / totalAum,
+      turnover_share_pct: (100 * b.turnover_mn) / totalTurn,
       flow_mn: b.flow_available ? b.flow_mn : null,
     }))
-    .sort((a, b) => b.aum_mn - a.aum_mn);
+    .sort((a, b) => b.turnover_mn - a.turnover_mn || b.aum_mn - a.aum_mn);
 }
 
 /** Same formula as KR ETF DB: flow = NAV_t × (units_t − units_{t−1}). */
@@ -157,6 +179,7 @@ type YahooQuote = {
   nav: number | null;
   total_assets: number | null;
   shares: number | null;
+  volume: number | null;
 };
 
 type YahooCookieJar = { cookie: string; crumb: string; expires: number };
@@ -266,6 +289,10 @@ async function fetchOneYahooQuote(symbol: string): Promise<YahooQuote | null> {
       (nav != null && total_assets != null && nav > 0
         ? total_assets / nav
         : null);
+    const volume =
+      num(price.regularMarketVolume?.raw) ??
+      num(sd.volume?.raw) ??
+      num(sd.regularMarketVolume?.raw);
     return {
       symbol: symbol.toUpperCase(),
       price: px,
@@ -273,6 +300,7 @@ async function fetchOneYahooQuote(symbol: string): Promise<YahooQuote | null> {
       nav,
       total_assets,
       shares,
+      volume,
     };
   } catch {
     return null;
@@ -319,6 +347,7 @@ async function fetchChartFallback(symbol: string): Promise<YahooQuote | null> {
       nav: px,
       total_assets: null,
       shares: null,
+      volume: null,
     };
   } catch {
     return null;
@@ -382,6 +411,8 @@ export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> 
       nav: r.nav,
       units: r.units,
       aum_mn: r.aum_mn,
+      volume: r.volume,
+      turnover_mn: r.turnover_mn,
       flow_mn: r.flow_mn,
       price: r.price,
       change_rate: r.change_rate,
@@ -389,6 +420,8 @@ export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> 
     aggregates: payload.aggregates,
     aum_history: payload.aum_history,
     nav_history: payload.nav_history,
+    turnover_history: payload.turnover_history,
+    turnover_daily_history: payload.turnover_daily_history,
     flow_history: payload.flow_history,
     flow_daily_history: payload.flow_daily_history,
     ticker_series: payload.ticker_series,
@@ -486,6 +519,11 @@ export async function buildEtfDbUsPayload(opts?: {
     if ((units == null || !(units > 0)) && nav != null && nav > 0 && aum_mn > 0) {
       units = (aum_mn * 1_000_000) / nav;
     }
+    const volume = q?.volume ?? null;
+    const turnover_mn =
+      price != null && price > 0 && volume != null && volume > 0
+        ? (price * volume) / 1_000_000
+        : null;
     const prevUnits = prev?.by_code[m.symbol.toUpperCase()]?.units;
     // Same calendar day → don't treat as a new flow day
     const flow_mn =
@@ -500,11 +538,17 @@ export async function buildEtfDbUsPayload(opts?: {
       change_rate: change,
       aum_mn,
       units,
+      volume,
+      turnover_mn,
       flow_mn,
     };
   });
 
-  rows.sort((a, b) => (b.aum_mn || 0) - (a.aum_mn || 0));
+  // Prefer turnover sort for live ranking; fill missing turnover from chart later via hist pin.
+  rows.sort(
+    (a, b) =>
+      (b.turnover_mn || 0) - (a.turnover_mn || 0) || (b.aum_mn || 0) - (a.aum_mn || 0),
+  );
   if (opts?.equityOnly) rows = rows.filter(isEquityUsEtf);
 
   const aggregates = {
@@ -522,6 +566,21 @@ export async function buildEtfDbUsPayload(opts?: {
     watchOnly: !!opts?.watchOnly,
   });
 
+  // Backfill live turnover from last chart day when quote volume was missing.
+  rows = rows.map((r) => {
+    if (r.turnover_mn != null && r.turnover_mn > 0) return r;
+    const ts = hist.ticker_series[r.symbol];
+    const last = ts?.turnover_daily_mn?.at(-1);
+    if (last == null || !(last > 0)) return r;
+    return { ...r, turnover_mn: last };
+  });
+  const aggregatesFresh = {
+    type: aggregateUsRows(rows, "type"),
+    region: aggregateUsRows(rows, "region"),
+    sector: aggregateUsRows(rows, "sector"),
+    theme: aggregateUsRows(rows, "theme"),
+  };
+
   const now = new Date();
   const display = new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul",
@@ -534,30 +593,33 @@ export async function buildEtfDbUsPayload(opts?: {
   }).format(now);
 
   const quoted = rows.filter((r) => r.price != null || r.aum_mn > 0).length;
-  const histDays = hist.aum_history.theme?.dates?.length || 0;
+  const histDays = hist.turnover_history.theme?.dates?.length || 0;
+  const total_turnover_mn = rows.reduce((s, r) => s + (r.turnover_mn || 0), 0);
 
   return {
     ok: true,
     generated_at: now.toISOString(),
     generated_at_display: display,
-    source: `yahoo quote · tracked ${metas.length} · quoted ${quoted} · history ${histDays}d`,
+    source: `yahoo quote+volume · tracked ${metas.length} · quoted ${quoted} · history ${histDays}d`,
     count: rows.length,
     total_aum_mn: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
+    total_turnover_mn,
     prev_as_of: prev?.as_of && prev.as_of !== today ? prev.as_of : null,
     as_of: today,
     equity_only: !!opts?.equityOnly,
-    aggregates,
+    aggregates: aggregatesFresh,
     aum_history: hist.aum_history,
     nav_history: hist.nav_history,
+    turnover_history: hist.turnover_history,
+    turnover_daily_history: hist.turnover_daily_history,
     flow_history: hist.flow_history,
     flow_daily_history: hist.flow_daily_history,
     ticker_series: hist.ticker_series,
     history_note: hist.method_note,
     rows,
     note:
-      "ETF 수급 계정 = 각 시점 NAV×Δ설정좌수를 일별로 산출한 뒤 누적(이어붙임). 단위 $M. " +
-      "유니버스는 미국 주요 업종·테마 ETF(AUM 내림차순 적재). 채권·신흥국 제외. " +
-      "귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전략 테마 포함.",
+      "주 지표는 거래대금(종가×거래량, $M). 섹터/테마별 일별 합산·누적으로 어디 거래가 몰리는지 봅니다. " +
+      "ETF 수급(NAV×Δ좌수)은 사이드에 유지(스냅샷 축적 후 유의미). 채권·신흥국 제외.",
   };
 }
 

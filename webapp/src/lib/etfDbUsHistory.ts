@@ -1,17 +1,17 @@
 /**
- * Reconstruct ~1y US ETF AUM / NAV / ETF-수급 histories.
+ * Reconstruct ~1y US ETF AUM / 거래대금 / ETF-수급 histories.
+ *
+ * 거래대금 (primary):
+ *   turnover_daily_t = close_t × volume_t / 1e6   ($M)
+ *   turnover_cum_t   = Σ turnover_daily
+ *   Category series = sum of member turnovers (then cum for cumulative view)
  *
  * AUM / NAV (price proxy):
  *   aum_i,t ≈ aum_i,today × (P_i,t / P_i,today)
- *   nav_i,t ≈ liveNav × (P_i,t / P_i,today)
  *
- * ETF 수급 계정 (stitched):
- *   flow_daily_t = NAV_t × (units_t − units_{t−1}) / 1e6   ($M)
- *   flow_cum_t   = Σ flow_daily   ← the continuous "ETF 수급" account
- *
- * Units: start from live shares (price-scaled backfill ⇒ Δunits≈0 historically).
- * When dated R2 snapshots exist, overlay real units by as_of date so Δunits
- * (and therefore 수급) become non-zero going forward.
+ * ETF 수급 (side / experimental until R2 units accumulate):
+ *   flow_daily_t = NAV_t × (units_t − units_{t−1}) / 1e6
+ *   flow_cum_t   = Σ flow_daily
  */
 
 import type {
@@ -38,13 +38,16 @@ const MAX_SNAP_OVERLAY = 60;
 export type UsHistoryBundle = {
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   nav_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  turnover_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  turnover_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   flow_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   flow_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   ticker_series: Record<string, EtfDbUsTickerSeries>;
   method_note: string;
 };
 
-type PriceMap = Map<string, number>;
+type DayBar = { close: number; volume: number };
+type BarMap = Map<string, DayBar>;
 /** symbol → date → units */
 type UnitsOverlay = Map<string, Map<string, number>>;
 
@@ -69,7 +72,7 @@ async function mapPool<T, R>(
   return out;
 }
 
-async function fetchYahooDailyCloses(symbol: string): Promise<PriceMap> {
+async function fetchYahooDailyBars(symbol: string): Promise<BarMap> {
   const period2 = Math.floor(Date.now() / 1000);
   const period1 = period2 - LOOKBACK_DAYS * 86400;
   const url =
@@ -85,20 +88,38 @@ async function fetchYahooDailyCloses(symbol: string): Promise<PriceMap> {
     chart?: {
       result?: Array<{
         timestamp?: number[];
-        indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+        indicators?: {
+          quote?: Array<{
+            close?: Array<number | null>;
+            volume?: Array<number | null>;
+          }>;
+        };
       }>;
     };
   };
   const result = json.chart?.result?.[0];
   const ts = result?.timestamp || [];
   const closes = result?.indicators?.quote?.[0]?.close || [];
-  const out: PriceMap = new Map();
+  const volumes = result?.indicators?.quote?.[0]?.volume || [];
+  const out: BarMap = new Map();
   for (let i = 0; i < ts.length; i++) {
     const c = closes[i];
+    const v = volumes[i];
     if (c == null || !(c > 0)) continue;
     const d = new Date(ts[i]! * 1000);
     const ymd = d.toISOString().slice(0, 10);
-    out.set(ymd, c);
+    out.set(ymd, { close: c, volume: v != null && v > 0 ? v : 0 });
+  }
+  return out;
+}
+
+/** Close-only view for AUM/NAV helpers. */
+function toPriceMap(bars: Map<string, BarMap>): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>();
+  for (const [sym, map] of bars) {
+    const pm = new Map<string, number>();
+    for (const [d, bar] of map) pm.set(d, bar.close);
+    out.set(sym, pm);
   }
   return out;
 }
@@ -147,13 +168,15 @@ function pickSample(
     .filter((r) => r.symbol && (r.aum_mn || 0) > 0);
 }
 
-function unionSortedDates(prices: Map<string, PriceMap>): string[] {
+function unionSortedDates(bars: Map<string, BarMap>): string[] {
   const set = new Set<string>();
-  for (const map of prices.values()) {
+  for (const map of bars.values()) {
     for (const d of map.keys()) set.add(d);
   }
   return [...set].sort();
 }
+
+type PriceMap = Map<string, number>;
 
 function reconstructAumSeries(
   sample: EtfDbUsRow[],
@@ -250,8 +273,8 @@ function reconstructNavIndex(
   return raw.map((v) => (v == null ? null : (100 * v) / base));
 }
 
-/** Daily flow → cumulative 수급 account. */
-function toCumFlow(daily: Array<number | null>): Array<number | null> {
+/** Daily series → cumulative account. */
+function toCum(daily: Array<number | null>): Array<number | null> {
   const out: Array<number | null> = [];
   let cum = 0;
   let started = false;
@@ -269,19 +292,19 @@ function toCumFlow(daily: Array<number | null>): Array<number | null> {
 
 function buildTickerSeries(
   rows: EtfDbUsRow[],
-  prices: Map<string, PriceMap>,
+  bars: Map<string, BarMap>,
   dates: string[],
   overlay: UnitsOverlay,
 ): Record<string, EtfDbUsTickerSeries> {
   const out: Record<string, EtfDbUsTickerSeries> = {};
   for (const row of rows) {
-    const map = prices.get(row.symbol);
+    const map = bars.get(row.symbol);
     if (!map?.size) continue;
     let todayPx: number | null = null;
     for (let i = dates.length - 1; i >= 0; i--) {
-      const px = map.get(dates[i]!);
-      if (px && px > 0) {
-        todayPx = px;
+      const bar = map.get(dates[i]!);
+      if (bar && bar.close > 0) {
+        todayPx = bar.close;
         break;
       }
     }
@@ -299,19 +322,22 @@ function buildTickerSeries(
     const nav: Array<number | null> = [];
     const units: Array<number | null> = [];
     const aum_mn: Array<number | null> = [];
+    const turnover_daily_mn: Array<number | null> = [];
     for (const d of dates) {
-      const px = map.get(d);
-      if (!px || !(px > 0)) {
+      const bar = map.get(d);
+      if (!bar || !(bar.close > 0)) {
         nav.push(null);
         units.push(null);
         aum_mn.push(null);
+        turnover_daily_mn.push(null);
         continue;
       }
-      const navT = liveNav * (px / todayPx);
+      const navT = liveNav * (bar.close / todayPx);
       nav.push(navT);
       const u = snapUnits?.get(d) ?? liveUnits;
       units.push(u);
-      aum_mn.push(liveAum > 0 ? liveAum * (px / todayPx) : null);
+      aum_mn.push(liveAum > 0 ? liveAum * (bar.close / todayPx) : null);
+      turnover_daily_mn.push((bar.close * bar.volume) / 1_000_000);
     }
     if (dates.length && liveAum > 0) {
       aum_mn[dates.length - 1] = liveAum;
@@ -319,9 +345,11 @@ function buildTickerSeries(
     if (dates.length) {
       nav[dates.length - 1] = liveNav;
       if (liveUnits != null) units[dates.length - 1] = liveUnits;
+      if (row.turnover_mn != null && Number.isFinite(row.turnover_mn)) {
+        turnover_daily_mn[dates.length - 1] = row.turnover_mn;
+      }
     }
 
-    // ETF 수급: each day NAV × Δunits, then stitch (cumsum)
     const flow_daily_mn: Array<number | null> = dates.map((_, i) => {
       if (i === 0) return 0;
       const n = nav[i];
@@ -330,11 +358,9 @@ function buildTickerSeries(
       if (n == null || !(n > 0) || u == null || pu == null) return null;
       return (n * (u - pu)) / 1_000_000;
     });
-    // Pin latest daily flow to live row.flow_mn when available (R2 prev snap).
     if (dates.length && row.flow_mn != null && Number.isFinite(row.flow_mn)) {
       flow_daily_mn[dates.length - 1] = row.flow_mn;
     }
-    const flow_cum_mn = toCumFlow(flow_daily_mn);
 
     out[row.symbol] = {
       symbol: row.symbol,
@@ -343,37 +369,37 @@ function buildTickerSeries(
       nav,
       units,
       aum_mn,
+      turnover_daily_mn,
+      turnover_cum_mn: toCum(turnover_daily_mn),
       flow_daily_mn,
-      flow_cum_mn,
+      flow_cum_mn: toCum(flow_daily_mn),
     };
   }
   return out;
 }
 
-function sumMemberFlows(
+function sumMemberSeries(
   memberSymbols: string[],
   ticker_series: Record<string, EtfDbUsTickerSeries>,
   dates: string[],
-  kind: "daily" | "cum",
+  field: "flow_daily_mn" | "turnover_daily_mn",
 ): Array<number | null> {
   const series = memberSymbols
     .map((s) => ticker_series[s] || ticker_series[s.toUpperCase()])
     .filter(Boolean) as EtfDbUsTickerSeries[];
   if (!series.length) return dates.map(() => null);
 
-  const daily = dates.map((_, i) => {
+  return dates.map((_, i) => {
     let sum = 0;
     let hit = 0;
     for (const ts of series) {
-      const v = ts.flow_daily_mn[i];
+      const v = ts[field][i];
       if (v == null || !Number.isFinite(v)) continue;
       sum += v;
       hit += 1;
     }
-    // Members present but all null that day → null; otherwise include zeros in the sum.
     return hit ? sum : null;
   });
-  return kind === "daily" ? daily : toCumFlow(daily);
 }
 
 function buildDimHistories(
@@ -386,6 +412,8 @@ function buildDimHistories(
 ): {
   aum: EtfDbUsHistory;
   nav: EtfDbUsHistory;
+  turnover: EtfDbUsHistory;
+  turnoverDaily: EtfDbUsHistory;
   flow: EtfDbUsHistory;
   flowDaily: EtfDbUsHistory;
 } {
@@ -400,6 +428,8 @@ function buildDimHistories(
 
   const aumSeries: Record<string, Array<number | null>> = {};
   const navSeries: Record<string, Array<number | null>> = {};
+  const turnoverSeries: Record<string, Array<number | null>> = {};
+  const turnoverDailySeries: Record<string, Array<number | null>> = {};
   const flowSeries: Record<string, Array<number | null>> = {};
   const flowDailySeries: Record<string, Array<number | null>> = {};
 
@@ -422,27 +452,41 @@ function buildDimHistories(
         ? rows.map((r) => r.symbol)
         : rows.filter((r) => r[dimension] === label).map((r) => r.symbol);
     const use = members.filter((s) => ticker_series[s]);
-    const daily = sumMemberFlows(use, ticker_series, dates, "daily");
-    // Pin latest point to live NAV×Δunits sum so the chart always has a real end value.
+    const liveMembers =
+      label === "전체" ? rows : rows.filter((r) => r[dimension] === label);
+
+    const turnDaily = sumMemberSeries(use, ticker_series, dates, "turnover_daily_mn");
     if (dates.length) {
-      const liveMembers =
-        label === "전체" ? rows : rows.filter((r) => r[dimension] === label);
+      const liveTurns = liveMembers
+        .map((r) => r.turnover_mn)
+        .filter((v): v is number => v != null && Number.isFinite(v));
+      if (liveTurns.length) {
+        turnDaily[dates.length - 1] = liveTurns.reduce((s, v) => s + v, 0);
+      }
+    }
+    turnoverDailySeries[label] = turnDaily;
+    turnoverSeries[label] = toCum(turnDaily);
+
+    const flowDaily = sumMemberSeries(use, ticker_series, dates, "flow_daily_mn");
+    if (dates.length) {
       const liveFlows = liveMembers
         .map((r) => r.flow_mn)
         .filter((v): v is number => v != null && Number.isFinite(v));
       if (liveFlows.length) {
-        daily[dates.length - 1] = liveFlows.reduce((s, v) => s + v, 0);
-      } else if (use.length && daily[dates.length - 1] == null) {
-        daily[dates.length - 1] = 0;
+        flowDaily[dates.length - 1] = liveFlows.reduce((s, v) => s + v, 0);
+      } else if (use.length && flowDaily[dates.length - 1] == null) {
+        flowDaily[dates.length - 1] = 0;
       }
     }
-    flowDailySeries[label] = daily;
-    flowSeries[label] = toCumFlow(daily);
+    flowDailySeries[label] = flowDaily;
+    flowSeries[label] = toCum(flowDaily);
   }
 
   return {
     aum: { dates, series: aumSeries },
     nav: { dates, series: navSeries },
+    turnover: { dates, series: turnoverSeries },
+    turnoverDaily: { dates, series: turnoverDailySeries },
     flow: { dates, series: flowSeries },
     flowDaily: { dates, series: flowDailySeries },
   };
@@ -455,12 +499,11 @@ export async function reconstructUsHistories(opts: {
   equityOnly: boolean;
   watchOnly: boolean;
 }): Promise<UsHistoryBundle> {
-  const cacheKey = `v2|${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
+  const cacheKey = `v3turn|${opts.equityOnly ? "eq" : "all"}|${opts.watchOnly ? "w" : "u"}|${opts.liveDay}|${opts.rows.length}`;
   const hit = memCache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.value;
 
   const dims: EtfDbUsDimension[] = ["type", "region", "sector", "theme"];
-  // Fetch prices for the full universe so sector/theme flow sums include every member.
   const codes = [
     ...new Set(
       opts.rows
@@ -472,20 +515,23 @@ export async function reconstructUsHistories(opts: {
   const [fetched, overlay] = await Promise.all([
     mapPool(codes, FETCH_CONCURRENCY, async (sym) => {
       try {
-        return [sym, await fetchYahooDailyCloses(sym)] as const;
+        return [sym, await fetchYahooDailyBars(sym)] as const;
       } catch {
-        return [sym, new Map() as PriceMap] as const;
+        return [sym, new Map() as BarMap] as const;
       }
     }),
     loadUnitsOverlay(),
   ]);
-  const prices = new Map(fetched);
-  const dates = unionSortedDates(prices).slice(-260);
+  const bars = new Map(fetched);
+  const prices = toPriceMap(bars);
+  const dates = unionSortedDates(bars).slice(-260);
 
-  const ticker_series = buildTickerSeries(opts.rows, prices, dates, overlay);
+  const ticker_series = buildTickerSeries(opts.rows, bars, dates, overlay);
 
   const aum_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const nav_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
+  const turnover_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
+  const turnover_daily_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const flow_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const flow_daily_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
 
@@ -500,6 +546,8 @@ export async function reconstructUsHistories(opts: {
     );
     aum_history[dim] = built.aum;
     nav_history[dim] = built.nav;
+    turnover_history[dim] = built.turnover;
+    turnover_daily_history[dim] = built.turnoverDaily;
     flow_history[dim] = built.flow;
     flow_daily_history[dim] = built.flowDaily;
   }
@@ -510,15 +558,17 @@ export async function reconstructUsHistories(opts: {
   const value: UsHistoryBundle = {
     aum_history,
     nav_history,
+    turnover_history,
+    turnover_daily_history,
     flow_history,
     flow_daily_history,
     ticker_series,
     method_note:
-      "ETF 수급 계정 = 각 시점 NAV×Δ설정좌수($M)를 일별로 산출한 뒤 누적(이어붙임). " +
-      "AUM·NAV 1년은 Yahoo 종가 비율로 복원(AUM_t≈AUM_today×P_t/P_today). " +
+      "거래대금 = 종가×거래량($M). 섹터/테마별 일별 합산 후 누적해 어디 거래가 몰리는지 봅니다. " +
+      "AUM은 Yahoo 종가 비율 복원. ETF 수급(NAV×Δ좌수)은 사이드에 유지하며, " +
       (snapDays.size
-        ? `설정좌수는 R2 일별 스냅샷 ${snapDays.size}일로 Δ좌수(수급)를 보정합니다.`
-        : "설정좌수 과거분은 당일 좌수로 고정되어 역사 수급≈0이며, 일별 스냅샷이 쌓이면 수급 계정이 채워집니다."),
+        ? `R2 스냅샷 ${snapDays.size}일로 Δ좌수를 보정합니다.`
+        : "일별 스냅샷이 쌓이기 전에는 역사 수급≈0일 수 있습니다."),
   };
   memCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, value });
   return value;
