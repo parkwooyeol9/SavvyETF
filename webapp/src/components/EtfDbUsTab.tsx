@@ -388,9 +388,9 @@ export default function EtfDbUsTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB(US)</h2>
           <p className="kr-note">
-            미국 주요 업종·테마 ETF(AUM 내림차순) · 채권·신흥국 제외. ETF 수급 계정 =
-            각 시점 NAV×Δ설정좌수를 일별로 산출한 뒤 누적으로 이어붙임($M).
-            귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전략 테마 포함.
+            미국 주요 섹터·테마 ETF(AUM 내림차순) · 채권·신흥국 제외. ETF 수급 =
+            NAV×Δ설정좌수($M)를 일별 산출 후 누적. 수급(일별) 전체 뷰는 섹터/테마별
+            합산 라인으로 표시. NAV는 수급 산출용이며 차트에는 AUM·수급만 표시.
           </p>
         </div>
         <div className="etfdb-hero-actions">
