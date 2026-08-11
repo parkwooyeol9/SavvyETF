@@ -23,7 +23,7 @@ import {
   type EtfDbUsRow,
 } from "@/lib/etfDbUs";
 
-type SeriesKind = "aum" | "nav" | "units";
+type SeriesKind = "aum" | "flow_cum" | "flow_daily" | "nav";
 
 const DIM_LABEL: Record<EtfDbUsDimension, string> = {
   type: "유형",
@@ -65,7 +65,7 @@ export default function EtfDbUsTab() {
   const [sort, setSort] = useState<"aum" | "flow" | "name" | "change">("aum");
   const [equityOnly, setEquityOnly] = useState(false);
   const [watchOnly, setWatchOnly] = useState(false);
-  const [seriesKind, setSeriesKind] = useState<SeriesKind>("aum");
+  const [seriesKind, setSeriesKind] = useState<SeriesKind>("flow_cum");
   const [focusSymbol, setFocusSymbol] = useState<string>("GLD");
   const [intraday, setIntraday] = useState<Array<{ t: string; aum: number }>>([]);
   const seriesKeyRef = useRef("");
@@ -171,7 +171,8 @@ export default function EtfDbUsTab() {
   const activeHistory: EtfDbUsHistory | undefined = useMemo(() => {
     if (!data) return undefined;
     if (seriesKind === "nav") return data.nav_history?.[dim];
-    if (seriesKind === "units") return data.units_history?.[dim];
+    if (seriesKind === "flow_cum") return data.flow_history?.[dim];
+    if (seriesKind === "flow_daily") return data.flow_daily_history?.[dim];
     return data.aum_history?.[dim];
   }, [data, dim, seriesKind]);
 
@@ -224,13 +225,16 @@ export default function EtfDbUsTab() {
     const ts = data?.ticker_series?.[focusSymbol];
     if (!ts?.dates?.length) return [];
     const step = Math.max(1, Math.ceil(ts.dates.length / 120));
-    const out: Array<{ label: string; nav: number | null; units: number | null }> =
-      [];
+    const out: Array<{
+      label: string;
+      nav: number | null;
+      flow_cum: number | null;
+    }> = [];
     for (let i = 0; i < ts.dates.length; i += step) {
       out.push({
         label: ts.dates[i]!.slice(5),
         nav: ts.nav[i] ?? null,
-        units: ts.units[i] ?? null,
+        flow_cum: ts.flow_cum_mn?.[i] ?? null,
       });
     }
     return out;
@@ -248,14 +252,22 @@ export default function EtfDbUsTab() {
       const n = typeof v === "number" ? v : null;
       if (n == null) return "—";
       if (seriesKind === "nav") return n.toFixed(1);
-      if (seriesKind === "units") {
-        if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-        return Math.round(n).toLocaleString("en-US");
+      if (seriesKind === "flow_cum" || seriesKind === "flow_daily") {
+        return fmtSignedUsdMn(n);
       }
       return fmtUsdMn(n);
     },
     [seriesKind],
   );
+
+  const seriesTitle =
+    seriesKind === "aum"
+      ? "AUM"
+      : seriesKind === "flow_cum"
+        ? "ETF 수급(누적)"
+        : seriesKind === "flow_daily"
+          ? "ETF 수급(일별)"
+          : "NAV 지수";
 
   const watchThemeAggs = useMemo(() => {
     const themeAggs = data?.aggregates?.theme || [];
@@ -270,9 +282,9 @@ export default function EtfDbUsTab() {
         <div>
           <h2 className="kr-hero-title">ETF DB(US)</h2>
           <p className="kr-note">
-            미국 상장 ETF · 유형/지역/업종/테마 · AUM · 수급(NAV×Δ설정좌수, KR ETF DB와
-            동일 산출). 귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전략·지정학 테마
-            우선 추적.
+            미국 주요 업종·테마 ETF(AUM 내림차순) · 채권·신흥국 제외. ETF 수급 계정 =
+            각 시점 NAV×Δ설정좌수를 일별로 산출한 뒤 누적으로 이어붙임($M).
+            귀금속·방산·원전·희토류(REMX)·원유·BWET 등 전략 테마 포함.
           </p>
         </div>
         <div className="etfdb-hero-actions">
@@ -352,13 +364,13 @@ export default function EtfDbUsTab() {
 
           <p className="kr-note">
             {data.generated_at_display}
-            {equityOnly ? " · 주식형만" : " · 전체(채권·원자재 포함)"}
+            {equityOnly ? " · 주식형만" : " · 전체(원자재 포함)"}
             {watchOnly ? " · 관심 테마만" : ""}
             {" · "}
             {chartMode === "intraday"
               ? "라이브 포인트"
-              : `1년 시계열 · ${data.aum_history?.[dim]?.dates?.length || chartData.length}거래일`}
-            {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : " · 수급은 익일부터 산출"}
+              : `1년 시계열 · ${activeHistory?.dates?.length || chartData.length}거래일`}
+            {data.prev_as_of ? ` · 당일 수급 전일 ${data.prev_as_of}` : " · 당일 수급은 익일부터"}
             {" · "}
             {data.source}
           </p>
@@ -420,14 +432,9 @@ export default function EtfDbUsTab() {
             <div className="etfdb-main">
               <div className="etfdbus-chart-head">
                 <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-                  {seriesKind === "aum"
-                    ? "AUM"
-                    : seriesKind === "nav"
-                      ? "NAV 지수"
-                      : "설정좌수"}{" "}
-                  · {chartKey}
+                  {seriesTitle} · {chartKey}
                   <span className="etfdb-chart-mode">
-                    {chartMode === "intraday"
+                    {chartMode === "intraday" && seriesKind === "aum"
                       ? "라이브"
                       : `1년 · ${activeHistory?.dates?.length || 0}일`}
                   </span>
@@ -436,8 +443,9 @@ export default function EtfDbUsTab() {
                   {(
                     [
                       ["aum", "AUM"],
+                      ["flow_cum", "ETF 수급"],
+                      ["flow_daily", "수급(일별)"],
                       ["nav", "NAV"],
-                      ["units", "설정좌수"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -484,14 +492,14 @@ export default function EtfDbUsTab() {
                       <Area
                         type="monotone"
                         dataKey="value"
-                        name={
-                          seriesKind === "aum"
-                            ? `${chartKey} AUM`
+                        name={`${chartKey} ${seriesTitle}`}
+                        stroke={
+                          seriesKind === "flow_cum" || seriesKind === "flow_daily"
+                            ? "#fbbf24"
                             : seriesKind === "nav"
-                              ? `${chartKey} NAV(100=시작)`
-                              : `${chartKey} 설정좌수`
+                              ? "#60a5fa"
+                              : "#34d399"
                         }
-                        stroke="#34d399"
                         fill="url(#aumUsFill)"
                         strokeWidth={2}
                         dot={false}
@@ -507,7 +515,7 @@ export default function EtfDbUsTab() {
 
               <div className="etfdbus-chart-head" style={{ marginTop: 14 }}>
                 <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-                  종목 NAV · 설정좌수 (1년)
+                  종목 NAV · ETF 수급(누적) (1년)
                 </h3>
                 <select
                   className="etfdb-search"
@@ -540,18 +548,21 @@ export default function EtfDbUsTab() {
                         domain={["auto", "auto"]}
                       />
                       <YAxis
-                        yAxisId="units"
+                        yAxisId="flow"
                         orientation="right"
                         tick={{ fill: "#8fa3b8", fontSize: 11 }}
-                        width={56}
-                        tickFormatter={(v) =>
-                          Math.abs(Number(v)) >= 1e6
-                            ? `${(Number(v) / 1e6).toFixed(1)}M`
-                            : String(Math.round(Number(v)))
-                        }
+                        width={64}
+                        tickFormatter={(v) => fmtSignedUsdMn(Number(v))}
                         domain={["auto", "auto"]}
                       />
                       <Tooltip
+                        formatter={(v, name) =>
+                          String(name).includes("수급")
+                            ? fmtSignedUsdMn(typeof v === "number" ? v : null)
+                            : typeof v === "number"
+                              ? v.toFixed(2)
+                              : "—"
+                        }
                         contentStyle={{
                           background: "#141d2b",
                           border: "1px solid #2b3648",
@@ -570,13 +581,12 @@ export default function EtfDbUsTab() {
                         isAnimationActive={false}
                       />
                       <Line
-                        yAxisId="units"
+                        yAxisId="flow"
                         type="monotone"
-                        dataKey="units"
-                        name={`${focusSymbol} 설정좌수`}
+                        dataKey="flow_cum"
+                        name={`${focusSymbol} ETF 수급`}
                         stroke="#fbbf24"
-                        strokeWidth={1.6}
-                        strokeDasharray="4 3"
+                        strokeWidth={1.8}
                         dot={false}
                         connectNulls
                         isAnimationActive={false}

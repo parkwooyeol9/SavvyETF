@@ -1,11 +1,17 @@
 /**
- * Reconstruct ~1y US ETF AUM / NAV / units histories from Yahoo daily closes.
+ * Reconstruct ~1y US ETF AUM / NAV / ETF-수급 histories.
  *
- * Method (same spirit as KR etfAumHistory):
+ * AUM / NAV (price proxy):
  *   aum_i,t ≈ aum_i,today × (P_i,t / P_i,today)
- *   nav_i,t ≈ P_i,t  (ETF close as NAV proxy; scaled to live NAV at end)
- *   units_i,t ≈ aum_i,t / nav_i,t   (≈ constant under price scaling;
- *                real Δunits appear once daily R2 snapshots accumulate)
+ *   nav_i,t ≈ liveNav × (P_i,t / P_i,today)
+ *
+ * ETF 수급 계정 (stitched):
+ *   flow_daily_t = NAV_t × (units_t − units_{t−1}) / 1e6   ($M)
+ *   flow_cum_t   = Σ flow_daily   ← the continuous "ETF 수급" account
+ *
+ * Units: start from live shares (price-scaled backfill ⇒ Δunits≈0 historically).
+ * When dated R2 snapshots exist, overlay real units by as_of date so Δunits
+ * (and therefore 수급) become non-zero going forward.
  */
 
 import type {
@@ -13,36 +19,34 @@ import type {
   EtfDbUsDimension,
   EtfDbUsHistory,
   EtfDbUsRow,
+  EtfDbUsTickerSeries,
 } from "@/lib/etfDbUs";
+import { ETF_DB_US_SNAP_PREFIX } from "@/lib/etfDbUs";
+import { r2Configured, r2GetObjectText, r2ListKeys } from "@/lib/r2";
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
 const LOOKBACK_DAYS = 400;
-const TOP_PER_LABEL = 10;
-const TOP_FOR_TOTAL = 40;
+const TOP_PER_LABEL = 12;
+const TOP_FOR_TOTAL = 50;
 const MAX_LABELS = 18;
 const FETCH_CONCURRENCY = 10;
 const CACHE_TTL_MS = 30 * 60_000;
-
-export type UsTickerSeries = {
-  symbol: string;
-  name: string;
-  dates: string[];
-  nav: Array<number | null>;
-  units: Array<number | null>;
-  aum_mn: Array<number | null>;
-};
+const MAX_SNAP_OVERLAY = 60;
 
 export type UsHistoryBundle = {
   aum_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   nav_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
-  units_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
-  ticker_series: Record<string, UsTickerSeries>;
+  flow_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  flow_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
+  ticker_series: Record<string, EtfDbUsTickerSeries>;
   method_note: string;
 };
 
 type PriceMap = Map<string, number>;
+/** symbol → date → units */
+type UnitsOverlay = Map<string, Map<string, number>>;
 
 const memCache = new Map<string, { expires: number; value: UsHistoryBundle }>();
 
@@ -95,6 +99,37 @@ async function fetchYahooDailyCloses(symbol: string): Promise<PriceMap> {
     const d = new Date(ts[i]! * 1000);
     const ymd = d.toISOString().slice(0, 10);
     out.set(ymd, c);
+  }
+  return out;
+}
+
+/** Load recent dated R2 snapshots → units by symbol/date. */
+async function loadUnitsOverlay(): Promise<UnitsOverlay> {
+  const out: UnitsOverlay = new Map();
+  if (!r2Configured()) return out;
+  try {
+    const keys = (await r2ListKeys(ETF_DB_US_SNAP_PREFIX))
+      .filter((k) => k.endsWith(".json"))
+      .sort()
+      .slice(-MAX_SNAP_OVERLAY);
+    for (const key of keys) {
+      const m = key.match(/(\d{4}-\d{2}-\d{2})\.json$/);
+      if (!m) continue;
+      const day = m[1]!;
+      const text = await r2GetObjectText(key);
+      if (!text) continue;
+      const data = JSON.parse(text) as {
+        rows?: Array<{ symbol?: string; units?: number | null }>;
+      };
+      for (const r of data.rows || []) {
+        if (!r.symbol || r.units == null || !(r.units > 0)) continue;
+        const sym = r.symbol.toUpperCase();
+        if (!out.has(sym)) out.set(sym, new Map());
+        out.get(sym)!.set(day, r.units);
+      }
+    }
+  } catch {
+    /* ignore overlay failures */
   }
   return out;
 }
@@ -186,7 +221,6 @@ function reconstructNavIndex(
       const px = map?.get(date);
       const aum = row.aum_mn || 0;
       if (!px || !(px > 0) || !(aum > 0)) continue;
-      // Use live NAV scale: nav_t ≈ liveNav * (px_t / px_today)
       let todayPx: number | null = null;
       for (let i = dates.length - 1; i >= 0; i--) {
         const p = map!.get(dates[i]!);
@@ -216,66 +250,30 @@ function reconstructNavIndex(
   return raw.map((v) => (v == null ? null : (100 * v) / base));
 }
 
-/** Sum of member units (≈ flat under price-only backfill). */
-function reconstructUnitsSum(
-  sample: EtfDbUsRow[],
-  dates: string[],
-): Array<number | null> {
-  const total = sample.reduce((s, r) => s + (r.units || 0), 0);
-  if (!(total > 0)) return dates.map(() => null);
-  return dates.map(() => total);
-}
-
-function buildDimHistories(
-  rows: EtfDbUsRow[],
-  dimension: EtfDbUsDimension,
-  aggregates: EtfDbUsAggregate[],
-  prices: Map<string, PriceMap>,
-  dates: string[],
-): { aum: EtfDbUsHistory; nav: EtfDbUsHistory; units: EtfDbUsHistory } {
-  const labels = [
-    "전체",
-    ...aggregates.slice(0, MAX_LABELS - 1).map((a) => a.label),
-  ];
-  const aumToday: Record<string, number> = {
-    전체: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
-  };
-  for (const a of aggregates) aumToday[a.label] = a.aum_mn || 0;
-
-  const aumSeries: Record<string, Array<number | null>> = {};
-  const navSeries: Record<string, Array<number | null>> = {};
-  const unitsSeries: Record<string, Array<number | null>> = {};
-
-  for (const label of labels) {
-    const sample = pickSample(rows, dimension, label);
-    const aumVals = reconstructAumSeries(
-      sample,
-      prices,
-      aumToday[label] || 0,
-      dates,
-    );
-    // Pin latest trading day to live AUM (chart last bar = dashboard total).
-    if (dates.length && aumToday[label] != null) {
-      aumVals[dates.length - 1] = aumToday[label]!;
+/** Daily flow → cumulative 수급 account. */
+function toCumFlow(daily: Array<number | null>): Array<number | null> {
+  const out: Array<number | null> = [];
+  let cum = 0;
+  let started = false;
+  for (const v of daily) {
+    if (v == null) {
+      out.push(started ? cum : null);
+      continue;
     }
-    aumSeries[label] = aumVals;
-    navSeries[label] = reconstructNavIndex(sample, prices, dates);
-    unitsSeries[label] = reconstructUnitsSum(sample, dates);
+    started = true;
+    cum += v;
+    out.push(cum);
   }
-
-  return {
-    aum: { dates, series: aumSeries },
-    nav: { dates, series: navSeries },
-    units: { dates, series: unitsSeries },
-  };
+  return out;
 }
 
 function buildTickerSeries(
   rows: EtfDbUsRow[],
   prices: Map<string, PriceMap>,
   dates: string[],
-): Record<string, UsTickerSeries> {
-  const out: Record<string, UsTickerSeries> = {};
+  overlay: UnitsOverlay,
+): Record<string, EtfDbUsTickerSeries> {
+  const out: Record<string, EtfDbUsTickerSeries> = {};
   for (const row of rows) {
     const map = prices.get(row.symbol);
     if (!map?.size) continue;
@@ -296,6 +294,7 @@ function buildTickerSeries(
           ? (row.aum_mn * 1_000_000) / liveNav
           : null;
     const liveAum = row.aum_mn || 0;
+    const snapUnits = overlay.get(row.symbol);
 
     const nav: Array<number | null> = [];
     const units: Array<number | null> = [];
@@ -310,8 +309,8 @@ function buildTickerSeries(
       }
       const navT = liveNav * (px / todayPx);
       nav.push(navT);
-      units.push(liveUnits);
-      // Price-scaled AUM; pin end to live AUM via scale on last day handled below
+      const u = snapUnits?.get(d) ?? liveUnits;
+      units.push(u);
       aum_mn.push(liveAum > 0 ? liveAum * (px / todayPx) : null);
     }
     if (dates.length && liveAum > 0) {
@@ -322,6 +321,21 @@ function buildTickerSeries(
       if (liveUnits != null) units[dates.length - 1] = liveUnits;
     }
 
+    // ETF 수급: each day NAV × Δunits, then stitch (cumsum)
+    const flow_daily_mn: Array<number | null> = dates.map((_, i) => {
+      if (i === 0) return 0;
+      const n = nav[i];
+      const u = units[i];
+      const pu = units[i - 1];
+      if (n == null || !(n > 0) || u == null || pu == null) return null;
+      return (n * (u - pu)) / 1_000_000;
+    });
+    // Pin latest daily flow to live row.flow_mn when available (R2 prev snap).
+    if (dates.length && row.flow_mn != null && Number.isFinite(row.flow_mn)) {
+      flow_daily_mn[dates.length - 1] = row.flow_mn;
+    }
+    const flow_cum_mn = toCumFlow(flow_daily_mn);
+
     out[row.symbol] = {
       symbol: row.symbol,
       name: row.name,
@@ -329,9 +343,114 @@ function buildTickerSeries(
       nav,
       units,
       aum_mn,
+      flow_daily_mn,
+      flow_cum_mn,
     };
   }
   return out;
+}
+
+function sumMemberFlows(
+  memberSymbols: string[],
+  ticker_series: Record<string, EtfDbUsTickerSeries>,
+  dates: string[],
+  kind: "daily" | "cum",
+): Array<number | null> {
+  const series = memberSymbols
+    .map((s) => ticker_series[s])
+    .filter(Boolean) as EtfDbUsTickerSeries[];
+  if (!series.length) return dates.map(() => null);
+
+  if (kind === "daily") {
+    return dates.map((_, i) => {
+      let sum = 0;
+      let hit = 0;
+      for (const ts of series) {
+        const v = ts.flow_daily_mn[i];
+        if (v == null || !Number.isFinite(v)) continue;
+        sum += v;
+        hit += 1;
+      }
+      return hit ? sum : null;
+    });
+  }
+
+  // Cumulative account = stitch of summed daily flows (not sum of cum series)
+  const daily = dates.map((_, i) => {
+    let sum = 0;
+    let hit = 0;
+    for (const ts of series) {
+      const v = ts.flow_daily_mn[i];
+      if (v == null || !Number.isFinite(v)) continue;
+      sum += v;
+      hit += 1;
+    }
+    return hit ? sum : null;
+  });
+  return toCumFlow(daily);
+}
+
+function buildDimHistories(
+  rows: EtfDbUsRow[],
+  dimension: EtfDbUsDimension,
+  aggregates: EtfDbUsAggregate[],
+  prices: Map<string, PriceMap>,
+  dates: string[],
+  ticker_series: Record<string, EtfDbUsTickerSeries>,
+): {
+  aum: EtfDbUsHistory;
+  nav: EtfDbUsHistory;
+  flow: EtfDbUsHistory;
+  flowDaily: EtfDbUsHistory;
+} {
+  const labels = [
+    "전체",
+    ...aggregates.slice(0, MAX_LABELS - 1).map((a) => a.label),
+  ];
+  const aumToday: Record<string, number> = {
+    전체: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
+  };
+  for (const a of aggregates) aumToday[a.label] = a.aum_mn || 0;
+
+  const aumSeries: Record<string, Array<number | null>> = {};
+  const navSeries: Record<string, Array<number | null>> = {};
+  const flowSeries: Record<string, Array<number | null>> = {};
+  const flowDailySeries: Record<string, Array<number | null>> = {};
+
+  for (const label of labels) {
+    const sample = pickSample(rows, dimension, label);
+    const aumVals = reconstructAumSeries(
+      sample,
+      prices,
+      aumToday[label] || 0,
+      dates,
+    );
+    if (dates.length && aumToday[label] != null) {
+      aumVals[dates.length - 1] = aumToday[label]!;
+    }
+    aumSeries[label] = aumVals;
+    navSeries[label] = reconstructNavIndex(sample, prices, dates);
+
+    const members =
+      label === "전체"
+        ? rows.map((r) => r.symbol)
+        : rows.filter((r) => r[dimension] === label).map((r) => r.symbol);
+    // Prefer sample symbols that actually have series; fall back to all members
+    const withSeries = members.filter((s) => ticker_series[s]);
+    const use =
+      withSeries.length > 0
+        ? withSeries
+        : sample.map((r) => r.symbol).filter((s) => ticker_series[s]);
+    flowDailySeries[label] = sumMemberFlows(use, ticker_series, dates, "daily");
+    flowSeries[label] = sumMemberFlows(use, ticker_series, dates, "cum");
+  }
+
+  return {
+    aum: { dates, series: aumSeries },
+    nav: { dates, series: navSeries },
+    flow: { dates, series: flowSeries },
+    flowDaily: { dates, series: flowDailySeries },
+  };
 }
 
 export async function reconstructUsHistories(opts: {
@@ -357,26 +476,33 @@ export async function reconstructUsHistories(opts: {
       }
     }
   }
-  // Always include watchlist / top names for ticker charts
   for (const row of opts.rows) {
-    if (row.watch || (row.aum_mn || 0) > 5_000) codeSet.add(row.symbol);
+    if (row.watch || (row.aum_mn || 0) > 3_000) codeSet.add(row.symbol);
   }
 
   const codes = [...codeSet];
-  const fetched = await mapPool(codes, FETCH_CONCURRENCY, async (sym) => {
-    try {
-      return [sym, await fetchYahooDailyCloses(sym)] as const;
-    } catch {
-      return [sym, new Map() as PriceMap] as const;
-    }
-  });
+  const [fetched, overlay] = await Promise.all([
+    mapPool(codes, FETCH_CONCURRENCY, async (sym) => {
+      try {
+        return [sym, await fetchYahooDailyCloses(sym)] as const;
+      } catch {
+        return [sym, new Map() as PriceMap] as const;
+      }
+    }),
+    loadUnitsOverlay(),
+  ]);
   const prices = new Map(fetched);
-  // Use Yahoo trading calendar only (do not append empty "today" UTC day).
-  const dates = unionSortedDates(prices).slice(-260); // ~1y trading days
+  const dates = unionSortedDates(prices).slice(-260);
+
+  const tickerRows = opts.rows.filter(
+    (r) => r.watch || codeSet.has(r.symbol),
+  );
+  const ticker_series = buildTickerSeries(tickerRows, prices, dates, overlay);
 
   const aum_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
   const nav_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
-  const units_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
+  const flow_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
+  const flow_daily_history = {} as Record<EtfDbUsDimension, EtfDbUsHistory>;
 
   for (const dim of dims) {
     const built = buildDimHistories(
@@ -385,25 +511,29 @@ export async function reconstructUsHistories(opts: {
       opts.aggregates[dim],
       prices,
       dates,
+      ticker_series,
     );
     aum_history[dim] = built.aum;
     nav_history[dim] = built.nav;
-    units_history[dim] = built.units;
+    flow_history[dim] = built.flow;
+    flow_daily_history[dim] = built.flowDaily;
   }
 
-  const tickerRows = opts.rows.filter(
-    (r) => r.watch || codeSet.has(r.symbol),
-  );
-  const ticker_series = buildTickerSeries(tickerRows, prices, dates);
+  const snapDays = new Set<string>();
+  for (const m of overlay.values()) for (const d of m.keys()) snapDays.add(d);
 
   const value: UsHistoryBundle = {
     aum_history,
     nav_history,
-    units_history,
+    flow_history,
+    flow_daily_history,
     ticker_series,
     method_note:
-      "과거 1년 AUM·NAV는 Yahoo 일별 종가×당일 설정좌수로 복원(ETF 종가≈NAV, AUM_t≈AUM_today×P_t/P_today). " +
-      "설정좌수 시계열은 복원 시 거의 일정하며, 실제 설정·환매(Δ좌수)는 일별 스냅샷이 쌓이면 반영됩니다.",
+      "ETF 수급 계정 = 각 시점 NAV×Δ설정좌수($M)를 일별로 산출한 뒤 누적(이어붙임). " +
+      "AUM·NAV 1년은 Yahoo 종가 비율로 복원(AUM_t≈AUM_today×P_t/P_today). " +
+      (snapDays.size
+        ? `설정좌수는 R2 일별 스냅샷 ${snapDays.size}일로 Δ좌수(수급)를 보정합니다.`
+        : "설정좌수 과거분은 당일 좌수로 고정되어 역사 수급≈0이며, 일별 스냅샷이 쌓이면 수급 계정이 채워집니다."),
   };
   memCache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, value });
   return value;
