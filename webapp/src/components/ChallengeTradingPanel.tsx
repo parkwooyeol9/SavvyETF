@@ -38,6 +38,22 @@ function actionTone(a: string): string {
   return "";
 }
 
+function fmtTs(iso?: string): string {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 16);
+  }
+}
+
 export default function ChallengeTradingPanel() {
   const [data, setData] = useState<ChallengePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +145,24 @@ export default function ChallengeTradingPanel() {
               <h3>업비트엔진</h3>
               <p className="meta-soft">
                 수익률 <strong className={tone(data.upbit.return_pct)}>{fmtPct(data.upbit.return_pct)}</strong>
+                {" · "}거래 {data.upbit.trade_count}건
               </p>
+              {data.upbit.positions.length > 0 ? (
+                <>
+                  <p className="meta-soft" style={{ marginTop: 8 }}>보유</p>
+                  <ul className="kr-list compact">
+                    {data.upbit.positions.map((p) => (
+                      <li key={`${p.strategy}-${p.market}`}>
+                        {p.market_label} ·{" "}
+                        <span className={tone(p.pnl_pct)}>{fmtPct(p.pnl_pct)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="meta-soft" style={{ marginTop: 8 }}>보유 없음</p>
+              )}
+              <p className="meta-soft" style={{ marginTop: 8 }}>시그널</p>
               <ul className="kr-list compact">
                 {data.upbit.signals.map((s) => (
                   <li key={s.id}>
@@ -138,12 +171,45 @@ export default function ChallengeTradingPanel() {
                   </li>
                 ))}
               </ul>
+              <p className="meta-soft" style={{ marginTop: 8 }}>최근 체결</p>
+              {data.upbit.recent_trades.length ? (
+                <ul className="kr-list compact">
+                  {data.upbit.recent_trades.slice(0, 8).map((t) => (
+                    <li key={t.id}>
+                      {fmtTs(t.ts)} ·{" "}
+                      <span className={actionTone(t.side)}>
+                        {t.side === "buy" ? "매수" : "매도"}
+                      </span>{" "}
+                      {t.market.replace("KRW-", "")} · {t.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="meta-soft">체결 내역 없음</p>
+              )}
             </div>
             <div className="geo-card">
               <h3>바이낸스엔진</h3>
               <p className="meta-soft">
                 수익률 <strong className={tone(data.binance.return_pct)}>{fmtPct(data.binance.return_pct)}</strong>
+                {" · "}거래 {data.binance.trade_count}건
               </p>
+              {data.binance.positions.length > 0 ? (
+                <>
+                  <p className="meta-soft" style={{ marginTop: 8 }}>보유</p>
+                  <ul className="kr-list compact">
+                    {data.binance.positions.map((p) => (
+                      <li key={`${p.strategy}-${p.symbol}`}>
+                        {p.symbol_label || p.symbol} ·{" "}
+                        <span className={tone(p.pnl_pct)}>{fmtPct(p.pnl_pct)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="meta-soft" style={{ marginTop: 8 }}>보유 없음</p>
+              )}
+              <p className="meta-soft" style={{ marginTop: 8 }}>시그널</p>
               <ul className="kr-list compact">
                 {data.binance.signals.map((s) => (
                   <li key={s.id}>
@@ -152,6 +218,22 @@ export default function ChallengeTradingPanel() {
                   </li>
                 ))}
               </ul>
+              <p className="meta-soft" style={{ marginTop: 8 }}>최근 체결</p>
+              {data.binance.recent_trades.length ? (
+                <ul className="kr-list compact">
+                  {data.binance.recent_trades.slice(0, 8).map((t) => (
+                    <li key={t.id}>
+                      {fmtTs(t.ts)} ·{" "}
+                      <span className={actionTone(t.side)}>
+                        {t.side === "buy" ? "매수" : "매도"}
+                      </span>{" "}
+                      {t.symbol} · {t.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="meta-soft">체결 내역 없음</p>
+              )}
             </div>
           </div>
 
