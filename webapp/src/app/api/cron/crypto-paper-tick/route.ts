@@ -54,6 +54,8 @@ export async function GET(request: Request) {
       signals: state.signals.map((s) => ({
         id: s.id,
         action: s.action,
+        raw: s.debounce?.raw,
+        stable: s.debounce?.stable,
         market: s.market,
       })),
     });
