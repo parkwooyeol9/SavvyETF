@@ -21,6 +21,7 @@ import {
   tradesFromAiPortSnapshots,
   type StoredAiPort,
 } from "@/lib/aiPortStore";
+import CryptoAiTradingPanel from "@/components/CryptoAiTradingPanel";
 import { buildIndexedChartSeries } from "@/lib/usPortfolio";
 import type { UsPortfolioResult } from "@/lib/usPortfolio";
 import type { TradingIdeasPayload } from "@/lib/tradingIdeas";
@@ -401,6 +402,8 @@ export default function AiPortTab() {
           </p>
         </section>
       ) : null}
+
+      <CryptoAiTradingPanel />
     </div>
   );
 }
