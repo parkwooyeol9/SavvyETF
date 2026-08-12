@@ -96,11 +96,6 @@ export default function ChallengeTradingPanel() {
         </div>
       </div>
 
-      {data ? (
-        <p className="meta-soft">
-          {data.note} · {data.generated_at_display}
-        </p>
-      ) : null}
       {error ? <p className="empty">오류: {error}</p> : null}
       {loading && !data ? <p className="empty">불러오는 중…</p> : null}
 
