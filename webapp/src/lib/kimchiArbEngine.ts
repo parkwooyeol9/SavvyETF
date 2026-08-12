@@ -31,6 +31,9 @@ export type KimchiArbSignal = {
   generated_at: string;
   kimchi_pct: number | null;
   net_spread_pct: number | null;
+  upbit_btc_krw: number | null;
+  binance_btc_usdt: number | null;
+  usd_krw: number | null;
   regime: "premium_high" | "premium_low" | "neutral";
   regime_ko: string;
   arb_action: "enter_short_kimchi" | "enter_long_kimchi" | "hold" | "unavailable";
@@ -101,6 +104,9 @@ export async function evaluateKimchiArb(): Promise<KimchiArbSignal> {
       generated_at: now,
       kimchi_pct: null,
       net_spread_pct: null,
+      upbit_btc_krw: data.upbit_btc_krw,
+      binance_btc_usdt: data.binance_btc_usdt,
+      usd_krw: data.usd_krw,
       regime: "neutral",
       regime_ko: "데이터 없음",
       arb_action: "unavailable",
@@ -120,6 +126,9 @@ export async function evaluateKimchiArb(): Promise<KimchiArbSignal> {
       generated_at: now,
       kimchi_pct: kimchi,
       net_spread_pct: netSpread,
+      upbit_btc_krw: data.upbit_btc_krw,
+      binance_btc_usdt: data.binance_btc_usdt,
+      usd_krw: data.usd_krw,
       regime: "premium_high",
       regime_ko: "김프 확대",
       arb_action: "enter_short_kimchi",
@@ -152,6 +161,9 @@ export async function evaluateKimchiArb(): Promise<KimchiArbSignal> {
       generated_at: now,
       kimchi_pct: kimchi,
       net_spread_pct: netSpread,
+      upbit_btc_krw: data.upbit_btc_krw,
+      binance_btc_usdt: data.binance_btc_usdt,
+      usd_krw: data.usd_krw,
       regime: "premium_low",
       regime_ko: "김프 축소/역프",
       arb_action: "enter_long_kimchi",
@@ -183,6 +195,9 @@ export async function evaluateKimchiArb(): Promise<KimchiArbSignal> {
     generated_at: now,
     kimchi_pct: kimchi,
     net_spread_pct: netSpread,
+    upbit_btc_krw: data.upbit_btc_krw,
+    binance_btc_usdt: data.binance_btc_usdt,
+    usd_krw: data.usd_krw,
     regime: "neutral",
     regime_ko: "중립",
     arb_action: "hold",

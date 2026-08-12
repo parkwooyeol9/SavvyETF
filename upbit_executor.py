@@ -108,7 +108,7 @@ def run_upbit_executor() -> dict[str, Any]:
         _append_log({"ts": datetime.now(timezone.utc).isoformat(), "event": "kill_switch"})
         return result
 
-    live = _env_bool("UPBIT_LIVE", "false")
+    live = _env_bool("UPBIT_LIVE", "false") or _env_bool("CHALLENGE_LIVE", "false")
     result["mode"] = "live" if live else "dry"
 
     signals = get_json(SIGNALS_KEY) or get_json(LEGACY_SIGNALS_KEY)
