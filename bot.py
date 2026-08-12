@@ -36,6 +36,7 @@ from etfcheck_scheduler import start_etfcheck_scheduler
 from etf_kor15_scheduler import start_etf_kor15_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from credit_monitor_scheduler import start_credit_monitor_scheduler
+from crypto_trading_scheduler import start_crypto_trading_scheduler
 from etf_weight_monitor_scheduler import start_etf_weight_monitor_scheduler
 from kosdaq_active_scheduler import start_kosdaq_active_scheduler
 from kosdaq100_scheduler import start_kosdaq100_scheduler
@@ -3710,6 +3711,7 @@ if __name__ == "__main__":
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_kor15_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_db_scheduler()
+    start_crypto_trading_scheduler()
     start_credit_monitor_scheduler()
     start_etf_weight_monitor_scheduler()
     start_kosdaq_active_scheduler()

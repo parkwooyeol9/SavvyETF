@@ -18,8 +18,12 @@ import {
 } from "@/lib/tradingSignals";
 
 export const CRYPTO_PAPER_R2_KEY = "crypto_paper/state_v1.json";
+export const CRYPTO_SIGNALS_R2_KEY = "crypto_paper/signals_latest.json";
 export const CRYPTO_PAPER_INITIAL_KRW = 10_000_000;
-export const CRYPTO_PAPER_FEE_RATE = 0.0005; // 0.05% per side
+export const CRYPTO_PAPER_FEE_RATE = 0.0005; // 0.05% per side (KRW markets)
+export const CRYPTO_PAPER_FEE_RATE_USDT = 0.0025; // 0.25% per side (KRW-USDT)
+/** Consecutive hourly ticks with same raw signal before paper/live execution */
+export const SIGNAL_DEBOUNCE_TICKS = 2;
 export const CRYPTO_PAPER_NOTE =
   "페이퍼 트레이딩 · 실제 주문 없음 · Upbit 공개 시세 · 교육용(투자 권유 아님)";
 
@@ -61,6 +65,13 @@ export type EquityPoint = {
   btc_benchmark_return_pct: number;
 };
 
+export type SignalDebounce = {
+  raw: SignalAction;
+  stable: SignalAction;
+  count: number;
+  required: number;
+};
+
 export type StrategySignal = {
   id: StrategyId;
   label: string;
@@ -71,6 +82,7 @@ export type StrategySignal = {
   reason: string;
   target_weight_pct: number;
   current_weight_pct: number;
+  debounce?: SignalDebounce;
 };
 
 export type CryptoPaperState = {
@@ -85,6 +97,9 @@ export type CryptoPaperState = {
   started_at: string;
   last_tick_at: string | null;
   tick_count: number;
+  signal_debounce?: Partial<
+    Record<StrategyId, { raw: SignalAction; stable: SignalAction; count: number }>
+  >;
 };
 
 export type CryptoPaperPayload = {
@@ -170,6 +185,25 @@ function actionKo(a: SignalAction): string {
   if (a === "buy") return "매수";
   if (a === "sell") return "매도";
   return "관망";
+}
+
+function feeRateForMarket(market: string): number {
+  return market === "KRW-USDT" ? CRYPTO_PAPER_FEE_RATE_USDT : CRYPTO_PAPER_FEE_RATE;
+}
+
+function applySignalDebounce(
+  prev: { raw: SignalAction; stable: SignalAction; count: number } | undefined,
+  raw: SignalAction,
+  required: number,
+): { raw: SignalAction; stable: SignalAction; count: number } {
+  if (raw === "hold") {
+    return { raw: "hold", stable: "hold", count: 0 };
+  }
+  const prevRaw = prev?.raw ?? "hold";
+  const prevStable = prev?.stable ?? "hold";
+  const count = raw === prevRaw ? (prev?.count ?? 0) + 1 : 1;
+  const stable = count >= required ? raw : prevStable;
+  return { raw, stable, count };
 }
 
 export function defaultCryptoPaperState(): CryptoPaperState {
@@ -441,7 +475,7 @@ function executeBuy(
   if (!(price > 0) || !(targetKrw > 10_000)) return state;
   const spend = Math.min(state.cash_krw, targetKrw);
   if (spend < 10_000) return state;
-  const fee = spend * CRYPTO_PAPER_FEE_RATE;
+  const fee = spend * feeRateForMarket(market);
   const net = spend - fee;
   const qty = net / price;
   const trade: PaperTrade = {
@@ -514,7 +548,7 @@ function executeSell(
   if (!pos || !(pos.quantity > 0) || !(price > 0)) return state;
   const qty = pos.quantity * Math.min(1, Math.max(0, fraction));
   const gross = qty * price;
-  const fee = gross * CRYPTO_PAPER_FEE_RATE;
+  const fee = gross * feeRateForMarket(market);
   const net = gross - fee;
   const trade: PaperTrade = {
     id: newTradeId(),
@@ -625,6 +659,10 @@ export async function tickCryptoPaperPortfolio(
     },
   ];
 
+  const debounceMap: NonNullable<CryptoPaperState["signal_debounce"]> = {
+    ...(s.signal_debounce || {}),
+  };
+
   for (const lane of laneSignals) {
     const meta = STRATEGY_META[lane.id];
     const market =
@@ -633,27 +671,35 @@ export async function tickCryptoPaperPortfolio(
     const px = prices.get(market);
     if (px == null || !(px > 0)) continue;
 
+    const deb = applySignalDebounce(
+      debounceMap[lane.id],
+      lane.action,
+      SIGNAL_DEBOUNCE_TICKS,
+    );
+    debounceMap[lane.id] = deb;
+    const tradeAction = deb.stable;
+
     const hasPos = s.positions.some(
       (p) => p.strategy === lane.id && p.market === market && p.quantity > 0,
     );
     const targetKrw = (equityBefore * meta.max_weight_pct) / 100;
 
-    if (lane.action === "buy" && !hasPos) {
+    if (tradeAction === "buy" && !hasPos) {
       s = executeBuy(
         s,
         market,
         lane.id,
         targetKrw,
         px,
-        lane.action,
+        tradeAction,
         lane.reason,
         now,
       );
-    } else if (lane.action === "sell" && hasPos) {
-      s = executeSell(s, market, lane.id, px, lane.action, lane.reason, now);
+    } else if (tradeAction === "sell" && hasPos) {
+      s = executeSell(s, market, lane.id, px, tradeAction, lane.reason, now);
     } else if (
       lane.id === "alt_surge" &&
-      lane.action === "buy" &&
+      tradeAction === "buy" &&
       lane.market &&
       lane.market !== market &&
       hasPos
@@ -662,14 +708,14 @@ export async function tickCryptoPaperPortfolio(
     }
   }
 
-  // Alt rotation: if new buy signal for different market, sell existing alt first
+  s = { ...s, signal_debounce: debounceMap };
+
+  // Alt rotation: debounced buy for a different market
+  const altDeb = debounceMap.alt_surge;
+  const altTradeBuy =
+    altDeb?.stable === "buy" && altEval.market && altDeb.count >= SIGNAL_DEBOUNCE_TICKS;
   const altPos = s.positions.find((p) => p.strategy === "alt_surge");
-  if (
-    altEval.action === "buy" &&
-    altEval.market &&
-    altPos &&
-    altPos.market !== altEval.market
-  ) {
+  if (altTradeBuy && altEval.market && altPos && altPos.market !== altEval.market) {
     const px = prices.get(altPos.market);
     if (px != null) {
       s = executeSell(
@@ -718,16 +764,26 @@ export async function tickCryptoPaperPortfolio(
         ? pos.quantity * prices.get(pos.market)!
         : 0;
     const w = equity > 0 ? (100 * posVal) / equity : 0;
+    const deb = debounceMap[lane.id];
+    const stable = deb?.stable ?? lane.action;
     return {
       id: lane.id,
       label: meta.label,
       market: pos?.market || mkt,
-      action: lane.action,
-      action_ko: actionKo(lane.action),
+      action: stable,
+      action_ko: actionKo(stable),
       score: lane.score,
       reason: lane.reason,
       target_weight_pct: meta.max_weight_pct,
       current_weight_pct: Math.round(w * 10) / 10,
+      debounce: deb
+        ? {
+            raw: deb.raw,
+            stable: deb.stable,
+            count: deb.count,
+            required: SIGNAL_DEBOUNCE_TICKS,
+          }
+        : undefined,
     };
   });
 
@@ -782,6 +838,58 @@ export async function persistCryptoPaperState(
     await r2PutObject(
       CRYPTO_PAPER_R2_KEY,
       JSON.stringify(state),
+      "application/json",
+    );
+    await publishSignalsSnapshot(state);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type CryptoSignalsSnapshot = {
+  version: 1;
+  generated_at: string;
+  tick_count: number;
+  note: string;
+  strategies: Array<{
+    id: StrategyId;
+    label: string;
+    market: string;
+    action: SignalAction;
+    raw_action: SignalAction;
+    score: number | null;
+    reason: string;
+    target_weight_pct: number;
+    debounce: SignalDebounce | null;
+  }>;
+};
+
+export async function publishSignalsSnapshot(
+  state: CryptoPaperState,
+): Promise<boolean> {
+  if (!r2Configured()) return false;
+  try {
+    const payload: CryptoSignalsSnapshot = {
+      version: 1,
+      generated_at: state.last_tick_at || new Date().toISOString(),
+      tick_count: state.tick_count,
+      note: "SavvyETF crypto signals for Render executor — debounced stable actions",
+      strategies: state.signals.map((sig) => ({
+        id: sig.id,
+        label: sig.label,
+        market: sig.market,
+        action: sig.debounce?.stable ?? sig.action,
+        raw_action: sig.debounce?.raw ?? sig.action,
+        score: sig.score,
+        reason: sig.reason,
+        target_weight_pct: sig.target_weight_pct,
+        debounce: sig.debounce ?? null,
+      })),
+    };
+    await r2PutObject(
+      CRYPTO_SIGNALS_R2_KEY,
+      JSON.stringify(payload),
       "application/json",
     );
     return true;
@@ -854,7 +962,7 @@ export async function buildCryptoPaperPayload(options?: {
     generated_at_display: displayNow(),
     note: CRYPTO_PAPER_NOTE,
     schedule_note:
-      "시그널·페이퍼 체결은 약 1시간마다 갱신(크론) · 실제 Upbit 주문 없음",
+      "시그널·페이퍼 체결은 약 1시간마다 갱신(크론) · 동일 신호 2회 연속 시 체결 · 실제 Upbit 주문 없음",
     from_cache: !shouldTick,
     initial_krw: state.initial_krw,
     equity_krw: equity,
