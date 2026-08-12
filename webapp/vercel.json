@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/cftc-refresh",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/crypto-paper-tick",
+      "schedule": "15 * * * *"
     }
   ]
 }
