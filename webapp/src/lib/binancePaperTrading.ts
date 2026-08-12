@@ -12,13 +12,18 @@ import {
   type SignalPoint,
 } from "@/lib/tradingSignals";
 import { SIGNAL_DEBOUNCE_TICKS } from "@/lib/cryptoPaperTrading";
+import {
+  fetchYahooCandles,
+  fetchYahooPrices,
+  YAHOO_SYMBOL_BY_BINANCE,
+} from "@/lib/binanceMarketFallback";
 
 export const BINANCE_PAPER_R2_KEY = "binance_paper/state_v1.json";
 export const BINANCE_SIGNALS_R2_KEY = "binance_paper/signals_latest.json";
 export const CHALLENGE_BINANCE_ALLOC_USDT = 3500;
 export const BINANCE_PAPER_FEE_RATE = 0.0004; // ~0.04% perp taker
 export const BINANCE_PAPER_NOTE =
-  "바이낸스엔진 · USDT-M 페이퍼 · 실제 주문 없음 · 교육용(투자 권유 아님)";
+  "바이낸스엔진 · USDT-M 페이퍼 · 실제 주문 없음 · 시세는 Yahoo/CoinGecko(공개) · 교육용(투자 권유 아님)";
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
@@ -287,13 +292,19 @@ async function fetchFuturesCandles(
     `https://fapi.binance.com/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}` +
     `&interval=1d&limit=${count}`;
   const rows = await fetchJson<BinanceKline[]>(url);
-  if (!rows?.length) return [];
-  return rows
-    .map((r) => ({
-      date: new Date(r[0]).toISOString().slice(0, 10),
-      value: Number(r[4]),
-    }))
-    .filter((p) => p.date && p.value > 0);
+  if (rows?.length) {
+    return rows
+      .map((r) => ({
+        date: new Date(r[0]).toISOString().slice(0, 10),
+        value: Number(r[4]),
+      }))
+      .filter((p) => p.date && p.value > 0);
+  }
+  const yahoo = YAHOO_SYMBOL_BY_BINANCE[symbol];
+  if (yahoo) {
+    return fetchYahooCandles(yahoo, count);
+  }
+  return [];
 }
 
 async function fetchFuturesPrices(symbols: string[]): Promise<Map<string, number>> {
@@ -307,6 +318,11 @@ async function fetchFuturesPrices(symbols: string[]): Promise<Map<string, number
       const px = Number(r.price);
       if (px > 0) out.set(r.symbol, px);
     }
+  }
+  const missing = symbols.filter((s) => !out.has(s));
+  if (missing.length) {
+    const yahoo = await fetchYahooPrices(missing);
+    for (const [sym, px] of yahoo) out.set(sym, px);
   }
   return out;
 }
