@@ -364,9 +364,16 @@ function evaluateKimchiUsdt(kimchiPct: number | null): {
   };
 }
 
+/** 알트 급등: 모멘텀 스캘프 — 빠른 손절·익절 + 고점 되돌림 */
+const ALT_STOP_LOSS_PCT = -5;
+const ALT_TAKE_PROFIT_PCT = 8;
+const ALT_TRAIL_ARM_PCT = 5;
+const ALT_TRAIL_GIVEBACK_PCT = 4;
+
 async function evaluateAltSurge(
   heldMarket: string | null,
   heldEntry: number | null,
+  heldPeak: number | null = null,
 ): Promise<{ action: SignalAction; market: string; score: number; reason: string }> {
   const EXCLUDE = new Set([
     "KRW-BTC",
@@ -384,7 +391,9 @@ async function evaluateAltSurge(
     const px = t?.trade_price;
     if (px != null && px > 0) {
       const pnl = (100 * (px - heldEntry)) / heldEntry;
-      if (pnl <= -8) {
+      const peak = Math.max(heldPeak ?? heldEntry, px, heldEntry);
+      const fromPeak = peak > 0 ? (100 * (px - peak)) / peak : 0;
+      if (pnl <= ALT_STOP_LOSS_PCT) {
         return {
           action: "sell",
           market: heldMarket,
@@ -392,7 +401,7 @@ async function evaluateAltSurge(
           reason: `알트 손절 ${pnl.toFixed(1)}% (${heldMarket})`,
         };
       }
-      if (pnl >= 12) {
+      if (pnl >= ALT_TAKE_PROFIT_PCT) {
         return {
           action: "sell",
           market: heldMarket,
@@ -400,6 +409,22 @@ async function evaluateAltSurge(
           reason: `알트 익절 ${pnl.toFixed(1)}% (${heldMarket})`,
         };
       }
+      // Armed trailing: once +5% from entry, exit if give back 4% from peak
+      const peakPnl = (100 * (peak - heldEntry)) / heldEntry;
+      if (peakPnl >= ALT_TRAIL_ARM_PCT && fromPeak <= -ALT_TRAIL_GIVEBACK_PCT) {
+        return {
+          action: "sell",
+          market: heldMarket,
+          score: 35,
+          reason: `알트 고점되돌림 ${fromPeak.toFixed(1)}%p · 현재 ${pnl.toFixed(1)}% (${heldMarket})`,
+        };
+      }
+      return {
+        action: "hold",
+        market: heldMarket,
+        score: 52,
+        reason: `알트 보유 ${heldMarket} · 손익 ${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}% (손절 ${ALT_STOP_LOSS_PCT}% / 익절 +${ALT_TAKE_PROFIT_PCT}%)`,
+      };
     }
     return {
       action: "hold",
@@ -601,7 +626,11 @@ export async function tickCryptoPaperPortfolio(
     fetchKimchiBtcPct(),
     (async () => {
       const altPos = state.positions.find((p) => p.strategy === "alt_surge");
-      return evaluateAltSurge(altPos?.market ?? null, altPos?.avg_price ?? null);
+      return evaluateAltSurge(
+        altPos?.market ?? null,
+        altPos?.avg_price ?? null,
+        altPos?.peak_price ?? null,
+      );
     })(),
   ]);
 
@@ -678,11 +707,16 @@ export async function tickCryptoPaperPortfolio(
     const px = prices.get(market);
     if (px == null || !(px > 0)) continue;
 
-    const deb = applySignalDebounce(
-      debounceMap[lane.id],
-      lane.action,
-      SIGNAL_DEBOUNCE_TICKS,
-    );
+    // 알트 손절·익절은 디바운스 없이 즉시 체결 (모멘텀 스캘프)
+    const skipDebounce =
+      lane.id === "alt_surge" && lane.action === "sell";
+    const deb = skipDebounce
+      ? { raw: lane.action, stable: lane.action, count: SIGNAL_DEBOUNCE_TICKS }
+      : applySignalDebounce(
+          debounceMap[lane.id],
+          lane.action,
+          SIGNAL_DEBOUNCE_TICKS,
+        );
     debounceMap[lane.id] = deb;
     const tradeAction = deb.stable;
 
@@ -690,6 +724,18 @@ export async function tickCryptoPaperPortfolio(
       (p) => p.strategy === lane.id && p.market === market && p.quantity > 0,
     );
     const targetKrw = (equityBefore * meta.max_weight_pct) / 100;
+
+    // Update peak while holding alt
+    if (lane.id === "alt_surge" && hasPos) {
+      s = {
+        ...s,
+        positions: s.positions.map((p) =>
+          p.strategy === "alt_surge"
+            ? { ...p, peak_price: Math.max(p.peak_price ?? px, px) }
+            : p,
+        ),
+      };
+    }
 
     if (tradeAction === "buy" && !hasPos) {
       s = executeBuy(
