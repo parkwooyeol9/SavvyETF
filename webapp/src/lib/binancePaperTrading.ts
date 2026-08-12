@@ -11,12 +11,14 @@ import {
   type SignalAction,
   type SignalPoint,
 } from "@/lib/tradingSignals";
-import { SIGNAL_DEBOUNCE_TICKS } from "@/lib/cryptoPaperTrading";
 import {
   fetchYahooCandles,
   fetchYahooPrices,
   YAHOO_SYMBOL_BY_BINANCE,
 } from "@/lib/binanceMarketFallback";
+
+/** 바이낸스 페이퍼: Yahoo 폴백 복구 후 1틱에 체결 (업비트엔진은 2틱) */
+export const BINANCE_SIGNAL_DEBOUNCE_TICKS = 1;
 
 export const BINANCE_PAPER_R2_KEY = "binance_paper/state_v1.json";
 export const BINANCE_SIGNALS_R2_KEY = "binance_paper/signals_latest.json";
@@ -527,7 +529,7 @@ export async function tickBinancePaperPortfolio(
     const deb = applySignalDebounce(
       debounceMap[lane.id],
       lane.action,
-      SIGNAL_DEBOUNCE_TICKS,
+      BINANCE_SIGNAL_DEBOUNCE_TICKS,
     );
     debounceMap[lane.id] = deb;
     const tradeAction = deb.stable;
@@ -591,7 +593,7 @@ export async function tickBinancePaperPortfolio(
             raw: deb.raw,
             stable: deb.stable,
             count: deb.count,
-            required: SIGNAL_DEBOUNCE_TICKS,
+            required: BINANCE_SIGNAL_DEBOUNCE_TICKS,
           }
         : undefined,
     };

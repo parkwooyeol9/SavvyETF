@@ -85,6 +85,9 @@ export async function buildChallengePayload(options?: {
     kimchi_arb = await tickKimchiArb();
   } else {
     kimchi_arb = (await loadKimchiArbSignal()) || (await evaluateKimchiArb());
+    if (kimchi_arb.arb_action === "unavailable") {
+      kimchi_arb = await evaluateKimchiArb();
+    }
   }
 
   const binanceKrw =
@@ -119,7 +122,6 @@ export async function buildChallengePayload(options?: {
     combined_equity_krw: combined,
     combined_return_pct: combinedRet,
     summary,
-    note:
-      "업비트 ₩500만 + 바이낸스 ~$3,500 USDT · 페이퍼 시뮬레이션 · 라이브 시 양 엔진 동시 운용",
+    note: "",
   };
 }
