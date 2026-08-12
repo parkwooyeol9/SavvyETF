@@ -7,6 +7,7 @@
  */
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+import { fetchCoingeckoBtcUsd } from "@/lib/binanceMarketFallback";
 
 export const KIMCHI_ARB_R2_KEY = "challenge/kimchi_arb_latest.json";
 
@@ -64,7 +65,7 @@ export async function computeKimchiPremium(): Promise<{
   binance_btc_usdt: number | null;
   usd_krw: number | null;
 }> {
-  const [upbit, binance, krw] = await Promise.all([
+  const [upbit, binance, krw, cgBtc] = await Promise.all([
     fetchJson<Array<{ market: string; trade_price: number }>>(
       "https://api.upbit.com/v1/ticker?markets=KRW-BTC",
     ),
@@ -76,9 +77,11 @@ export async function computeKimchiPremium(): Promise<{
     }>(
       `https://query1.finance.yahoo.com/v8/finance/chart/KRW=X?period1=${Math.floor(Date.now() / 1000) - 86400}&period2=${Math.floor(Date.now() / 1000)}&interval=1d`,
     ),
+    fetchCoingeckoBtcUsd(),
   ]);
   const up = upbit?.[0]?.trade_price;
-  const bn = binance ? Number(binance.price) : null;
+  let bn = binance ? Number(binance.price) : null;
+  if (bn == null || !(bn > 0)) bn = cgBtc;
   const fx = krw?.chart?.result?.[0]?.meta?.regularMarketPrice;
   if (up == null || bn == null || fx == null || !(up > 0) || !(bn > 0) || !(fx > 0)) {
     return { kimchi_pct: null, upbit_btc_krw: up ?? null, binance_btc_usdt: bn, usd_krw: fx ?? null };
