@@ -1,7 +1,8 @@
 /**
- * Crypto paper trading (Upbit KRW markets) — no real orders.
+ * 업비트엔진 — Upbit KRW spot paper trading (no real orders).
  *
- * Phase A–B: public Upbit + Yahoo/CoinGecko data, rule signals, simulated fills.
+ * 천만원 챌린지: 업비트 배분 ₩500만 (바이낸스엔진과 합산 ₩1,000만).
+ * Public Upbit + Yahoo/CoinGecko data, rule signals, simulated fills.
  * State persisted to R2; hourly cron tick.
  *
  * Strategies:
@@ -17,15 +18,21 @@ import {
   type SignalPoint,
 } from "@/lib/tradingSignals";
 
-export const CRYPTO_PAPER_R2_KEY = "crypto_paper/state_v1.json";
-export const CRYPTO_SIGNALS_R2_KEY = "crypto_paper/signals_latest.json";
-export const CRYPTO_PAPER_INITIAL_KRW = 10_000_000;
+/** 업비트엔진 R2 keys (legacy crypto_paper/* still read as fallback) */
+export const UPBIT_PAPER_R2_KEY = "upbit_paper/state_v1.json";
+export const UPBIT_SIGNALS_R2_KEY = "upbit_paper/signals_latest.json";
+const LEGACY_PAPER_R2_KEY = "crypto_paper/state_v1.json";
+
+export const CHALLENGE_UPBIT_ALLOC_KRW = 5_000_000;
+export const CRYPTO_PAPER_R2_KEY = UPBIT_PAPER_R2_KEY;
+export const CRYPTO_SIGNALS_R2_KEY = UPBIT_SIGNALS_R2_KEY;
+export const CRYPTO_PAPER_INITIAL_KRW = CHALLENGE_UPBIT_ALLOC_KRW;
 export const CRYPTO_PAPER_FEE_RATE = 0.0005; // 0.05% per side (KRW markets)
 export const CRYPTO_PAPER_FEE_RATE_USDT = 0.0025; // 0.25% per side (KRW-USDT)
 /** Consecutive hourly ticks with same raw signal before paper/live execution */
 export const SIGNAL_DEBOUNCE_TICKS = 2;
 export const CRYPTO_PAPER_NOTE =
-  "페이퍼 트레이딩 · 실제 주문 없음 · Upbit 공개 시세 · 교육용(투자 권유 아님)";
+  "업비트엔진 · 페이퍼 트레이딩 · 실제 주문 없음 · Upbit 공개 시세 · 교육용(투자 권유 아님)";
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
@@ -819,15 +826,18 @@ export async function tickCryptoPaperPortfolio(
 
 export async function loadCryptoPaperState(): Promise<CryptoPaperState | null> {
   if (!r2Configured()) return null;
-  try {
-    const text = await r2GetObjectText(CRYPTO_PAPER_R2_KEY);
-    if (!text) return null;
-    const data = JSON.parse(text) as CryptoPaperState;
-    if (data?.version !== 1) return null;
-    return data;
-  } catch {
-    return null;
+  for (const key of [UPBIT_PAPER_R2_KEY, LEGACY_PAPER_R2_KEY]) {
+    try {
+      const text = await r2GetObjectText(key);
+      if (!text) continue;
+      const data = JSON.parse(text) as CryptoPaperState;
+      if (data?.version !== 1) continue;
+      return data;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 export async function persistCryptoPaperState(
@@ -874,7 +884,7 @@ export async function publishSignalsSnapshot(
       version: 1,
       generated_at: state.last_tick_at || new Date().toISOString(),
       tick_count: state.tick_count,
-      note: "SavvyETF crypto signals for Render executor — debounced stable actions",
+      note: "SavvyETF 업비트엔진 signals for Render executor — debounced stable actions",
       strategies: state.signals.map((sig) => ({
         id: sig.id,
         label: sig.label,

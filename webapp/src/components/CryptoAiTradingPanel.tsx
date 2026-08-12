@@ -82,11 +82,11 @@ export default function CryptoAiTradingPanel() {
     <section className="geo-section geo-featured" style={{ marginTop: 24 }}>
       <div className="kr-hero">
         <div>
-          <h2 className="kr-hero-title">가상자산 AI 트레이딩</h2>
+          <h2 className="kr-hero-title">업비트엔진 · 가상자산 AI 트레이딩</h2>
           <p className="kr-hero-sub">
-            Upbit 시세·김프·거래량 룰 시그널에 따라 <strong>페이퍼(가상)</strong>{" "}
-            매매를 시뮬레이션합니다. 실제 주문은 하지 않습니다. 초기 자본 ₩1,000만
-            · 메이저 BTC/ETH · 김프·USDT · 알트 급등 4전략.
+            Upbit KRW 시세·김프·거래량 룰 시그널에 따라 <strong>페이퍼(가상)</strong>{" "}
+            매매를 시뮬레이션합니다. 천만원 챌린지 업비트 배분 ₩500만 · 메이저
+            BTC/ETH · 김프·USDT · 알트 급등.
           </p>
         </div>
         <div className="kr-hero-actions">

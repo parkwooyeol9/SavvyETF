@@ -9,9 +9,10 @@ from zoneinfo import ZoneInfo
 
 from r2_data import get_json, put_json
 
-SIGNALS_KEY = "crypto_paper/signals_latest.json"
-STATE_KEY = "crypto_live/executor_state_v1.json"
-LOG_PREFIX = "crypto_live/logs/"
+SIGNALS_KEY = "upbit_paper/signals_latest.json"
+LEGACY_SIGNALS_KEY = "crypto_paper/signals_latest.json"
+STATE_KEY = "upbit_live/executor_state_v1.json"
+LOG_PREFIX = "upbit_live/logs/"
 KST = ZoneInfo("Asia/Seoul")
 
 
@@ -92,8 +93,8 @@ def _daily_loss_ok(state: dict[str, Any], equity: float) -> tuple[bool, str]:
     return True, ""
 
 
-def run_crypto_executor() -> dict[str, Any]:
-    """Read latest signals from R2; dry-run by default (UPBIT_LIVE=false)."""
+def run_upbit_executor() -> dict[str, Any]:
+    """Read latest 업비트엔진 signals from R2; dry-run by default (UPBIT_LIVE=false)."""
     result: dict[str, Any] = {
         "ok": False,
         "mode": "dry",
@@ -110,7 +111,7 @@ def run_crypto_executor() -> dict[str, Any]:
     live = _env_bool("UPBIT_LIVE", "false")
     result["mode"] = "live" if live else "dry"
 
-    signals = get_json(SIGNALS_KEY)
+    signals = get_json(SIGNALS_KEY) or get_json(LEGACY_SIGNALS_KEY)
     if not signals or not signals.get("strategies"):
         result["error"] = "no_signals"
         return result
@@ -276,3 +277,6 @@ def run_crypto_executor() -> dict[str, Any]:
     )
     result["ok"] = True
     return result
+
+
+run_crypto_executor = run_upbit_executor
