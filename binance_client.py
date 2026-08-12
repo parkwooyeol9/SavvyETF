@@ -1,9 +1,10 @@
-"""Binance REST client — spot + USDT-M futures (바이낸스엔진)."""
+"""Binance REST client — USDT-M futures (바이낸스엔진)."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import os
 import time
 from typing import Any
@@ -11,9 +12,10 @@ from urllib.parse import urlencode
 
 import requests
 
-SPOT_API = "https://api.binance.com"
 FUTURES_API = "https://fapi.binance.com"
 REQUEST_TIMEOUT = 20
+
+_SYMBOL_FILTERS: dict[str, dict[str, float]] = {}
 
 
 def _keys() -> tuple[str, str] | None:
@@ -50,14 +52,13 @@ def _headers() -> dict[str, str]:
 
 
 def _request(
-    base: str,
     method: str,
     path: str,
     params: dict[str, Any] | None = None,
     *,
     signed: bool = False,
 ) -> Any:
-    url = f"{base}{path}"
+    url = f"{FUTURES_API}{path}"
     p = dict(params or {})
     headers = {"Accept": "application/json"}
     if signed:
@@ -78,8 +79,53 @@ def _request(
     return resp.json()
 
 
+def get_exchange_info() -> dict[str, Any]:
+    data = _request("GET", "/fapi/v1/exchangeInfo")
+    return data if isinstance(data, dict) else {}
+
+
+def symbol_exists(symbol: str) -> bool:
+    sym = symbol.upper()
+    info = get_exchange_info()
+    for row in info.get("symbols") or []:
+        if str(row.get("symbol") or "").upper() == sym:
+            return str(row.get("status") or "").upper() == "TRADING"
+    return False
+
+
+def _load_symbol_filters(symbol: str) -> dict[str, float]:
+    sym = symbol.upper()
+    if sym in _SYMBOL_FILTERS:
+        return _SYMBOL_FILTERS[sym]
+    info = get_exchange_info()
+    out = {"step_size": 0.001, "min_qty": 0.001, "min_notional": 5.0}
+    for row in info.get("symbols") or []:
+        if str(row.get("symbol") or "").upper() != sym:
+            continue
+        for f in row.get("filters") or []:
+            ftype = str(f.get("filterType") or "")
+            if ftype == "LOT_SIZE":
+                out["step_size"] = float(f.get("stepSize") or out["step_size"])
+                out["min_qty"] = float(f.get("minQty") or out["min_qty"])
+            elif ftype == "MIN_NOTIONAL":
+                out["min_notional"] = float(f.get("notional") or f.get("minNotional") or out["min_notional"])
+        break
+    _SYMBOL_FILTERS[sym] = out
+    return out
+
+
+def round_quantity(symbol: str, quantity: float) -> float:
+    filters = _load_symbol_filters(symbol)
+    step = filters["step_size"]
+    if step <= 0:
+        return quantity
+    precision = max(0, int(round(-math.log10(step)))) if step < 1 else 0
+    rounded = math.floor(quantity / step) * step
+    return round(rounded, precision)
+
+
 def get_futures_account() -> dict[str, Any]:
-    data = _request(FUTURES_API, "GET", "/fapi/v2/account", {}, signed=True)
+    data = _request("GET", "/fapi/v2/account", {}, signed=True)
     return data if isinstance(data, dict) else {}
 
 
@@ -102,22 +148,27 @@ def estimate_futures_equity_usdt() -> float:
         return 0.0
 
 
-def get_futures_position(symbol: str) -> float:
+def get_futures_position_signed(symbol: str) -> float:
+    """Signed position amount (+ long, − short)."""
     acct = get_futures_account()
     for row in acct.get("positions") or []:
         if str(row.get("symbol") or "").upper() == symbol.upper():
             try:
-                return abs(float(row.get("positionAmt") or 0))
+                return float(row.get("positionAmt") or 0)
             except (TypeError, ValueError):
                 return 0.0
     return 0.0
+
+
+def get_futures_position(symbol: str) -> float:
+    return abs(get_futures_position_signed(symbol))
 
 
 def get_futures_prices(symbols: list[str]) -> dict[str, float]:
     out: dict[str, float] = {}
     if not symbols:
         return out
-    rows = _request(FUTURES_API, "GET", "/fapi/v1/ticker/price")
+    rows = _request("GET", "/fapi/v1/ticker/price")
     want = {s.upper() for s in symbols}
     for row in rows or []:
         sym = str(row.get("symbol") or "").upper()
@@ -130,15 +181,18 @@ def get_futures_prices(symbols: list[str]) -> dict[str, float]:
 
 
 def futures_market_order(symbol: str, side: str, quantity: float) -> dict[str, Any]:
+    qty = round_quantity(symbol, quantity)
+    filters = _load_symbol_filters(symbol)
+    if qty < filters["min_qty"]:
+        raise RuntimeError(f"quantity {qty} below min {filters['min_qty']} for {symbol}")
     data = _request(
-        FUTURES_API,
         "POST",
         "/fapi/v1/order",
         {
             "symbol": symbol.upper(),
             "side": side.upper(),
             "type": "MARKET",
-            "quantity": f"{quantity:.6f}".rstrip("0").rstrip("."),
+            "quantity": f"{qty:.8f}".rstrip("0").rstrip("."),
         },
         signed=True,
     )
@@ -150,12 +204,28 @@ def futures_market_buy_usdt(symbol: str, usdt_notional: float) -> dict[str, Any]
     px = prices.get(symbol.upper()) or 0.0
     if not (px > 0):
         raise RuntimeError(f"no price for {symbol}")
-    qty = max(usdt_notional / px, 0.001)
+    qty = usdt_notional / px
     return futures_market_order(symbol, "BUY", qty)
 
 
-def futures_market_sell_all(symbol: str) -> dict[str, Any]:
-    qty = get_futures_position(symbol)
-    if qty <= 0:
-        return {"skipped": "no_position"}
+def futures_market_short_usdt(symbol: str, usdt_notional: float) -> dict[str, Any]:
+    """Open/increase short via market SELL."""
+    prices = get_futures_prices([symbol])
+    px = prices.get(symbol.upper()) or 0.0
+    if not (px > 0):
+        raise RuntimeError(f"no price for {symbol}")
+    qty = usdt_notional / px
     return futures_market_order(symbol, "SELL", qty)
+
+
+def futures_market_sell_all(symbol: str) -> dict[str, Any]:
+    signed = get_futures_position_signed(symbol)
+    if signed > 0:
+        return futures_market_order(symbol, "SELL", signed)
+    if signed < 0:
+        return futures_market_order(symbol, "BUY", abs(signed))
+    return {"skipped": "no_position"}
+
+
+def futures_close_to_flat(symbol: str) -> dict[str, Any]:
+    return futures_market_sell_all(symbol)

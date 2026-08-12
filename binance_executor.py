@@ -92,7 +92,7 @@ def run_binance_executor() -> dict[str, Any]:
         result["skipped"].append("kill_switch")
         return result
 
-    live = _env_bool("BINANCE_LIVE", "false")
+    live = _env_bool("BINANCE_LIVE", "false") or _env_bool("CHALLENGE_LIVE", "false")
     result["mode"] = "live" if live else "dry"
 
     signals = get_json(SIGNALS_KEY)

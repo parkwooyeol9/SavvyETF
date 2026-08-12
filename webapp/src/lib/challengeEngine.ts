@@ -20,7 +20,7 @@ import {
 } from "@/lib/kimchiArbEngine";
 
 export const CHALLENGE_TOTAL_KRW = 10_000_000;
-export const CHALLENGE_NAME = "천만원 챌린지";
+export const CHALLENGE_NAME = "가상자산 자동매매";
 
 export type ChallengePayload = {
   ok: boolean;
@@ -97,8 +97,8 @@ export async function buildChallengePayload(options?: {
       : null;
 
   const summary = [
-    `업비트엔진: ${upbit.equity_krw.toLocaleString("ko-KR")}원 (${upbit.return_pct >= 0 ? "+" : ""}${upbit.return_pct.toFixed(2)}%)`,
-    `바이낸스엔진: $${binance.equity_usdt.toFixed(0)} USDT${binanceKrw != null ? ` (≈${Math.round(binanceKrw).toLocaleString("ko-KR")}원)` : ""}`,
+    `업비트엔진: ${upbit.return_pct >= 0 ? "+" : ""}${upbit.return_pct.toFixed(2)}%`,
+    `바이낸스엔진: ${binance.return_pct >= 0 ? "+" : ""}${binance.return_pct.toFixed(2)}%`,
     kimchi_arb.kimchi_pct != null
       ? `김프 BTC: ${kimchi_arb.kimchi_pct.toFixed(2)}% · ${kimchi_arb.arb_action_ko}`
       : "김프: 데이터 없음",

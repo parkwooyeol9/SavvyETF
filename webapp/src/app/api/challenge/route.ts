@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        name: "천만원 챌린지",
+        name: "가상자산 자동매매",
         error: exc instanceof Error ? exc.message : "challenge load failed",
       },
       { status: 500 },

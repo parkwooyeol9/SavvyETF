@@ -142,6 +142,7 @@ const STRATEGY_META: Record<
     kind: MarketKind;
     asset_id: string;
     asset_label: string;
+    signal_group: "crypto" | "metal" | "sector" | "theme";
   }
 > = {
   major_btc: {
@@ -151,6 +152,7 @@ const STRATEGY_META: Record<
     kind: "crypto",
     asset_id: "btc_usdt",
     asset_label: "BTC",
+    signal_group: "crypto",
   },
   major_eth: {
     label: "ETH Perp",
@@ -159,6 +161,7 @@ const STRATEGY_META: Record<
     kind: "crypto",
     asset_id: "eth_usdt",
     asset_label: "ETH",
+    signal_group: "crypto",
   },
   tradefi_gold: {
     label: "Gold (XAU)",
@@ -167,6 +170,7 @@ const STRATEGY_META: Record<
     kind: "tradefi",
     asset_id: "xau_usdt",
     asset_label: "Gold",
+    signal_group: "metal",
   },
   tradefi_silver: {
     label: "Silver (XAG)",
@@ -175,6 +179,7 @@ const STRATEGY_META: Record<
     kind: "tradefi",
     asset_id: "xag_usdt",
     asset_label: "Silver",
+    signal_group: "metal",
   },
   tradefi_ewy: {
     label: "Korea ETF (EWY)",
@@ -183,6 +188,7 @@ const STRATEGY_META: Record<
     kind: "tradefi",
     asset_id: "ewy_usdt",
     asset_label: "EWY",
+    signal_group: "sector",
   },
   tradefi_mu: {
     label: "Micron (MU)",
@@ -191,6 +197,7 @@ const STRATEGY_META: Record<
     kind: "tradefi",
     asset_id: "mu_usdt",
     asset_label: "MU",
+    signal_group: "theme",
   },
 };
 
@@ -308,13 +315,12 @@ function evaluateTrend(
   meta: (typeof STRATEGY_META)[BinanceStrategyId],
   series: SignalPoint[],
 ): { action: SignalAction; score: number; reason: string } {
-  const group = meta.kind === "tradefi" ? "metal" : "crypto";
   const sig = buildAssetSignal(
     {
       id: meta.asset_id,
       symbol: meta.symbol,
       label: meta.asset_label,
-      group,
+      group: meta.signal_group,
     },
     series,
     null,

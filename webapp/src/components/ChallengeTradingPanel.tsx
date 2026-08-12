@@ -21,16 +21,6 @@ const tooltipStyle = {
   color: "#e8eef5",
 };
 
-function fmtKrw(n?: number | null): string {
-  if (n == null || Number.isNaN(n)) return "—";
-  return `₩${Math.round(n).toLocaleString("ko-KR")}`;
-}
-
-function fmtUsd(n?: number | null): string {
-  if (n == null || Number.isNaN(n)) return "—";
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
 function fmtPct(n?: number | null, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
@@ -88,11 +78,10 @@ export default function ChallengeTradingPanel() {
     <section className="geo-section geo-featured" style={{ marginTop: 24 }}>
       <div className="kr-hero">
         <div>
-          <h2 className="kr-hero-title">천만원 챌린지 · 가상자산 자동매매</h2>
+          <h2 className="kr-hero-title">가상자산 자동매매</h2>
           <p className="kr-hero-sub">
-            <strong>업비트엔진</strong> ₩500만 + <strong>바이낸스엔진</strong>{" "}
-            ~$3,500 USDT · 김프 차익·TradeFi(XAU/XAG/EWY/MU) 포함 · 현재{" "}
-            <strong>페이퍼</strong> 시뮬레이션.
+            <strong>업비트엔진</strong> · <strong>바이낸스엔진</strong> · 김프 차익 ·
+            TradeFi(XAU/XAG/EWY/MU) · 현재 <strong>페이퍼</strong> 시뮬레이션.
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -119,15 +108,15 @@ export default function ChallengeTradingPanel() {
         <>
           <div className="us-pf-stats" style={{ marginTop: 12 }}>
             <div>
-              <span className="meta-soft">합산 평가 (원화환산)</span>
-              <strong className={tone(data.combined_return_pct)}>
-                {fmtKrw(data.combined_equity_krw)}
+              <span className="meta-soft">업비트 수익률</span>
+              <strong className={tone(data.upbit.return_pct)}>
+                {fmtPct(data.upbit.return_pct)}
               </strong>
             </div>
             <div>
-              <span className="meta-soft">챌린지 수익률</span>
-              <strong className={tone(data.combined_return_pct)}>
-                {fmtPct(data.combined_return_pct)}
+              <span className="meta-soft">바이낸스 수익률</span>
+              <strong className={tone(data.binance.return_pct)}>
+                {fmtPct(data.binance.return_pct)}
               </strong>
             </div>
             <div>
@@ -144,7 +133,7 @@ export default function ChallengeTradingPanel() {
             <div className="geo-card">
               <h3>업비트엔진</h3>
               <p className="meta-soft">
-                {fmtKrw(data.upbit.equity_krw)} · {fmtPct(data.upbit.return_pct)}
+                수익률 <strong className={tone(data.upbit.return_pct)}>{fmtPct(data.upbit.return_pct)}</strong>
               </p>
               <ul className="kr-list compact">
                 {data.upbit.signals.map((s) => (
@@ -158,7 +147,7 @@ export default function ChallengeTradingPanel() {
             <div className="geo-card">
               <h3>바이낸스엔진</h3>
               <p className="meta-soft">
-                {fmtUsd(data.binance.equity_usdt)} · {fmtPct(data.binance.return_pct)}
+                수익률 <strong className={tone(data.binance.return_pct)}>{fmtPct(data.binance.return_pct)}</strong>
               </p>
               <ul className="kr-list compact">
                 {data.binance.signals.map((s) => (
