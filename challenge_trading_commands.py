@@ -230,6 +230,7 @@ CHALLENGE_COMMAND_TOKENS = {
     "/binance_risk",
     "/binance_kill",
     "/binance_unkill",
+    "/binance_test",
     "/kimchi_live",
     "/kimch_live",
     "/kimchi_off",
@@ -324,6 +325,7 @@ def format_challenge_help() -> str:
 <code>/upbit_off</code> — 업비트 OFF (dry-run)
 <code>/upbit_risk</code> — 업비트 리스크 대화형 조정
 <code>/binance_live</code> / <code>/binance_off</code> / <code>/binance_risk</code>
+<code>/binance_test</code> — USDT-M BTCUSDT 퍼프 소액 시험 (long/close)
 <code>/kimchi_live</code> (또는 <code>/kimch_live</code>) / <code>/kimchi_off</code> / <code>/kimchi_risk</code>
 <code>/upbit_kill</code> · <code>/binance_kill</code> · <code>/kimchi_kill</code> · <code>/challenge_kill</code> — 즉시 중단
 <code>/challenge_off</code> — CHALLENGE_LIVE 플래그 OFF + 엔진 live OFF
@@ -530,6 +532,164 @@ def _handle_pending_risk(chat_id: int, text: str, updated_by: str) -> list[dict]
     return [_html(_prompt_risk_step(st))]
 
 
+def _format_binance_test_status() -> str:
+    from binance_client import futures_test_snapshot
+
+    snap = futures_test_snapshot("BTCUSDT")
+    if not snap.get("ok"):
+        return f"❌ {snap.get('error')}"
+    pos = float(snap.get("position_amt") or 0)
+    pos_txt = "flat" if abs(pos) < 1e-12 else f"{pos:+.6f} BTC"
+    can = "✅ 가능" if snap.get("can_open") else "❌ 잔고 부족(최소수량 미달)"
+    return "\n".join(
+        [
+            "<b>바이낸스 시험 매매 · BTCUSDT</b>",
+            f"거래소: <code>{snap['venue']}</code>",
+            "계좌: <b>USDT-M 선물</b> (현물/마진 아님) · 심볼 <code>BTCUSDT</code> 퍼프",
+            f"가격: <code>{snap.get('price')}</code>",
+            f"가용 USDT: <code>{snap.get('usdt_available')}</code> · equity <code>{snap.get('equity_usdt')}</code>",
+            f"포지션: <code>{pos_txt}</code>",
+            f"최소 수량: <code>{snap.get('min_qty')}</code> BTC · notional≥<code>{snap.get('min_notional')}</code>",
+            f"개장 최소 약: <b>${float(snap.get('min_usdt_to_open') or 0):.2f}</b> → {can}",
+            "",
+            "롱 시험: <code>/binance_test long confirm</code>",
+            "금액 지정: <code>/binance_test long confirm 6</code>",
+            "청산: <code>/binance_test close confirm</code>",
+            "",
+            "<i>실주문입니다. 시그널 엔진과 별개로 즉시 체결됩니다.</i>",
+        ]
+    )
+
+
+def _handle_binance_test(parts: list[str]) -> list[dict]:
+    from binance_client import (
+        futures_close_to_flat,
+        futures_test_open_long,
+        futures_test_snapshot,
+    )
+
+    # /binance_test
+    if len(parts) == 1:
+        try:
+            return [_html(_format_binance_test_status())]
+        except Exception as exc:
+            return [_html(f"/binance_test 상태 조회 실패: {exc}")]
+
+    action = parts[1].lower()
+    if action in {"help", "?", "status"}:
+        try:
+            return [_html(_format_binance_test_status())]
+        except Exception as exc:
+            return [_html(f"상태 조회 실패: {exc}")]
+
+    if action in {"long", "buy", "open"}:
+        # /binance_test long [usdt] | /binance_test long confirm [usdt]
+        confirm = False
+        usdt_raw = None
+        for tok in parts[2:]:
+            low = tok.lower()
+            if low in {"confirm", "yes", "y", "확인", "ok"}:
+                confirm = True
+            else:
+                usdt_raw = tok
+        try:
+            snap = futures_test_snapshot("BTCUSDT")
+        except Exception as exc:
+            return [_html(f"스냅샷 실패: {exc}")]
+        if not snap.get("ok"):
+            return [_html(f"❌ {snap.get('error')}")]
+        need = float(snap.get("min_usdt_to_open") or 5)
+        avail = float(snap.get("usdt_available") or 0)
+        # leave ~0.3 USDT for fees if possible
+        default_spend = max(need, min(avail - 0.3, need + 0.5))
+        if usdt_raw is not None:
+            try:
+                spend = float(str(usdt_raw).replace(",", ""))
+            except ValueError:
+                return [_html("금액은 숫자로 입력하세요. 예: <code>/binance_test long confirm 6</code>")]
+        else:
+            spend = default_spend
+        spend = round(spend, 2)
+        if not confirm:
+            return [
+                _html(
+                    "⚠️ <b>BTCUSDT USDT-M 퍼프 롱(시장가)</b> 시험 주문\n"
+                    f"예정 금액: <code>${spend:.2f}</code> "
+                    f"(최소 ~${need:.2f} · 가용 ${avail:.2f})\n"
+                    f"가격: <code>{snap.get('price')}</code>\n\n"
+                    f"실행: <code>/binance_test long confirm {spend:g}</code>\n"
+                    "취소: 무시"
+                )
+            ]
+        if not snap.get("can_open") or avail < need:
+            return [
+                _html(
+                    "❌ 잔고가 BTCUSDT 최소 수량을 못 채웁니다.\n"
+                    f"필요 약 <b>${need:.2f}</b> · 가용 <code>${avail:.2f}</code>\n"
+                    f"(minQty {snap.get('min_qty')} × 가격)\n"
+                    "선물 지갑에 USDT를 더 넣거나, 최소수량 충족 후 다시 시도하세요."
+                )
+            ]
+        try:
+            result = futures_test_open_long("BTCUSDT", spend)
+            oid = (result.get("order") or {}).get("orderId")
+            return [
+                _html(
+                    "✅ <b>롱 시험 체결 요청</b>\n"
+                    f"심볼: BTCUSDT (USDT-M perp)\n"
+                    f"금액: ${result['spend_usdt']:.2f}\n"
+                    f"orderId: <code>{oid}</code>\n"
+                    f"포지션: <code>{result.get('position_after')}</code>\n"
+                    f"가용 USDT: <code>{result.get('usdt_after')}</code>\n\n"
+                    "청산: <code>/binance_test close confirm</code>"
+                )
+            ]
+        except Exception as exc:
+            return [_html(f"❌ 롱 실패: {exc}")]
+
+    if action in {"close", "flat", "sell", "exit"}:
+        confirm = any(
+            t.lower() in {"confirm", "yes", "y", "확인", "ok"} for t in parts[2:]
+        )
+        try:
+            snap = futures_test_snapshot("BTCUSDT")
+        except Exception as exc:
+            return [_html(f"스냅샷 실패: {exc}")]
+        pos = float((snap or {}).get("position_amt") or 0)
+        if abs(pos) < 1e-12:
+            return [_html("포지션이 없습니다 (이미 flat).")]
+        if not confirm:
+            return [
+                _html(
+                    f"⚠️ BTCUSDT 포지션 <code>{pos:+.6f}</code> 을 시장가 청산합니다.\n"
+                    "실행: <code>/binance_test close confirm</code>"
+                )
+            ]
+        try:
+            order = futures_close_to_flat("BTCUSDT")
+            if order.get("skipped"):
+                return [_html("포지션이 없습니다.")]
+            oid = order.get("orderId")
+            return [
+                _html(
+                    "✅ <b>청산 요청</b>\n"
+                    f"orderId: <code>{oid}</code>\n"
+                    f"응답: <code>{str(order)[:400]}</code>"
+                )
+            ]
+        except Exception as exc:
+            return [_html(f"❌ 청산 실패: {exc}")]
+
+    return [
+        _html(
+            "사용법:\n"
+            "<code>/binance_test</code> — 잔고·최소수량\n"
+            "<code>/binance_test long confirm</code> — BTCUSDT 롱\n"
+            "<code>/binance_test close confirm</code> — 청산"
+        )
+    ]
+
+
 def handle_challenge_command(
     message: str,
     chat_id: int,
@@ -600,6 +760,9 @@ def handle_challenge_command(
     if tok == "/binance_off":
         _set_engine_live("binance", live=False, updated_by=updated_by)
         return [_html("🟢 <b>바이낸스 LIVE OFF</b> (dry-run)\n확인: /challenge_status")]
+
+    if tok == "/binance_test":
+        return _handle_binance_test(parts)
 
     if tok in {"/kimchi_live", "/kimch_live"}:
         if not _parse_confirm(parts):

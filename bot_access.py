@@ -62,6 +62,7 @@ HEAVY_COMMAND_TOKENS = {
     "/binance_risk",
     "/binance_kill",
     "/binance_unkill",
+    "/binance_test",
     "/kimchi_live",
     "/kimch_live",
     "/kimchi_off",
