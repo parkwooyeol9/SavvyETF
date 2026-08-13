@@ -52,16 +52,6 @@ export const ETF_BASKETS: Record<
     label: "VXUS",
     note: "미국 제외 글로벌 — US 바스켓과 이중집계 방지(VT 미사용)",
   },
-  treasury: {
-    symbols: ["TLT", "IEF"],
-    label: "TLT+IEF",
-    note: "장기+중기 국채 ETF(만기 구간 분리)",
-  },
-  credit: {
-    symbols: ["LQD", "HYG"],
-    label: "LQD+HYG",
-    note: "IG+HY 회사채 ETF",
-  },
   gold: {
     symbols: ["GLD"],
     label: "GLD",

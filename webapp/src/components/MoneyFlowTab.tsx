@@ -6,6 +6,8 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -48,6 +50,12 @@ function fmtNum(cell: MetricCell | null | undefined): string {
 function tone(n?: number | null): string {
   if (n == null || n === 0) return "";
   return n > 0 ? "up" : "down";
+}
+
+function fmtChg(n: number | null | undefined, digits = 2): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(digits)}%`;
 }
 
 function CellView({ cell }: { cell: MetricCell }) {
@@ -113,17 +121,20 @@ export default function MoneyFlowTab() {
     return () => clearInterval(id);
   }, [load, period]);
 
-  const flowBars = useMemo(
-    () =>
-      (data?.charts.flow_bars || [])
-        .filter((b) => b.value != null)
-        .map((b) => ({
-          name: b.asset,
-          value: b.value as number,
-          inferred: b.inferred ? 1 : 0,
-        })),
-    [data],
-  );
+  const ratesChart = useMemo(() => {
+    const us = data?.charts.rates?.us10y || [];
+    const dx = data?.charts.rates?.dxy || [];
+    const byDate = new Map<string, { date: string; us10y?: number; dxy?: number }>();
+    for (const p of us) {
+      byDate.set(p.date, { date: p.date, us10y: p.value });
+    }
+    for (const p of dx) {
+      const row = byDate.get(p.date) || { date: p.date };
+      row.dxy = p.value;
+      byDate.set(p.date, row);
+    }
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }, [data]);
 
   const familyCompare = useMemo(
     () =>
@@ -270,20 +281,85 @@ export default function MoneyFlowTab() {
 
           <div className="kr-grid-2" style={{ marginTop: 16, gap: 16 }}>
             <div className="geo-card">
-              <h3>Flow系 막대 (있는 항목만)</h3>
+              <h3>채권·달러 · US 10Y / DXY</h3>
+              <p className="meta-soft" style={{ marginBottom: 8 }}>
+                10Y{" "}
+                {data.charts.rates.us10y_latest != null
+                  ? `${data.charts.rates.us10y_latest.toFixed(2)}%`
+                  : "—"}{" "}
+                (
+                <span className={tone(data.charts.rates.us10y_chg)}>
+                  {fmtChg(data.charts.rates.us10y_chg)}
+                </span>
+                )
+                {" · "}
+                DXY{" "}
+                {data.charts.rates.dxy_latest != null
+                  ? data.charts.rates.dxy_latest.toFixed(2)
+                  : "—"}{" "}
+                (
+                <span className={tone(data.charts.rates.dxy_chg)}>
+                  {fmtChg(data.charts.rates.dxy_chg)}
+                </span>
+                )
+                {" · "}
+                {data.charts.rates.source}
+              </p>
               <div style={{ height: 240 }}>
-                {flowBars.length ? (
+                {ratesChart.length ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={flowBars} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-                      <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-                      <XAxis dataKey="name" tick={{ fill: "#8fa3b8", fontSize: 10 }} angle={-25} textAnchor="end" height={50} />
-                      <YAxis tick={{ fill: "#8fa3b8", fontSize: 10 }} width={40} />
+                    <LineChart
+                      data={ratesChart}
+                      margin={{ top: 8, right: 12, left: 0, bottom: 8 }}
+                    >
+                      <CartesianGrid
+                        stroke="rgba(43,54,72,0.85)"
+                        strokeDasharray="3 3"
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: "#8fa3b8", fontSize: 10 }}
+                        minTickGap={28}
+                      />
+                      <YAxis
+                        yAxisId="left"
+                        tick={{ fill: "#8fa3b8", fontSize: 10 }}
+                        width={42}
+                        domain={["auto", "auto"]}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fill: "#8fa3b8", fontSize: 10 }}
+                        width={42}
+                        domain={["auto", "auto"]}
+                      />
                       <Tooltip contentStyle={tooltipStyle} />
-                      <Bar dataKey="value" name="Flow / Liquidity Δ" fill="#34d399" />
-                    </BarChart>
+                      <Legend
+                        wrapperStyle={{ color: "#8fa3b8", fontSize: 11 }}
+                      />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="us10y"
+                        name="US 10Y %"
+                        stroke="#fbbf24"
+                        dot={false}
+                        strokeWidth={2}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="dxy"
+                        name="DXY"
+                        stroke="#60a5fa"
+                        dot={false}
+                        strokeWidth={2}
+                      />
+                    </LineChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="empty">Flow 데이터 없음</p>
+                  <p className="empty">Rates 데이터 없음</p>
                 )}
               </div>
             </div>
@@ -291,12 +367,26 @@ export default function MoneyFlowTab() {
               <h3>Family z-score 비교</h3>
               <div style={{ height: 240 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={familyCompare} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-                    <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fill: "#8fa3b8", fontSize: 10 }} angle={-25} textAnchor="end" height={50} />
+                  <BarChart
+                    data={familyCompare}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 40 }}
+                  >
+                    <CartesianGrid
+                      stroke="rgba(43,54,72,0.85)"
+                      strokeDasharray="3 3"
+                    />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: "#8fa3b8", fontSize: 10 }}
+                      angle={-25}
+                      textAnchor="end"
+                      height={50}
+                    />
                     <YAxis tick={{ fill: "#8fa3b8", fontSize: 10 }} width={36} />
                     <Tooltip contentStyle={tooltipStyle} />
-                    <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 11 }} />
+                    <Legend
+                      wrapperStyle={{ color: "#8fa3b8", fontSize: 11 }}
+                    />
                     <Bar dataKey="Flow" fill="#34d399" />
                     <Bar dataKey="Position" fill="#60a5fa" />
                     <Bar dataKey="Activity" fill="#fbbf24" />

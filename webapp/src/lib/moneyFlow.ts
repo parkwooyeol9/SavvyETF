@@ -28,8 +28,6 @@ export type MetricKind = "flow" | "position" | "activity" | "liquidity" | "price
 export type AssetId =
   | "us_equity"
   | "global_equity"
-  | "treasury"
-  | "credit"
   | "gold"
   | "oil"
   | "dollar_cash"
@@ -82,7 +80,15 @@ export type MoneyFlowPayload = {
   top_outflow: { asset: string; kind: MetricKind; value_label: string } | null;
   rows: AssetRow[];
   charts: {
-    flow_bars: Array<{ asset: string; value: number | null; kind: MetricKind; inferred?: boolean }>;
+    rates: {
+      us10y: Array<{ date: string; value: number }>;
+      dxy: Array<{ date: string; value: number }>;
+      us10y_latest: number | null;
+      dxy_latest: number | null;
+      us10y_chg: number | null;
+      dxy_chg: number | null;
+      source: string;
+    };
     family_compare: Array<{
       asset: string;
       flow_z: number | null;
@@ -137,14 +143,6 @@ const ASSET_SPECS: Array<{
     volume_yahoo: "VXUS",
     cftc_id: "msci_eafe",
   },
-  {
-    id: "treasury",
-    label_ko: "국채",
-    label_en: "Treasuries",
-    yahoo: "TLT",
-    cftc_id: "ust_10y",
-  },
-  { id: "credit", label_ko: "회사채", label_en: "Credit", yahoo: "LQD" },
   {
     id: "gold",
     label_ko: "금",
@@ -617,6 +615,69 @@ async function fetchCryptoDerivatives(): Promise<{
   return { btc_oi_usd, eth_oi_usd, btc_funding, eth_funding, source, as_of, errors };
 }
 
+function sliceSeriesByPeriod(
+  points: Array<{ date: string; value: number }>,
+  days: number,
+): Array<{ date: string; value: number }> {
+  if (!points.length) return [];
+  const last = points[points.length - 1]!;
+  const cutoff = Date.parse(last.date) - days * 86400_000;
+  return points.filter((p) => Date.parse(p.date) >= cutoff);
+}
+
+function seriesChangePct(
+  points: Array<{ date: string; value: number }>,
+): number | null {
+  if (points.length < 2) return null;
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  if (!(first.value > 0)) return null;
+  return (100 * (last.value - first.value)) / first.value;
+}
+
+async function fetchRatesSeries(days: number): Promise<{
+  us10y: Array<{ date: string; value: number }>;
+  dxy: Array<{ date: string; value: number }>;
+  source: string;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  const lookback = Math.max(days + 20, 140);
+
+  // US 10Y: Yahoo ^TNX (yield %), FRED DGS10 CSV fallback
+  let us10y: Array<{ date: string; value: number }> = [];
+  let usSource = "";
+  const tnx = await fetchYahooDaily("^TNX", lookback);
+  if (tnx.length) {
+    us10y = tnx.map((p) => ({ date: p.date, value: p.close }));
+    usSource = "Yahoo ^TNX";
+  } else {
+    const fred = await fetchFredSeriesCsv("DGS10", lookback + 60);
+    if (fred.length) {
+      us10y = fred;
+      usSource = "FRED DGS10";
+    } else {
+      errors.push("US 10Y: Yahoo ^TNX and FRED DGS10 unavailable");
+    }
+  }
+
+  const dxyPts = await fetchYahooDaily("DX-Y.NYB", lookback);
+  let dxy: Array<{ date: string; value: number }> = [];
+  let dxySource = "";
+  if (dxyPts.length) {
+    dxy = dxyPts.map((p) => ({ date: p.date, value: p.close }));
+    dxySource = "Yahoo DX-Y.NYB";
+  } else {
+    errors.push("DXY: Yahoo DX-Y.NYB unavailable");
+  }
+
+  return {
+    us10y: sliceSeriesByPeriod(us10y, days),
+    dxy: sliceSeriesByPeriod(dxy, days),
+    source: [usSource, dxySource].filter(Boolean).join(" · ") || "—",
+    errors,
+  };
+}
 function statusFromSignals(input: {
   price: number | null;
   activityZ: number | null;
@@ -659,7 +720,7 @@ export async function buildMoneyFlowPayload(
       name: "Yahoo Finance",
       url: "https://finance.yahoo.com",
       used_for:
-        "Price · Activity volume · ETF AUM/NAV×Δunits Flow 추정 (baskets)",
+        "Price · Activity · ETF AUM/Flow 추정 · US 10Y(^TNX) · DXY",
     },
     {
       name: "CFTC SODA",
@@ -670,7 +731,7 @@ export async function buildMoneyFlowPayload(
     {
       name: "FRED",
       url: "https://fred.stlouisfed.org",
-      used_for: "Money market fund assets (Liquidity) — API or CSV",
+      used_for: "MMF Liquidity · DGS10 fallback for US 10Y",
     },
     {
       name: "DefiLlama Stablecoins",
@@ -689,7 +750,7 @@ export async function buildMoneyFlowPayload(
     },
   ];
 
-  const [yahooMap, cftc, mmf, stables, derivs, baskets] = await Promise.all([
+  const [yahooMap, cftc, mmf, stables, derivs, baskets, rates] = await Promise.all([
     (async () => {
       const map = new Map<string, YahooPoint[]>();
       const symbols = new Set<string>();
@@ -715,11 +776,13 @@ export async function buildMoneyFlowPayload(
       errors.push(`ETF baskets: ${e instanceof Error ? e.message : "failed"}`);
       return {} as Awaited<ReturnType<typeof buildBasketFlows>>;
     }),
+    fetchRatesSeries(days),
   ]);
 
   if (mmf.error) errors.push(`FRED MMF: ${mmf.error}`);
   if (stables.error) errors.push(`Stablecoins: ${stables.error}`);
   errors.push(...derivs.errors);
+  errors.push(...rates.errors);
 
   const rows: AssetRow[] = [];
 
@@ -1067,18 +1130,25 @@ export async function buildMoneyFlowPayload(
 
   const inferences: MoneyFlowPayload["inferences"] = [];
   const us = rows.find((r) => r.id === "us_equity");
-  const tr = rows.find((r) => r.id === "treasury");
+  const us10yChg = seriesChangePct(rates.us10y);
+  const dxyChg = seriesChangePct(rates.dxy);
   if (
     us?.volume_change.value != null &&
-    tr?.volume_change.value != null &&
     us.volume_change.value < 0.8 &&
-    tr.volume_change.value > 1.2 &&
-    (tr.price_return.value ?? 0) > 0
+    us10yChg != null &&
+    us10yChg < -0.5
   ) {
     inferences.push({
-      text: "미국 주식 Activity 둔화 + 국채 Activity·가격 상대 강세 → 주식→채권 이동 가능성",
+      text: "미국 주식 Activity 둔화 + 미국 10년 금리 하락 → risk-off/채권 선호 가능성",
       confidence: "inferred",
-      basis: "Volume ratio & returns only; ETF creation/redemption not observed",
+      basis: "Equity volume ratio & US10Y change only; ETF bond flows not observed",
+    });
+  }
+  if (dxyChg != null && dxyChg > 1 && us?.price_return.value != null && us.price_return.value < 0) {
+    inferences.push({
+      text: "DXY 상승 + 미국 주식 약세 → 달러 강세 국면 추정",
+      confidence: "inferred",
+      basis: "DXY period change & US equity return; cash ETF creations not required",
     });
   }
 
@@ -1109,7 +1179,7 @@ export async function buildMoneyFlowPayload(
     note:
       "Flow / Position / Activity / Liquidity are separate — never summed. " +
       "ETF Flow is 추정(NAV×Δunits / implied AUM) unless ICI/issuer official. " +
-      "USD · timestamps KST.",
+      "Rates: US10Y · DXY live charts. USD · timestamps KST.",
     risk_summary: {
       regime,
       regime_ko:
@@ -1139,12 +1209,15 @@ export async function buildMoneyFlowPayload(
         : null,
     rows,
     charts: {
-      flow_bars: rows.map((r) => ({
-        asset: r.label_ko,
-        value: r.etf_flow.value,
-        kind: r.etf_flow.kind,
-        inferred: !!r.etf_flow.estimated,
-      })),
+      rates: {
+        us10y: rates.us10y,
+        dxy: rates.dxy,
+        us10y_latest: rates.us10y.at(-1)?.value ?? null,
+        dxy_latest: rates.dxy.at(-1)?.value ?? null,
+        us10y_chg: us10yChg,
+        dxy_chg: dxyChg,
+        source: rates.source,
+      },
       family_compare: rows.map((r) => ({
         asset: r.label_ko,
         flow_z: r.etf_flow.zscore_1m,
