@@ -806,7 +806,11 @@ export async function buildMoneyFlowPayload(
         as_of: basket.as_of,
         estimated: true,
       };
-      if (basket.flow_aum_pct != null && basket.aum_usd != null) {
+      if (
+        basket.flow_aum_pct != null &&
+        basket.aum_usd != null &&
+        Math.abs(basket.flow_usd) > 1e-6 * basket.aum_usd
+      ) {
         flowAum = {
           kind: "flow",
           value: basket.flow_aum_pct,
