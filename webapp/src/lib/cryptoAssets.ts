@@ -14,7 +14,7 @@ import {
 } from "@/lib/tradingSignals";
 
 export const CRYPTO_SCHEDULE_NOTE =
-  "CoinGecko·Upbit·OKX·Yahoo 공개 API · 약 1–2분 캐시 · 교육용(투자 권유 아님)";
+  "CoinGecko·Upbit·OKX·DefiLlama·Yahoo 공개 API · 약 1–2분 캐시 · 교육용(투자 권유 아님)";
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
@@ -128,6 +128,78 @@ export type FuturesPanel = {
   indicators: CryptoIndicator[];
 };
 
+export type BtcChartBarId = "1m" | "5m" | "15m" | "1H" | "4H" | "1D";
+
+export const BTC_CHART_BARS: Array<{
+  id: BtcChartBarId;
+  okx: string;
+  label: string;
+  limit: number;
+}> = [
+  { id: "1m", okx: "1m", label: "1분", limit: 120 },
+  { id: "5m", okx: "5m", label: "5분", limit: 144 },
+  { id: "15m", okx: "15m", label: "15분", limit: 96 },
+  { id: "1H", okx: "1H", label: "1시간", limit: 168 },
+  { id: "4H", okx: "4H", label: "4시간", limit: 90 },
+  { id: "1D", okx: "1D", label: "1일", limit: 120 },
+];
+
+export function parseBtcChartBar(raw: string | null | undefined): BtcChartBarId {
+  const hit = BTC_CHART_BARS.find((b) => b.id === raw);
+  return hit?.id ?? "1H";
+}
+
+export type CryptoVolumeLeader = {
+  id: string;
+  symbol: string;
+  name: string;
+  volume_24h: number | null;
+  price_usd: number | null;
+  change_24h_pct: number | null;
+  market_cap: number | null;
+  volume_share_pct: number | null;
+};
+
+export type CryptoEtfFlowRow = {
+  symbol: string;
+  name: string;
+  aum_usd: number | null;
+  nav: number | null;
+  change_24h_pct: number | null;
+  as_of: string | null;
+  method: string;
+};
+
+export type CryptoMoneyFlowPanel = {
+  volume_leaders: CryptoVolumeLeader[];
+  total_volume_tracked: number | null;
+  market: {
+    total_mcap_usd: number | null;
+    total_volume_24h_usd: number | null;
+    btc_dominance_pct: number | null;
+    eth_dominance_pct: number | null;
+  };
+  stables: {
+    total_usd: number | null;
+    chg_1d_pct: number | null;
+    chg_7d_pct: number | null;
+    chg_1d_usd: number | null;
+    chg_7d_usd: number | null;
+    usdt_usd: number | null;
+    usdt_chg_1d_pct: number | null;
+    usdt_chg_7d_pct: number | null;
+    usdt_chg_1d_usd: number | null;
+    usdt_chg_7d_usd: number | null;
+    as_of: string | null;
+    source: string;
+  };
+  etf: {
+    rows: CryptoEtfFlowRow[];
+    note: string;
+  };
+  headlines: string[];
+};
+
 export type CryptoAssetsPayload = {
   ok: boolean;
   generated_at: string;
@@ -143,7 +215,9 @@ export type CryptoAssetsPayload = {
   interpretations: string[];
   futures: FuturesPanel;
   btc_chart: BtcCandle[];
-  btc_chart_interval: string;
+  btc_chart_interval: BtcChartBarId;
+  btc_chart_intervals: Array<{ id: BtcChartBarId; label: string }>;
+  money_flow: CryptoMoneyFlowPanel;
   strategy: CryptoStrategy | null;
   error?: string;
 };
@@ -197,15 +271,36 @@ function fmtPx(n: number | null | undefined): string {
   return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
 }
 
+function candleLabel(ts: number, bar: BtcChartBarId): string {
+  const opts: Intl.DateTimeFormatOptions =
+    bar === "1D"
+      ? {
+          timeZone: "Asia/Seoul",
+          month: "2-digit",
+          day: "2-digit",
+        }
+      : bar === "1m" || bar === "5m" || bar === "15m"
+        ? {
+            timeZone: "Asia/Seoul",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }
+        : {
+            timeZone: "Asia/Seoul",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          };
+  return new Intl.DateTimeFormat("ko-KR", opts).format(new Date(ts));
+}
+
 function hourLabel(ts: number): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(ts));
+  return candleLabel(ts, "1H");
 }
 
 async function fetchJson<T>(url: string, timeoutMs = 15_000): Promise<T | null> {
@@ -251,6 +346,7 @@ function smaAt(values: number[], i: number, window: number): number | null {
 function parseCandles(
   rows: string[][] | undefined,
   limit: number,
+  bar: BtcChartBarId = "1H",
 ): BtcCandle[] {
   if (!rows?.length) return [];
   const chron = [...rows].reverse().slice(-limit);
@@ -267,7 +363,7 @@ function parseCandles(
     if (![ts, open, high, low, close].every(Number.isFinite)) continue;
     out.push({
       ts,
-      label: hourLabel(ts),
+      label: candleLabel(ts, bar),
       open,
       high,
       low,
@@ -476,15 +572,24 @@ function buildPlaybook(input: {
   };
 }
 
-export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
+export async function buildCryptoAssetsPayload(opts?: {
+  bar?: string | null;
+}): Promise<CryptoAssetsPayload> {
+  const bar = parseBtcChartBar(opts?.bar);
+  const barSpec = BTC_CHART_BARS.find((b) => b.id === bar) ?? BTC_CHART_BARS[3]!;
   const ids = COIN_IDS.join(",");
   const marketsUrl =
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
     `&ids=${encodeURIComponent(ids)}&order=market_cap_desc&sparkline=true` +
     `&price_change_percentage=24h%2C7d`;
+  const volumeUrl =
+    `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
+    `&order=volume_desc&per_page=30&page=1&sparkline=false` +
+    `&price_change_percentage=24h`;
 
   const [
     markets,
+    volumeMarkets,
     global,
     upbit,
     usdkrw,
@@ -497,10 +602,14 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     takerVol,
     books,
     fundingHist,
+    candlesChart,
     candles1h,
     candles1d,
+    stablesRaw,
+    etfQuotes,
   ] = await Promise.all([
     fetchJson<CgMarket[]>(marketsUrl),
+    fetchJson<CgMarket[]>(volumeUrl),
     fetchJson<{
       data?: {
         market_cap_percentage?: Record<string, number>;
@@ -548,12 +657,46 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
       data?: Array<{ fundingRate?: string; fundingTime?: string }>;
     }>(`/api/v5/public/funding-rate-history?instId=${OKX_SWAP}&limit=48`),
     fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/market/candles?instId=${OKX_SWAP}&bar=1H&limit=168`,
+      `/api/v5/market/candles?instId=${OKX_SWAP}&bar=${barSpec.okx}&limit=${barSpec.limit}`,
     ),
+    // Always keep 1H for support/resistance window when chart bar differs
+    bar === "1H"
+      ? Promise.resolve(null)
+      : fetchOkxJson<{ data?: string[][] }>(
+          `/api/v5/market/candles?instId=${OKX_SWAP}&bar=1H&limit=168`,
+        ),
     fetchOkxJson<{ data?: string[][] }>(
       `/api/v5/market/candles?instId=${OKX_SWAP}&bar=1D&limit=120`,
     ),
+    fetchJson<{
+      totalPeggedUSD?: number;
+      peggedAssets?: Array<{
+        name?: string;
+        symbol?: string;
+        circulating?: { peggedUSD?: number };
+        circulatingPrevDay?: { peggedUSD?: number };
+        circulatingPrevWeek?: { peggedUSD?: number };
+      }>;
+    }>("https://stablecoins.llama.fi/stablecoins?includePrices=true"),
+    (async () => {
+      try {
+        const { fetchYahooFundStats } = await import("@/lib/moneyFlowEtf");
+        return await fetchYahooFundStats(["IBIT", "ETHA"]);
+      } catch {
+        return new Map();
+      }
+    })(),
   ]);
+
+  const chartCandleSource =
+    bar === "1H" ? candlesChart : candlesChart;
+  const btc_chart = parseCandles(
+    chartCandleSource?.data,
+    barSpec.limit,
+    bar,
+  );
+  const candles1hData =
+    bar === "1H" ? candlesChart?.data : candles1h?.data;
 
   const assets: CryptoAssetRow[] = (markets || []).map((c) => ({
     id: c.id,
@@ -567,6 +710,7 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     sparkline_7d: (c.sparkline_in_7d?.price || []).slice(-48),
   }));
 
+  // --- already inserted btc_chart above; continue with kimchi ---
   const usdBySym = new Map(
     assets.map((a) => [a.symbol, a.price_usd] as const),
   );
@@ -753,8 +897,7 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     indicators: futuresIndicators,
   };
 
-  const btc_chart = parseCandles(candles1h?.data, 168);
-  const dailyCloses: SignalPoint[] = parseCandles(candles1d?.data, 120).map(
+  const dailyCloses: SignalPoint[] = parseCandles(candles1d?.data, 120, "1D").map(
     (c) => ({
       date: new Date(c.ts).toISOString().slice(0, 10),
       value: c.close,
@@ -871,7 +1014,8 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     indicators: panelIndicators,
   });
 
-  const recent = btc_chart.slice(-48);
+  const recentSrc = parseCandles(candles1hData, 168, "1H");
+  const recent = (recentSrc.length ? recentSrc : btc_chart).slice(-48);
   const support = recent.length
     ? Math.min(...recent.map((c) => c.low))
     : null;
@@ -892,16 +1036,192 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     resistance,
   });
 
+  // —— Crypto money flow panel (volume / stables / spot ETF AUM) ——
+  const STABLE_IDS = new Set([
+    "tether",
+    "usd-coin",
+    "ethena-usde",
+    "dai",
+    "first-digital-usd",
+    "paypal-usd",
+    "usds",
+    "true-usd",
+    "binance-bridged-usdt-bnb-smart-chain",
+    "binance-bridged-usdc-bnb-smart-chain",
+  ]);
+  const STABLE_SYMS = new Set(["USDT", "USDC", "USDE", "DAI", "FDUSD", "PYUSD", "USDS", "TUSD"]);
+  const volRows = (volumeMarkets || []).filter((c) => {
+    const id = (c.id || "").toLowerCase();
+    const sym = (c.symbol || "").toUpperCase();
+    return !STABLE_IDS.has(id) && !STABLE_SYMS.has(sym);
+  });
+  const totalVolTracked = volRows.reduce(
+    (s, r) => s + (r.total_volume || 0),
+    0,
+  );
+  const volume_leaders: CryptoVolumeLeader[] = volRows.slice(0, 12).map((c) => ({
+    id: c.id,
+    symbol: (c.symbol || "").toUpperCase(),
+    name: c.name,
+    volume_24h: c.total_volume ?? null,
+    price_usd: c.current_price ?? null,
+    change_24h_pct: c.price_change_percentage_24h ?? null,
+    market_cap: c.market_cap ?? null,
+    volume_share_pct:
+      totalVolTracked > 0 && c.total_volume != null
+        ? (100 * c.total_volume) / totalVolTracked
+        : null,
+  }));
+
+  let stablesTotal: number | null = stablesRaw?.totalPeggedUSD ?? null;
+  let stablesCur = 0;
+  let stablesPrevDay = 0;
+  let stablesPrevWeek = 0;
+  let usdtCur = 0;
+  let usdtPrevDay = 0;
+  let usdtPrevWeek = 0;
+  for (const a of stablesRaw?.peggedAssets || []) {
+    const cur = a.circulating?.peggedUSD || 0;
+    const d = a.circulatingPrevDay?.peggedUSD || 0;
+    const w = a.circulatingPrevWeek?.peggedUSD || 0;
+    stablesCur += cur;
+    stablesPrevDay += d;
+    stablesPrevWeek += w;
+    const sym = (a.symbol || "").toUpperCase();
+    const name = (a.name || "").toLowerCase();
+    if (sym === "USDT" || name.includes("tether")) {
+      usdtCur += cur;
+      usdtPrevDay += d;
+      usdtPrevWeek += w;
+    }
+  }
+  if (stablesTotal == null && stablesCur > 0) stablesTotal = stablesCur;
+  const stables_chg_1d_usd =
+    stablesPrevDay > 0 ? stablesCur - stablesPrevDay : null;
+  const stables_chg_7d_usd =
+    stablesPrevWeek > 0 ? stablesCur - stablesPrevWeek : null;
+  const stables_chg_1d =
+    stablesPrevDay > 0
+      ? (100 * (stablesCur - stablesPrevDay)) / stablesPrevDay
+      : null;
+  const stables_chg_7d =
+    stablesPrevWeek > 0
+      ? (100 * (stablesCur - stablesPrevWeek)) / stablesPrevWeek
+      : null;
+  const usdt_chg_1d_usd = usdtPrevDay > 0 ? usdtCur - usdtPrevDay : null;
+  const usdt_chg_7d_usd = usdtPrevWeek > 0 ? usdtCur - usdtPrevWeek : null;
+  const usdt_chg_1d =
+    usdtPrevDay > 0 ? (100 * (usdtCur - usdtPrevDay)) / usdtPrevDay : null;
+  const usdt_chg_7d =
+    usdtPrevWeek > 0 ? (100 * (usdtCur - usdtPrevWeek)) / usdtPrevWeek : null;
+
+  const etfRows: CryptoEtfFlowRow[] = [];
+  for (const [sym, name] of [
+    ["IBIT", "iShares Bitcoin Trust"] as const,
+    ["ETHA", "iShares Ethereum Trust"] as const,
+  ]) {
+    const q = etfQuotes.get(sym);
+    etfRows.push({
+      symbol: sym,
+      name,
+      aum_usd: q?.aum_usd ?? null,
+      nav: q?.nav ?? null,
+      change_24h_pct: q?.change_24h_pct ?? null,
+      as_of: q?.aum_usd != null ? new Date().toISOString().slice(0, 10) : null,
+      method:
+        "Yahoo totalAssets (AUM stock) + 일봉 %. Official daily creations not free — see Money Flow for NAV×Δunits when history exists",
+    });
+  }
+
+  const headlines: string[] = [];
+  if (volume_leaders[0]?.symbol) {
+    headlines.push(
+      `24h 거래대금 1위 ${volume_leaders[0].symbol}` +
+        (volume_leaders[0].volume_24h != null
+          ? ` (${fmtUsd(volume_leaders[0].volume_24h)})`
+          : ""),
+    );
+  }
+  if (totalMcap != null) {
+    headlines.push(
+      `크립토 시총 ${fmtUsd(totalMcap)}` +
+        (btcDom != null ? ` · BTC.D ${btcDom.toFixed(1)}%` : ""),
+    );
+  }
+  if (usdt_chg_1d_usd != null || usdt_chg_1d != null) {
+    const abs =
+      usdt_chg_1d_usd != null
+        ? `${usdt_chg_1d_usd >= 0 ? "+" : ""}${fmtUsd(usdt_chg_1d_usd)}`
+        : "";
+    const pct = usdt_chg_1d != null ? ` (${fmtPct(usdt_chg_1d)})` : "";
+    const tone =
+      (usdt_chg_1d ?? 0) > 0.05
+        ? " · 테더 순발행↑(유동성 유입 신호)"
+        : (usdt_chg_1d ?? 0) < -0.05
+          ? " · 테더 상환↑(유동성 회수 신호)"
+          : " · 큰 변화 없음";
+    headlines.push(`USDT 1일 ${abs}${pct}${tone}`);
+  } else if (stables_chg_7d != null) {
+    headlines.push(`스테이블 전체 공급 7일 ${fmtPct(stables_chg_7d)}`);
+  }
+  if (etfRows[0]?.aum_usd != null) {
+    headlines.push(
+      `BTC 현물 ETF(IBIT) AUM ${fmtUsd(etfRows[0].aum_usd)}` +
+        (etfRows[0].change_24h_pct != null
+          ? ` · ${fmtPct(etfRows[0].change_24h_pct)}`
+          : ""),
+    );
+  }
+  if (etfRows[1]?.aum_usd != null) {
+    headlines.push(
+      `ETH 현물 ETF(ETHA) AUM ${fmtUsd(etfRows[1].aum_usd)}` +
+        (etfRows[1].change_24h_pct != null
+          ? ` · ${fmtPct(etfRows[1].change_24h_pct)}`
+          : ""),
+    );
+  }
+
+  const money_flow: CryptoMoneyFlowPanel = {
+    volume_leaders,
+    total_volume_tracked: totalVolTracked > 0 ? totalVolTracked : null,
+    market: {
+      total_mcap_usd: totalMcap,
+      total_volume_24h_usd: totalVol,
+      btc_dominance_pct: btcDom,
+      eth_dominance_pct: ethDom,
+    },
+    stables: {
+      total_usd: stablesTotal,
+      chg_1d_pct: stables_chg_1d,
+      chg_7d_pct: stables_chg_7d,
+      chg_1d_usd: stables_chg_1d_usd,
+      chg_7d_usd: stables_chg_7d_usd,
+      usdt_usd: usdtCur > 0 ? usdtCur : null,
+      usdt_chg_1d_pct: usdt_chg_1d,
+      usdt_chg_7d_pct: usdt_chg_7d,
+      usdt_chg_1d_usd: usdt_chg_1d_usd,
+      usdt_chg_7d_usd: usdt_chg_7d_usd,
+      as_of: new Date().toISOString().slice(0, 10),
+      source: "DefiLlama Stablecoins",
+    },
+    etf: {
+      rows: etfRows,
+      note:
+        "현물 ETF AUM·일봉%는 Yahoo. 일별 creations/redemptions 공식 API는 무료로 제한적 — 추정 Flow는 시황→Money Flow 탭 참고",
+    },
+    headlines,
+  };
+
   const ok = assets.length > 0 || btc_chart.length > 0;
   return {
     ok,
     generated_at: new Date().toISOString(),
     generated_at_display: displayNow(),
-    source: `CoinGecko · Upbit · OKX BTC-USDT-SWAP · Yahoo · alternative.me · ${assets.length} assets`,
+    source: `CoinGecko · Upbit · OKX BTC-USDT-SWAP · DefiLlama · Yahoo · alternative.me · ${assets.length} assets`,
     schedule_note: CRYPTO_SCHEDULE_NOTE,
     note:
-      "주요 코인 시세와 함께 BTC 선물 OI·롱숏비율·펀딩·테이커/호가, " +
-      "김치·도미넌스·Fear&Greed, 그리고 OKX 1H 라이브 차트 기반 룰 매매 시나리오를 제공합니다.",
+      "주요 코인 시세·자금흐름(거래대금·스테이블·현물 ETF AUM)과 BTC 선물 OI·L/S·펀딩, " +
+      "김치·도미넌스·Fear&Greed, OKX 멀티 타임프레임 라이브 차트 기반 룰 시나리오를 제공합니다.",
     usdkrw,
     assets,
     kimchi,
@@ -910,7 +1230,12 @@ export async function buildCryptoAssetsPayload(): Promise<CryptoAssetsPayload> {
     interpretations,
     futures,
     btc_chart,
-    btc_chart_interval: "1H",
+    btc_chart_interval: bar,
+    btc_chart_intervals: BTC_CHART_BARS.map((b) => ({
+      id: b.id,
+      label: b.label,
+    })),
+    money_flow,
     strategy,
     error: ok ? undefined : "가상자산 데이터 로드 실패",
   };

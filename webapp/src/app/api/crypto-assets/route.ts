@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
 
-import { buildCryptoAssetsPayload } from "@/lib/cryptoAssets";
+import {
+  buildCryptoAssetsPayload,
+  parseBtcChartBar,
+} from "@/lib/cryptoAssets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 45;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const bar = parseBtcChartBar(url.searchParams.get("bar"));
   try {
-    const payload = await buildCryptoAssetsPayload();
+    const payload = await buildCryptoAssetsPayload({ bar });
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        "Cache-Control": "public, s-maxage=45, stale-while-revalidate=90",
       },
     });
   } catch (exc) {
@@ -47,7 +52,34 @@ export async function GET() {
           indicators: [],
         },
         btc_chart: [],
-        btc_chart_interval: "1H",
+        btc_chart_interval: bar,
+        btc_chart_intervals: [],
+        money_flow: {
+          volume_leaders: [],
+          total_volume_tracked: null,
+          market: {
+            total_mcap_usd: null,
+            total_volume_24h_usd: null,
+            btc_dominance_pct: null,
+            eth_dominance_pct: null,
+          },
+          stables: {
+            total_usd: null,
+            chg_1d_pct: null,
+            chg_7d_pct: null,
+            chg_1d_usd: null,
+            chg_7d_usd: null,
+            usdt_usd: null,
+            usdt_chg_1d_pct: null,
+            usdt_chg_7d_pct: null,
+            usdt_chg_1d_usd: null,
+            usdt_chg_7d_usd: null,
+            as_of: null,
+            source: "",
+          },
+          etf: { rows: [], note: "" },
+          headlines: [],
+        },
         strategy: null,
       },
       { status: 500 },

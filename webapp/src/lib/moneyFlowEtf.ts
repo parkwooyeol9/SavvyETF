@@ -23,6 +23,7 @@ export type EtfFundStats = {
   aum_usd: number | null;
   units: number | null;
   price: number | null;
+  change_24h_pct: number | null;
 };
 
 export type BasketFlowResult = {
@@ -200,6 +201,7 @@ export async function fetchYahooFundStats(
       const sd = r.summaryDetail || {};
       const pr = r.price || {};
       const price = num(pr.regularMarketPrice?.raw);
+      const change_24h_pct = num(pr.regularMarketChangePercent?.raw);
       const nav =
         num(pr.navPrice?.raw) ?? num(sd.navPrice?.raw) ?? price;
       const aum =
@@ -214,6 +216,7 @@ export async function fetchYahooFundStats(
         aum_usd: aum,
         units,
         price,
+        change_24h_pct,
       } satisfies EtfFundStats;
     } catch {
       return null;
