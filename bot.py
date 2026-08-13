@@ -170,13 +170,14 @@ What each command returns:
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
 Auto schedule (KST):
-  /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
+  /summary 07:00 · /reddit 21:00  → US channel
   /summary_kor 15:40 (compact Telegram)  → Korea channel
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
   /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
-  /esg monitor 09:00 daily · /esg accident 09:30 (KRX)  → SavvyESG channel
-  (opt-in off: kor_intra, etf_sector, etf_us_new, esg overview/brief)
+  /esg accident 09:30 (KRX)  → SavvyESG (중대재해 only)
+  (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
+   esg monitor/overview/aigov/brief)
 
 Type /help for the full command list.
 """
