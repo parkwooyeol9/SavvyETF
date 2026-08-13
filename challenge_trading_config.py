@@ -61,6 +61,13 @@ def default_config() -> dict[str, Any]:
             "min_krw_reserve": None,
             "order_cooldown_seconds": None,
         },
+        # Live Upbit strategy gates (executor skips buy when false; sell still allowed to exit)
+        "upbit_strategies": {
+            "major_btc": True,
+            "major_eth": True,
+            "kimchi_usdt": True,
+            "alt_surge": True,
+        },
         "binance": {
             "max_daily_loss_pct": None,
             "max_position_pct": None,
@@ -83,12 +90,27 @@ def _merge_defaults(raw: dict[str, Any] | None) -> dict[str, Any]:
     base = default_config()
     if not raw:
         return base
-    out = {**base, **{k: v for k, v in raw.items() if k not in {"upbit", "binance", "kimchi"}}}
+    out = {
+        **base,
+        **{
+            k: v
+            for k, v in raw.items()
+            if k not in {"upbit", "binance", "kimchi", "upbit_strategies"}
+        },
+    }
     for section in ("upbit", "binance", "kimchi"):
         sec = dict(base[section])
         incoming = raw.get(section) if isinstance(raw.get(section), dict) else {}
         sec.update({k: v for k, v in (incoming or {}).items() if k in sec})
         out[section] = sec
+    strat = dict(base["upbit_strategies"])
+    incoming_s = (
+        raw.get("upbit_strategies") if isinstance(raw.get("upbit_strategies"), dict) else {}
+    )
+    for k in strat:
+        if k in (incoming_s or {}) and incoming_s[k] is not None:
+            strat[k] = bool(incoming_s[k])
+    out["upbit_strategies"] = strat
     return out
 
 
@@ -232,6 +254,42 @@ def kimchi_live() -> bool:
     return effective_bool("kimchi_arb_live", "KIMCHI_ARB_LIVE")
 
 
+UPBIT_STRATEGY_IDS = ("major_btc", "major_eth", "kimchi_usdt", "alt_surge")
+
+UPBIT_STRATEGY_LABELS = {
+    "major_btc": "메이저 BTC",
+    "major_eth": "메이저 ETH",
+    "kimchi_usdt": "김프·USDT",
+    "alt_surge": "알트 급등",
+}
+
+
+def upbit_strategies() -> dict[str, bool]:
+    cfg = load_config()
+    base = default_config()["upbit_strategies"]
+    cur = cfg.get("upbit_strategies") if isinstance(cfg.get("upbit_strategies"), dict) else {}
+    out: dict[str, bool] = {}
+    for sid in UPBIT_STRATEGY_IDS:
+        if sid in (cur or {}) and cur[sid] is not None:
+            out[sid] = bool(cur[sid])
+        else:
+            out[sid] = bool(base.get(sid, True))
+    return out
+
+
+def upbit_strategy_enabled(strategy_id: str) -> bool:
+    return bool(upbit_strategies().get(strategy_id, True))
+
+
+def set_upbit_strategies(
+    updates: dict[str, bool],
+    *,
+    updated_by: str | None = None,
+) -> dict[str, Any]:
+    clean = {k: bool(v) for k, v in updates.items() if k in UPBIT_STRATEGY_IDS}
+    return patch_config(clean, section="upbit_strategies", updated_by=updated_by)
+
+
 def status_snapshot() -> dict[str, Any]:
     cfg = load_config(force=True)
     return {
@@ -245,6 +303,7 @@ def status_snapshot() -> dict[str, Any]:
             "kimchi_arb_kill": kimchi_kill(),
             "challenge_live_flag": effective_bool("challenge_live", "CHALLENGE_LIVE"),
             "challenge_kill_flag": effective_bool("challenge_kill", "CHALLENGE_KILL_SWITCH"),
+            "upbit_strategies": upbit_strategies(),
             "upbit_risk": {
                 "max_daily_loss_pct": effective_float(
                     "upbit", "max_daily_loss_pct", "UPBIT_MAX_DAILY_LOSS_PCT", "5"

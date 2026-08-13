@@ -247,6 +247,7 @@ def build_help_messages() -> list[dict]:
 <b>⚡ 챌린지 라이브 제어</b> <i>(관리자 · Render)</i>
 <code>/challenge_status</code> — LIVE/리스크 상태
 <code>/upbit_live</code> → <code>confirm</code> · <code>/upbit_off</code> · <code>/upbit_risk</code>
+<code>/upbit_strat</code> — 업비트 전략 ON/OFF (majors / alt off …)
 <code>/binance_live</code> · <code>/binance_off</code> · <code>/binance_risk</code>
 <code>/binance_test</code> — BTCUSDT 선물(USDT-M) 소액 시험 long/close
 <code>/kimchi_live</code> (또는 <code>/kimch_live</code>) · <code>/kimchi_off</code> · <code>/kimchi_risk</code>
