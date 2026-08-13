@@ -17,9 +17,11 @@ import {
 
 import type {
   BtcCandle,
+  BtcChartBarId,
   CryptoAssetRow,
   CryptoAssetsPayload,
   CryptoIndicator,
+  CryptoMoneyFlowPanel,
   CryptoStrategy,
   FuturesPanel,
   KimchiRow,
@@ -399,11 +401,15 @@ function FuturesCharts({ futures }: { futures: FuturesPanel }) {
 function BtcLiveChart({
   candles,
   interval,
+  intervals,
   strategy,
+  onIntervalChange,
 }: {
   candles: BtcCandle[];
   interval: string;
+  intervals: Array<{ id: BtcChartBarId; label: string }>;
   strategy: CryptoStrategy | null;
+  onIntervalChange: (id: BtcChartBarId) => void;
 }) {
   const data = useMemo(
     () =>
@@ -422,7 +428,7 @@ function BtcLiveChart({
 
   return (
     <div>
-      <div className="etfdbus-chart-head">
+      <div className="etfdbus-chart-head" style={{ flexWrap: "wrap", gap: 8 }}>
         <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
           BTCUSDT.P 라이브 ({interval})
           {last ? (
@@ -431,6 +437,28 @@ function BtcLiveChart({
             </span>
           ) : null}
         </h3>
+        <div className="kr-hero-actions" style={{ marginLeft: "auto" }}>
+          {(intervals.length
+            ? intervals
+            : [
+                { id: "1m" as const, label: "1분" },
+                { id: "5m" as const, label: "5분" },
+                { id: "15m" as const, label: "15분" },
+                { id: "1H" as const, label: "1시간" },
+                { id: "4H" as const, label: "4시간" },
+                { id: "1D" as const, label: "1일" },
+              ]
+          ).map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              className={`tab-btn sub ${interval === b.id ? "active" : ""}`}
+              onClick={() => onIntervalChange(b.id)}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="geo-chart-wrap etfdbus-chart-lg" style={{ height: 320 }}>
         {data.length ? (
@@ -555,9 +583,192 @@ function BtcLiveChart({
         )}
       </div>
       <p className="meta-soft" style={{ marginTop: 6 }}>
-        OKX BTC-USDT-SWAP {interval} · 약 60초마다 자동 갱신 · SMA20/50 + 최근
-        48H 고저 지지/저항
+        OKX BTC-USDT-SWAP {interval} · 타임프레임 전환 시 재조회 · 약 60초 자동
+        갱신 · SMA20/50 (지지/저항은 1H 기준)
       </p>
+    </div>
+  );
+}
+
+function MoneyFlowPanel({ mf }: { mf: CryptoMoneyFlowPanel }) {
+  const volChart = useMemo(
+    () =>
+      (mf.volume_leaders || []).slice(0, 8).map((r) => ({
+        name: r.symbol,
+        volume: (r.volume_24h || 0) / 1e9,
+        chg: r.change_24h_pct,
+      })),
+    [mf.volume_leaders],
+  );
+
+  const fmtAbsUsd = (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(n)) return "—";
+    const sign = n > 0 ? "+" : "";
+    return `${sign}${fmtUsd(n)}`;
+  };
+
+  return (
+    <div style={{ marginTop: 16, marginBottom: 8 }}>
+      <h3 className="geo-section-title">크립토 자금 흐름</h3>
+      <p className="meta-soft" style={{ marginBottom: 8 }}>
+        거래대금 상위 · 스테이블(테더) 순발행 · 현물 ETF AUM — Flow/Position
+        합산 없음 · 공개 데이터만
+      </p>
+      {mf.headlines.length ? (
+        <ul className="panel-sub" style={{ marginBottom: 12 }}>
+          {mf.headlines.map((h) => (
+            <li key={h}>{h}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="macro-snap-grid macro-snap-grid-wide">
+        <article className="macro-snap-card">
+          <span className="macro-snap-label">크립토 시총</span>
+          <strong className="macro-snap-value">
+            {fmtUsd(mf.market?.total_mcap_usd)}
+          </strong>
+          <em className="macro-snap-sub">
+            24h Vol {fmtUsd(mf.market?.total_volume_24h_usd)}
+            {mf.market?.btc_dominance_pct != null
+              ? ` · BTC.D ${mf.market.btc_dominance_pct.toFixed(1)}%`
+              : ""}
+          </em>
+        </article>
+        <article className="macro-snap-card">
+          <span className="macro-snap-label">스테이블 공급</span>
+          <strong className="macro-snap-value">
+            {fmtUsd(mf.stables.total_usd)}
+          </strong>
+          <em className={`macro-snap-sub ${toneClass(mf.stables.chg_1d_usd)}`}>
+            1일 {fmtAbsUsd(mf.stables.chg_1d_usd)} ({fmtPct(mf.stables.chg_1d_pct)})
+            {" · "}7일 {fmtAbsUsd(mf.stables.chg_7d_usd)}
+          </em>
+        </article>
+        <article className="macro-snap-card">
+          <span className="macro-snap-label">USDT 순발행 프록시</span>
+          <strong className="macro-snap-value">
+            {fmtUsd(mf.stables.usdt_usd)}
+          </strong>
+          <em
+            className={`macro-snap-sub ${toneClass(mf.stables.usdt_chg_1d_usd)}`}
+          >
+            1일 {fmtAbsUsd(mf.stables.usdt_chg_1d_usd)} (
+            {fmtPct(mf.stables.usdt_chg_1d_pct)}) · 7일{" "}
+            {fmtAbsUsd(mf.stables.usdt_chg_7d_usd)}
+          </em>
+        </article>
+        {(mf.etf.rows || []).map((e) => (
+          <article key={e.symbol} className="macro-snap-card">
+            <span className="macro-snap-label">{e.symbol} AUM</span>
+            <strong className="macro-snap-value">{fmtUsd(e.aum_usd)}</strong>
+            <em className={`macro-snap-sub ${toneClass(e.change_24h_pct)}`}>
+              {e.name}
+              {e.change_24h_pct != null ? ` · ${fmtPct(e.change_24h_pct)}` : ""}
+            </em>
+          </article>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: 16,
+          marginTop: 12,
+        }}
+      >
+        <div>
+          <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
+            24h 거래대금 상위 (USD bn)
+          </h4>
+          <div className="geo-chart-wrap" style={{ height: 220 }}>
+            {volChart.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={volChart}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 24 }}
+                >
+                  <CartesianGrid
+                    stroke="rgba(148,163,184,0.12)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  />
+                  <YAxis
+                    width={36}
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    tickFormatter={(v) => `${Number(v).toFixed(1)}`}
+                  />
+                  <Tooltip
+                    formatter={(v, name) => {
+                      if (typeof v !== "number") return "—";
+                      if (String(name).includes("chg") || name === "chg")
+                        return fmtPct(v);
+                      return `$${v.toFixed(2)}B`;
+                    }}
+                    contentStyle={{
+                      background: "rgba(15,23,42,0.92)",
+                      border: "none",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar
+                    dataKey="volume"
+                    name="Vol $B"
+                    fill="rgba(52,211,153,0.65)"
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="geo-chart-empty">거래대금 데이터 없음</div>
+            )}
+          </div>
+        </div>
+        <div>
+          <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
+            거래대금 상세
+          </h4>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>심볼</th>
+                  <th>24h Vol</th>
+                  <th>점유</th>
+                  <th>24h</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(mf.volume_leaders || []).slice(0, 10).map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.symbol}</strong>
+                    </td>
+                    <td>{fmtUsd(r.volume_24h)}</td>
+                    <td>
+                      {r.volume_share_pct != null
+                        ? `${r.volume_share_pct.toFixed(1)}%`
+                        : "—"}
+                    </td>
+                    <td className={toneClass(r.change_24h_pct)}>
+                      {fmtPct(r.change_24h_pct)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="meta-soft" style={{ marginTop: 8 }}>
+            {mf.stables.source}
+            {mf.etf.note ? ` · ${mf.etf.note}` : ""}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -636,37 +847,55 @@ export default function CryptoAssetsTab() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [liveTick, setLiveTick] = useState(0);
+  const [bar, setBar] = useState<BtcChartBarId>("1H");
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/crypto-assets", { cache: "no-store" });
-      const json = (await res.json()) as CryptoAssetsPayload;
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || `HTTP ${res.status}`);
+  const load = useCallback(
+    async (silent = false, nextBar: BtcChartBarId = bar) => {
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/crypto-assets?bar=${encodeURIComponent(nextBar)}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as CryptoAssetsPayload;
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || `HTTP ${res.status}`);
+        }
+        setData(json);
+        setBar(json.btc_chart_interval || nextBar);
+        setLiveTick((n) => n + 1);
+      } catch (exc) {
+        setError(exc instanceof Error ? exc.message : String(exc));
+        if (!silent) setData(null);
+      } finally {
+        if (!silent) setLoading(false);
       }
-      setData(json);
-      setLiveTick((n) => n + 1);
-    } catch (exc) {
-      setError(exc instanceof Error ? exc.message : String(exc));
-      if (!silent) setData(null);
-    } finally {
-      if (!silent) setLoading(false);
-    }
+    },
+    [bar],
+  );
+
+  useEffect(() => {
+    void load(false, bar);
+    // initial + bar-driven reload only via onIntervalChange / interval
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Live refresh ~60s
+  // Live refresh ~60s (keep current bar)
   useEffect(() => {
     const id = window.setInterval(() => {
-      void load(true);
+      void load(true, bar);
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [load, bar]);
+
+  const onIntervalChange = useCallback(
+    (id: BtcChartBarId) => {
+      setBar(id);
+      void load(false, id);
+    },
+    [load],
+  );
 
   const fngChart = useMemo(
     () =>
@@ -700,14 +929,14 @@ export default function CryptoAssetsTab() {
           <div>
             <h2 className="feature-title">가상자산</h2>
             <p className="macro-subhead">
-              BTC 선물 OI·L/S·펀딩 · 김치·도미넌스 · 라이브 차트 기반 룰 매매
-              시나리오
+              BTC 선물 멀티TF · 자금흐름(거래대금·스테이블·ETF) · OI·L/S·펀딩 ·
+              김치·도미넌스
             </p>
           </div>
           <button
             type="button"
             className="ghost-btn"
-            onClick={() => void load()}
+            onClick={() => void load(false, bar)}
             disabled={loading}
           >
             새로고침
@@ -732,9 +961,15 @@ export default function CryptoAssetsTab() {
 
             <BtcLiveChart
               candles={data.btc_chart || []}
-              interval={data.btc_chart_interval || "1H"}
+              interval={data.btc_chart_interval || bar}
+              intervals={data.btc_chart_intervals || []}
               strategy={data.strategy}
+              onIntervalChange={onIntervalChange}
             />
+
+            {data.money_flow ? (
+              <MoneyFlowPanel mf={data.money_flow} />
+            ) : null}
 
             <h3 className="geo-section-title">BTC 선물 · 포지셔닝</h3>
             <IndicatorGrid items={data.futures?.indicators || []} />
