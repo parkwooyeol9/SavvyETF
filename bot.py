@@ -170,13 +170,14 @@ What each command returns:
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
 Auto schedule (KST):
-  /summary 07:00 · /summary_pre 21:50 · /reddit 21:00  → US channel
+  /summary 07:00 · /reddit 21:00  → US channel
   /summary_kor 15:40 (compact Telegram)  → Korea channel
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
   /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
-  /esg monitor 09:00 daily · /esg accident 09:30 (KRX)  → SavvyESG channel
-  (opt-in off: kor_intra, etf_sector, etf_us_new, esg overview/brief)
+  /esg accident 09:30 (KRX)  → SavvyESG (중대재해 only)
+  (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
+   esg monitor/overview/aigov/brief)
 
 Type /help for the full command list.
 """
@@ -216,14 +217,11 @@ def build_help_messages() -> list[dict]:
 
     msg2 = """<b>📋 브리핑 · 자동 스케줄 (KST)</b>
 <code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
-<code>/summary_pre</code> 21:50 — 프리마켓 (US 채널)
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
-<code>/summary_nxt</code> 16:40 — NXT 브리핑 (웹/R2만; 텔레그램 OFF)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
-<code>/etf_kor15</code> 09:00 — 한국 노출 미국 ETF 15종 편입비 (레거시 ETF 채널)
-<code>/esg monitor</code> 09:00 daily · <code>/esg accident</code> 09:30 — SavvyESG (accident는 한국 휴장 제외)
-<i>스케줄 OFF(수동만):</i> <code>/summary_kor_intra</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> overview · ESG data briefing
+<code>/esg accident</code> 09:30 — 중대재해 공시 (SavvyESG, 한국 휴장 제외)
+<i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> monitor/overview/aigov · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 <code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us/esg)
 

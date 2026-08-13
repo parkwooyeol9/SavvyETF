@@ -43,7 +43,7 @@ services:
       - key: SUMMARY_POST_CLOSE_ENABLED
         value: "false"
       - key: SUMMARY_PRE_SCHEDULE_ENABLED
-        value: "true"
+        value: "false"
       - key: SUMMARY_PRE_SCHEDULE_KST
         value: "21:50"
       - key: REDDIT_SCHEDULE_ENABLED
@@ -78,12 +78,16 @@ services:
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
         value: "15:40"
+      - key: ETF_KOR15_SCHEDULE_ENABLED
+        value: "false"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_MONITOR_SCHEDULE_ENABLED
-        value: "true"
+        value: "false"
       - key: ESG_MONITOR_SCHEDULE_KST
         value: "9:00"
+      - key: ESG_ACCIDENT_SCHEDULE_ENABLED
+        value: "true"
       - key: ESG_ACCIDENT_SCHEDULE_KST
         value: "9:30"
       - key: ESG_OVERVIEW_SCHEDULE_ENABLED
@@ -92,6 +96,14 @@ services:
         value: "9:45"
       - key: ESG_SCHEDULE_OVERVIEW_QUERIES
         value: "삼성전자"
+      - key: ESG_AIGOV_SCHEDULE_ENABLED
+        value: "false"
+      - key: ESG_AIGOV_SCHEDULE_KST
+        value: "10:00"
+      - key: ESG_AIBRIEF_SCHEDULE_ENABLED
+        value: "false"
+      - key: ESG_AIBRIEF_SCHEDULE_KST
+        value: "10:15"
       - key: ESG_BRIEF_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_BRIEF_SCHEDULE_KST
