@@ -57,6 +57,8 @@ HEAVY_COMMAND_TOKENS = {
     "/upbit_risk",
     "/upbit_kill",
     "/upbit_unkill",
+    "/upbit_strat",
+    "/upbit_strategy",
     "/binance_live",
     "/binance_off",
     "/binance_risk",

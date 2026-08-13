@@ -163,6 +163,9 @@ def run_upbit_executor() -> dict[str, Any]:
         action = str(strat.get("action") or "hold")
         if action not in {"buy", "sell"} or not market or market == "—":
             continue
+        if action == "buy" and not trade_cfg.upbit_strategy_enabled(sid):
+            result["skipped"].append(f"strategy_off:{sid}")
+            continue
         if not _cooldown_ok(state, sid, action):
             result["skipped"].append(f"cooldown:{sid}")
             continue

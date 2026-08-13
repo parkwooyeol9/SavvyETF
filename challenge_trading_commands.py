@@ -225,6 +225,8 @@ CHALLENGE_COMMAND_TOKENS = {
     "/upbit_risk",
     "/upbit_kill",
     "/upbit_unkill",
+    "/upbit_strat",
+    "/upbit_strategy",
     "/binance_live",
     "/binance_off",
     "/binance_risk",
@@ -293,6 +295,19 @@ def format_status() -> str:
         f"· 일손실 {ur['max_daily_loss_pct']}% · 비중 {ur['max_position_pct']}% · "
         f"예비 ₩{ur['min_krw_reserve']:,} · 쿨다운 {ur['order_cooldown_seconds']}s"
     )
+    strat = ef.get("upbit_strategies") or {}
+    if strat:
+        bits = []
+        for sid in cfg.UPBIT_STRATEGY_IDS:
+            on = strat.get(sid, True)
+            short = {
+                "major_btc": "BTC",
+                "major_eth": "ETH",
+                "kimchi_usdt": "USDT",
+                "alt_surge": "ALT",
+            }.get(sid, sid)
+            bits.append(f"{short}{'✅' if on else '⏸'}")
+        lines.append("<b>업비트 전략</b> " + " · ".join(bits) + "  (/upbit_strat)")
     br = ef["binance_risk"]
     lines.append("<b>바이낸스 리스크</b>")
     lines.append(
@@ -320,22 +335,133 @@ def format_status() -> str:
 def format_challenge_help() -> str:
     return """<b>챌린지 라이브 제어</b>
 
-<code>/challenge_status</code> — 현재 LIVE/리스크 상태
-<code>/upbit_live</code> → <code>/upbit_live confirm</code> — 업비트 실주문 ON
-<code>/upbit_off</code> — 업비트 OFF (dry-run)
-<code>/upbit_risk</code> — 업비트 리스크 대화형 조정
-<code>/binance_live</code> / <code>/binance_off</code> / <code>/binance_risk</code>
-<code>/binance_test</code> — USDT-M BTCUSDT 퍼프 소액 시험 (long/close)
-<code>/kimchi_live</code> (또는 <code>/kimch_live</code>) / <code>/kimchi_off</code> / <code>/kimchi_risk</code>
-<code>/upbit_kill</code> · <code>/binance_kill</code> · <code>/kimchi_kill</code> · <code>/challenge_kill</code> — 즉시 중단
-<code>/challenge_off</code> — CHALLENGE_LIVE 플래그 OFF + 엔진 live OFF
+<code>/challenge_status</code> — LIVE/리스크/전략
+<code>/upbit_live</code> → <code>confirm</code> · <code>/upbit_off</code> · <code>/upbit_risk</code>
+<code>/upbit_strat</code> — 전략 ON/OFF (알트·김프USDT 등)
+<code>/binance_live</code> / <code>/binance_off</code> / <code>/binance_risk</code> / <code>/binance_test</code>
+<code>/kimchi_live</code> · <code>/kimchi_off</code> · <code>/challenge_kill</code>
 
-리스크 한 줄 입력 예:
-<code>/upbit_risk 3 20 200000 3600</code>
-<code>/binance_risk 3 20 100 3600</code>
-<code>/kimchi_risk 700000 500 3.0 0.5 1.2 14 2.5</code>
+전략 예:
+<code>/upbit_strat majors</code> — BTC·ETH만
+<code>/upbit_strat safe</code> — 알트만 OFF
+<code>/upbit_strat alt off</code> · <code>/upbit_strat all</code>
 
-대화형: 명령만 치면 순서대로 물어봄. 유지=<code>-</code> · 취소=<code>/cancel</code>"""
+리스크 한 줄:
+<code>/upbit_risk 3 20 200000 3600</code>"""
+
+
+def _format_upbit_strat_status() -> str:
+    strat = cfg.upbit_strategies()
+    lines = [
+        "<b>업비트 전략 게이트</b> (라이브 실행기)",
+        "OFF면 <b>신규 매수 스킵</b> · 매도(청산) 신호는 유지",
+        "",
+    ]
+    for sid in cfg.UPBIT_STRATEGY_IDS:
+        on = strat.get(sid, True)
+        label = cfg.UPBIT_STRATEGY_LABELS.get(sid, sid)
+        lines.append(f"{'✅' if on else '⏸'} <code>{sid}</code> {label}")
+    lines.extend(
+        [
+            "",
+            "<code>/upbit_strat majors</code> — BTC+ETH만",
+            "<code>/upbit_strat safe</code> — 알트만 OFF",
+            "<code>/upbit_strat alt off</code> · <code>/upbit_strat kimchi off</code>",
+            "<code>/upbit_strat all</code>",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _handle_upbit_strat(parts: list[str], *, updated_by: str) -> list[dict]:
+    if len(parts) == 1:
+        return [_html(_format_upbit_strat_status())]
+
+    aliases = {
+        "btc": "major_btc",
+        "major_btc": "major_btc",
+        "eth": "major_eth",
+        "major_eth": "major_eth",
+        "kimchi": "kimchi_usdt",
+        "usdt": "kimchi_usdt",
+        "kimchi_usdt": "kimchi_usdt",
+        "alt": "alt_surge",
+        "alt_surge": "alt_surge",
+        "surge": "alt_surge",
+    }
+    arg1 = parts[1].lower()
+
+    if arg1 in {"help", "?", "status"}:
+        return [_html(_format_upbit_strat_status())]
+
+    if arg1 in {"all", "on", "enable_all"}:
+        cfg.set_upbit_strategies(
+            {sid: True for sid in cfg.UPBIT_STRATEGY_IDS},
+            updated_by=updated_by,
+        )
+        return [_html("✅ 업비트 전략 전부 ON\n" + _format_upbit_strat_status())]
+
+    if arg1 in {"majors", "major", "majors_only", "core"}:
+        cfg.set_upbit_strategies(
+            {
+                "major_btc": True,
+                "major_eth": True,
+                "kimchi_usdt": False,
+                "alt_surge": False,
+            },
+            updated_by=updated_by,
+        )
+        return [
+            _html(
+                "✅ <b>메이저만</b> (BTC·ETH ON · 김프USDT·알트 신규매수 OFF)\n"
+                + _format_upbit_strat_status()
+            )
+        ]
+
+    if arg1 in {"safe", "noalt"}:
+        cfg.set_upbit_strategies(
+            {
+                "major_btc": True,
+                "major_eth": True,
+                "kimchi_usdt": True,
+                "alt_surge": False,
+            },
+            updated_by=updated_by,
+        )
+        return [
+            _html(
+                "✅ <b>알트 OFF</b> (BTC·ETH·김프USDT ON)\n" + _format_upbit_strat_status()
+            )
+        ]
+
+    sid = aliases.get(arg1)
+    if sid and len(parts) >= 3:
+        mode = parts[2].lower()
+        if mode in {"on", "1", "true", "enable", "켜", "켜기"}:
+            enabled = True
+        elif mode in {"off", "0", "false", "disable", "끄", "끄기"}:
+            enabled = False
+        else:
+            return [_html("예: <code>/upbit_strat alt off</code>")]
+        cfg.set_upbit_strategies({sid: enabled}, updated_by=updated_by)
+        label = cfg.UPBIT_STRATEGY_LABELS.get(sid, sid)
+        return [
+            _html(
+                f"{'✅' if enabled else '⏸'} <b>{label}</b> 신규매수 "
+                f"{'ON' if enabled else 'OFF'}\n" + _format_upbit_strat_status()
+            )
+        ]
+
+    return [
+        _html(
+            "사용법:\n"
+            "<code>/upbit_strat</code>\n"
+            "<code>/upbit_strat majors</code>\n"
+            "<code>/upbit_strat safe</code>\n"
+            "<code>/upbit_strat alt off</code>\n"
+            "<code>/upbit_strat all</code>"
+        )
+    ]
 
 
 def _by_line(updated_by: str | None) -> str:
@@ -751,6 +877,9 @@ def handle_challenge_command(
     if tok == "/upbit_off":
         _set_engine_live("upbit", live=False, updated_by=updated_by)
         return [_html("🟢 <b>업비트 LIVE OFF</b> (dry-run)\n확인: /challenge_status")]
+
+    if tok in {"/upbit_strat", "/upbit_strategy"}:
+        return _handle_upbit_strat(parts, updated_by=updated_by)
 
     if tok == "/binance_live":
         if not _parse_confirm(parts):
