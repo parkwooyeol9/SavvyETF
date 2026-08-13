@@ -229,3 +229,67 @@ def futures_market_sell_all(symbol: str) -> dict[str, Any]:
 
 def futures_close_to_flat(symbol: str) -> dict[str, Any]:
     return futures_market_sell_all(symbol)
+
+
+def futures_test_snapshot(symbol: str = "BTCUSDT") -> dict[str, Any]:
+    """Balance / price / filters for a manual Telegram test trade."""
+    sym = symbol.upper()
+    if not has_binance_keys():
+        return {"ok": False, "error": "BINANCE_API_KEY / BINANCE_SECRET_KEY missing on Render"}
+    filters = _load_symbol_filters(sym)
+    prices = get_futures_prices([sym])
+    px = float(prices.get(sym) or 0)
+    usdt = get_usdt_balance()
+    equity = estimate_futures_equity_usdt()
+    pos = get_futures_position_signed(sym)
+    min_qty = float(filters.get("min_qty") or 0)
+    min_notional = float(filters.get("min_notional") or 5)
+    min_usdt_for_qty = (min_qty * px) if px > 0 else None
+    effective_min_usdt = max(
+        min_notional,
+        min_usdt_for_qty if min_usdt_for_qty is not None else min_notional,
+    )
+    return {
+        "ok": True,
+        "venue": "Binance USDT-M Futures (fapi.binance.com)",
+        "symbol": sym,
+        "contract": "USDT perpetual",
+        "price": px if px > 0 else None,
+        "usdt_available": usdt,
+        "equity_usdt": equity,
+        "position_amt": pos,
+        "min_qty": min_qty,
+        "min_notional": min_notional,
+        "min_usdt_to_open": effective_min_usdt,
+        "can_open": usdt >= effective_min_usdt and px > 0,
+    }
+
+
+def futures_test_open_long(symbol: str, usdt_notional: float) -> dict[str, Any]:
+    """Open a small long on USDT-M perpetual. Raises on filter/balance failure."""
+    snap = futures_test_snapshot(symbol)
+    if not snap.get("ok"):
+        raise RuntimeError(str(snap.get("error") or "snapshot failed"))
+    need = float(snap["min_usdt_to_open"])
+    avail = float(snap["usdt_available"] or 0)
+    px = float(snap["price"] or 0)
+    if not (px > 0):
+        raise RuntimeError(f"no price for {symbol}")
+    spend = float(usdt_notional)
+    if spend < need:
+        raise RuntimeError(
+            f"notional ${spend:.2f} < exchange minimum ~${need:.2f} "
+            f"(minQty {snap['min_qty']} × price)"
+        )
+    if spend > avail:
+        raise RuntimeError(f"notional ${spend:.2f} > available USDT ${avail:.2f}")
+    order = futures_market_buy_usdt(symbol, spend)
+    return {
+        "side": "BUY/LONG",
+        "symbol": symbol.upper(),
+        "spend_usdt": spend,
+        "price": px,
+        "order": order,
+        "position_after": get_futures_position_signed(symbol),
+        "usdt_after": get_usdt_balance(),
+    }
