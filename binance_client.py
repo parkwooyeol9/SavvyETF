@@ -1,4 +1,10 @@
-"""Binance REST client — USDT-M futures (바이낸스엔진)."""
+"""Binance REST client — USDT-M futures (바이낸스엔진).
+
+Render/US hosts often get HTTP 451 from fapi.binance.com (geo eligibility).
+Set BINANCE_HTTPS_PROXY (or HTTPS_PROXY) to an eligible-region proxy, e.g.
+  BINANCE_HTTPS_PROXY=http://user:pass@host:port
+Optional base override: BINANCE_FAPI_BASE=https://fapi.binance.com
+"""
 
 from __future__ import annotations
 
@@ -12,10 +18,40 @@ from urllib.parse import urlencode
 
 import requests
 
-FUTURES_API = "https://fapi.binance.com"
 REQUEST_TIMEOUT = 20
 
 _SYMBOL_FILTERS: dict[str, dict[str, float]] = {}
+
+
+def futures_api_base() -> str:
+    return (
+        os.environ.get("BINANCE_FAPI_BASE")
+        or os.environ.get("BINANCE_API_BASE")
+        or "https://fapi.binance.com"
+    ).strip().rstrip("/")
+
+
+def _proxy_url() -> str | None:
+    for key in (
+        "BINANCE_HTTPS_PROXY",
+        "BINANCE_HTTP_PROXY",
+        "BINANCE_PROXY_URL",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+    ):
+        raw = (os.environ.get(key) or "").strip()
+        if raw:
+            return raw
+    return None
+
+
+def _proxies() -> dict[str, str] | None:
+    url = _proxy_url()
+    if not url:
+        return None
+    return {"http": url, "https": url}
 
 
 def _keys() -> tuple[str, str] | None:
@@ -51,6 +87,26 @@ def _headers() -> dict[str, str]:
     return {"X-MBX-APIKEY": key, "Accept": "application/json"}
 
 
+def _geo_block_hint(status: int, body: str) -> str | None:
+    text = (body or "").lower()
+    if status == 451 or "restricted location" in text or "eligibility" in text:
+        proxy = _proxy_url()
+        if proxy:
+            return (
+                "Binance geo-block (HTTP 451) — 현재 프록시로도 막혔습니다. "
+                "프록시 지역이 Binance 허용국인지 확인하세요. "
+                f"(proxy set: yes, base={futures_api_base()})"
+            )
+        return (
+            "Binance geo-block (HTTP 451): Render 서버 IP가 제한 지역(대개 US)입니다. "
+            "해결: ① Render Environment에 BINANCE_HTTPS_PROXY="
+            "http://user:pass@허용국-proxy:port 설정 "
+            "② 또는 봇을 Binance 허용 지역 VPS로 이전. "
+            "키/시크릿 문제가 아닙니다."
+        )
+    return None
+
+
 def _request(
     method: str,
     path: str,
@@ -58,22 +114,31 @@ def _request(
     *,
     signed: bool = False,
 ) -> Any:
-    url = f"{FUTURES_API}{path}"
+    url = f"{futures_api_base()}{path}"
     p = dict(params or {})
     headers = {"Accept": "application/json"}
     if signed:
         p = _sign(p)
         headers.update(_headers())
-    resp = requests.request(
-        method.upper(),
-        url,
-        params=p if method.upper() in {"GET", "DELETE"} else None,
-        data=p if method.upper() == "POST" else None,
-        headers=headers,
-        timeout=REQUEST_TIMEOUT,
-    )
+    try:
+        resp = requests.request(
+            method.upper(),
+            url,
+            params=p if method.upper() in {"GET", "DELETE"} else None,
+            data=p if method.upper() == "POST" else None,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+            proxies=_proxies(),
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Binance {method} {path} network error: {exc}") from exc
     if resp.status_code >= 400:
-        raise RuntimeError(f"Binance {method} {path} failed ({resp.status_code}): {resp.text[:500]}")
+        hint = _geo_block_hint(resp.status_code, resp.text)
+        if hint:
+            raise RuntimeError(hint)
+        raise RuntimeError(
+            f"Binance {method} {path} failed ({resp.status_code}): {resp.text[:500]}"
+        )
     if not resp.text:
         return None
     return resp.json()
@@ -251,7 +316,8 @@ def futures_test_snapshot(symbol: str = "BTCUSDT") -> dict[str, Any]:
     )
     return {
         "ok": True,
-        "venue": "Binance USDT-M Futures (fapi.binance.com)",
+        "venue": f"Binance USDT-M Futures ({futures_api_base()})",
+        "proxy_configured": bool(_proxy_url()),
         "symbol": sym,
         "contract": "USDT perpetual",
         "price": px if px > 0 else None,

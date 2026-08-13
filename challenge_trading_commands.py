@@ -545,6 +545,7 @@ def _format_binance_test_status() -> str:
         [
             "<b>바이낸스 시험 매매 · BTCUSDT</b>",
             f"거래소: <code>{snap['venue']}</code>",
+            f"프록시: <code>{'설정됨' if snap.get('proxy_configured') else '없음 (Render IP 직접 — US면 451 가능)'}</code>",
             "계좌: <b>USDT-M 선물</b> (현물/마진 아님) · 심볼 <code>BTCUSDT</code> 퍼프",
             f"가격: <code>{snap.get('price')}</code>",
             f"가용 USDT: <code>{snap.get('usdt_available')}</code> · equity <code>{snap.get('equity_usdt')}</code>",
