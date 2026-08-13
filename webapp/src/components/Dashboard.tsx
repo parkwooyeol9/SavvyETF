@@ -31,6 +31,7 @@ import TradingIdeasTab from "@/components/TradingIdeasTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
+import MoneyFlowTab from "@/components/MoneyFlowTab";
 import SimulateTab from "@/components/SimulateTab";
 import UsPortfolioTab from "@/components/UsPortfolioTab";
 import AiPortTab from "@/components/AiPortTab";
@@ -200,6 +201,7 @@ export default function Dashboard() {
       tab === "signals" ||
       tab === "eventstudy" ||
       tab === "kosdaq100" ||
+      tab === "moneyflow" ||
       tab === "etfdb" ||
       tab === "etfdbus" ||
       tab === "leverage" ||
@@ -339,6 +341,8 @@ export default function Dashboard() {
         <EventStudyTab />
       ) : tab === "kosdaq100" ? (
         <Kosdaq100Tab />
+      ) : tab === "moneyflow" ? (
+        <MoneyFlowTab />
       ) : tab === "kr" ? (
         <>
           <KrMarketTab variant="market" />

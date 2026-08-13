@@ -5111,3 +5111,44 @@ button.country-etf-card {
     grid-template-columns: 1fr;
   }
 }
+
+/* Money Flow Monitor */
+.mf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+.mf-legend span {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #2b3648;
+}
+.mf-flow { color: #6ee7b7; }
+.mf-position { color: #93c5fd; }
+.mf-activity { color: #fcd34d; }
+.mf-liquidity { color: #c4b5fd; }
+.mf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mf-table th,
+.mf-table td {
+  border-bottom: 1px solid #2b3648;
+  padding: 8px 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+.mf-table th:first-child,
+.mf-table td:first-child {
+  text-align: left;
+}
+.mf-na {
+  color: #8fa3b8 !important;
+  font-style: italic;
+}
+.mf-z {
+  color: #8fa3b8;
+  font-size: 10px;
+}

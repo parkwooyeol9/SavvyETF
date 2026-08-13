@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/binance-paper-tick",
       "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/cron/money-flow-refresh",
+      "schedule": "30 */6 * * *"
     }
   ]
 }
