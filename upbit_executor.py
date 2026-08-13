@@ -8,30 +8,13 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from r2_data import get_json, put_json
+import challenge_trading_config as trade_cfg
 
 SIGNALS_KEY = "upbit_paper/signals_latest.json"
 LEGACY_SIGNALS_KEY = "crypto_paper/signals_latest.json"
 STATE_KEY = "upbit_live/executor_state_v1.json"
 LOG_PREFIX = "upbit_live/logs/"
 KST = ZoneInfo("Asia/Seoul")
-
-
-def _env_bool(name: str, default: str = "false") -> bool:
-    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_float(name: str, default: str) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return float(default)
-
-
-def _env_int(name: str, default: str) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except ValueError:
-        return int(default)
 
 
 def _default_state() -> dict[str, Any]:
@@ -62,7 +45,9 @@ def _append_log(entry: dict[str, Any]) -> None:
 
 
 def _cooldown_ok(state: dict[str, Any], strategy_id: str, action: str) -> bool:
-    cooldown = _env_int("UPBIT_ORDER_COOLDOWN_SECONDS", "3600")
+    cooldown = trade_cfg.effective_int(
+        "upbit", "order_cooldown_seconds", "UPBIT_ORDER_COOLDOWN_SECONDS", "3600"
+    )
     last = (state.get("last_actions") or {}).get(strategy_id) or {}
     if last.get("action") != action:
         return True
@@ -80,7 +65,9 @@ def _cooldown_ok(state: dict[str, Any], strategy_id: str, action: str) -> bool:
 
 
 def _daily_loss_ok(state: dict[str, Any], equity: float) -> tuple[bool, str]:
-    max_loss_pct = _env_float("UPBIT_MAX_DAILY_LOSS_PCT", "5")
+    max_loss_pct = trade_cfg.effective_float(
+        "upbit", "max_daily_loss_pct", "UPBIT_MAX_DAILY_LOSS_PCT", "5"
+    )
     day_key = _kst_day_key()
     if state.get("day_key_kst") != day_key:
         return True, ""
@@ -102,13 +89,13 @@ def run_upbit_executor() -> dict[str, Any]:
         "skipped": [],
     }
 
-    if _env_bool("UPBIT_KILL_SWITCH"):
+    if trade_cfg.upbit_kill():
         result["ok"] = True
         result["skipped"].append("kill_switch")
         _append_log({"ts": datetime.now(timezone.utc).isoformat(), "event": "kill_switch"})
         return result
 
-    live = _env_bool("UPBIT_LIVE", "false") or _env_bool("CHALLENGE_LIVE", "false")
+    live = trade_cfg.upbit_live()
     result["mode"] = "live" if live else "dry"
 
     signals = get_json(SIGNALS_KEY) or get_json(LEGACY_SIGNALS_KEY)
@@ -158,8 +145,12 @@ def run_upbit_executor() -> dict[str, Any]:
         put_json(STATE_KEY, state)
         return result
 
-    min_reserve = _env_int("UPBIT_MIN_KRW_RESERVE", "100000")
-    max_position_pct = _env_float("UPBIT_MAX_POSITION_PCT", "40")
+    min_reserve = trade_cfg.effective_int(
+        "upbit", "min_krw_reserve", "UPBIT_MIN_KRW_RESERVE", "100000"
+    )
+    max_position_pct = trade_cfg.effective_float(
+        "upbit", "max_position_pct", "UPBIT_MAX_POSITION_PCT", "40"
+    )
 
     now_iso = datetime.now(timezone.utc).isoformat()
     prices = get_ticker_prices(

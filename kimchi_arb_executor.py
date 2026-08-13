@@ -8,11 +8,11 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from typing import Any
 
 from r2_data import get_json, put_json
+import challenge_trading_config as trade_cfg
 
 KIMCHI_KEY = "challenge/kimchi_arb_latest.json"
 STUDY_KEY = "challenge/kimchi_study_latest.json"
@@ -20,42 +20,15 @@ STATE_KEY = "challenge/kimchi_arb_state_v1.json"
 LOG_PREFIX = "challenge/kimchi_arb_logs/"
 
 
-def _env_bool(name: str, default: str = "false") -> bool:
-    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_float(name: str, default: str) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return float(default)
-
-
-def _env_int(name: str, default: str) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except ValueError:
-        return int(default)
-
-
 def _live_enabled() -> bool:
-    if _env_bool("CHALLENGE_KILL_SWITCH") or _env_bool("KIMCHI_ARB_KILL_SWITCH"):
-        return False
-    if _env_bool("CHALLENGE_LIVE"):
-        return True
-    return _env_bool("KIMCHI_ARB_LIVE", "false")
+    return trade_cfg.kimchi_live()
 
 
 def _engine_live(engine: str) -> bool:
-    if _env_bool("CHALLENGE_LIVE"):
-        if engine == "upbit":
-            return not _env_bool("UPBIT_KILL_SWITCH")
-        if engine == "binance":
-            return not _env_bool("BINANCE_KILL_SWITCH")
     if engine == "upbit":
-        return _env_bool("UPBIT_LIVE", "false")
+        return trade_cfg.upbit_live()
     if engine == "binance":
-        return _env_bool("BINANCE_LIVE", "false")
+        return trade_cfg.binance_live()
     return False
 
 
@@ -64,16 +37,33 @@ def _params_from_study(signal: dict[str, Any]) -> dict[str, float]:
     study = get_json(STUDY_KEY) or {}
     rec = study.get("recommended") or {}
     return {
-        "enter": float(rec.get("enter_pct") or th.get("enter") or _env_float("KIMCHI_ARB_ENTER_PCT", "3.0")),
-        "exit_low": float(th.get("exit_low") or _env_float("KIMCHI_ARB_EXIT_PCT", "0.5")),
-        "steady": float(rec.get("exit_pct") or th.get("steady") or _env_float("KIMCHI_ARB_STEADY_PCT", "1.2")),
+        "enter": float(
+            rec.get("enter_pct")
+            or th.get("enter")
+            or trade_cfg.effective_float("kimchi", "enter_pct", "KIMCHI_ARB_ENTER_PCT", "3.0")
+        ),
+        "exit_low": float(
+            th.get("exit_low")
+            or trade_cfg.effective_float("kimchi", "exit_pct", "KIMCHI_ARB_EXIT_PCT", "0.5")
+        ),
+        "steady": float(
+            rec.get("exit_pct")
+            or th.get("steady")
+            or trade_cfg.effective_float("kimchi", "steady_pct", "KIMCHI_ARB_STEADY_PCT", "1.2")
+        ),
         "max_hold_days": float(
-            rec.get("max_hold_days") or th.get("max_hold_days") or _env_float("KIMCHI_ARB_MAX_HOLD_DAYS", "14")
+            rec.get("max_hold_days")
+            or th.get("max_hold_days")
+            or trade_cfg.effective_float(
+                "kimchi", "max_hold_days", "KIMCHI_ARB_MAX_HOLD_DAYS", "14"
+            )
         ),
         "max_adverse_pct": float(
             rec.get("max_adverse_pct")
             or th.get("max_adverse_pct")
-            or _env_float("KIMCHI_ARB_MAX_ADVERSE_PCT", "2.5")
+            or trade_cfg.effective_float(
+                "kimchi", "max_adverse_pct", "KIMCHI_ARB_MAX_ADVERSE_PCT", "2.5"
+            )
         ),
     }
 
@@ -217,7 +207,7 @@ def run_kimchi_arb_coordinator() -> dict[str, Any]:
         "skipped": [],
     }
 
-    if _env_bool("KIMCHI_ARB_KILL_SWITCH") or _env_bool("CHALLENGE_KILL_SWITCH"):
+    if trade_cfg.kimchi_kill():
         result["ok"] = True
         result["skipped"].append("kill_switch")
         return result
@@ -285,8 +275,12 @@ def run_kimchi_arb_coordinator() -> dict[str, Any]:
         return result
 
     live = _live_enabled()
-    max_usdt = float(os.environ.get("KIMCHI_ARB_MAX_USDT", "500"))
-    max_krw = int(os.environ.get("KIMCHI_ARB_MAX_KRW", "700000"))
+    max_usdt = trade_cfg.effective_float(
+        "kimchi", "max_usdt", "KIMCHI_ARB_MAX_USDT", "500"
+    )
+    max_krw = trade_cfg.effective_int(
+        "kimchi", "max_krw", "KIMCHI_ARB_MAX_KRW", "700000"
+    )
 
     from upbit_client import get_coin_balance, get_ticker_prices as upbit_prices, has_upbit_keys
 
