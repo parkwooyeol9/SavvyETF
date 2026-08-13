@@ -11,9 +11,10 @@
  * - Liquidity: MMF AUM, stablecoin supply stock
  */
 
-import { getCftcPayload } from "@/lib/cftc";
+import { getCftcPayload, type CftcMarketId } from "@/lib/cftc";
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
 import { withServerCache } from "@/lib/apiCache";
+import { buildBasketFlows, ETF_BASKETS } from "@/lib/moneyFlowEtf";
 
 export const MONEY_FLOW_R2_KEY = "money_flow/latest.json";
 
@@ -46,6 +47,8 @@ export type MetricCell = {
   method: string;
   as_of: string | null;
   unavailable_reason?: string;
+  /** True when value is estimated (e.g. NAV×Δunits), not issuer/ICI official */
+  estimated?: boolean;
 };
 
 export type AssetRow = {
@@ -117,11 +120,30 @@ const ASSET_SPECS: Array<{
   yahoo: string;
   /** Optional second symbol for volume (ETF) when yahoo is futures */
   volume_yahoo?: string;
-  cftc_id?: "gold" | "wti";
+  cftc_id?: CftcMarketId;
 }> = [
-  { id: "us_equity", label_ko: "미국 주식", label_en: "US Equity", yahoo: "SPY" },
-  { id: "global_equity", label_ko: "글로벌 주식", label_en: "Global Equity", yahoo: "VT" },
-  { id: "treasury", label_ko: "국채", label_en: "Treasuries", yahoo: "TLT" },
+  {
+    id: "us_equity",
+    label_ko: "미국 주식",
+    label_en: "US Equity",
+    yahoo: "SPY",
+    cftc_id: "es_mini",
+  },
+  {
+    id: "global_equity",
+    label_ko: "글로벌 주식",
+    label_en: "Global Equity",
+    yahoo: "VT",
+    volume_yahoo: "VXUS",
+    cftc_id: "msci_eafe",
+  },
+  {
+    id: "treasury",
+    label_ko: "국채",
+    label_en: "Treasuries",
+    yahoo: "TLT",
+    cftc_id: "ust_10y",
+  },
   { id: "credit", label_ko: "회사채", label_en: "Credit", yahoo: "LQD" },
   {
     id: "gold",
@@ -139,9 +161,21 @@ const ASSET_SPECS: Array<{
     volume_yahoo: "USO",
     cftc_id: "wti",
   },
-  { id: "dollar_cash", label_ko: "달러·현금", label_en: "USD / Cash", yahoo: "BIL" },
+  {
+    id: "dollar_cash",
+    label_ko: "달러·현금",
+    label_en: "USD / Cash",
+    yahoo: "BIL",
+    cftc_id: "usd_index",
+  },
   { id: "btc", label_ko: "BTC", label_en: "Bitcoin", yahoo: "BTC-USD", volume_yahoo: "IBIT" },
-  { id: "eth_alts", label_ko: "ETH·알트코인", label_en: "ETH / Alts", yahoo: "ETH-USD" },
+  {
+    id: "eth_alts",
+    label_ko: "ETH·알트코인",
+    label_en: "ETH / Alts",
+    yahoo: "ETH-USD",
+    volume_yahoo: "ETHA",
+  },
 ];
 
 function displayNow(): string {
@@ -311,47 +345,105 @@ function volumeRatioVs20d(points: YahooPoint[], windowDays: number): {
   };
 }
 
-/** FRED MMF total assets (liquidity stock, USD millions). */
+/** FRED MMF total assets (liquidity stock). API key optional — CSV fallback. */
+async function fetchFredSeriesCsv(
+  seriesId: string,
+  lookbackDays = 800,
+): Promise<Array<{ date: string; value: number }>> {
+  const end = new Date();
+  const start = new Date(end.getTime() - lookbackDays * 86_400_000);
+  const url =
+    `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}` +
+    `&cosd=${start.toISOString().slice(0, 10)}&coed=${end.toISOString().slice(0, 10)}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "text/csv" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    const lines = text.trim().split(/\r?\n/);
+    const out: Array<{ date: string; value: number }> = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i]!;
+      const comma = line.indexOf(",");
+      if (comma < 0) continue;
+      const date = line.slice(0, comma).trim();
+      const raw = line.slice(comma + 1).trim();
+      if (!date || raw === "." || raw === "") continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) continue;
+      out.push({ date, value });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 async function fetchFredMmf(): Promise<{
   value: number | null;
   chg_pct: number | null;
   as_of: string | null;
   hist: number[];
+  source: string;
   error?: string;
 }> {
   const key = process.env.FRED_API_KEY?.trim();
-  if (!key) {
+  // Money Market Funds; Total Financial Assets (USD millions)
+  const seriesId = "MMMFFAQ027S";
+
+  if (key) {
+    const url =
+      `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}` +
+      `&api_key=${encodeURIComponent(key)}&file_type=json&sort_order=desc&limit=24`;
+    const json = await fetchJson<{
+      observations?: Array<{ date: string; value: string }>;
+    }>(url);
+    const rows = (json?.observations || [])
+      .map((o) => ({ date: o.date, value: Number(o.value) }))
+      .filter((o) => Number.isFinite(o.value));
+    if (rows.length) {
+      const latest = rows[0]!;
+      const prev = rows[1];
+      const chg =
+        prev && prev.value > 0
+          ? (100 * (latest.value - prev.value)) / prev.value
+          : null;
+      return {
+        value: latest.value * 1_000_000,
+        chg_pct: chg,
+        as_of: latest.date,
+        hist: rows.map((r) => r.value).reverse(),
+        source: `FRED API ${seriesId}`,
+      };
+    }
+  }
+
+  const csv = await fetchFredSeriesCsv(seriesId, 1200);
+  if (!csv.length) {
     return {
       value: null,
       chg_pct: null,
       as_of: null,
       hist: [],
-      error: "FRED_API_KEY not set",
+      source: "FRED",
+      error: key ? "FRED empty" : "FRED CSV empty (no API key fallback)",
     };
   }
-  // Money Market Funds; Total Financial Assets, Level (USD millions, quarterly/weekly variants)
-  const seriesId = "MMMFFAQ027S";
-  const url =
-    `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}` +
-    `&api_key=${encodeURIComponent(key)}&file_type=json&sort_order=desc&limit=24`;
-  const json = await fetchJson<{
-    observations?: Array<{ date: string; value: string }>;
-  }>(url);
-  const rows = (json?.observations || [])
-    .map((o) => ({ date: o.date, value: Number(o.value) }))
-    .filter((o) => Number.isFinite(o.value));
-  if (!rows.length) {
-    return { value: null, chg_pct: null, as_of: null, hist: [], error: "FRED empty" };
-  }
-  const latest = rows[0]!;
-  const prev = rows[1];
+  const latest = csv[csv.length - 1]!;
+  const prev = csv.length > 1 ? csv[csv.length - 2]! : null;
   const chg =
-    prev && prev.value > 0 ? (100 * (latest.value - prev.value)) / prev.value : null;
+    prev && prev.value > 0
+      ? (100 * (latest.value - prev.value)) / prev.value
+      : null;
   return {
-    value: latest.value * 1_000_000, // to USD
+    value: latest.value * 1_000_000,
     chg_pct: chg,
     as_of: latest.date,
-    hist: rows.map((r) => r.value).reverse(),
+    hist: csv.map((r) => r.value),
+    source: `FRED CSV ${seriesId}`,
   };
 }
 
@@ -566,31 +658,38 @@ export async function buildMoneyFlowPayload(
     {
       name: "Yahoo Finance",
       url: "https://finance.yahoo.com",
-      used_for: "Price returns · ETF/spot dollar volume (Activity)",
+      used_for:
+        "Price · Activity volume · ETF AUM/NAV×Δunits Flow 추정 (baskets)",
     },
     {
       name: "CFTC SODA",
       url: "https://publicreporting.cftc.gov",
-      used_for: "Managed Money net (Position) — gold, WTI",
+      used_for:
+        "Position — ES·EAFE·UST10Y·DX·gold·WTI (MM/NC net · OI)",
     },
     {
       name: "FRED",
       url: "https://fred.stlouisfed.org",
-      used_for: "Money market fund assets (Liquidity)",
+      used_for: "Money market fund assets (Liquidity) — API or CSV",
     },
     {
       name: "DefiLlama Stablecoins",
       url: "https://stablecoins.llama.fi",
-      used_for: "Stablecoin supply / Δ supply (Liquidity · Flow proxy)",
+      used_for: "Stablecoin supply (Liquidity; not summed with BTC ETF Flow)",
     },
     {
       name: "OKX / Binance / CoinGecko Derivatives",
       url: "https://www.okx.com",
       used_for: "Crypto perpetual OI · funding (Position)",
     },
+    {
+      name: "US ETF DB (R2 seed)",
+      url: "https://savvyetf.vercel.app",
+      used_for: "Optional units history seed for basket Flow lookback",
+    },
   ];
 
-  const [yahooMap, cftc, mmf, stables, derivs] = await Promise.all([
+  const [yahooMap, cftc, mmf, stables, derivs, baskets] = await Promise.all([
     (async () => {
       const map = new Map<string, YahooPoint[]>();
       const symbols = new Set<string>();
@@ -612,6 +711,10 @@ export async function buildMoneyFlowPayload(
     fetchFredMmf(),
     fetchStablecoinSupply(),
     fetchCryptoDerivatives(),
+    buildBasketFlows(period).catch((e) => {
+      errors.push(`ETF baskets: ${e instanceof Error ? e.message : "failed"}`);
+      return {} as Awaited<ReturnType<typeof buildBasketFlows>>;
+    }),
   ]);
 
   if (mmf.error) errors.push(`FRED MMF: ${mmf.error}`);
@@ -658,50 +761,108 @@ export async function buildMoneyFlowPayload(
             as_of: vol.as_of,
           };
 
-    // Default Flow unavailable for ETF rows — no free issuer flow API in MVP
+    // ETF basket Flow (추정) + AUM — never sum with Position/Activity
+    const basket = baskets[spec.id];
+    const basketMeta = ETF_BASKETS[spec.id];
     let etfFlow = unavailable(
       "flow",
       "ETF·펀드 Flow",
-      "Issuer/ICI fund-flow API not wired — Data unavailable (no estimated fake flows)",
-      "ICI / issuers",
+      basket?.error ||
+        "Issuer/ICI official flow not wired — waiting for units lookback",
+      "Yahoo ETF baskets",
     );
     let flowAum = unavailable(
       "flow",
       "Flow/AUM",
-      "Requires fund-flow + AUM — Data unavailable",
-      "ICI / issuers",
+      "Requires fund-flow + AUM",
+      "Yahoo ETF baskets",
     );
 
-    // Dollar/cash: MMF AUM change as Liquidity (and Flow proxy labeled clearly)
-    if (spec.id === "dollar_cash" && mmf.chg_pct != null) {
-      etfFlow = {
+    if (basket?.aum_usd != null && basket.aum_usd > 0) {
+      flowAum = {
         kind: "liquidity",
-        value: mmf.chg_pct,
-        unit: "%",
-        label: "MMF AUM 변화",
+        value: basket.aum_usd / 1e9,
+        unit: "USD bn AUM",
+        label: "바스켓 AUM",
         zscore_1m: null,
         percentile_1m: null,
-        source: "FRED MMMFFAQ027S",
-        method: "QoQ/period change in money-market fund assets (Liquidity stock Δ — not ETF creations)",
-        as_of: mmf.as_of,
+        source: `Yahoo ${basketMeta.label}`,
+        method: `Sum of ${basket.symbols_used.join("+")} totalAssets (Liquidity stock)`,
+        as_of: basket.as_of,
+        estimated: true,
       };
-      if (mmf.value != null) {
+    }
+
+    if (basket?.flow_usd != null) {
+      etfFlow = {
+        kind: "flow",
+        value: basket.flow_usd / 1e9,
+        unit: "USD bn",
+        label: "ETF Flow 추정",
+        zscore_1m: null,
+        percentile_1m: null,
+        source: `Yahoo ${basketMeta.label}`,
+        method: basket.method,
+        as_of: basket.as_of,
+        estimated: true,
+      };
+      if (basket.flow_aum_pct != null && basket.aum_usd != null) {
+        flowAum = {
+          kind: "flow",
+          value: basket.flow_aum_pct,
+          unit: "% AUM",
+          label: "Flow/AUM",
+          zscore_1m: null,
+          percentile_1m: null,
+          source: `Yahoo ${basketMeta.label}`,
+          method: `Period ETF Flow ÷ basket AUM · ${basket.method}`,
+          as_of: basket.as_of,
+          estimated: true,
+        };
+      }
+    }
+
+    // Dollar/cash: overlay FRED MMF as Liquidity (separate from BIL+SGOV ETF basket)
+    if (spec.id === "dollar_cash" && mmf.chg_pct != null) {
+      // Prefer FRED for the Flow系 summary of cash when ETF basket flow missing
+      if (etfFlow.value == null) {
+        etfFlow = {
+          kind: "liquidity",
+          value: mmf.chg_pct,
+          unit: "%",
+          label: "MMF AUM 변화",
+          zscore_1m: null,
+          percentile_1m: null,
+          source: mmf.source,
+          method:
+            "QoQ/period change in money-market fund assets (Liquidity stock Δ — not ETF creations)",
+          as_of: mmf.as_of,
+        };
+      }
+      if (mmf.value != null && (flowAum.value == null || flowAum.kind === "liquidity")) {
         flowAum = {
           kind: "liquidity",
           value: mmf.value / 1e12,
-          unit: "USD tn",
+          unit: "USD tn MMF",
           label: "MMF AUM",
           zscore_1m: null,
           percentile_1m: null,
-          source: "FRED MMMFFAQ027S",
-          method: "Level of money-market fund financial assets",
+          source: mmf.source,
+          method: "Level of money-market fund financial assets (FRED)",
           as_of: mmf.as_of,
         };
       }
     }
 
-    // BTC: stablecoin Δ as crypto system Flow proxy (not BTC ETF flow)
+    // Stables = system Liquidity note for crypto (not summed into IBIT/ETHA Flow)
+    const notes: string[] = [];
+    if (basket?.method) notes.push(basket.method);
     if (spec.id === "btc" && stables.chg_7d_pct != null) {
+      notes.push(
+        `스테이블 순발행 ${stables.chg_7d_pct.toFixed(2)}% 7d (Liquidity/Flow proxy — IBIT ETF Flow와 합산 안 함)`,
+      );
+    }
+    if (spec.id === "btc" && stables.chg_7d_pct != null && etfFlow.value == null) {
       etfFlow = {
         kind: "flow",
         value: stables.chg_7d_pct,
@@ -710,10 +871,13 @@ export async function buildMoneyFlowPayload(
         zscore_1m: null,
         percentile_1m: null,
         source: "DefiLlama Stablecoins",
-        method: "7d % change in aggregate stablecoin circulating USD (net issuance proxy = Flow)",
+        method:
+          "IBIT lookback missing — temporary Flow proxy = 7d stablecoin supply Δ (not spot ETF)",
         as_of: stables.as_of,
+        estimated: true,
       };
-      if (stables.total_usd != null) {
+      // Keep IBIT basket AUM when present; otherwise show stable supply
+      if (flowAum.value == null && stables.total_usd != null) {
         flowAum = {
           kind: "liquidity",
           value: stables.total_usd / 1e9,
@@ -748,29 +912,47 @@ export async function buildMoneyFlowPayload(
         const hist = m.series
           .map((h) => h.net_mm ?? h.net_noncomm)
           .filter((x): x is number => x != null);
-        const chg = m.latest.net_chg;
         cftcCell = {
           kind: "position",
           value: mm,
           unit: "contracts",
-          label: "CFTC MM net",
+          label: m.latest.net_mm != null ? "CFTC MM net" : "CFTC NC net",
           zscore_1m: mm != null ? zscore(hist.slice(-30), mm) : null,
           percentile_1m: m.latest.percentile,
-          source: "CFTC Disaggregated / Managed Money",
-          method: "Managed Money net contracts (Position — not cash flow)",
+          source: "CFTC Disaggregated / Legacy",
+          method: `${m.label} · Managed Money net preferred, else Non-Commercial (Position — not cash flow)`,
           as_of: m.latest.date || cftc.as_of || null,
         };
-        oiCell = {
-          kind: "position",
-          value: chg,
-          unit: "Δ contracts",
-          label: "CFTC net Δ",
-          zscore_1m: null,
-          percentile_1m: null,
-          source: "CFTC",
-          method: "WoW change in primary net (Position change)",
-          as_of: m.latest.date || null,
-        };
+
+        const oiNow = m.latest.open_interest;
+        const prevPt = m.series.length >= 2 ? m.series[m.series.length - 2] : null;
+        const oiPrev = prevPt?.open_interest ?? null;
+        if (oiNow > 0 && oiPrev != null && oiPrev > 0) {
+          const oiChgPct = (100 * (oiNow - oiPrev)) / oiPrev;
+          oiCell = {
+            kind: "position",
+            value: oiChgPct,
+            unit: "% OI WoW",
+            label: "OI 변화",
+            zscore_1m: null,
+            percentile_1m: null,
+            source: "CFTC open_interest_all",
+            method: "WoW % change in futures open interest (Position)",
+            as_of: m.latest.date || null,
+          };
+        } else if (m.latest.net_chg != null) {
+          oiCell = {
+            kind: "position",
+            value: m.latest.net_chg,
+            unit: "Δ contracts",
+            label: "CFTC net Δ",
+            zscore_1m: null,
+            percentile_1m: null,
+            source: "CFTC",
+            method: "WoW change in primary net (Position change)",
+            as_of: m.latest.date || null,
+          };
+        }
       }
     }
 
@@ -804,14 +986,18 @@ export async function buildMoneyFlowPayload(
     const status = statusFromSignals({
       price: ret,
       activityZ: actZ,
-      flowZ: etfFlow.value != null ? (etfFlow.value > 0 ? 1 : -1) : null,
+      flowZ:
+        etfFlow.value != null
+          ? etfFlow.value > 0
+            ? 1
+            : etfFlow.value < 0
+              ? -1
+              : 0
+          : null,
     });
 
-    const notes: string[] = [];
     if (etfFlow.unavailable_reason) notes.push(`Flow: ${etfFlow.unavailable_reason}`);
-    if (spec.id === "btc" && stables.chg_7d_pct != null) {
-      notes.push("BTC row Flow uses stablecoin net issuance (system liquidity), not spot BTC ETF creations");
-    }
+    if (etfFlow.estimated) notes.push("Flow 값은 추정(Inferred/ETF units) — ICI 공식 아님");
 
     rows.push({
       id: spec.id,
@@ -849,7 +1035,7 @@ export async function buildMoneyFlowPayload(
     }
   }
 
-  // Top inflow/outflow among available Flow cells only
+  // Top inflow/outflow among material Flow cells (skip ~0 ETF lookback noise)
   const flowRows = rows
     .map((r) => ({
       asset: r.label_ko,
@@ -858,16 +1044,22 @@ export async function buildMoneyFlowPayload(
       unit: r.etf_flow.unit,
       label: r.etf_flow.label,
     }))
-    .filter((x) => x.value != null) as Array<{
-    asset: string;
-    kind: MetricKind;
-    value: number;
-    unit: string;
-    label: string;
-  }>;
+    .filter(
+      (x): x is {
+        asset: string;
+        kind: MetricKind;
+        value: number;
+        unit: string;
+        label: string;
+      } =>
+        x.value != null &&
+        Number.isFinite(x.value) &&
+        Math.abs(x.value) > 1e-4 &&
+        (x.kind === "flow" || x.kind === "liquidity"),
+    );
   flowRows.sort((a, b) => b.value - a.value);
   const topIn = flowRows[0] || null;
-  const topOut = flowRows.length ? flowRows[flowRows.length - 1]! : null;
+  const topOut = flowRows.length > 1 ? flowRows[flowRows.length - 1]! : null;
 
   const inferences: MoneyFlowPayload["inferences"] = [];
   const us = rows.find((r) => r.id === "us_equity");
@@ -888,7 +1080,15 @@ export async function buildMoneyFlowPayload(
 
   const cftc_changes =
     cftc?.markets
-      ?.filter((m) => m.id === "gold" || m.id === "wti")
+      ?.filter(
+        (m) =>
+          m.id === "gold" ||
+          m.id === "wti" ||
+          m.id === "es_mini" ||
+          m.id === "msci_eafe" ||
+          m.id === "ust_10y" ||
+          m.id === "usd_index",
+      )
       .map((m) => ({
         market: m.label,
         mm_net: m.latest?.net_mm ?? m.latest?.net_noncomm ?? null,
@@ -903,8 +1103,9 @@ export async function buildMoneyFlowPayload(
     as_of_kst: kstDate(),
     period,
     note:
-      "Flow / Position / Activity / Liquidity are separate families — never summed. " +
-      "Missing issuer ETF flows shown as Data unavailable (no fabricated numbers). USD · timestamps KST.",
+      "Flow / Position / Activity / Liquidity are separate — never summed. " +
+      "ETF Flow is 추정(NAV×Δunits / implied AUM) unless ICI/issuer official. " +
+      "USD · timestamps KST.",
     risk_summary: {
       regime,
       regime_ko:
@@ -938,7 +1139,7 @@ export async function buildMoneyFlowPayload(
         asset: r.label_ko,
         value: r.etf_flow.value,
         kind: r.etf_flow.kind,
-        inferred: r.id === "btc" && r.etf_flow.value != null,
+        inferred: !!r.etf_flow.estimated,
       })),
       family_compare: rows.map((r) => ({
         asset: r.label_ko,

@@ -34,12 +34,16 @@ export type CftcMarketId =
   | "platinum"
   | "corn"
   | "soybeans"
-  | "wheat";
+  | "wheat"
+  | "es_mini"
+  | "msci_eafe"
+  | "ust_10y"
+  | "usd_index";
 
 export type CftcMarketSpec = {
   id: CftcMarketId;
   label: string;
-  group: "금속" | "에너지" | "농산물";
+  group: "금속" | "에너지" | "농산물" | "금융";
   market_name: string;
   /** Yahoo symbol for price overlay */
   yahoo: string;
@@ -120,6 +124,38 @@ export const CFTC_MARKET_SPECS: CftcMarketSpec[] = [
     group: "농산물",
     market_name: "WHEAT-SRW - CHICAGO BOARD OF TRADE",
     yahoo: "ZW=F",
+  },
+  {
+    id: "es_mini",
+    label: "S&P 500 (E-mini)",
+    group: "금융",
+    market_name: "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+    yahoo: "ES=F",
+    watch: true,
+  },
+  {
+    id: "msci_eafe",
+    label: "MSCI EAFE",
+    group: "금융",
+    market_name: "MSCI EAFE - ICE FUTURES U.S.",
+    yahoo: "EFA",
+    watch: true,
+  },
+  {
+    id: "ust_10y",
+    label: "미국 10년 국채",
+    group: "금융",
+    market_name: "UST 10Y NOTE - CHICAGO BOARD OF TRADE",
+    yahoo: "ZN=F",
+    watch: true,
+  },
+  {
+    id: "usd_index",
+    label: "달러 인덱스",
+    group: "금융",
+    market_name: "USD INDEX - ICE FUTURES U.S.",
+    yahoo: "DX-Y.NYB",
+    watch: true,
   },
 ];
 
@@ -588,13 +624,17 @@ export async function getCftcPayload(opts?: {
   if (!force) {
     const cached = await loadCachedCftc();
     if (cached?.ok) {
+      const ids = new Set(cached.markets.map((m) => m.id));
+      // Bust stale caches that predate financial futures expansion
+      const hasFinancials =
+        ids.has("es_mini") && ids.has("ust_10y") && ids.has("usd_index");
       const genKst = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Seoul",
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
       }).format(new Date(cached.generated_at));
-      if (hour < 9 || genKst === ymd) return cached;
+      if (hasFinancials && (hour < 9 || genKst === ymd)) return cached;
     }
   }
 

@@ -53,6 +53,7 @@ function tone(n?: number | null): string {
 function CellView({ cell }: { cell: MetricCell }) {
   const tip = [
     cell.label,
+    cell.estimated ? "추정(Inferred)" : null,
     cell.source,
     cell.method,
     cell.as_of ? `as_of ${cell.as_of}` : null,
@@ -68,6 +69,9 @@ function CellView({ cell }: { cell: MetricCell }) {
       title={tip}
     >
       {fmtNum(cell)}
+      {!unavailable && cell.estimated ? (
+        <span className="mf-z"> 추정</span>
+      ) : null}
       {!unavailable && cell.zscore_1m != null ? (
         <span className="mf-z"> z{cell.zscore_1m.toFixed(1)}</span>
       ) : null}
