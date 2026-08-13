@@ -97,7 +97,7 @@ export default function ChallengeTradingPanel() {
           <h2 className="kr-hero-title">가상자산 자동매매</h2>
           <p className="kr-hero-sub">
             <strong>업비트엔진</strong> · <strong>바이낸스엔진</strong> · 김프 차익 ·
-            TradeFi(XAU/XAG/EWY/MU) · 현재 <strong>페이퍼</strong> 시뮬레이션.
+            TradeFi(XAU/XAG/MU) · 현재 <strong>페이퍼</strong> 시뮬레이션.
           </p>
         </div>
         <div className="kr-hero-actions">

@@ -2,7 +2,7 @@
  * 바이낸스엔진 — Binance USDT-M perpetual paper trading (no real orders).
  *
  * 천만원 챌린지: 바이낸스 배분 ~$3,500 USDT (₩500만 환전 가정).
- * Strategies: BTC/ETH perp + TradeFi (XAU, XAG, EWY, MU) perpetuals.
+ * Strategies: BTC/ETH perp + TradeFi (XAU, XAG, MU) perpetuals.
  */
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
@@ -35,7 +35,6 @@ export type BinanceStrategyId =
   | "major_eth"
   | "tradefi_gold"
   | "tradefi_silver"
-  | "tradefi_ewy"
   | "tradefi_mu";
 
 type MarketKind = "crypto" | "tradefi";
@@ -155,7 +154,7 @@ const STRATEGY_META: Record<
   major_btc: {
     label: "BTC Perp",
     symbol: "BTCUSDT",
-    max_weight_pct: 25,
+    max_weight_pct: 30,
     kind: "crypto",
     asset_id: "btc_usdt",
     asset_label: "BTC",
@@ -164,7 +163,7 @@ const STRATEGY_META: Record<
   major_eth: {
     label: "ETH Perp",
     symbol: "ETHUSDT",
-    max_weight_pct: 15,
+    max_weight_pct: 20,
     kind: "crypto",
     asset_id: "eth_usdt",
     asset_label: "ETH",
@@ -173,7 +172,7 @@ const STRATEGY_META: Record<
   tradefi_gold: {
     label: "Gold (XAU)",
     symbol: "XAUUSDT",
-    max_weight_pct: 20,
+    max_weight_pct: 25,
     kind: "tradefi",
     asset_id: "xau_usdt",
     asset_label: "Gold",
@@ -187,15 +186,6 @@ const STRATEGY_META: Record<
     asset_id: "xag_usdt",
     asset_label: "Silver",
     signal_group: "metal",
-  },
-  tradefi_ewy: {
-    label: "Korea ETF (EWY)",
-    symbol: "EWYUSDT",
-    max_weight_pct: 15,
-    kind: "tradefi",
-    asset_id: "ewy_usdt",
-    asset_label: "EWY",
-    signal_group: "sector",
   },
   tradefi_mu: {
     label: "Micron (MU)",
