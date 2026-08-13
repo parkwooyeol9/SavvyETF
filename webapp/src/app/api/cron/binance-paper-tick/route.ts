@@ -9,6 +9,7 @@ import {
   tickBinancePaperPortfolio,
 } from "@/lib/binancePaperTrading";
 import { tickKimchiArb } from "@/lib/kimchiArbEngine";
+import { tickKimchiStudy } from "@/lib/kimchiPremiumStudy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
     let state = (await loadBinancePaperState()) || defaultBinancePaperState();
     state = await tickBinancePaperPortfolio(state);
     const saved = await persistBinancePaperState(state);
-    const kimchi = await tickKimchiArb();
+    const [kimchi, study] = await Promise.all([tickKimchiArb(), tickKimchiStudy()]);
     const equity =
       state.equity_curve[state.equity_curve.length - 1]?.equity_usdt ?? state.cash_usdt;
     return NextResponse.json({
@@ -55,6 +56,8 @@ export async function GET(request: Request) {
       trades: state.trades.length,
       kimchi_pct: kimchi.kimchi_pct,
       kimchi_arb: kimchi.arb_action,
+      kimchi_inventory: kimchi.inventory,
+      kimchi_study: study.recommended,
       signals: state.signals.map((s) => ({
         id: s.id,
         action: s.action,
