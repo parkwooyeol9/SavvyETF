@@ -270,14 +270,60 @@ export default function ChallengeTradingPanel() {
                 ))}
               </ul>
             ) : null}
-            {data.kimchi_study?.recommended ? (
-              <p className="meta-soft" style={{ marginTop: 8 }}>
-                스터디: 해소중앙{" "}
-                {data.kimchi_study.high_resolve_days_median ?? "—"}일 · 추가확대 P75{" "}
-                {data.kimchi_study.high_max_adverse_p75 ?? "—"}%p ·{" "}
-                {data.kimchi_study.recommended.note}
+
+            <h4 style={{ marginTop: 16, marginBottom: 8, fontSize: 15 }}>
+              김프 히스토리 스터디
+            </h4>
+            {data.kimchi_study ? (
+              <>
+                <div className="us-pf-stats">
+                  <div>
+                    <span className="meta-soft">표본</span>
+                    <strong>{data.kimchi_study.sample_days}일</strong>
+                  </div>
+                  <div>
+                    <span className="meta-soft">평균 김프</span>
+                    <strong>{fmtPct(data.kimchi_study.mean_kimchi_pct)}</strong>
+                  </div>
+                  <div>
+                    <span className="meta-soft">고김프 해소(중앙)</span>
+                    <strong>
+                      {data.kimchi_study.high_resolve_days_median != null
+                        ? `${data.kimchi_study.high_resolve_days_median}일`
+                        : "—"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="meta-soft">추가확대 P75</span>
+                    <strong>
+                      {data.kimchi_study.high_max_adverse_p75 != null
+                        ? `${data.kimchi_study.high_max_adverse_p75}%p`
+                        : "—"}
+                    </strong>
+                  </div>
+                </div>
+                {data.kimchi_study.recommended ? (
+                  <p style={{ marginTop: 10, lineHeight: 1.5 }}>
+                    <strong>권고</strong> · 진입 ≥{data.kimchi_study.recommended.enter_pct}% ·
+                    청산 ~{data.kimchi_study.recommended.exit_pct}% · 최대보유{" "}
+                    {data.kimchi_study.recommended.max_hold_days}일 · 추가확대 한도{" "}
+                    {data.kimchi_study.recommended.max_adverse_pct}%p
+                    <br />
+                    <span className="meta-soft">{data.kimchi_study.recommended.note}</span>
+                  </p>
+                ) : null}
+                {data.kimchi_study.literature_note ? (
+                  <p className="meta-soft" style={{ marginTop: 6 }}>
+                    {data.kimchi_study.literature_note}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="meta-soft">
+                스터디 로딩 전 · <strong>전체 갱신</strong>을 누르면 해소일·추가확대 분포가
+                표시됩니다.
               </p>
-            ) : null}
+            )}
           </div>
 
           <div className="kr-chart" style={{ height: 220, marginTop: 12 }}>

@@ -98,6 +98,13 @@ export async function buildChallengePayload(options?: {
       kimchi_arb = await evaluateKimchiArb();
     }
     kimchi_study = await loadKimchiStudy();
+    if (!kimchi_study) {
+      try {
+        kimchi_study = await tickKimchiStudy();
+      } catch {
+        kimchi_study = null;
+      }
+    }
   }
 
   const binanceKrw =
