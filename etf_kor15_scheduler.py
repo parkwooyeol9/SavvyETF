@@ -72,7 +72,7 @@ def run_scheduled_etf_kor15(token: str, broadcast_fn) -> bool:
 
 
 def start_etf_kor15_scheduler(token: str, broadcast_fn) -> None:
-    if os.environ.get("ETF_KOR15_SCHEDULE_ENABLED", "true").lower() in {
+    if os.environ.get("ETF_KOR15_SCHEDULE_ENABLED", "false").lower() in {
         "0",
         "false",
         "no",

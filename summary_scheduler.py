@@ -76,10 +76,11 @@ def _post_close_enabled() -> bool:
 
 
 def _summary_pre_enabled() -> bool:
-    return os.environ.get("SUMMARY_PRE_SCHEDULE_ENABLED", "true").lower() not in {
+    return os.environ.get("SUMMARY_PRE_SCHEDULE_ENABLED", "false").lower() not in {
         "0",
         "false",
         "no",
+        "off",
     }
 
 

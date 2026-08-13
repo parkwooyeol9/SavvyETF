@@ -1,9 +1,10 @@
 """Scheduled /esg broadcasts → SavvyESG channel (TELEGRAM_CHAT_ID_ESG).
 
-Defaults (KST):
-  - 09:00  /esg monitor — Climate Risk (every calendar day)
-  - 09:30  /esg accident — 중대재해 screen (KRX trading days)
-  - 09:45  /esg overview — opt-in (ESG_OVERVIEW_SCHEDULE_ENABLED=true)
+Default (KST):
+  - 09:30  /esg accident — 중대재해 screen (KRX trading days) only
+
+Opt-in (explicitly enable):
+  - monitor / overview / aigov / aibrief
 """
 
 from __future__ import annotations
@@ -26,6 +27,15 @@ DEFAULT_AIGOV_KST = (10, 0)
 DEFAULT_AIBRIEF_KST = (10, 15)
 DEFAULT_POLL_SECONDS = 30
 DEFAULT_OVERVIEW_QUERIES = ("삼성전자",)
+
+
+def _env_on(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 def _parse_hhmm(raw: str, default: tuple[int, int]) -> tuple[int, int]:
@@ -308,31 +318,12 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
     except ValueError:
         catchup_minutes = 120
 
-    monitor_enabled = os.environ.get("ESG_MONITOR_SCHEDULE_ENABLED", "true").lower() not in {
-        "0",
-        "false",
-        "no",
-    }
-    overview_enabled = os.environ.get(
-        "ESG_OVERVIEW_SCHEDULE_ENABLED", "false"
-    ).lower() not in {
-        "0",
-        "false",
-        "no",
-    }
-    aigov_enabled = os.environ.get("ESG_AIGOV_SCHEDULE_ENABLED", "true").lower() not in {
-        "0",
-        "false",
-        "no",
-    }
-    # Weekly Gemini brief — default ON (Mondays only); disable with ESG_AIBRIEF_SCHEDULE_ENABLED=false
-    aibrief_enabled = os.environ.get(
-        "ESG_AIBRIEF_SCHEDULE_ENABLED", "true"
-    ).lower() not in {
-        "0",
-        "false",
-        "no",
-    }
+    monitor_enabled = _env_on("ESG_MONITOR_SCHEDULE_ENABLED", "false")
+    accident_enabled = _env_on("ESG_ACCIDENT_SCHEDULE_ENABLED", "true")
+    overview_enabled = _env_on("ESG_OVERVIEW_SCHEDULE_ENABLED", "false")
+    aigov_enabled = _env_on("ESG_AIGOV_SCHEDULE_ENABLED", "false")
+    # Weekly Gemini brief — default OFF (opt-in)
+    aibrief_enabled = _env_on("ESG_AIBRIEF_SCHEDULE_ENABLED", "false")
 
     def loop() -> None:
         state = _load_state()
@@ -342,6 +333,16 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         last_aigov = state.get("last_esg_aigov_slot")
         last_aibrief = state.get("last_esg_aibrief_slot")
         queries = ", ".join(_overview_queries())
+        monitor_bit = (
+            f"monitor {monitor_h:02d}:{monitor_m:02d} daily"
+            if monitor_enabled
+            else "monitor off"
+        )
+        accident_bit = (
+            f"KRX accident {accident_h:02d}:{accident_m:02d}"
+            if accident_enabled
+            else "accident off"
+        )
         overview_bit = (
             f"overview {overview_h:02d}:{overview_m:02d} ({queries})"
             if overview_enabled
@@ -359,8 +360,7 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         )
         print(
             f"esg scheduler active — "
-            f"monitor {monitor_h:02d}:{monitor_m:02d} daily · "
-            f"KRX accident {accident_h:02d}:{accident_m:02d} · "
+            f"{monitor_bit} · {accident_bit} · "
             f"{overview_bit} · {aigov_bit} · {aibrief_bit} "
             f"→ TELEGRAM_CHAT_ID_ESG ({catchup_minutes}m catch-up)"
         )
@@ -387,24 +387,25 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
                             last_monitor = monitor_slot
                             update_scheduler_state(last_esg_monitor_slot=monitor_slot)
 
-                accident_slot = due_slot_id(
-                    now,
-                    accident_h,
-                    accident_m,
-                    last_slot=last_accident,
-                    window_minutes=catchup_minutes,
-                )
-                if accident_slot:
-                    if _should_skip_kr_non_trading(now):
-                        print(
-                            f"Scheduled esg accident skipped ({accident_slot}): "
-                            "weekend or KRX holiday"
-                        )
-                        last_accident = accident_slot
-                        update_scheduler_state(last_esg_accident_slot=accident_slot)
-                    elif run_scheduled_esg_accident(token, broadcast_fn):
-                        last_accident = accident_slot
-                        update_scheduler_state(last_esg_accident_slot=accident_slot)
+                if accident_enabled:
+                    accident_slot = due_slot_id(
+                        now,
+                        accident_h,
+                        accident_m,
+                        last_slot=last_accident,
+                        window_minutes=catchup_minutes,
+                    )
+                    if accident_slot:
+                        if _should_skip_kr_non_trading(now):
+                            print(
+                                f"Scheduled esg accident skipped ({accident_slot}): "
+                                "weekend or KRX holiday"
+                            )
+                            last_accident = accident_slot
+                            update_scheduler_state(last_esg_accident_slot=accident_slot)
+                        elif run_scheduled_esg_accident(token, broadcast_fn):
+                            last_accident = accident_slot
+                            update_scheduler_state(last_esg_accident_slot=accident_slot)
 
                 if overview_enabled:
                     overview_slot = due_slot_id(
