@@ -237,10 +237,31 @@ export default function ChallengeTradingPanel() {
             </div>
           </div>
 
-          {data.kimchi_arb.legs.length > 0 ? (
-            <div className="geo-card" style={{ marginTop: 12 }}>
-              <h3>김프 차익 레그 (라이브 시 동시 실행)</h3>
-              <ul className="kr-list compact">
+          <div className="geo-card" style={{ marginTop: 12 }}>
+            <h3>김프 차익</h3>
+            <p className="meta-soft">
+              {data.kimchi_arb.arb_action_ko}
+              {data.kimchi_arb.kimchi_pct != null
+                ? ` · 현재 ${fmtPct(data.kimchi_arb.kimchi_pct)}`
+                : ""}
+            </p>
+            <p className="meta-soft">{data.kimchi_arb.reason}</p>
+            {data.kimchi_arb.inventory ? (
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                {data.kimchi_arb.inventory.policy_ko}
+                {" · "}목표 인벤토리{" "}
+                {Math.round(data.kimchi_arb.inventory.target_krw).toLocaleString("ko-KR")}원
+                {data.kimchi_arb.thresholds ? (
+                  <>
+                    {" · "}진입 ≥{data.kimchi_arb.thresholds.enter}% / 청산~
+                    {data.kimchi_arb.thresholds.steady}% / 최대보유{" "}
+                    {data.kimchi_arb.thresholds.max_hold_days}일
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {data.kimchi_arb.legs.length > 0 ? (
+              <ul className="kr-list compact" style={{ marginTop: 8 }}>
                 {data.kimchi_arb.legs.map((leg, i) => (
                   <li key={i}>
                     {leg.engine === "upbit" ? "업비트" : "바이낸스"} · {leg.side_ko} ·{" "}
@@ -248,9 +269,16 @@ export default function ChallengeTradingPanel() {
                   </li>
                 ))}
               </ul>
-              <p className="meta-soft">{data.kimchi_arb.reason}</p>
-            </div>
-          ) : null}
+            ) : null}
+            {data.kimchi_study?.recommended ? (
+              <p className="meta-soft" style={{ marginTop: 8 }}>
+                스터디: 해소중앙{" "}
+                {data.kimchi_study.high_resolve_days_median ?? "—"}일 · 추가확대 P75{" "}
+                {data.kimchi_study.high_max_adverse_p75 ?? "—"}%p ·{" "}
+                {data.kimchi_study.recommended.note}
+              </p>
+            ) : null}
+          </div>
 
           <div className="kr-chart" style={{ height: 220, marginTop: 12 }}>
             {upbitChart.length ? (

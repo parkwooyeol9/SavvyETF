@@ -18,6 +18,11 @@ import {
   tickKimchiArb,
   type KimchiArbSignal,
 } from "@/lib/kimchiArbEngine";
+import {
+  loadKimchiStudy,
+  tickKimchiStudy,
+  type KimchiStudyReport,
+} from "@/lib/kimchiPremiumStudy";
 
 export const CHALLENGE_TOTAL_KRW = 10_000_000;
 export const CHALLENGE_NAME = "가상자산 자동매매";
@@ -34,6 +39,7 @@ export type ChallengePayload = {
   upbit: CryptoPaperPayload;
   binance: BinancePaperPayload;
   kimchi_arb: KimchiArbSignal;
+  kimchi_study: KimchiStudyReport | null;
   combined_equity_krw: number | null;
   combined_return_pct: number | null;
   summary: string[];
@@ -81,13 +87,17 @@ export async function buildChallengePayload(options?: {
   ]);
 
   let kimchi_arb: KimchiArbSignal;
+  let kimchi_study: KimchiStudyReport | null = null;
   if (options?.forceTick || options?.refreshKimchi) {
-    kimchi_arb = await tickKimchiArb();
+    const [arb, study] = await Promise.all([tickKimchiArb(), tickKimchiStudy()]);
+    kimchi_arb = arb;
+    kimchi_study = study;
   } else {
     kimchi_arb = (await loadKimchiArbSignal()) || (await evaluateKimchiArb());
     if (kimchi_arb.arb_action === "unavailable") {
       kimchi_arb = await evaluateKimchiArb();
     }
+    kimchi_study = await loadKimchiStudy();
   }
 
   const binanceKrw =
@@ -105,7 +115,8 @@ export async function buildChallengePayload(options?: {
     kimchi_arb.kimchi_pct != null
       ? `김프 BTC: ${kimchi_arb.kimchi_pct.toFixed(2)}% · ${kimchi_arb.arb_action_ko}`
       : "김프: 데이터 없음",
-  ];
+    kimchi_arb.inventory?.policy_ko || "",
+  ].filter(Boolean);
 
   return {
     ok: upbit.ok && binance.ok,
@@ -119,6 +130,7 @@ export async function buildChallengePayload(options?: {
     upbit,
     binance,
     kimchi_arb,
+    kimchi_study,
     combined_equity_krw: combined,
     combined_return_pct: combinedRet,
     summary,
