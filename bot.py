@@ -246,6 +246,13 @@ def build_help_messages() -> list[dict]:
 <code>/port AAPL MSFT</code> — 포트 백테스트
 <code>/coin BTC</code> — 코인 차트
 
+<b>⚡ 챌린지 라이브 제어</b> <i>(관리자 · Render)</i>
+<code>/challenge_status</code> — LIVE/리스크 상태
+<code>/upbit_live</code> → <code>confirm</code> · <code>/upbit_off</code> · <code>/upbit_risk</code>
+<code>/binance_live</code> · <code>/binance_off</code> · <code>/binance_risk</code>
+<code>/kimchi_live</code> (또는 <code>/kimch_live</code>) · <code>/kimchi_off</code> · <code>/kimchi_risk</code>
+<code>/challenge_kill</code> — 전 엔진 즉시 중단 · 도움말 <code>/challenge_help</code>
+
 <b>ℹ️ 기타</b>
 <code>/help</code> — 이 안내 다시 보기"""
 
@@ -833,7 +840,7 @@ def process_telegram_update(token: str, update: dict) -> None:
         send_text(token, chat_id, cooldown_msg)
         return
 
-    replies = handle_telegram_message(command_text, chat_id)
+    replies = handle_telegram_message(command_text, chat_id, user_id=user_id_int)
     if not isinstance(replies, list):
         replies = [replies]
 
@@ -1074,13 +1081,35 @@ def _handle_event_command(normalized: str, chat_id: int) -> list[dict]:
         return [{"text": f"/event failed: {exc}"}]
 
 
-def handle_telegram_message(message, chat_id: int):
+def handle_telegram_message(message, chat_id: int, user_id: int | None = None):
     normalized = message.strip()
     lower = normalized.lower()
 
     # Any slash command clears a pending /event keyword prompt (except /event itself).
     if lower.startswith("/") and not lower.startswith("/event"):
         _pending_event_by_chat.pop(chat_id, None)
+
+    # Challenge live controls (admin) — also consumes pending risk wizard replies.
+    try:
+        from challenge_trading_commands import (
+            clear_pending as clear_challenge_pending,
+            handle_challenge_command,
+            is_challenge_control_message,
+        )
+
+        if is_challenge_control_message(normalized, chat_id):
+            replies = handle_challenge_command(
+                normalized, chat_id, user_id=user_id
+            )
+            if replies is not None:
+                return replies
+        elif lower.startswith("/"):
+            clear_challenge_pending(chat_id)
+    except Exception as exc:
+        if lower.startswith(
+            ("/upbit_", "/binance_", "/kimchi", "/kimch_", "/challenge_", "/live_")
+        ):
+            return [{"text": f"챌린지 제어 오류: {exc}"}]
 
     token0 = lower.split()[0] if lower else ""
     if token0 == "/help" or lower == "help":
