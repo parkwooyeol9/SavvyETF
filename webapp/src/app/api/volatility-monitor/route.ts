@@ -102,7 +102,7 @@ async function buildPayload(range: VolMonitorRange): Promise<VolMonitorPayload> 
   const maxPoints = RANGE_MAX_POINTS[range];
   const errors: string[] = [];
 
-  const assets = await mapPool(VOL_ASSET_SPECS, 5, async (spec) => {
+  const assets = await mapPool(VOL_ASSET_SPECS, 6, async (spec) => {
     try {
       const { price, series } = await fetchYahooCloses(spec.yahoo, yahooRange);
       if (!series.length) {
