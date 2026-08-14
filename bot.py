@@ -219,7 +219,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
-<code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
+<code>/etfcheck</code> 15:40 — ETF CHECK 당일 거래대금 TOP 등 (레거시 ETF 채널, KRX일 1회)
 <code>/esg accident</code> 09:30 — 중대재해 공시 (SavvyESG, 한국 휴장 제외)
 <i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> monitor/overview/aigov · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약

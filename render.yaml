@@ -78,6 +78,8 @@ services:
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
         value: "15:40"
+      - key: ETFCHECK_CATCHUP_MINUTES
+        value: "30"
       - key: ETF_KOR15_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_SCHEDULE_ENABLED
