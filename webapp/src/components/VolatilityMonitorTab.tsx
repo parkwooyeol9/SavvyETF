@@ -62,7 +62,10 @@ const PRESETS: Array<{ label: string; a: VolAssetId; b: VolAssetId }> = [
   { label: "금 ↔ WTI", a: "gold", b: "wti" },
   { label: "BTC ↔ SPY", a: "btc", b: "spy" },
   { label: "WTI ↔ VIX", a: "wti", b: "vix" },
-  { label: "은 ↔ 구리", a: "silver", b: "copper" },
+  { label: "EWY ↔ EWJ", a: "ewy", b: "ewj" },
+  { label: "EWY ↔ XLK", a: "ewy", b: "xlk" },
+  { label: "XLK ↔ XLF", a: "xlk", b: "xlf" },
+  { label: "EEM ↔ EFA", a: "eem", b: "efa" },
   { label: "DXY ↔ 금", a: "dxy", b: "gold" },
 ];
 
@@ -197,9 +200,9 @@ export default function VolatilityMonitorTab() {
           <p className="eyebrow">원자재 · Volatility Monitor</p>
           <h2 className="kr-hero-title">Volatility Monitor</h2>
           <p className="meta-soft">
-            프로젝트 주요 자산의 실현변동성을 한 화면에서 비교합니다. 하단
-            브러시로 구간을 좁히면 그 시점의 평균 변동성·수익률 상관계수가
-            함께 바뀝니다.
+            원자재·가상자산·국가 ETF(EWY/EWJ 등)·미국 업종(XLK 등)의 실현변동성을
+            페어로 비교합니다. 하단 브러시로 구간을 좁히면 그 시점의 평균
+            변동성·수익률 상관계수가 함께 바뀝니다.
           </p>
         </div>
         <button
@@ -393,12 +396,24 @@ export default function VolatilityMonitorTab() {
                   tickFormatter={(v: number) => `${v.toFixed(0)}%`}
                 />
                 <Tooltip
-                  formatter={(value, name) => [
-                    typeof value === "number" ? `${value.toFixed(2)}%` : "—",
-                    name === "volA"
-                      ? `${seriesA?.short || "A"} vol`
-                      : `${seriesB?.short || "B"} vol`,
-                  ]}
+                  formatter={(value, _name, item) => {
+                    // Recharts passes Line `name` (display label), not dataKey —
+                    // resolve via dataKey so A/B never collapse to the same label.
+                    const key =
+                      item && typeof item === "object" && "dataKey" in item
+                        ? String((item as { dataKey?: unknown }).dataKey)
+                        : "";
+                    const label =
+                      key === "volA"
+                        ? seriesA?.short || "A"
+                        : key === "volB"
+                          ? seriesB?.short || "B"
+                          : String(_name ?? "");
+                    return [
+                      typeof value === "number" ? `${value.toFixed(2)}%` : "—",
+                      label,
+                    ];
+                  }}
                   labelFormatter={(label) => String(label)}
                   contentStyle={{
                     background: "rgba(15,23,42,0.92)",

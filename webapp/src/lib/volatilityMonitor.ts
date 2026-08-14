@@ -6,7 +6,7 @@
  */
 
 export const VOL_MONITOR_SCHEDULE_NOTE =
-  "Yahoo 일봉 · 실현변동성(연율화) · 페어 롤링 상관계수 · 페이지 로드 시 갱신";
+  "Yahoo 일봉 · 실현변동성(연율화) · 국가/업종 ETF 포함 · 페어 롤링 상관 · 로드 시 갱신";
 
 export type VolMonitorRange = "6mo" | "1y" | "2y" | "5y";
 export type VolWindow = 20 | 60;
@@ -19,24 +19,12 @@ export type VolAssetGroup =
   | "에너지"
   | "가상자산"
   | "주식·변동성"
-  | "환율·채권";
+  | "환율·채권"
+  | "국가 ETF"
+  | "미국 업종";
 
-export type VolAssetId =
-  | "gold"
-  | "silver"
-  | "copper"
-  | "platinum"
-  | "wti"
-  | "brent"
-  | "natgas"
-  | "btc"
-  | "eth"
-  | "spy"
-  | "qqq"
-  | "vix"
-  | "dxy"
-  | "tlt"
-  | "hyg";
+/** Stable id (= yahoo ticker slug). Keep as string so country/sector lists can grow. */
+export type VolAssetId = string;
 
 export type VolAssetSpec = {
   id: VolAssetId;
@@ -48,6 +36,39 @@ export type VolAssetSpec = {
   /** Default left (A) / right (B) compare pair */
   defaultRole?: "a" | "b";
 };
+
+/** Country singles from `countryEtf.ts` (major markets only). */
+const COUNTRY_ETF_SPECS: VolAssetSpec[] = [
+  { id: "ewy", label: "한국 (EWY)", short: "EWY", group: "국가 ETF", yahoo: "EWY", color: "#2563eb" },
+  { id: "ewj", label: "일본 (EWJ)", short: "EWJ", group: "국가 ETF", yahoo: "EWJ", color: "#dc2626" },
+  { id: "ewt", label: "대만 (EWT)", short: "EWT", group: "국가 ETF", yahoo: "EWT", color: "#0ea5e9" },
+  { id: "mchi", label: "중국 (MCHI)", short: "MCHI", group: "국가 ETF", yahoo: "MCHI", color: "#ef4444" },
+  { id: "inda", label: "인도 (INDA)", short: "INDA", group: "국가 ETF", yahoo: "INDA", color: "#f97316" },
+  { id: "ewa", label: "호주 (EWA)", short: "EWA", group: "국가 ETF", yahoo: "EWA", color: "#84cc16" },
+  { id: "ewu", label: "영국 (EWU)", short: "EWU", group: "국가 ETF", yahoo: "EWU", color: "#6366f1" },
+  { id: "ewg", label: "독일 (EWG)", short: "EWG", group: "국가 ETF", yahoo: "EWG", color: "#a855f7" },
+  { id: "ewq", label: "프랑스 (EWQ)", short: "EWQ", group: "국가 ETF", yahoo: "EWQ", color: "#8b5cf6" },
+  { id: "ewc", label: "캐나다 (EWC)", short: "EWC", group: "국가 ETF", yahoo: "EWC", color: "#14b8a6" },
+  { id: "ewz", label: "브라질 (EWZ)", short: "EWZ", group: "국가 ETF", yahoo: "EWZ", color: "#22c55e" },
+  { id: "eww", label: "멕시코 (EWW)", short: "EWW", group: "국가 ETF", yahoo: "EWW", color: "#eab308" },
+  { id: "efa", label: "선진국 EAFE (EFA)", short: "EFA", group: "국가 ETF", yahoo: "EFA", color: "#64748b" },
+  { id: "eem", label: "신흥국 (EEM)", short: "EEM", group: "국가 ETF", yahoo: "EEM", color: "#78716c" },
+];
+
+/** US Select Sector SPDRs from ETF catalog / tradingSignals / etfDbUs curated. */
+const US_SECTOR_ETF_SPECS: VolAssetSpec[] = [
+  { id: "xlk", label: "기술 (XLK)", short: "XLK", group: "미국 업종", yahoo: "XLK", color: "#3b82f6" },
+  { id: "xlf", label: "금융 (XLF)", short: "XLF", group: "미국 업종", yahoo: "XLF", color: "#22c55e" },
+  { id: "xle", label: "에너지 (XLE)", short: "XLE", group: "미국 업종", yahoo: "XLE", color: "#0f766e" },
+  { id: "xlv", label: "헬스케어 (XLV)", short: "XLV", group: "미국 업종", yahoo: "XLV", color: "#ec4899" },
+  { id: "xli", label: "산업재 (XLI)", short: "XLI", group: "미국 업종", yahoo: "XLI", color: "#78716c" },
+  { id: "xly", label: "경기소비재 (XLY)", short: "XLY", group: "미국 업종", yahoo: "XLY", color: "#f59e0b" },
+  { id: "xlp", label: "필수소비재 (XLP)", short: "XLP", group: "미국 업종", yahoo: "XLP", color: "#84cc16" },
+  { id: "xlu", label: "유틸리티 (XLU)", short: "XLU", group: "미국 업종", yahoo: "XLU", color: "#06b6d4" },
+  { id: "xlb", label: "소재 (XLB)", short: "XLB", group: "미국 업종", yahoo: "XLB", color: "#a16207" },
+  { id: "xlc", label: "커뮤니케이션 (XLC)", short: "XLC", group: "미국 업종", yahoo: "XLC", color: "#8b5cf6" },
+  { id: "xlre", label: "부동산 (XLRE)", short: "XLRE", group: "미국 업종", yahoo: "XLRE", color: "#64748b" },
+];
 
 export const VOL_ASSET_SPECS: VolAssetSpec[] = [
   {
@@ -172,6 +193,8 @@ export const VOL_ASSET_SPECS: VolAssetSpec[] = [
     yahoo: "HYG",
     color: "#db2777",
   },
+  ...COUNTRY_ETF_SPECS,
+  ...US_SECTOR_ETF_SPECS,
 ];
 
 export const VOL_ASSET_GROUPS: VolAssetGroup[] = [
@@ -180,6 +203,8 @@ export const VOL_ASSET_GROUPS: VolAssetGroup[] = [
   "가상자산",
   "주식·변동성",
   "환율·채권",
+  "국가 ETF",
+  "미국 업종",
 ];
 
 export type VolPoint = { date: string; value: number };
