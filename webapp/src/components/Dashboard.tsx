@@ -27,6 +27,7 @@ import YenCarryTab from "@/components/YenCarryTab";
 import CftcTab from "@/components/CftcTab";
 import PreciousMetalsTab from "@/components/PreciousMetalsTab";
 import CryptoAssetsTab from "@/components/CryptoAssetsTab";
+import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
@@ -196,6 +197,7 @@ export default function Dashboard() {
       tab === "cftc" ||
       tab === "metals" ||
       tab === "crypto" ||
+      tab === "volmonitor" ||
       tab === "ideas" ||
       tab === "gurus" ||
       tab === "signals" ||
@@ -335,6 +337,8 @@ export default function Dashboard() {
         <PreciousMetalsTab />
       ) : tab === "crypto" ? (
         <CryptoAssetsTab />
+      ) : tab === "volmonitor" ? (
+        <VolatilityMonitorTab />
       ) : tab === "gurus" ? (
         <WallStreetGurusTab />
       ) : tab === "eventstudy" ? (

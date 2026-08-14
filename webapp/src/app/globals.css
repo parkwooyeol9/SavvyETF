@@ -5152,3 +5152,110 @@ button.country-etf-card {
   color: #8fa3b8;
   font-size: 10px;
 }
+
+/* —— Volatility Monitor (원자재) —— */
+.volmon-panel .volmon-stats {
+  margin-top: 0.85rem;
+}
+
+.volmon-controls,
+.volmon-presets {
+  margin-top: 0.75rem;
+  align-items: center;
+}
+
+.volmon-sep {
+  margin-left: 0.35rem;
+}
+
+.volmon-pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+  .volmon-pickers {
+    grid-template-columns: 1fr;
+  }
+}
+
+.volmon-picker {
+  border: 1px solid var(--border, #2b3648);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem 0.9rem;
+  background: rgba(10, 15, 22, 0.35);
+}
+
+.volmon-picker-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+}
+
+.volmon-group {
+  margin-top: 0.45rem;
+}
+
+.volmon-group-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--muted, #8fa3b8);
+  margin-bottom: 0.15rem;
+}
+
+.volmon-picker .etfdbus-watch {
+  margin-top: 0.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(5.8rem, 1fr));
+  gap: 0.4rem;
+}
+
+.volmon-picker .etfdbus-watch-card {
+  padding: 0.45rem 0.55rem;
+}
+
+.volmon-picker .etfdbus-watch-card:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.volmon-brush-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  align-items: baseline;
+  margin: 0.85rem 0 0.35rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 1px dashed rgba(14, 165, 233, 0.45);
+  background: rgba(14, 165, 233, 0.08);
+  font-size: 0.88rem;
+}
+
+.volmon-hint {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.volmon-chart {
+  margin-top: 1rem;
+}
+
+.volmon-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.volmon-link:hover {
+  text-decoration: underline;
+}
+
+.volmon-row-active td {
+  background: rgba(14, 165, 233, 0.08);
+}
