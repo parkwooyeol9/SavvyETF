@@ -8,7 +8,17 @@ export type DerivPoint = {
   value: number;
 };
 
-export type DerivRange = "1mo" | "3mo" | "6mo" | "1y";
+export type DerivBar = {
+  date: string;
+  label: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number | null;
+};
+
+export type DerivRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y";
 
 export type DerivGroup =
   | "equity"
@@ -34,6 +44,8 @@ export type DerivContract = {
   change_range_pct: number | null;
   volume: number | null;
   series?: DerivPoint[];
+  ohlc?: DerivBar[];
+  chart_kind?: "candle" | "line";
   error?: string;
 };
 
@@ -72,6 +84,8 @@ export type DerivPayload = {
   generated_at: string;
   note: string;
   range: DerivRange;
+  interval: string;
+  interval_label: string;
   pulse: DerivPulse;
   vol_curve: DerivVolTenor[];
   contracts: DerivContract[];
@@ -80,11 +94,38 @@ export type DerivPayload = {
 };
 
 export const DERIV_RANGES: Array<{ id: DerivRange; label: string }> = [
+  { id: "1d", label: "1일" },
+  { id: "5d", label: "5일" },
   { id: "1mo", label: "1개월" },
   { id: "3mo", label: "3개월" },
   { id: "6mo", label: "6개월" },
   { id: "1y", label: "1년" },
 ];
+
+export const DERIV_YAHOO_QUERY: Record<
+  DerivRange,
+  { range: string; interval: string; maxBars: number }
+> = {
+  "1d": { range: "1d", interval: "5m", maxBars: 96 },
+  "5d": { range: "5d", interval: "15m", maxBars: 120 },
+  "1mo": { range: "1mo", interval: "60m", maxBars: 100 },
+  "3mo": { range: "3mo", interval: "1d", maxBars: 80 },
+  "6mo": { range: "6mo", interval: "1d", maxBars: 100 },
+  "1y": { range: "1y", interval: "1d", maxBars: 120 },
+};
+
+export function derivIntervalLabel(range: DerivRange): string {
+  switch (range) {
+    case "1d":
+      return "5분봉";
+    case "5d":
+      return "15분봉";
+    case "1mo":
+      return "1시간봉";
+    default:
+      return "일봉";
+  }
+}
 
 export const DERIV_GROUP_LABELS: Record<DerivGroup, string> = {
   equity: "지수선물",
@@ -96,8 +137,76 @@ export const DERIV_GROUP_LABELS: Record<DerivGroup, string> = {
 };
 
 export function parseDerivRange(value: string | null | undefined): DerivRange {
-  if (value === "1mo" || value === "6mo" || value === "1y") return value;
+  if (
+    value === "1d" ||
+    value === "5d" ||
+    value === "1mo" ||
+    value === "6mo" ||
+    value === "1y"
+  ) {
+    return value;
+  }
   return "3mo";
+}
+
+export function isValidOhlc(
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+): boolean {
+  if (!(close > 0) || !(open > 0) || !(high > 0) || !(low > 0)) return false;
+  if (high + 1e-9 < Math.max(open, close)) return false;
+  if (low - 1e-9 > Math.min(open, close)) return false;
+  return true;
+}
+
+export function hasOhlcBars(bars?: DerivBar[] | null): boolean {
+  if (!bars?.length) return false;
+  let n = 0;
+  for (const b of bars) {
+    if (!isValidOhlc(b.open, b.high, b.low, b.close)) continue;
+    if (b.high > b.low + 1e-9 || b.open !== b.close) n += 1;
+    if (n >= 3) return true;
+  }
+  return n >= Math.min(2, bars.length);
+}
+
+export function downsampleOhlc(bars: DerivBar[], maxBars: number): DerivBar[] {
+  if (bars.length <= maxBars) return bars;
+  const size = Math.ceil(bars.length / maxBars);
+  const out: DerivBar[] = [];
+  for (let i = 0; i < bars.length; i += size) {
+    const chunk = bars.slice(i, i + size);
+    const first = chunk[0]!;
+    const last = chunk[chunk.length - 1]!;
+    let high = first.high;
+    let low = first.low;
+    let volume = 0;
+    let hasVol = false;
+    for (const b of chunk) {
+      if (b.high > high) high = b.high;
+      if (b.low < low) low = b.low;
+      if (b.volume != null && Number.isFinite(b.volume)) {
+        volume += b.volume;
+        hasVol = true;
+      }
+    }
+    out.push({
+      date: last.date,
+      label: last.label,
+      open: first.open,
+      high,
+      low,
+      close: last.close,
+      volume: hasVol ? volume : last.volume ?? null,
+    });
+  }
+  return out;
+}
+
+export function closesFromOhlc(bars: DerivBar[]): DerivPoint[] {
+  return bars.map((b) => ({ date: b.date, value: b.close }));
 }
 
 export const DERIV_CONTRACT_SPECS: Array<{
@@ -509,20 +618,36 @@ function last(series: DerivPoint[]): number | null {
   return series.length ? series[series.length - 1]!.value : null;
 }
 
+function lookbackPoint(series: DerivPoint[], days: number): DerivPoint | null {
+  if (series.length < 2) return null;
+  const end = series[series.length - 1]!;
+  const endT = Date.parse(end.date);
+  if (!Number.isFinite(endT)) {
+    const idx = series.length - days - 1;
+    return idx >= 0 ? series[idx]! : series[0]!;
+  }
+  const target = endT - days * 86_400_000;
+  for (let i = series.length - 2; i >= 0; i--) {
+    const t = Date.parse(series[i]!.date);
+    if (Number.isFinite(t) && t <= target) return series[i]!;
+  }
+  return series[0]!;
+}
+
 function deltaOver(series: DerivPoint[], days: number): number | null {
-  if (series.length <= days) return null;
-  const start = series[series.length - days - 1]?.value;
+  if (series.length < 2) return null;
+  const start = lookbackPoint(series, days)?.value;
   const end = series[series.length - 1]?.value;
   if (start == null || end == null) return null;
   return end - start;
 }
 
 export function pctChange(series: DerivPoint[], days: number): number | null {
-  if (series.length <= days) return null;
-  const start = series[series.length - days - 1]?.value;
+  if (series.length < 2) return null;
+  const start = lookbackPoint(series, days)?.value;
   const end = series[series.length - 1]?.value;
   if (start == null || end == null || start === 0) return null;
-  return ((end / start - 1) * 100);
+  return (end / start - 1) * 100;
 }
 
 export function alignedRatio(

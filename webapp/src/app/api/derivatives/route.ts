@@ -3,14 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
 import {
   DERIV_CONTRACT_SPECS,
+  DERIV_YAHOO_QUERY,
   buildDerivSpreads,
   buildVolCurve,
+  closesFromOhlc,
   computeDerivPulse,
+  derivIntervalLabel,
+  downsampleOhlc,
+  hasOhlcBars,
+  isValidOhlc,
   parseDerivRange,
   pctChange,
+  type DerivBar,
   type DerivContract,
   type DerivPayload,
-  type DerivPoint,
   type DerivRange,
 } from "@/lib/derivatives";
 
@@ -24,10 +30,17 @@ const UA =
 type YahooChart = {
   chart?: {
     result?: Array<{
-      meta?: { regularMarketPrice?: number };
+      meta?: {
+        regularMarketPrice?: number;
+        previousClose?: number;
+        chartPreviousClose?: number;
+      };
       timestamp?: number[];
       indicators?: {
         quote?: Array<{
+          open?: Array<number | null>;
+          high?: Array<number | null>;
+          low?: Array<number | null>;
           close?: Array<number | null>;
           volume?: Array<number | null>;
         }>;
@@ -36,10 +49,27 @@ type YahooChart = {
   };
 };
 
-function downsample(points: DerivPoint[], maxPoints: number): DerivPoint[] {
-  if (points.length <= maxPoints) return points;
-  const step = Math.ceil(points.length / maxPoints);
-  return points.filter((_, i) => i % step === 0 || i === points.length - 1);
+function isIntraday(interval: string): boolean {
+  return interval.endsWith("m") || interval === "60m" || interval === "1h";
+}
+
+function formatBarStamp(tsSec: number, interval: string): { date: string; label: string } {
+  const d = new Date(tsSec * 1000);
+  const kst = new Date(d.getTime() + 9 * 3600 * 1000);
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(kst.getUTCDate()).padStart(2, "0");
+  const hh = String(kst.getUTCHours()).padStart(2, "0");
+  const mi = String(kst.getUTCMinutes()).padStart(2, "0");
+  if (isIntraday(interval)) {
+    return {
+      date: d.toISOString(),
+      label: `${mm}-${dd} ${hh}:${mi}`,
+    };
+  }
+  return {
+    date: d.toISOString().slice(0, 10),
+    label: `${mm}-${dd}`,
+  };
 }
 
 async function fetchYahooContract(
@@ -63,10 +93,14 @@ async function fetchYahooContract(
     volume: null,
   };
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(spec.symbol)}?range=${range}&interval=1d&includePrePost=false`;
+    const q = DERIV_YAHOO_QUERY[range];
+    const url =
+      `https://query1.finance.yahoo.com/v8/finance/chart/` +
+      `${encodeURIComponent(spec.symbol)}?range=${q.range}&interval=${q.interval}` +
+      `&includePrePost=false`;
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
-      next: { revalidate: 120 },
+      next: { revalidate: range === "1d" || range === "5d" ? 60 : 120 },
     });
     if (!res.ok) return { ...base, error: `HTTP ${res.status}` };
     const payload = (await res.json()) as YahooChart;
@@ -74,32 +108,61 @@ async function fetchYahooContract(
     if (!result) return { ...base, error: "no data" };
 
     const timestamps = result.timestamp || [];
-    const closes = result.indicators?.quote?.[0]?.close || [];
-    const volumes = result.indicators?.quote?.[0]?.volume || [];
-    const series: DerivPoint[] = [];
+    const quote = result.indicators?.quote?.[0];
+    const opens = quote?.open || [];
+    const highs = quote?.high || [];
+    const lows = quote?.low || [];
+    const closes = quote?.close || [];
+    const volumes = quote?.volume || [];
+    const bars: DerivBar[] = [];
     let lastVolume: number | null = null;
     for (let i = 0; i < timestamps.length; i++) {
       const close = closes[i];
       if (close == null || !Number.isFinite(close)) continue;
-      series.push({
-        date: new Date(timestamps[i]! * 1000).toISOString().slice(0, 10),
-        value: close,
+      const stamp = formatBarStamp(timestamps[i]!, q.interval);
+      const open = opens[i];
+      const high = highs[i];
+      const low = lows[i];
+      const hasOhlc =
+        open != null &&
+        high != null &&
+        low != null &&
+        Number.isFinite(open) &&
+        Number.isFinite(high) &&
+        Number.isFinite(low) &&
+        isValidOhlc(open, high, low, close);
+      bars.push({
+        date: stamp.date,
+        label: stamp.label,
+        open: hasOhlc ? open : close,
+        high: hasOhlc ? high : close,
+        low: hasOhlc ? low : close,
+        close,
+        volume: volumes[i] != null && Number.isFinite(volumes[i]) ? volumes[i] : null,
       });
       const vol = volumes[i];
       if (vol != null && Number.isFinite(vol) && vol > 0) lastVolume = vol;
     }
-    if (!series.length) return { ...base, error: "no closes" };
+    if (!bars.length) return { ...base, error: "no closes" };
 
+    const ohlc = downsampleOhlc(bars, q.maxBars);
+    const series = closesFromOhlc(ohlc);
     const price =
-      result.meta?.regularMarketPrice ?? series[series.length - 1]!.value;
+      result.meta?.regularMarketPrice ?? ohlc[ohlc.length - 1]!.close;
+    const prev =
+      result.meta?.previousClose ?? result.meta?.chartPreviousClose ?? null;
+    const change1d =
+      prev != null && prev !== 0 ? ((price / prev - 1) * 100) : pctChange(series, 1);
     return {
       ...base,
       price,
-      change_1d_pct: pctChange(series, 1),
+      change_1d_pct: change1d,
       change_5d_pct: pctChange(series, 5),
-      change_range_pct: pctChange(series, series.length - 1),
+      change_range_pct: pctChange(series, 3650),
       volume: lastVolume,
-      series: downsample(series, 90),
+      series,
+      ohlc,
+      chart_kind: hasOhlcBars(ohlc) ? "candle" : "line",
     };
   } catch (exc) {
     return {
@@ -138,6 +201,8 @@ async function buildPayload(range: DerivRange): Promise<DerivPayload> {
     generated_at: new Date().toISOString(),
     note: "Yahoo 연속선물(근월물) · CBOE 변동성 기간구조·SKEW · 투자 조언이 아닙니다.",
     range,
+    interval: DERIV_YAHOO_QUERY[range].interval,
+    interval_label: derivIntervalLabel(range),
     pulse: computeDerivPulse(byId),
     vol_curve: buildVolCurve(byId),
     contracts,
@@ -152,9 +217,9 @@ export async function GET(req: NextRequest) {
   const range = parseDerivRange(req.nextUrl.searchParams.get("range"));
   try {
     const payload = await withServerCache(
-      `derivatives:${range}`,
-      90_000,
-      180_000,
+      `derivatives:v3:${range}`,
+      range === "1d" || range === "5d" ? 45_000 : 90_000,
+      range === "1d" || range === "5d" ? 90_000 : 180_000,
       () => buildPayload(range),
     );
     return jsonWithCdnCache(payload, "yahoo");
@@ -164,6 +229,8 @@ export async function GET(req: NextRequest) {
       generated_at: new Date().toISOString(),
       note: "",
       range,
+      interval: DERIV_YAHOO_QUERY[range].interval,
+      interval_label: derivIntervalLabel(range),
       pulse: {
         score: 0,
         regime: "n/a",

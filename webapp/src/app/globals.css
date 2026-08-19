@@ -5362,3 +5362,48 @@ button.country-etf-card {
     grid-template-columns: 1fr auto;
   }
 }
+
+.deriv-live-wrap {
+  min-height: 140px;
+}
+
+.deriv-live-hero {
+  margin-top: 0.85rem;
+}
+
+.deriv-tt {
+  background: #121b2d;
+  border: 1px solid #243049;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+}
+
+.deriv-tt strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.deriv-table tbody tr {
+  cursor: pointer;
+}
+
+.deriv-snap-btn {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.deriv-snap-btn.active,
+.deriv-snap-btn:hover {
+  border-color: #3a5478;
+  background: rgba(77, 163, 255, 0.08);
+}
+
+.deriv-tab .geo-signal-grid-charts {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
