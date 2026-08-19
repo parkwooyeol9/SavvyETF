@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   buildCryptoAssetsPayload,
   parseBtcChartBar,
+  parseCoinId,
 } from "@/lib/cryptoAssets";
 
 export const runtime = "nodejs";
@@ -12,8 +13,9 @@ export const maxDuration = 45;
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const bar = parseBtcChartBar(url.searchParams.get("bar"));
+  const coin = parseCoinId(url.searchParams.get("coin"));
   try {
-    const payload = await buildCryptoAssetsPayload({ bar });
+    const payload = await buildCryptoAssetsPayload({ bar, coin });
     return NextResponse.json(payload, {
       headers: {
         "Cache-Control": "public, s-maxage=45, stale-while-revalidate=90",
@@ -31,6 +33,14 @@ export async function GET(request: Request) {
         note: "",
         usdkrw: null,
         assets: [],
+        watchlist: [],
+        selected_coin: {
+          id: coin,
+          symbol: "BTC",
+          name: "Bitcoin",
+          inst_id: null,
+          chart_source: "coingecko",
+        },
         kimchi: [],
         indicators: [],
         fear_greed: [],
