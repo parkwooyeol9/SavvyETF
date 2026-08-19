@@ -22,6 +22,7 @@ import type {
   CryptoAssetsPayload,
   CryptoIndicator,
   CryptoMoneyFlowPanel,
+  CryptoSelectedCoin,
   CryptoStrategy,
   FuturesPanel,
   KimchiRow,
@@ -50,7 +51,16 @@ function fmtKrw(n: number | null | undefined): string {
 
 function fmtPx(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
+  if (n >= 1000) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
+  }
+  if (n >= 1) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  }
+  if (n >= 0.01) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+  }
+  return `$${n.toPrecision(4)}`;
 }
 
 function toneClass(n: number | null | undefined): string {
@@ -110,12 +120,21 @@ function IndicatorGrid({ items }: { items: CryptoIndicator[] }) {
   );
 }
 
-function AssetsTable({ rows }: { rows: CryptoAssetRow[] }) {
+function AssetsTable({
+  rows,
+  selectedId,
+  onSelect,
+}: {
+  rows: CryptoAssetRow[];
+  selectedId?: string;
+  onSelect?: (id: string) => void;
+}) {
   return (
     <div className="table-wrap">
       <table className="data-table">
         <thead>
           <tr>
+            <th>#</th>
             <th>자산</th>
             <th>가격(USD)</th>
             <th>24h</th>
@@ -126,8 +145,14 @@ function AssetsTable({ rows }: { rows: CryptoAssetRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.id}>
+          {rows.map((r, i) => (
+            <tr
+              key={r.id}
+              className={selectedId === r.id ? "volmon-row-active" : ""}
+              style={onSelect ? { cursor: "pointer" } : undefined}
+              onClick={() => onSelect?.(r.id)}
+            >
+              <td>{i + 1}</td>
               <td>
                 <strong>{r.symbol}</strong>
                 <span className="meta-soft" style={{ marginLeft: 6 }}>
@@ -150,7 +175,7 @@ function AssetsTable({ rows }: { rows: CryptoAssetRow[] }) {
           ))}
           {!rows.length ? (
             <tr>
-              <td colSpan={7} className="empty">
+              <td colSpan={8} className="empty">
                 시세 없음
               </td>
             </tr>
@@ -403,12 +428,14 @@ function BtcLiveChart({
   interval,
   intervals,
   strategy,
+  selected,
   onIntervalChange,
 }: {
   candles: BtcCandle[];
   interval: string;
   intervals: Array<{ id: BtcChartBarId; label: string }>;
   strategy: CryptoStrategy | null;
+  selected: CryptoSelectedCoin | null;
   onIntervalChange: (id: BtcChartBarId) => void;
 }) {
   const data = useMemo(
@@ -430,7 +457,11 @@ function BtcLiveChart({
     <div>
       <div className="etfdbus-chart-head" style={{ flexWrap: "wrap", gap: 8 }}>
         <h3 className="etfdb-detail-title" style={{ margin: 0 }}>
-          BTCUSDT.P 라이브 ({interval})
+          {selected
+            ? `${selected.symbol} · ${selected.name} ${
+                selected.chart_source === "okx" ? "퍼프" : "현물"
+              } (${interval})`
+            : `라이브 (${interval})`}
           {last ? (
             <span className="etfdb-chart-mode">
               {fmtPx(last.close)} · {last.label}
@@ -583,8 +614,11 @@ function BtcLiveChart({
         )}
       </div>
       <p className="meta-soft" style={{ marginTop: 6 }}>
-        OKX BTC-USDT-SWAP {interval} · 타임프레임 전환 시 재조회 · 약 60초 자동
-        갱신 · SMA20/50 (지지/저항은 1H 기준)
+        OKX {selected?.inst_id || "퍼프"} {interval} · 타임프레임 전환 시 재조회 · 약 60초 자동
+        갱신
+        {selected?.chart_source === "coingecko"
+          ? " · 해당 종목은 OKX 퍼프가 없어 CoinGecko 현물 OHLC입니다."
+          : " · SMA20/50 (지지/저항은 1H 기준)"}
       </p>
     </div>
   );
@@ -848,14 +882,20 @@ export default function CryptoAssetsTab() {
   const [loading, setLoading] = useState(true);
   const [liveTick, setLiveTick] = useState(0);
   const [bar, setBar] = useState<BtcChartBarId>("1H");
+  const [coin, setCoin] = useState("bitcoin");
 
   const load = useCallback(
-    async (silent = false, nextBar: BtcChartBarId = bar) => {
+    async (
+      silent = false,
+      nextBar: BtcChartBarId = bar,
+      nextCoin: string = coin,
+    ) => {
       if (!silent) setLoading(true);
       setError(null);
       try {
         const res = await fetch(
-          `/api/crypto-assets?bar=${encodeURIComponent(nextBar)}`,
+          `/api/crypto-assets?bar=${encodeURIComponent(nextBar)}` +
+            `&coin=${encodeURIComponent(nextCoin)}`,
           { cache: "no-store" },
         );
         const json = (await res.json()) as CryptoAssetsPayload;
@@ -864,6 +904,7 @@ export default function CryptoAssetsTab() {
         }
         setData(json);
         setBar(json.btc_chart_interval || nextBar);
+        if (json.selected_coin?.id) setCoin(json.selected_coin.id);
         setLiveTick((n) => n + 1);
       } catch (exc) {
         setError(exc instanceof Error ? exc.message : String(exc));
@@ -872,29 +913,35 @@ export default function CryptoAssetsTab() {
         if (!silent) setLoading(false);
       }
     },
-    [bar],
+    [bar, coin],
   );
 
   useEffect(() => {
-    void load(false, bar);
-    // initial + bar-driven reload only via onIntervalChange / interval
+    void load(false, bar, coin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Live refresh ~60s (keep current bar)
   useEffect(() => {
     const id = window.setInterval(() => {
-      void load(true, bar);
+      void load(true, bar, coin);
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [load, bar]);
+  }, [load, bar, coin]);
 
   const onIntervalChange = useCallback(
     (id: BtcChartBarId) => {
       setBar(id);
-      void load(false, id);
+      void load(false, id, coin);
     },
-    [load],
+    [load, coin],
+  );
+
+  const onCoinChange = useCallback(
+    (id: string) => {
+      setCoin(id);
+      void load(false, bar, id);
+    },
+    [load, bar],
   );
 
   const fngChart = useMemo(
@@ -929,18 +976,38 @@ export default function CryptoAssetsTab() {
           <div>
             <h2 className="feature-title">가상자산</h2>
             <p className="macro-subhead">
-              BTC 선물 멀티TF · 자금흐름(거래대금·스테이블·ETF) · OI·L/S·펀딩 ·
+              시총 상위 20 코인(스테이블 제외) · 종목별 차트·코멘트 · 자금흐름 ·
               김치·도미넌스
             </p>
           </div>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => void load(false, bar)}
-            disabled={loading}
-          >
-            새로고침
-          </button>
+          <div className="kr-hero-actions" style={{ gap: 8 }}>
+            <label className="meta-soft" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              종목
+              <select
+                className="kq-select"
+                value={coin}
+                onChange={(e) => onCoinChange(e.target.value)}
+                aria-label="시가총액 상위 코인 선택"
+              >
+                {(data?.watchlist?.length
+                  ? data.watchlist
+                  : [{ id: "bitcoin", symbol: "BTC", name: "Bitcoin", rank: 1, market_cap: null }]
+                ).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    #{c.rank} {c.symbol} · {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => void load(false, bar, coin)}
+              disabled={loading}
+            >
+              새로고침
+            </button>
+          </div>
         </div>
 
         {loading && !data ? (
@@ -957,13 +1024,22 @@ export default function CryptoAssetsTab() {
             </p>
             <p className="kr-note">{data.note}</p>
 
-            {data.strategy ? <StrategyPanel strategy={data.strategy} /> : null}
+            {data.strategy ? (
+              <>
+                <h3 className="geo-section-title" style={{ marginBottom: 0 }}>
+                  {data.selected_coin?.symbol || "BTC"} · {data.selected_coin?.name || "Bitcoin"}{" "}
+                  코멘트
+                </h3>
+                <StrategyPanel strategy={data.strategy} />
+              </>
+            ) : null}
 
             <BtcLiveChart
               candles={data.btc_chart || []}
               interval={data.btc_chart_interval || bar}
               intervals={data.btc_chart_intervals || []}
               strategy={data.strategy}
+              selected={data.selected_coin}
               onIntervalChange={onIntervalChange}
             />
 
@@ -971,7 +1047,9 @@ export default function CryptoAssetsTab() {
               <MoneyFlowPanel mf={data.money_flow} />
             ) : null}
 
-            <h3 className="geo-section-title">BTC 선물 · 포지셔닝</h3>
+            <h3 className="geo-section-title">
+              {data.selected_coin?.symbol || "BTC"} 선물 · 포지셔닝
+            </h3>
             <IndicatorGrid items={data.futures?.indicators || []} />
             {data.futures ? <FuturesCharts futures={data.futures} /> : null}
 
@@ -998,8 +1076,15 @@ export default function CryptoAssetsTab() {
               </>
             ) : null}
 
-            <h3 className="geo-section-title">주요 자산</h3>
-            <AssetsTable rows={data.assets} />
+            <h3 className="geo-section-title">시가총액 상위 20 (스테이블 제외)</h3>
+            <p className="meta-soft" style={{ marginBottom: 8 }}>
+              행을 클릭하면 위 차트·코멘트가 해당 코인으로 바뀝니다.
+            </p>
+            <AssetsTable
+              rows={data.assets}
+              selectedId={data.selected_coin?.id || coin}
+              onSelect={onCoinChange}
+            />
 
             <h3 className="geo-section-title">김치 프리미엄 (Upbit vs 해외)</h3>
             <p className="meta-soft" style={{ marginBottom: 8 }}>

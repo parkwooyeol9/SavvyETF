@@ -5,7 +5,6 @@
  */
 
 import {
-  CRYPTO_PERP_SPEC,
   buildAssetSignal,
   interpretCryptoPanel,
   type AssetSignal,
@@ -19,20 +18,135 @@ export const CRYPTO_SCHEDULE_NOTE =
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
-const OKX_SWAP = "BTC-USDT-SWAP";
+const WATCHLIST_SIZE = 20;
 
-const COIN_IDS = [
-  "bitcoin",
-  "ethereum",
-  "solana",
-  "ripple",
-  "binancecoin",
-  "dogecoin",
-  "cardano",
-  "avalanche-2",
-  "chainlink",
-  "polkadot",
-] as const;
+/** CoinGecko ids that are stables or wrapped/staked versions of BTC/ETH. */
+const EXCLUDED_COIN_IDS = new Set([
+  "tether",
+  "usd-coin",
+  "dai",
+  "ethena-usde",
+  "ethena-staked-usde",
+  "first-digital-usd",
+  "paypal-usd",
+  "true-usd",
+  "binance-usd",
+  "usds",
+  "usd1",
+  "ripple-usd",
+  "global-dollar",
+  "usual-usd",
+  "liquity-usd",
+  "frax",
+  "susds",
+  "usdt0",
+  "ondo-us-dollar-yield",
+  "staked-ether",
+  "wrapped-steth",
+  "wrapped-bitcoin",
+  "weth",
+  "coinbase-wrapped-btc",
+  "kelp-dao-restaked-eth",
+  "rocket-pool-eth",
+  "mantle-staked-ether",
+  "wrapped-eeth",
+  "ether-fi-staked-eth",
+  "binance-peg-weth",
+]);
+
+const EXCLUDED_SYMBOLS = new Set([
+  "USDT",
+  "USDC",
+  "DAI",
+  "USDE",
+  "FDUSD",
+  "TUSD",
+  "BUSD",
+  "PYUSD",
+  "USDS",
+  "USD1",
+  "RLUSD",
+  "USDD",
+  "GUSD",
+  "LUSD",
+  "FRAX",
+  "USD0",
+  "USDG",
+  "USDY",
+  "USDP",
+  "STETH",
+  "WSTETH",
+  "WBTC",
+  "WETH",
+  "CBBTC",
+]);
+
+const COIN_SYMBOL_HINT: Record<string, string> = {
+  bitcoin: "BTC",
+  ethereum: "ETH",
+  solana: "SOL",
+  ripple: "XRP",
+  binancecoin: "BNB",
+  dogecoin: "DOGE",
+  cardano: "ADA",
+  "avalanche-2": "AVAX",
+  chainlink: "LINK",
+  polkadot: "DOT",
+  tron: "TRX",
+  "the-open-network": "TON",
+  "near-protocol": "NEAR",
+  sui: "SUI",
+  litecoin: "LTC",
+  "bitcoin-cash": "BCH",
+  "shiba-inu": "SHIB",
+  stellar: "XLM",
+  uniswap: "UNI",
+  hyperliquid: "HYPE",
+  "leo-token": "LEO",
+  "figure-heloc": "FIGR",
+  "hedera-hashgraph": "HBAR",
+  mantle: "MNT",
+  aptos: "APT",
+  "render-token": "RENDER",
+  "internet-computer": "ICP",
+  "crypto-com-chain": "CRO",
+  pepe: "PEPE",
+  aave: "AAVE",
+  "world-liberty-financial": "WLFI",
+  bittensor: "TAO",
+  "official-trump": "TRUMP",
+};
+
+export function parseCoinId(raw: string | null | undefined): string {
+  const id = (raw || "").trim().toLowerCase();
+  if (!id || id.length > 64 || !/^[a-z0-9-]+$/.test(id)) return "bitcoin";
+  return id;
+}
+
+function symbolHint(coinId: string): string {
+  return COIN_SYMBOL_HINT[coinId] || coinId.replace(/-.*$/, "").toUpperCase();
+}
+
+function isExcludedCoin(c: {
+  id?: string;
+  symbol?: string;
+  name?: string;
+}): boolean {
+  const id = (c.id || "").toLowerCase();
+  const sym = (c.symbol || "").toUpperCase();
+  const name = (c.name || "").toLowerCase();
+  if (EXCLUDED_COIN_IDS.has(id) || EXCLUDED_SYMBOLS.has(sym)) return true;
+  if (sym.startsWith("USD") || (sym.endsWith("USD") && sym !== "SUSHI")) {
+    return true;
+  }
+  if (
+    (name.includes("wrapped") || name.includes("staked")) &&
+    (name.includes("bitcoin") || name.includes("ether"))
+  ) {
+    return true;
+  }
+  return false;
+}
 
 /** Upbit KRW markets used for kimchi premium */
 const UPBIT_MARKETS = ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-SOL"] as const;
@@ -200,6 +314,22 @@ export type CryptoMoneyFlowPanel = {
   headlines: string[];
 };
 
+export type CryptoWatchCoin = {
+  id: string;
+  symbol: string;
+  name: string;
+  market_cap: number | null;
+  rank: number;
+};
+
+export type CryptoSelectedCoin = {
+  id: string;
+  symbol: string;
+  name: string;
+  inst_id: string | null;
+  chart_source: "okx" | "coingecko";
+};
+
 export type CryptoAssetsPayload = {
   ok: boolean;
   generated_at: string;
@@ -209,6 +339,8 @@ export type CryptoAssetsPayload = {
   note: string;
   usdkrw: number | null;
   assets: CryptoAssetRow[];
+  watchlist: CryptoWatchCoin[];
+  selected_coin: CryptoSelectedCoin;
   kimchi: KimchiRow[];
   indicators: CryptoIndicator[];
   fear_greed: FearGreedPoint[];
@@ -268,7 +400,16 @@ function fmtPct(n: number | null | undefined, digits = 2): string {
 
 function fmtPx(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
+  if (n >= 1000) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 1 })}`;
+  }
+  if (n >= 1) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  }
+  if (n >= 0.01) {
+    return `$${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+  }
+  return `$${n.toPrecision(4)}`;
 }
 
 function candleLabel(ts: number, bar: BtcChartBarId): string {
@@ -395,6 +536,373 @@ function seriesFromPairs(
       };
     })
     .filter((p) => Number.isFinite(p.ts) && Number.isFinite(p.value));
+}
+
+function parseCgOhlc(
+  rows: number[][] | undefined,
+  bar: BtcChartBarId,
+): BtcCandle[] {
+  if (!rows?.length) return [];
+  const closes = rows.map((r) => Number(r[4]));
+  const out: BtcCandle[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const ts = Number(row[0]);
+    const open = Number(row[1]);
+    const high = Number(row[2]);
+    const low = Number(row[3]);
+    const close = Number(row[4]);
+    if (![ts, open, high, low, close].every(Number.isFinite)) continue;
+    out.push({
+      ts,
+      label: candleLabel(ts, bar),
+      open,
+      high,
+      low,
+      close,
+      volume: 0,
+      sma20: smaAt(closes, i, 20),
+      sma50: smaAt(closes, i, 50),
+    });
+  }
+  return out;
+}
+
+function cgDaysForBar(bar: BtcChartBarId): number {
+  switch (bar) {
+    case "1m":
+    case "5m":
+    case "15m":
+      return 1;
+    case "1H":
+      return 7;
+    case "4H":
+      return 30;
+    default:
+      return 180;
+  }
+}
+
+function okxInstCandidates(symbol: string): string[] {
+  const sym = symbol.toUpperCase();
+  const primary = `${sym}-USDT-SWAP`;
+  if (["SHIB", "PEPE", "FLOKI", "BONK"].includes(sym)) {
+    return [`1000${sym}-USDT-SWAP`, primary];
+  }
+  return [primary];
+}
+
+async function loadCoinMarketData(opts: {
+  symbol: string;
+  coinId: string;
+  bar: BtcChartBarId;
+}): Promise<{
+  chart: BtcCandle[];
+  chart1h: BtcCandle[];
+  dailyCloses: SignalPoint[];
+  futures: FuturesPanel;
+  source: "okx" | "coingecko";
+  instId: string | null;
+}> {
+  const barSpec = BTC_CHART_BARS.find((b) => b.id === opts.bar) ?? BTC_CHART_BARS[3]!;
+  const candidates = okxInstCandidates(opts.symbol);
+  const instId = candidates[0]!;
+  const ccy = instId.startsWith("1000")
+    ? instId.slice(4).replace("-USDT-SWAP", "")
+    : opts.symbol.toUpperCase();
+
+  const [
+    funding,
+    oi,
+    ticker,
+    lsRatio,
+    oiHist,
+    takerVol,
+    books,
+    fundingHist,
+    candlesChart,
+    candles1h,
+    candles1d,
+  ] = await Promise.all([
+    fetchOkxJson<{ data?: Array<{ fundingRate?: string }> }>(
+      `/api/v5/public/funding-rate?instId=${instId}`,
+    ),
+    fetchOkxJson<{ data?: Array<{ oiUsd?: string }> }>(
+      `/api/v5/public/open-interest?instType=SWAP&instId=${instId}`,
+    ),
+    fetchOkxJson<{
+      data?: Array<{
+        last?: string;
+        volCcy24h?: string;
+        open24h?: string;
+      }>;
+    }>(`/api/v5/market/ticker?instId=${instId}`),
+    fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`,
+    ),
+    fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/rubik/stat/contracts/open-interest-history?instId=${instId}&period=1H`,
+    ),
+    fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=1H`,
+    ),
+    fetchOkxJson<{ data?: Array<{ bids?: string[][]; asks?: string[][] }> }>(
+      `/api/v5/market/books?instId=${instId}&sz=10`,
+    ),
+    fetchOkxJson<{
+      data?: Array<{ fundingRate?: string; fundingTime?: string }>;
+    }>(`/api/v5/public/funding-rate-history?instId=${instId}&limit=48`),
+    fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/market/candles?instId=${instId}&bar=${barSpec.okx}&limit=${barSpec.limit}`,
+    ),
+    opts.bar === "1H"
+      ? Promise.resolve(null)
+      : fetchOkxJson<{ data?: string[][] }>(
+          `/api/v5/market/candles?instId=${instId}&bar=1H&limit=168`,
+        ),
+    fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/market/candles?instId=${instId}&bar=1D&limit=120`,
+    ),
+  ]);
+
+  let usedInst = instId;
+  let chartRows = candlesChart?.data;
+  if (!chartRows?.length && candidates[1]) {
+    const alt = candidates[1];
+    const altCandles = await fetchOkxJson<{ data?: string[][] }>(
+      `/api/v5/market/candles?instId=${alt}&bar=${barSpec.okx}&limit=${barSpec.limit}`,
+    );
+    if (altCandles?.data?.length) {
+      usedInst = alt;
+      chartRows = altCandles.data;
+    }
+  }
+
+  let chart = parseCandles(chartRows, barSpec.limit, opts.bar);
+  let source: "okx" | "coingecko" = chart.length ? "okx" : "coingecko";
+  let chart1h = parseCandles(
+    opts.bar === "1H" ? chartRows : candles1h?.data,
+    168,
+    "1H",
+  );
+  let dailyCloses: SignalPoint[] = parseCandles(candles1d?.data, 120, "1D").map(
+    (c) => ({
+      date: new Date(c.ts).toISOString().slice(0, 10),
+      value: c.close,
+    }),
+  );
+
+  if (!chart.length) {
+    const days = cgDaysForBar(opts.bar);
+    const ohlc = await fetchJson<number[][]>(
+      `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(opts.coinId)}/ohlc?vs_currency=usd&days=${days}`,
+    );
+    chart = parseCgOhlc(ohlc || undefined, opts.bar);
+    source = "coingecko";
+    if (!dailyCloses.length) {
+      const daily =
+        days >= 90
+          ? ohlc
+          : await fetchJson<number[][]>(
+              `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(opts.coinId)}/ohlc?vs_currency=usd&days=180`,
+            );
+      dailyCloses = parseCgOhlc(daily || undefined, "1D").map((c) => ({
+        date: new Date(c.ts).toISOString().slice(0, 10),
+        value: c.close,
+      }));
+    }
+    if (!chart1h.length) {
+      const hourly = await fetchJson<number[][]>(
+        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(opts.coinId)}/ohlc?vs_currency=usd&days=7`,
+      );
+      chart1h = parseCgOhlc(hourly || undefined, "1H");
+    }
+  }
+
+  const mark = Number(ticker?.data?.[0]?.last);
+  const open24h = Number(ticker?.data?.[0]?.open24h);
+  const volBase = Number(ticker?.data?.[0]?.volCcy24h);
+  const chg24 =
+    Number.isFinite(mark) && Number.isFinite(open24h) && open24h
+      ? (mark / open24h - 1) * 100
+      : null;
+
+  const fundingRate = Number(funding?.data?.[0]?.fundingRate);
+  const fundingPct = Number.isFinite(fundingRate) ? fundingRate * 100 : null;
+  const oiUsd = Number(oi?.data?.[0]?.oiUsd);
+
+  const oi_series = seriesFromPairs(oiHist?.data, 3, 72);
+  const oiNow =
+    Number.isFinite(oiUsd) && oiUsd > 0
+      ? oiUsd
+      : oi_series.at(-1)?.value ?? null;
+  const oiPrev24 = oi_series.length >= 25 ? oi_series.at(-25)?.value ?? null : null;
+  const oi_chg_24h_pct =
+    oiNow != null && oiPrev24 != null && oiPrev24 > 0
+      ? (oiNow / oiPrev24 - 1) * 100
+      : null;
+
+  const ls_series = seriesFromPairs(lsRatio?.data, 1, 72);
+  const ls_ratio = ls_series.at(-1)?.value ?? null;
+  const long_pct =
+    ls_ratio != null && ls_ratio > 0 ? (ls_ratio / (1 + ls_ratio)) * 100 : null;
+  const lsPrev = ls_series.length >= 2 ? ls_series.at(-2)?.value ?? null : null;
+  const lsChg = ls_ratio != null && lsPrev != null ? ls_ratio - lsPrev : null;
+
+  const funding_series = (fundingHist?.data || [])
+    .map((row) => {
+      const ts = Number(row.fundingTime);
+      const rate = Number(row.fundingRate);
+      return {
+        ts,
+        label: hourLabel(ts),
+        value: Number.isFinite(rate) ? rate * 100 : NaN,
+      };
+    })
+    .filter((p) => Number.isFinite(p.ts) && Number.isFinite(p.value))
+    .reverse();
+
+  const takerLatest = takerVol?.data?.[0];
+  const takerBuy = takerLatest ? Number(takerLatest[1]) : null;
+  const takerSell = takerLatest ? Number(takerLatest[2]) : null;
+  const taker_imbalance =
+    takerBuy != null &&
+    takerSell != null &&
+    takerBuy + takerSell > 0
+      ? ((takerBuy - takerSell) / (takerBuy + takerSell)) * 100
+      : null;
+
+  const book = books?.data?.[0];
+  let book_imbalance: number | null = null;
+  if (book?.bids?.length && book?.asks?.length) {
+    const bidQty = book.bids
+      .slice(0, 10)
+      .reduce((s, row) => s + Number(row[1] || 0), 0);
+    const askQty = book.asks
+      .slice(0, 10)
+      .reduce((s, row) => s + Number(row[1] || 0), 0);
+    if (bidQty + askQty > 0) {
+      book_imbalance = ((bidQty - askQty) / (bidQty + askQty)) * 100;
+    }
+  }
+
+  const px = Number.isFinite(mark) ? mark : chart.at(-1)?.close ?? null;
+  const pxChg = chg24;
+  const venue = source === "okx" ? `OKX ${usedInst}` : "CoinGecko 현물";
+
+  const futuresIndicators: CryptoIndicator[] = [
+    {
+      id: "mark",
+      label: `${opts.symbol} Mark`,
+      value: px,
+      display: fmtPx(px),
+      note: pxChg != null ? `24h ${fmtPct(pxChg)} · ${venue}` : venue,
+      tone: toneFrom(pxChg),
+    },
+    {
+      id: "oi",
+      label: "Open Interest",
+      value: oiNow,
+      display: fmtUsd(oiNow),
+      note:
+        oi_chg_24h_pct != null
+          ? `24h ${fmtPct(oi_chg_24h_pct)} · ${usedInst}`
+          : source === "okx"
+            ? `${usedInst} OI (USD)`
+            : "퍼프 없음 · 현물 OHLC",
+      tone: toneFrom(oi_chg_24h_pct),
+    },
+    {
+      id: "ls_ratio",
+      label: `${opts.symbol} Perp L/S`,
+      value: ls_ratio,
+      display:
+        ls_ratio != null
+          ? `${ls_ratio.toFixed(2)} (Long ${long_pct?.toFixed(1) ?? "—"}%)`
+          : "—",
+      note:
+        lsChg != null
+          ? `1H Δ ${lsChg >= 0 ? "+" : ""}${lsChg.toFixed(2)} · OKX 계정 수 비율`
+          : "OKX long/short account ratio",
+      tone: toneFrom(lsChg),
+    },
+    {
+      id: "funding",
+      label: "Funding Rate",
+      value: fundingPct,
+      display: fundingPct != null ? `${fundingPct.toFixed(4)}%` : "—",
+      note: "OKX 현재 펀딩 · +면 롱 비용",
+      tone: toneFrom(fundingPct),
+    },
+    {
+      id: "taker",
+      label: "Taker Buy/Sell",
+      value: taker_imbalance,
+      display: taker_imbalance != null ? `${taker_imbalance.toFixed(1)}%` : "—",
+      note: "OKX 계약 taker 매수−매도 불균형",
+      tone: toneFrom(taker_imbalance),
+    },
+    {
+      id: "book",
+      label: "Book Imbalance",
+      value: book_imbalance,
+      display: book_imbalance != null ? `${book_imbalance.toFixed(1)}%` : "—",
+      note: "OKX top10 bid−ask · +면 매수벽",
+      tone: toneFrom(book_imbalance),
+    },
+    {
+      id: "vol24",
+      label: "Perp 24h Volume",
+      value: Number.isFinite(volBase) ? volBase : null,
+      display: Number.isFinite(volBase)
+        ? `${volBase.toFixed(0)} ${opts.symbol}`
+        : "—",
+      note: "OKX 베이스 자산 거래량",
+      tone: "flat",
+    },
+  ];
+
+  const futures: FuturesPanel =
+    source === "okx"
+      ? {
+          mark: px,
+          chg24_pct: pxChg,
+          oi_usd: oiNow,
+          oi_chg_24h_pct,
+          ls_ratio,
+          long_pct,
+          funding_pct: fundingPct,
+          taker_imbalance,
+          book_imbalance,
+          vol_btc_24h: Number.isFinite(volBase) ? volBase : null,
+          oi_series,
+          ls_series,
+          funding_series,
+          indicators: futuresIndicators,
+        }
+      : {
+          ...emptyFutures(),
+          mark: px,
+          indicators: [
+            {
+              id: "mark",
+              label: `${opts.symbol} Spot`,
+              value: px,
+              display: fmtPx(px),
+              note: "OKX 퍼프 없음 · CoinGecko 현물",
+              tone: "flat",
+            },
+          ],
+        };
+
+  return {
+    chart,
+    chart1h,
+    dailyCloses,
+    futures,
+    source,
+    instId: source === "okx" ? usedInst : null,
+  };
 }
 
 function emptyFutures(): FuturesPanel {
@@ -574,13 +1082,14 @@ function buildPlaybook(input: {
 
 export async function buildCryptoAssetsPayload(opts?: {
   bar?: string | null;
+  coin?: string | null;
 }): Promise<CryptoAssetsPayload> {
   const bar = parseBtcChartBar(opts?.bar);
-  const barSpec = BTC_CHART_BARS.find((b) => b.id === bar) ?? BTC_CHART_BARS[3]!;
-  const ids = COIN_IDS.join(",");
+  const coinId = parseCoinId(opts?.coin);
+  const hintSym = symbolHint(coinId);
   const marketsUrl =
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
-    `&ids=${encodeURIComponent(ids)}&order=market_cap_desc&sparkline=true` +
+    `&order=market_cap_desc&per_page=60&page=1&sparkline=true` +
     `&price_change_percentage=24h%2C7d`;
   const volumeUrl =
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd` +
@@ -594,19 +1103,9 @@ export async function buildCryptoAssetsPayload(opts?: {
     upbit,
     usdkrw,
     fng,
-    funding,
-    oi,
-    ticker,
-    lsRatio,
-    oiHist,
-    takerVol,
-    books,
-    fundingHist,
-    candlesChart,
-    candles1h,
-    candles1d,
     stablesRaw,
     etfQuotes,
+    marketData,
   ] = await Promise.all([
     fetchJson<CgMarket[]>(marketsUrl),
     fetchJson<CgMarket[]>(volumeUrl),
@@ -628,46 +1127,6 @@ export async function buildCryptoAssetsPayload(opts?: {
         timestamp: string;
       }>;
     }>("https://api.alternative.me/fng/?limit=30"),
-    fetchOkxJson<{ data?: Array<{ fundingRate?: string }> }>(
-      `/api/v5/public/funding-rate?instId=${OKX_SWAP}`,
-    ),
-    fetchOkxJson<{ data?: Array<{ oiUsd?: string }> }>(
-      `/api/v5/public/open-interest?instType=SWAP&instId=${OKX_SWAP}`,
-    ),
-    fetchOkxJson<{
-      data?: Array<{
-        last?: string;
-        volCcy24h?: string;
-        open24h?: string;
-      }>;
-    }>(`/api/v5/market/ticker?instId=${OKX_SWAP}`),
-    fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=BTC&period=1H`,
-    ),
-    fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/rubik/stat/contracts/open-interest-history?instId=${OKX_SWAP}&period=1H`,
-    ),
-    fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/rubik/stat/taker-volume?ccy=BTC&instType=CONTRACTS&period=1H`,
-    ),
-    fetchOkxJson<{ data?: Array<{ bids?: string[][]; asks?: string[][] }> }>(
-      `/api/v5/market/books?instId=${OKX_SWAP}&sz=10`,
-    ),
-    fetchOkxJson<{
-      data?: Array<{ fundingRate?: string; fundingTime?: string }>;
-    }>(`/api/v5/public/funding-rate-history?instId=${OKX_SWAP}&limit=48`),
-    fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/market/candles?instId=${OKX_SWAP}&bar=${barSpec.okx}&limit=${barSpec.limit}`,
-    ),
-    // Always keep 1H for support/resistance window when chart bar differs
-    bar === "1H"
-      ? Promise.resolve(null)
-      : fetchOkxJson<{ data?: string[][] }>(
-          `/api/v5/market/candles?instId=${OKX_SWAP}&bar=1H&limit=168`,
-        ),
-    fetchOkxJson<{ data?: string[][] }>(
-      `/api/v5/market/candles?instId=${OKX_SWAP}&bar=1D&limit=120`,
-    ),
     fetchJson<{
       totalPeggedUSD?: number;
       peggedAssets?: Array<{
@@ -686,21 +1145,14 @@ export async function buildCryptoAssetsPayload(opts?: {
         return new Map();
       }
     })(),
+    loadCoinMarketData({ coinId, symbol: hintSym, bar }),
   ]);
 
-  const chartCandleSource =
-    bar === "1H" ? candlesChart : candlesChart;
-  const btc_chart = parseCandles(
-    chartCandleSource?.data,
-    barSpec.limit,
-    bar,
-  );
-  const candles1hData =
-    bar === "1H" ? candlesChart?.data : candles1h?.data;
-
-  const assets: CryptoAssetRow[] = (markets || []).map((c) => ({
+  const ranked = (markets || []).filter((c) => !isExcludedCoin(c));
+  const top = ranked.slice(0, WATCHLIST_SIZE);
+  const assets: CryptoAssetRow[] = top.map((c) => ({
     id: c.id,
-    symbol: (c.symbol || "").toUpperCase(),
+    symbol: COIN_SYMBOL_HINT[c.id] || (c.symbol || "").toUpperCase(),
     name: c.name,
     price_usd: c.current_price ?? null,
     change_24h_pct: c.price_change_percentage_24h ?? null,
@@ -709,8 +1161,37 @@ export async function buildCryptoAssetsPayload(opts?: {
     volume_24h: c.total_volume ?? null,
     sparkline_7d: (c.sparkline_in_7d?.price || []).slice(-48),
   }));
+  const watchlist: CryptoWatchCoin[] = assets.map((a, i) => ({
+    id: a.id,
+    symbol: a.symbol,
+    name: a.name,
+    market_cap: a.market_cap,
+    rank: i + 1,
+  }));
 
-  // --- already inserted btc_chart above; continue with kimchi ---
+  const selectedRow =
+    assets.find((a) => a.id === coinId) ||
+    assets.find((a) => a.id === "bitcoin") ||
+    assets[0] ||
+    null;
+  const selectedSymbol = selectedRow?.symbol || hintSym;
+  const selectedName = selectedRow?.name || selectedSymbol;
+  const selectedId = selectedRow?.id || coinId;
+
+  let coinMarket = marketData;
+  if (selectedSymbol !== hintSym) {
+    coinMarket = await loadCoinMarketData({
+      coinId: selectedId,
+      symbol: selectedSymbol,
+      bar,
+    });
+  }
+
+  const btc_chart = coinMarket.chart;
+  const futures = coinMarket.futures;
+  const futuresIndicators = futures.indicators;
+  const dailyCloses = coinMarket.dailyCloses;
+
   const usdBySym = new Map(
     assets.map((a) => [a.symbol, a.price_usd] as const),
   );
@@ -739,171 +1220,6 @@ export async function buildCryptoAssetsPayload(opts?: {
   const liquidity =
     totalMcap && totalVol && totalMcap > 0 ? (totalVol / totalMcap) * 100 : null;
 
-  const mark = Number(ticker?.data?.[0]?.last);
-  const open24h = Number(ticker?.data?.[0]?.open24h);
-  const volBtc = Number(ticker?.data?.[0]?.volCcy24h);
-  const chg24 =
-    Number.isFinite(mark) && Number.isFinite(open24h) && open24h
-      ? (mark / open24h - 1) * 100
-      : null;
-
-  const fundingRate = Number(funding?.data?.[0]?.fundingRate);
-  const fundingPct = Number.isFinite(fundingRate) ? fundingRate * 100 : null;
-  const oiUsd = Number(oi?.data?.[0]?.oiUsd);
-
-  const oi_series = seriesFromPairs(oiHist?.data, 3, 72).map((p) => ({
-    ...p,
-    value: p.value, // USD OI
-  }));
-  const oiNow =
-    Number.isFinite(oiUsd) && oiUsd > 0
-      ? oiUsd
-      : oi_series.at(-1)?.value ?? null;
-  const oiPrev24 = oi_series.length >= 25 ? oi_series.at(-25)?.value ?? null : null;
-  const oi_chg_24h_pct =
-    oiNow != null && oiPrev24 != null && oiPrev24 > 0
-      ? (oiNow / oiPrev24 - 1) * 100
-      : null;
-
-  const ls_series = seriesFromPairs(lsRatio?.data, 1, 72);
-  const ls_ratio = ls_series.at(-1)?.value ?? null;
-  const long_pct =
-    ls_ratio != null && ls_ratio > 0
-      ? (ls_ratio / (1 + ls_ratio)) * 100
-      : null;
-  const lsPrev = ls_series.length >= 2 ? ls_series.at(-2)?.value ?? null : null;
-  const lsChg =
-    ls_ratio != null && lsPrev != null ? ls_ratio - lsPrev : null;
-
-  const funding_series = (fundingHist?.data || [])
-    .map((row) => {
-      const ts = Number(row.fundingTime);
-      const rate = Number(row.fundingRate);
-      return {
-        ts,
-        label: hourLabel(ts),
-        value: Number.isFinite(rate) ? rate * 100 : NaN,
-      };
-    })
-    .filter((p) => Number.isFinite(p.ts) && Number.isFinite(p.value))
-    .reverse();
-
-  const takerLatest = takerVol?.data?.[0];
-  const takerBuy = takerLatest ? Number(takerLatest[1]) : null;
-  const takerSell = takerLatest ? Number(takerLatest[2]) : null;
-  const taker_imbalance =
-    takerBuy != null &&
-    takerSell != null &&
-    takerBuy + takerSell > 0
-      ? ((takerBuy - takerSell) / (takerBuy + takerSell)) * 100
-      : null;
-
-  const book = books?.data?.[0];
-  let book_imbalance: number | null = null;
-  if (book?.bids?.length && book?.asks?.length) {
-    const bidQty = book.bids
-      .slice(0, 10)
-      .reduce((s, row) => s + Number(row[1] || 0), 0);
-    const askQty = book.asks
-      .slice(0, 10)
-      .reduce((s, row) => s + Number(row[1] || 0), 0);
-    if (bidQty + askQty > 0) {
-      book_imbalance = ((bidQty - askQty) / (bidQty + askQty)) * 100;
-    }
-  }
-
-  const futuresIndicators: CryptoIndicator[] = [
-    {
-      id: "mark",
-      label: "BTCUSDT.P Mark",
-      value: Number.isFinite(mark) ? mark : null,
-      display: fmtPx(Number.isFinite(mark) ? mark : null),
-      note: chg24 != null ? `24h ${fmtPct(chg24)} · OKX SWAP` : "OKX SWAP",
-      tone: toneFrom(chg24),
-    },
-    {
-      id: "oi",
-      label: "Open Interest",
-      value: oiNow,
-      display: fmtUsd(oiNow),
-      note:
-        oi_chg_24h_pct != null
-          ? `24h ${fmtPct(oi_chg_24h_pct)} · OKX BTC-USDT-SWAP`
-          : "OKX BTC-USDT-SWAP OI (USD)",
-      tone: toneFrom(oi_chg_24h_pct),
-    },
-    {
-      id: "ls_ratio",
-      label: "BTC Perp L/S Ratio",
-      value: ls_ratio,
-      display:
-        ls_ratio != null
-          ? `${ls_ratio.toFixed(2)} (Long ${long_pct?.toFixed(1) ?? "—"}%)`
-          : "—",
-      note:
-        lsChg != null
-          ? `1H Δ ${lsChg >= 0 ? "+" : ""}${lsChg.toFixed(2)} · OKX 계정 수 비율`
-          : "OKX long/short account ratio",
-      tone: toneFrom(lsChg),
-    },
-    {
-      id: "funding",
-      label: "Funding Rate",
-      value: fundingPct,
-      display: fundingPct != null ? `${fundingPct.toFixed(4)}%` : "—",
-      note: "OKX 현재 펀딩 · +면 롱 비용",
-      tone: toneFrom(fundingPct),
-    },
-    {
-      id: "taker",
-      label: "Taker Buy/Sell",
-      value: taker_imbalance,
-      display: taker_imbalance != null ? `${taker_imbalance.toFixed(1)}%` : "—",
-      note: "OKX 계약 taker 매수−매도 불균형",
-      tone: toneFrom(taker_imbalance),
-    },
-    {
-      id: "book",
-      label: "Book Imbalance",
-      value: book_imbalance,
-      display: book_imbalance != null ? `${book_imbalance.toFixed(1)}%` : "—",
-      note: "OKX top10 bid−ask · +면 매수벽",
-      tone: toneFrom(book_imbalance),
-    },
-    {
-      id: "vol24",
-      label: "Perp 24h Volume",
-      value: Number.isFinite(volBtc) ? volBtc : null,
-      display: Number.isFinite(volBtc) ? `${volBtc.toFixed(0)} BTC` : "—",
-      note: "OKX 베이스 자산 거래량",
-      tone: "flat",
-    },
-  ];
-
-  const futures: FuturesPanel = {
-    mark: Number.isFinite(mark) ? mark : null,
-    chg24_pct: chg24,
-    oi_usd: oiNow,
-    oi_chg_24h_pct,
-    ls_ratio,
-    long_pct,
-    funding_pct: fundingPct,
-    taker_imbalance,
-    book_imbalance,
-    vol_btc_24h: Number.isFinite(volBtc) ? volBtc : null,
-    oi_series,
-    ls_series,
-    funding_series,
-    indicators: futuresIndicators,
-  };
-
-  const dailyCloses: SignalPoint[] = parseCandles(candles1d?.data, 120, "1D").map(
-    (c) => ({
-      date: new Date(c.ts).toISOString().slice(0, 10),
-      value: c.close,
-    }),
-  );
-
   const fear_greed: FearGreedPoint[] = (fng?.data || [])
     .map((row) => ({
       date: new Date(Number(row.timestamp) * 1000).toISOString().slice(0, 10),
@@ -916,6 +1232,8 @@ export async function buildCryptoAssetsPayload(opts?: {
   const fearLatest = fear_greed.at(-1)?.value ?? null;
   const kimchiBtc =
     kimchi.find((k) => k.symbol === "BTC")?.premium_pct ?? null;
+  const kimchiSelected =
+    kimchi.find((k) => k.symbol === selectedSymbol)?.premium_pct ?? kimchiBtc;
 
   const indicators: CryptoIndicator[] = [
     {
@@ -994,7 +1312,6 @@ export async function buildCryptoAssetsPayload(opts?: {
     },
   ];
 
-  // Interpretations + strategy (reuse trading-signals heuristics)
   const panelIndicators: SignalCryptoIndicator[] = [
     ...futuresIndicators,
     ...indicators.filter((i) =>
@@ -1002,20 +1319,27 @@ export async function buildCryptoAssetsPayload(opts?: {
     ),
   ];
   const signal = buildAssetSignal(
-    CRYPTO_PERP_SPEC,
+    {
+      id: selectedId,
+      symbol: `${selectedSymbol}USDT.P`,
+      label: `${selectedName} Perpetual`,
+      group: "crypto",
+    },
     dailyCloses,
     null,
     { vix: null, hyOas: null },
   );
-  if (Number.isFinite(mark)) signal.price = mark;
+  if (futures.mark != null) signal.price = futures.mark;
 
   const { interpretations, bias_note } = interpretCryptoPanel({
     signal,
     indicators: panelIndicators,
   });
 
-  const recentSrc = parseCandles(candles1hData, 168, "1H");
-  const recent = (recentSrc.length ? recentSrc : btc_chart).slice(-48);
+  const recent = (coinMarket.chart1h.length
+    ? coinMarket.chart1h
+    : btc_chart
+  ).slice(-48);
   const support = recent.length
     ? Math.min(...recent.map((c) => c.low))
     : null;
@@ -1026,15 +1350,23 @@ export async function buildCryptoAssetsPayload(opts?: {
   const strategy = buildPlaybook({
     signal,
     bias_note,
-    mark: Number.isFinite(mark) ? mark : null,
-    ls: ls_ratio,
-    fundingPct,
-    oiChg: oi_chg_24h_pct,
+    mark: futures.mark,
+    ls: futures.ls_ratio,
+    fundingPct: futures.funding_pct,
+    oiChg: futures.oi_chg_24h_pct,
     fear: fearLatest,
-    kimchiBtc,
+    kimchiBtc: kimchiSelected,
     support,
     resistance,
   });
+
+  const selected_coin: CryptoSelectedCoin = {
+    id: selectedId,
+    symbol: selectedSymbol,
+    name: selectedName,
+    inst_id: coinMarket.instId,
+    chart_source: coinMarket.source,
+  };
 
   // —— Crypto money flow panel (volume / stables / spot ETF AUM) ——
   const STABLE_IDS = new Set([
@@ -1217,13 +1549,17 @@ export async function buildCryptoAssetsPayload(opts?: {
     ok,
     generated_at: new Date().toISOString(),
     generated_at_display: displayNow(),
-    source: `CoinGecko · Upbit · OKX BTC-USDT-SWAP · DefiLlama · Yahoo · alternative.me · ${assets.length} assets`,
+    source: `CoinGecko · Upbit · ${
+      selected_coin.inst_id || "CoinGecko OHLC"
+    } · DefiLlama · Yahoo · alternative.me · 시총 상위 ${assets.length} (스테이블 제외)`,
     schedule_note: CRYPTO_SCHEDULE_NOTE,
     note:
-      "주요 코인 시세·자금흐름(거래대금·스테이블·현물 ETF AUM)과 BTC 선물 OI·L/S·펀딩, " +
-      "김치·도미넌스·Fear&Greed, OKX 멀티 타임프레임 라이브 차트 기반 룰 시나리오를 제공합니다.",
+      "시가총액 상위 20개 코인(스테이블·랩핑 제외)을 선택하면 해당 종목의 차트와 룰 코멘트가 바뀝니다. " +
+      "선물 데이터가 있으면 OKX 퍼프, 없으면 CoinGecko 현물 OHLC입니다.",
     usdkrw,
     assets,
+    watchlist,
+    selected_coin,
     kimchi,
     indicators,
     fear_greed,
