@@ -31,9 +31,17 @@ export type ShellTabId =
   | "eventstudy"
   | "aiport"
   | "corridor"
+  | "usmidterm"
   | TabId;
 
-export type NavGroupId = "main" | "market" | "etf" | "commodity" | "portfolio" | "esg";
+export type NavGroupId =
+  | "main"
+  | "market"
+  | "etf"
+  | "commodity"
+  | "portfolio"
+  | "esg"
+  | "politics";
 
 export type BriefSection = {
   heading?: string;
@@ -102,6 +110,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "aiinfra",
   "esgreg",
   "greenmin",
+  "usmidterm",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -142,6 +151,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   moneyflow: "Money Flow",
   aiport: "AI포트",
   corridor: "비중조절전략",
+  usmidterm: "미 중간선거",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -187,6 +197,11 @@ export const NAV_GROUPS: Array<{
     id: "esg",
     label: "ESG",
     tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"],
+  },
+  {
+    id: "politics",
+    label: "정치분석",
+    tabs: ["usmidterm"],
   },
 ];
 

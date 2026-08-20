@@ -39,6 +39,7 @@ import UsPortfolioTab from "@/components/UsPortfolioTab";
 import AiPortTab from "@/components/AiPortTab";
 import CorridorTab from "@/components/CorridorTab";
 import UsMarketTab from "@/components/UsMarketTab";
+import UsMidtermTab from "@/components/UsMidtermTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
@@ -123,7 +124,7 @@ export default function Dashboard() {
 
   const groupId: NavGroupId = navGroupForTab(tab);
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
-  const showSubNav = activeGroup.tabs.length > 1;
+  const showSubNav = activeGroup.tabs.length > 1 || activeGroup.id === "politics";
 
   const load = useCallback(async () => {
     try {
@@ -214,7 +215,8 @@ export default function Dashboard() {
       tab === "countryetf" ||
       tab === "etf" ||
       tab === "aiport" ||
-      tab === "corridor"
+      tab === "corridor" ||
+      tab === "usmidterm"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -295,6 +297,8 @@ export default function Dashboard() {
         <AiPortTab />
       ) : tab === "corridor" ? (
         <CorridorTab />
+      ) : tab === "usmidterm" ? (
+        <UsMidtermTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "etfdb" ? (
