@@ -126,8 +126,8 @@ function activeMarkets(ev: PolyEvent | null): PolyMarket[] {
   return (ev?.markets || []).filter((m) => m.active !== false);
 }
 
-function enlargeWikiThumb(src: string): string {
-  return src.replace(/\/\d+px-/, "/440px-").replace(/\?.*$/, "");
+function wikiThumbUrl(src: string): string {
+  return src.replace(/\?.*$/, "");
 }
 
 async function attachCandidatePhotos(races: SenateRace[]): Promise<SenateRace[]> {
@@ -149,7 +149,7 @@ async function attachCandidatePhotos(races: SenateRace[]): Promise<SenateRace[]>
         `https://en.wikipedia.org/api/rest_v1/page/summary/${wiki}`,
       );
       const src = data?.thumbnail?.source;
-      if (src) photos.set(wiki, enlargeWikiThumb(src));
+      if (src) photos.set(wiki, wikiThumbUrl(src));
     }),
   );
   if (!photos.size) return races;

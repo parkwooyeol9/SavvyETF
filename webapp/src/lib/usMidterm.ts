@@ -525,6 +525,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "전 메인 상원 의장 · 5대째 벌목꾼",
       wiki: "Troy_Jackson",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Troy_Jackson_in_the_Senate_Chamber_%28cropped%29.jpg/330px-Troy_Jackson_in_the_Senate_Chamber_%28cropped%29.jpg",
       bio: "1968년 포트켄트 출생. 북부 아루스툭 벌목 노동자로 일하다 주상원(2008–14, 2016–24)에 입성했고 2018–24 상원의장·원내대표를 지냈다. 2026 주지사 경선 패배 뒤, 플래트너 사퇴 공석을 메워 민주 상원 후보가 됐다.",
       values: "노동조합·최저임금·농촌 공공서비스. 진보 민주당이지만 공화 우세 북부 출신이라 ‘일하는 메인’ 정체성을 강조한다.",
       slogan: "Working people first — 벌목꾼이 워싱턴에 간다",
@@ -536,6 +538,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "현 상원의원 (1997–) · 6선",
       wiki: "Susan_Collins",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Senator_Susan_Collins_2014_official_portrait.jpg/330px-Senator_Susan_Collins_2014_official_portrait.jpg",
       bio: "1952년 캐리부 출생. 메인 출신 온건 공화로 1996년 상원에 당선된 뒤 30년 가까이 재임. 대법관 인준·초당 예산에서 캐스팅보트 역할을 해 왔다. 2008·2020처럼 민주 우세 사이클에서도 생존한 기록이 있다.",
       values: "초당주의, 필리버스터 유지, 재계 친화 규제 속도 조절. ‘독립적 메인 목소리’를 브랜드로 쓴다.",
       slogan: "An independent voice for Maine",
@@ -549,6 +553,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "텍사스 하원의원 · 신학생",
       wiki: "James_Talarico",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/James_Talarico_Press_Conference_%28cropped%29.jpg/330px-James_Talarico_Press_Conference_%28cropped%29.jpg",
       bio: "1990년대생 라운드록 출신. 전직 중등 교사로 2018년 주하원에 입성, 2026 상원 민주 후보. 기록적 모금으로 콘린을 꺾은 팩스턴을 일반선거에서 상대한다. 기독교 신앙을 내세우되 기독교 민족주의에는 반대한다.",
       values: "생활비·반부패, 재생산권, 기후 적응과 송전. 석유·가스 일자리는 인정하면서 IRA형 보조금을 병행한다.",
       slogan: "Not for sale — 텍사스 사람을 위해",
@@ -560,6 +566,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "텍사스 검찰총장 (2015–) · GOP 지명자",
       wiki: "Ken_Paxton",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/K_Paxton.jpg/330px-K_Paxton.jpg",
       bio: "콜린 카운티 출신 변호사. 2015년부터 검찰총장. EPA·ESG 공시·이민 정책을 소송으로 막아 온 강경 보수. 2023 탄핵 소추 후 주상원이 무죄, 2026 상원 경선에서 현역 콘린을 꺾었다.",
       values: "화석연료 방어, 반ESG, 강경 이민·낙태 제한, 트럼프 노선. ‘텍사스 주권’을 연방 규제에 대입한다.",
       slogan: "America First. Defend Texas.",
@@ -573,6 +581,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "전 오하이오 상원의원 (2007–25)",
       wiki: "Sherrod_Brown",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Sherrod_Brown_117th_Congress_%282%29.jpg/330px-Sherrod_Brown_117th_Congress_%282%29.jpg",
       bio: "1952년  Mansfield 출생. 하원·주 공직을 거쳐 2006년 상원 당선, 2024 낙선. 2026 밴스 잔여임기 보궐에 복귀. 철강 관세·CHIPS·노조를 묶어 온 산업 포퓰리스트.",
       values: "제조 리쇼어링, 노조 조직화, 약가·무역 보호. ‘월가가 아닌 노동자’ 프레임.",
       slogan: "Fighting for workers",
@@ -584,6 +594,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "현 상원의원 (밴스 잔여임기) · 전 부지사",
       wiki: "Jon_Husted",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Sen._Jon_Husted_official_portrait%2C_119th_Congress.jpg/330px-Sen._Jon_Husted_official_portrait%2C_119th_Congress.jpg",
       bio: "오하이오 주하원 의장·국무장관·부지사를 지낸 주 공화 엘리트. 밴스 부통령 취임 후 임명·보선으로 상원에 올랐고 2026 잔여임기를 지킨다.",
       values: "감세·규제완화, 일자리 유치, 에너지 증산. 상공회의소형 성장 담론.",
       slogan: "Results for Ohio",
@@ -597,6 +609,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "아이오와 하원의원 · 휠체어 농구 국가대표 출신",
       wiki: "Josh_Turek",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Joshua_Turek_%28cropped_2%29.jpg/330px-Joshua_Turek_%28cropped_2%29.jpg",
       bio: "1979년 카운슬블러프스 출생. 휠체어 농구 선수로 국제대회에 출전한 뒤 2022년 6표 차로 주하원에 당선된 첫 상임 장애인 의원. 2026 상원 민주 경선에서 자크 왈스를 꺾었다. 스스로를 프레리 포퓰리스트로 부른다.",
       values: "장애·메디케이드 근로 인센티브, 농가 소득, 바이오연료. 트럼프 우세 지구에서 이긴 중도 민주.",
       slogan: "Prairie populist — Work without Worry",
@@ -608,6 +622,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "연방 하원의원 (IA-2, 2021–)",
       wiki: "Ashley_Hinson",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Congresswoman_Ashley_Hinson_Official_portrait.jpg/330px-Congresswoman_Ashley_Hinson_Official_portrait.jpg",
       bio: "전 지역 앵커 출신. 2020년 하원 당선 후 농업·국경 이슈를 전면에 둔 트럼프 동맹 보수. 언스트 불출마로 열린 상원 공화 지명을 가져갔다.",
       values: "농가·소기업 감세, 규제 축소, 대중국 농산물 수출. 기후 보조금 규모에는 비판적.",
       slogan: "Iowa values. Farm families first.",
@@ -621,6 +637,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "전 하원의원 (2022–25) · 유픽",
       wiki: "Mary_Peltola",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Mary_Peltola_Congressional_Member_Portrait_%282%29.jpeg/330px-Mary_Peltola_Congressional_Member_Portrait_%282%29.jpeg",
       bio: "알래스카 원주민 유픽. 주하원을 거쳐 2022 보선에서 하원에 입성했으나 2024 낙선. 어업·원주민 생계를 전면에 두고 설리번을 상대한다. 순위선택투표 주.",
       values: "연어·저인망 어업, 원주민 자원, 조건부 개발. 초당적 실용 이미지.",
       slogan: "For all Alaskans",
@@ -632,6 +650,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "현 상원의원 (2015–) · 해병 예비역",
       wiki: "Dan_Sullivan_(U.S._senator)",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Senator_Dan_Sullivan_official.jpg/330px-Senator_Dan_Sullivan_official.jpg",
       bio: "알래스카 법무장관·천연자원장관을 지낸 뒤 2014년 상원 당선. 에너지 안보와 인도-태평양 군 주둔을 묶어 온 매파.",
       values: "북극 시추, 자원 개발, 국방 예산. 중국·러시아 견제.",
       slogan: "Strong Alaska — energy and security",
@@ -645,6 +665,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "전염병학자 · 전 디트로이트 보건국장",
       wiki: "Abdul_El-Sayed",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Abdul_El-Sayed_meet-and-greet_by_Conlan_Houston_5_%28cropped%29.jpg/330px-Abdul_El-Sayed_meet-and-greet_by_Conlan_Houston_5_%28cropped%29.jpg",
       bio: "1984년생, 미시간대·옥스퍼드·컬럼비아 의대. 디트로이트 보건국장으로 플린트 수질 사태를 비판하며 2018 주지사 경선 2위. 피터스 은퇴 뒤 2026 상원 민주 지명.",
       values: "약가 직접 협상, 공적 의료, 노조·EV 전환. 진보 보건 포퓰리즘.",
       slogan: "Healthcare is a human right. Not for sale.",
@@ -656,6 +678,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "전 하원 정보위원장 · 2024 상원 후보",
       wiki: "Mike_Rogers_(Michigan_politician)",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Rogers_Mike_32711599270_%28cropped%29.jpg/330px-Rogers_Mike_32711599270_%28cropped%29.jpg",
       bio: "FBI 출신. 미시간 하원의원을 지냈고 정보위원장으로서 대중 견제·방산을 브랜드화. 2024 상원 낙선 뒤 2026에 재도전.",
       values: "중국 반도체 디커플링, 방산, 정보·국토안보. 약가 통제에는 제약 친화적.",
       slogan: "National security first",
@@ -669,6 +693,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "현 상원의원 (2021–)",
       wiki: "Jon_Ossoff",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Jon_Ossoff_Senate_Portrait_2021.jpg/330px-Jon_Ossoff_Senate_Portrait_2021.jpg",
       bio: "1987년생 다큐멘터리 제작자 출신. 2021 결선에서 상원에 입성해 조지아 연방 투자를 물류·반도체·IRA 제조와 연결해 왔다. 2026 재선.",
       values: "인프라·첨단제조 인센티브, 거버넌스 감시, 중도 민주.",
       slogan: "A new generation of leadership",
@@ -680,6 +706,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "하원의원 (GA-10, 2023–)",
       wiki: "Mike_Collins_(politician)",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Rep._Mike_Collins_official_photo%2C_118th_Congress.jpg/330px-Rep._Mike_Collins_official_photo%2C_118th_Congress.jpg",
       bio: "트럭 운송 사업가 출신. 2022년 하원 당선, 트럼프 지지로 2026 상원 공화 경선·결선에서 승리. 강경 이민·문화 이슈를 전면에 둔다.",
       values: "재정지출 삭감, 에너지 증산, 강경 이민. MAGA 보수.",
       slogan: "America First Georgia",
@@ -693,6 +721,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "전 노스캐롤라이나 주지사 (2017–25)",
       wiki: "Roy_Cooper",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Roy_Cooper_in_November_2023_%28cropped2%29.jpg/330px-Roy_Cooper_in_November_2023_%28cropped2%29.jpg",
       bio: "주 법무장관을 거쳐 2016년 주지사 당선, 메디케이드 확대와 RTP 생명과학·금융 유치를 병행한 중도 민주. 틸리스 불출마 상원에 도전.",
       values: "실용 행정, 메디케이드, 기업 유치. 전국 이념전보다 주 성과.",
       slogan: "Get things done for North Carolina",
@@ -704,6 +734,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "전 RNC 의장",
       wiki: "Michael_Whatley",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Michael_Whatley_%2854670563614%29_%28cropped%29.jpg/330px-Michael_Whatley_%2854670563614%29_%28cropped%29.jpg",
       bio: "노스캐롤라이나 출신 에너지 변호사. 주당 위원장을 거쳐 RNC 의장으로서 트럼프 재선 기구를 운영했다. 2026 상원 공화 지명.",
       values: "감세 연장, 규제 완화, 전국 공화 메시지. 에너지 로 출신 규제 회의론.",
       slogan: "America First — North Carolina",
@@ -717,6 +749,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "D",
       role: "철도 기계공 · 노동 캠페인 (무소속 성향)",
       wiki: "Dan_Osborn",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Osborn_Headshot_2_%28cropped%29.jpg/330px-Osborn_Headshot_2_%28cropped%29.jpg",
       bio: "유니온 퍼시픽 기계공·파업 지도자 출신. 2024 상원에서 선전한 뒤 2026 재도전. 당적보다 ‘일하는 사람’ 정체성으로 농촌 공화 주를 흔든다.",
       values: "철도 안전, 독점 육가공 견제, 농가 교섭력. 반기득권 노동.",
       slogan: "I'm a working person, not a politician",
@@ -728,6 +762,8 @@ export const CANDIDATE_DOSSIERS: Record<
       party: "R",
       role: "현 상원의원 · 전 주지사 · 콘아그라 가문",
       wiki: "Pete_Ricketts",
+      photo_url:
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Sen._Pete_Ricketts_official_portrait%2C_118th_Congress.jpg/330px-Sen._Pete_Ricketts_official_portrait%2C_118th_Congress.jpg",
       bio: "콘아그라 창업 가문. TD 아메리트레이드 임원을 거쳐 주지사(2015–23), 2023 상원 임명·보선. 농식품 밸류체인과 친기업 보수를 대표한다.",
       values: "감세, 규제 완화, 농식품 수출. 대기업형 성장.",
       slogan: "Nebraska growth and conservative values",
@@ -888,7 +924,7 @@ function mergeProfile(
   if (!curated) return live;
   return {
     ...curated,
-    photo_url: live?.photo_url || curated.photo_url || null,
+    photo_url: curated.photo_url || live?.photo_url || null,
   };
 }
 

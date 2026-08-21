@@ -133,6 +133,7 @@ function CandidateColumn({ profile }: { profile: CandidateProfile }) {
               alt={`${profile.name} 초상`}
               width={96}
               height={120}
+              referrerPolicy="no-referrer"
             />
           ) : (
             <span aria-hidden>{initials(profile.name)}</span>
