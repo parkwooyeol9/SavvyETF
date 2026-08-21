@@ -14,12 +14,14 @@ import {
 
 import {
   MIDTERM_ELECTION_LABEL,
+  MIDTERM_SCHEDULE_NOTE,
   RATING_LABEL,
   RATING_ORDER,
   fmtPctPoints,
   fmtSignedPct,
-  fmtUsdCompact,
+  formatKstStamp,
   ratingTone,
+  type CandidateProfile,
   type ChamberMarket,
   type MidtermPayload,
   type RaceRating,
@@ -105,12 +107,61 @@ function ChamberCard({
             민주 1주 {fmtSignedPct(market.change_1w_dem)}
           </span>
         ) : null}
-        {market?.url ? (
-          <a href={market.url} target="_blank" rel="noopener noreferrer">
-            Polymarket
-          </a>
-        ) : null}
       </div>
+    </article>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function CandidateColumn({ profile }: { profile: CandidateProfile }) {
+  return (
+    <article className="midterm-cand" data-party={profile.party.toLowerCase()}>
+      <header>
+        <div className="midterm-face">
+          {profile.photo_url ? (
+            <img
+              src={profile.photo_url}
+              alt={`${profile.name} 초상`}
+              width={96}
+              height={120}
+            />
+          ) : (
+            <span aria-hidden>{initials(profile.name)}</span>
+          )}
+        </div>
+        <div>
+          <em>{profile.party === "D" ? "민주" : "공화"}</em>
+          <h4>{profile.name}</h4>
+          <span>{profile.role}</span>
+        </div>
+      </header>
+      <dl>
+        <div>
+          <dt>이력</dt>
+          <dd>{profile.bio}</dd>
+        </div>
+        <div>
+          <dt>표방하는 가치</dt>
+          <dd>{profile.values}</dd>
+        </div>
+        <div>
+          <dt>주요 구호</dt>
+          <dd>{profile.slogan}</dd>
+        </div>
+        <div>
+          <dt>이 후보가 이기면</dt>
+          <dd>{profile.market_if_wins}</dd>
+        </div>
+      </dl>
     </article>
   );
 }
@@ -223,8 +274,14 @@ export default function UsMidtermTab() {
           <div>
             <h2 className="feature-title">2026 미국 중간선거</h2>
             <p className="feature-lead">
-              FiveThirtyEight식 한눈에 보기 — 상원·하원 지배권, 제네릭 발롯, 경합 상원,
-              의석 분포. 투표일 {MIDTERM_ELECTION_LABEL}.
+              상원·하원 지배권, 제네릭 발롯, 경합 상원, 의석 분포. 투표일{" "}
+              {MIDTERM_ELECTION_LABEL}.
+            </p>
+            <p className="meta-soft">
+              {data?.schedule_note || MIDTERM_SCHEDULE_NOTE}
+              {data?.generated_at
+                ? ` · 이번 스냅샷 ${formatKstStamp(data.generated_at)} KST`
+                : ""}
             </p>
           </div>
           <div className="midterm-countdown">
@@ -301,7 +358,7 @@ export default function UsMidtermTab() {
       {data?.power?.length ? (
         <section className="geo-section">
           <h3 className="geo-section-title">Balance of power</h3>
-          <p className="meta-soft">상원×하원 조합. 538이 즐겨 쓰던 시나리오 카드.</p>
+          <p className="meta-soft">상원×하원 조합. 분할정부 vs 싹쓸이 시나리오.</p>
           <div className="midterm-power-grid">
             {data.power.map((p) => (
               <article key={p.id} className="midterm-power-card">
@@ -400,6 +457,32 @@ export default function UsMidtermTab() {
               </tbody>
             </table>
           </div>
+          <div className="midterm-policy-grid">
+            {data.races.map((r) => (
+              <article key={`${r.id}-policy`} className="midterm-policy-card">
+                <header>
+                  <strong>
+                    {r.state_ko} {r.state}
+                  </strong>
+                  <span>{r.policy_issue}</span>
+                </header>
+                <p>
+                  <em data-party="d">{r.dem}</em> {r.policy_d}
+                </p>
+                <p>
+                  <em data-party="r">{r.gop}</em> {r.policy_r}
+                </p>
+                <p className="midterm-policy-mkt">{r.market_implication}</p>
+                {r.related_tickers?.length ? (
+                  <div className="midterm-policy-tickers">
+                    {r.related_tickers.map((t) => (
+                      <code key={t}>{t}</code>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -485,11 +568,53 @@ export default function UsMidtermTab() {
         </section>
       ) : null}
 
+      {data?.races?.some((r) => r.dem_profile && r.gop_profile) ? (
+        <section className="geo-section">
+          <h3 className="geo-section-title">경합주 유력 후보 비교</h3>
+          <p className="meta-soft">
+            일반선거 유력 양 후보의 이력·가치·구호, 그리고 그 후보가 해당 경합주에서
+            이겼을 때 예상되는 증권시장 반응. 초상은 Wikimedia Commons 공식·공개 사진.
+          </p>
+          <div className="midterm-matchups">
+            {data.races
+              .filter(
+                (
+                  r,
+                ): r is SenateRace & {
+                  dem_profile: CandidateProfile;
+                  gop_profile: CandidateProfile;
+                } => Boolean(r.dem_profile && r.gop_profile),
+              )
+              .map((race) => (
+                <article key={race.id} className="midterm-matchup">
+                  <header>
+                    <h4>
+                      {race.state_ko} {race.state}
+                    </h4>
+                    <span className={`midterm-rating tone-${ratingTone(race.rating)}`}>
+                      {RATING_LABEL[race.rating]}
+                    </span>
+                    {race.special ? <em className="midterm-tag">보궐</em> : null}
+                    {race.open ? <em className="midterm-tag">공석</em> : null}
+                  </header>
+                  <div className="midterm-matchup-grid">
+                    <CandidateColumn profile={race.dem_profile} />
+                    <CandidateColumn profile={race.gop_profile} />
+                  </div>
+                </article>
+              ))}
+          </div>
+        </section>
+      ) : null}
+
       {data ? (
         <p className="meta-soft midterm-footnote">
           갱신{" "}
-          {new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })} ·{" "}
-          {data.note} 출처:{" "}
+          {new Date(data.generated_at).toLocaleString("ko-KR", {
+            timeZone: "Asia/Seoul",
+            hour12: false,
+          })}{" "}
+          KST · {data.schedule_note || MIDTERM_SCHEDULE_NOTE} · {data.note} 출처:{" "}
           {data.sources.map((s, i) => (
             <span key={s.url}>
               {i ? " · " : null}
@@ -498,9 +623,6 @@ export default function UsMidtermTab() {
               </a>
             </span>
           ))}
-          {data.senate?.volume != null
-            ? ` · 상원 시장 거래대금 ${fmtUsdCompact(data.senate.volume)}`
-            : null}
         </p>
       ) : null}
     </div>

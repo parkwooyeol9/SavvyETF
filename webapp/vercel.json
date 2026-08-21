@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/money-flow-refresh",
       "schedule": "30 */6 * * *"
+    },
+    {
+      "path": "/api/cron/us-midterm-refresh",
+      "schedule": "0 22 * * *"
     }
   ]
 }

@@ -1,8 +1,10 @@
 import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
+import { timingSafeEqual } from "crypto";
 import {
   CURRENT_COMPOSITION,
   MIDTERM_ETF_SPECS,
   MIDTERM_HISTORY,
+  MIDTERM_SCHEDULE_NOTE,
   MIDTERM_SOURCES,
   NATIONAL_SNAPSHOT,
   POLYMARKET_EVENTS,
@@ -10,6 +12,10 @@ import {
   SENATE_RACES,
   daysToElection,
   emptyMidtermPayload,
+  hydrateRacePolicy,
+  isMidtermSnapshotCurrent,
+  loadCachedMidterm,
+  persistMidtermPayload,
   type ChamberMarket,
   type MidtermEtf,
   type MidtermHeadline,
@@ -93,7 +99,11 @@ function partyFromTitle(text: string): "D" | "R" | null {
 async function fetchJson<T>(url: string, timeoutMs = 10_000): Promise<T | null> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
+      headers: {
+        "User-Agent": UA,
+        "Api-User-Agent": UA,
+        Accept: "application/json",
+      },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
@@ -116,10 +126,56 @@ function activeMarkets(ev: PolyEvent | null): PolyMarket[] {
   return (ev?.markets || []).filter((m) => m.active !== false);
 }
 
+function enlargeWikiThumb(src: string): string {
+  return src.replace(/\/\d+px-/, "/440px-").replace(/\?.*$/, "");
+}
+
+async function attachCandidatePhotos(races: SenateRace[]): Promise<SenateRace[]> {
+  const missing = new Set<string>();
+  for (const race of races) {
+    if (race.dem_profile?.wiki && !race.dem_profile.photo_url) {
+      missing.add(race.dem_profile.wiki);
+    }
+    if (race.gop_profile?.wiki && !race.gop_profile.photo_url) {
+      missing.add(race.gop_profile.wiki);
+    }
+  }
+  if (!missing.size) return races;
+
+  const photos = new Map<string, string>();
+  await Promise.all(
+    [...missing].map(async (wiki) => {
+      const data = await fetchJson<{ thumbnail?: { source?: string } }>(
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${wiki}`,
+      );
+      const src = data?.thumbnail?.source;
+      if (src) photos.set(wiki, enlargeWikiThumb(src));
+    }),
+  );
+  if (!photos.size) return races;
+
+  return races.map((race) => ({
+    ...race,
+    dem_profile: race.dem_profile
+      ? {
+          ...race.dem_profile,
+          photo_url:
+            photos.get(race.dem_profile.wiki) || race.dem_profile.photo_url || null,
+        }
+      : race.dem_profile,
+    gop_profile: race.gop_profile
+      ? {
+          ...race.gop_profile,
+          photo_url:
+            photos.get(race.gop_profile.wiki) || race.gop_profile.photo_url || null,
+        }
+      : race.gop_profile,
+  }));
+}
+
 function chamberFromEvent(
   ev: PolyEvent | null,
   chamber: ChamberMarket["chamber"],
-  slug: string,
 ): ChamberMarket | null {
   if (!ev) return null;
   let dem: PolyMarket | undefined;
@@ -140,7 +196,6 @@ function chamberFromEvent(
     volume: num(ev.volume),
     change_1w_dem: dem?.oneWeekPriceChange ?? null,
     change_1m_dem: dem?.oneMonthPriceChange ?? null,
-    url: `https://polymarket.com/event/${slug}`,
     updated_at: ev.updatedAt,
   };
 }
@@ -256,7 +311,6 @@ function overlayRace(base: SenateRace, ev: PolyEvent | null): SenateRace {
     gop_prob: gopM ? yesPrice(gopM) : null,
     volume: num(ev.volume),
     change_1w_dem: demM?.oneWeekPriceChange ?? null,
-    url: `https://polymarket.com/event/${base.slug}`,
   };
 }
 
@@ -397,8 +451,12 @@ async function buildPayload(): Promise<MidtermPayload> {
     raceBySlug.set(slug, raceEvs[i] as PolyEvent | null);
   });
 
-  const races = SENATE_RACES.map((r) =>
-    overlayRace(r, r.slug ? raceBySlug.get(r.slug) || null : null),
+  const races = await attachCandidatePhotos(
+    hydrateRacePolicy(
+      SENATE_RACES.map((r) =>
+        overlayRace(r, r.slug ? raceBySlug.get(r.slug) || null : null),
+      ),
+    ),
   );
 
   return {
@@ -407,11 +465,11 @@ async function buildPayload(): Promise<MidtermPayload> {
     election_date: "2026-11-03",
     days_to_election: daysToElection(),
     note:
-      "레이아웃은 FiveThirtyEight 예보 페이지를 참고했습니다. 실시간 확률은 Polymarket, 전국 폴은 Silver Bulletin(FLIPR·538 후신), 주별 등급은 Cook/270toWin/DDHQ 합의입니다.",
+      "전국 폴은 Silver Bulletin(FLIPR), 주별 등급은 Cook/270toWin/DDHQ 합의입니다. 투자·선거 조언이 아닙니다.",
     composition: { ...CURRENT_COMPOSITION },
     national: { ...NATIONAL_SNAPSHOT },
-    senate: chamberFromEvent(senateEv, "senate", POLYMARKET_EVENTS.senate),
-    house: chamberFromEvent(houseEv, "house", POLYMARKET_EVENTS.house),
+    senate: chamberFromEvent(senateEv, "senate"),
+    house: chamberFromEvent(houseEv, "house"),
     power: parsePower(powerEv),
     seat_histogram: parseSeatHistogram(seatsEv),
     races,
@@ -421,19 +479,70 @@ async function buildPayload(): Promise<MidtermPayload> {
     history: MIDTERM_HISTORY,
     sources: MIDTERM_SOURCES,
     warnings,
+    schedule_note: MIDTERM_SCHEDULE_NOTE,
   };
 }
 
-export async function GET() {
+function secretsEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
   try {
+    return timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
+function cronAuthorized(request: Request): boolean {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return false;
+  const header = request.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  return Boolean(token && secretsEqual(token, secret));
+}
+
+export async function GET(request: Request) {
+  const force =
+    new URL(request.url).searchParams.get("refresh") === "1" &&
+    cronAuthorized(request);
+  try {
+    if (!force) {
+      const cached = await loadCachedMidterm();
+      if (cached?.ok && isMidtermSnapshotCurrent(cached.generated_at)) {
+        cached.races = await attachCandidatePhotos(
+          hydrateRacePolicy(cached.races || []),
+        );
+        cached.schedule_note = MIDTERM_SCHEDULE_NOTE;
+        cached.note = cached.note?.replace(/\s*예측시장은 Polymarket,\s*/i, "") || cached.note;
+        cached.sources = MIDTERM_SOURCES;
+        return jsonWithCdnCache(cached, "yahoo");
+      }
+    }
+
     const payload = await withServerCache(
-      "us-midterm-v1",
+      force ? `us-midterm-force-${Date.now()}` : "us-midterm-v3",
       180_000,
       600_000,
       buildPayload,
     );
-    return jsonWithCdnCache(payload, "yahoo");
+    payload.races = await attachCandidatePhotos(
+      hydrateRacePolicy(payload.races || []),
+    );
+    const stored = payload.ok ? await persistMidtermPayload(payload) : payload;
+    return jsonWithCdnCache(stored, "yahoo");
   } catch (exc) {
+    const cached = await loadCachedMidterm();
+    if (cached?.ok) {
+      cached.races = await attachCandidatePhotos(
+        hydrateRacePolicy(cached.races || []),
+      );
+      cached.warnings = [
+        ...(cached.warnings || []),
+        "라이브 갱신 실패 → 아침 스냅샷",
+      ];
+      return jsonWithCdnCache(cached, "yahoo");
+    }
     const fallback = emptyMidtermPayload();
     fallback.warnings.push(
       exc instanceof Error ? exc.message : "중간선거 데이터를 불러오지 못했습니다",
