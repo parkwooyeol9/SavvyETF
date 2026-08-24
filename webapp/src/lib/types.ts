@@ -43,7 +43,8 @@ export type NavGroupId =
   | "portfolio"
   | "esg"
   | "politics"
-  | "fundmgr";
+  | "fundmgr"
+  | "derivs";
 
 export type BriefSection = {
   heading?: string;
@@ -178,7 +179,6 @@ export const NAV_GROUPS: Array<{
     tabs: [
       "education",
       "etf",
-      "leverage",
       "etfdb",
       "etfdbus",
       "countryetf",
@@ -187,7 +187,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "commodity",
     label: "원자재",
-    tabs: ["economy", "yencarry", "cftc", "metals", "crypto", "volmonitor", "derivatives"],
+    tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
   },
   {
     id: "portfolio",
@@ -207,8 +207,13 @@ export const NAV_GROUPS: Array<{
   },
   {
     id: "fundmgr",
-    label: "Fund Manager Monitor",
+    label: "펀드매니저",
     tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
+  },
+  {
+    id: "derivs",
+    label: "파생상품",
+    tabs: ["leverage", "volmonitor", "derivatives"],
   },
 ];
 
