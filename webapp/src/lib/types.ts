@@ -32,6 +32,7 @@ export type ShellTabId =
   | "aiport"
   | "corridor"
   | "usmidterm"
+  | "polithemes"
   | TabId;
 
 export type NavGroupId =
@@ -41,7 +42,8 @@ export type NavGroupId =
   | "commodity"
   | "portfolio"
   | "esg"
-  | "politics";
+  | "politics"
+  | "fundmgr";
 
 export type BriefSection = {
   heading?: string;
@@ -111,6 +113,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "esgreg",
   "greenmin",
   "usmidterm",
+  "polithemes",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -152,6 +155,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aiport: "AI포트",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
+  polithemes: "정치테마상품",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -166,7 +170,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "gurus", "eventstudy", "kosdaq100", "moneyflow"],
+    tabs: ["kr", "us", "eventstudy", "kosdaq100"],
   },
   {
     id: "etf",
@@ -177,8 +181,6 @@ export const NAV_GROUPS: Array<{
       "leverage",
       "etfdb",
       "etfdbus",
-      "etfweights",
-      "kosdaqactive",
       "countryetf",
     ],
   },
@@ -201,7 +203,12 @@ export const NAV_GROUPS: Array<{
   {
     id: "politics",
     label: "정치분석",
-    tabs: ["usmidterm"],
+    tabs: ["usmidterm", "polithemes"],
+  },
+  {
+    id: "fundmgr",
+    label: "Fund Manager Monitor",
+    tabs: ["moneyflow", "gurus", "etfweights", "kosdaqactive"],
   },
 ];
 

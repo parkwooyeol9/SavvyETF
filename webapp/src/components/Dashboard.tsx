@@ -40,6 +40,7 @@ import AiPortTab from "@/components/AiPortTab";
 import CorridorTab from "@/components/CorridorTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import UsMidtermTab from "@/components/UsMidtermTab";
+import PoliThemesTab from "@/components/PoliThemesTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
@@ -216,7 +217,8 @@ export default function Dashboard() {
       tab === "etf" ||
       tab === "aiport" ||
       tab === "corridor" ||
-      tab === "usmidterm"
+      tab === "usmidterm" ||
+      tab === "polithemes"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -299,6 +301,8 @@ export default function Dashboard() {
         <CorridorTab />
       ) : tab === "usmidterm" ? (
         <UsMidtermTab />
+      ) : tab === "polithemes" ? (
+        <PoliThemesTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "etfdb" ? (
