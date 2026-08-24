@@ -7,8 +7,53 @@ export type PartyLean = "D" | "R" | "bench";
 
 export type PoliQuotePoint = {
   date: string;
+  label: string;
   close: number;
 };
+
+export type PoliRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y";
+
+export const POLI_RANGES: Array<{ id: PoliRange; label: string }> = [
+  { id: "1d", label: "1일" },
+  { id: "5d", label: "5일" },
+  { id: "1mo", label: "1개월" },
+  { id: "3mo", label: "3개월" },
+  { id: "6mo", label: "6개월" },
+  { id: "1y", label: "1년" },
+];
+
+export const POLI_YAHOO_QUERY: Record<
+  PoliRange,
+  { range: string; interval: string; maxBars: number }
+> = {
+  "1d": { range: "1d", interval: "5m", maxBars: 96 },
+  "5d": { range: "5d", interval: "15m", maxBars: 120 },
+  "1mo": { range: "1mo", interval: "60m", maxBars: 100 },
+  "3mo": { range: "3mo", interval: "1d", maxBars: 80 },
+  "6mo": { range: "6mo", interval: "1d", maxBars: 100 },
+  "1y": { range: "1y", interval: "1d", maxBars: 120 },
+};
+
+export function parsePoliRange(raw: string | null | undefined): PoliRange {
+  const v = (raw || "").trim();
+  if ((POLI_RANGES as Array<{ id: string }>).some((r) => r.id === v)) {
+    return v as PoliRange;
+  }
+  return "3mo";
+}
+
+export function poliIntervalLabel(range: PoliRange): string {
+  switch (range) {
+    case "1d":
+      return "5분봉";
+    case "5d":
+      return "15분봉";
+    case "1mo":
+      return "1시간봉";
+    default:
+      return "일봉";
+  }
+}
 
 export type PoliEtfQuote = {
   id: string;
@@ -23,8 +68,8 @@ export type PoliEtfQuote = {
   expense?: string;
   price: number | null;
   change_1d_pct: number | null;
-  change_1m_pct: number | null;
-  vs_spy_1m_pct: number | null;
+  change_range_pct: number | null;
+  vs_spy_range_pct: number | null;
   series?: PoliQuotePoint[];
   error?: string;
 };
@@ -56,9 +101,11 @@ export type PoliThemesPayload = {
   ok: boolean;
   generated_at: string;
   note: string;
-  spy_change_1m_pct: number | null;
-  nanc_kruz_1m_spread: number | null;
-  demz_maga_1m_spread: number | null;
+  range: PoliRange;
+  interval_label: string;
+  spy_change_range_pct: number | null;
+  nanc_kruz_spread: number | null;
+  demz_maga_spread: number | null;
   baskets: PoliEtfQuote[];
   sectors_d: PoliEtfQuote[];
   sectors_r: PoliEtfQuote[];

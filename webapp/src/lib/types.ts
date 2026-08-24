@@ -208,7 +208,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "fundmgr",
     label: "Fund Manager Monitor",
-    tabs: ["moneyflow", "gurus", "etfweights", "kosdaqactive"],
+    tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
   },
 ];
 

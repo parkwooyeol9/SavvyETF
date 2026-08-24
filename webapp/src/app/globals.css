@@ -6102,6 +6102,22 @@ button.country-etf-card {
   font-size: 0.8rem;
 }
 
+.poli-chart {
+  height: 176px;
+  margin-top: 0.35rem;
+}
+
+.poli-chart-empty {
+  height: 176px;
+  margin-top: 0.35rem;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
 .poli-pipe-table-wrap {
   overflow-x: auto;
   margin-top: 0.7rem;

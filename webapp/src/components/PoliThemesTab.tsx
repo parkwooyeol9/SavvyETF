@@ -4,15 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Area,
   AreaChart,
+  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
+  XAxis,
   YAxis,
 } from "recharts";
 
-import type {
-  PoliEtfQuote,
-  PoliPipelineFund,
-  PoliThemesPayload,
+import {
+  POLI_RANGES,
+  type PoliEtfQuote,
+  type PoliPipelineFund,
+  type PoliRange,
+  type PoliThemesPayload,
 } from "@/lib/poliThemes";
 
 const tooltipStyle = {
@@ -50,37 +54,54 @@ function chartStroke(change?: number | null, party?: string): string {
   return "#4da3ff";
 }
 
-function Spark({ quote }: { quote: PoliEtfQuote }) {
+function LiveChart({ quote }: { quote: PoliEtfQuote }) {
   const data = quote.series || [];
-  const stroke = chartStroke(quote.change_1m_pct, quote.party);
+  const stroke = chartStroke(quote.change_range_pct, quote.party);
   const gradId = `poli-${quote.id}`;
   if (data.length < 2) {
-    return <div className="poli-spark-empty">—</div>;
+    return <div className="poli-chart-empty">차트 없음</div>;
   }
   return (
-    <div className="poli-spark">
+    <div className="poli-chart">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
               <stop offset="100%" stopColor={stroke} stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <YAxis hide domain={["auto", "auto"]} />
+          <CartesianGrid stroke="#2b3648" strokeDasharray="3 3" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#8b97a8", fontSize: 10 }}
+            tickLine={false}
+            axisLine={false}
+            minTickGap={28}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            domain={["auto", "auto"]}
+            width={42}
+            tick={{ fill: "#8b97a8", fontSize: 10 }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => fmtPrice(Number(v))}
+          />
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(v: number) => [fmtPrice(Number(v)), "종가"]}
+            formatter={(v: number) => [fmtPrice(Number(v)), quote.symbol]}
             labelFormatter={(l) => String(l)}
           />
           <Area
             type="monotone"
             dataKey="close"
             stroke={stroke}
-            strokeWidth={1.5}
+            strokeWidth={1.7}
             fill={`url(#${gradId})`}
             isAnimationActive={false}
             dot={false}
+            activeDot={{ r: 3 }}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -88,7 +109,7 @@ function Spark({ quote }: { quote: PoliEtfQuote }) {
   );
 }
 
-function EtfCard({ quote }: { quote: PoliEtfQuote }) {
+function EtfCard({ quote, rangeLabel }: { quote: PoliEtfQuote; rangeLabel: string }) {
   return (
     <article className="poli-etf-card" data-party={quote.party.toLowerCase()}>
       <header>
@@ -102,16 +123,16 @@ function EtfCard({ quote }: { quote: PoliEtfQuote }) {
       <div className="poli-etf-px">
         <strong>{fmtPrice(quote.price)}</strong>
         <span className={retClass(quote.change_1d_pct)}>
-          1D {fmtPct(quote.change_1d_pct)}
+          직전 {fmtPct(quote.change_1d_pct)}
         </span>
-        <span className={retClass(quote.change_1m_pct)}>
-          1M {fmtPct(quote.change_1m_pct)}
+        <span className={retClass(quote.change_range_pct)}>
+          {rangeLabel} {fmtPct(quote.change_range_pct)}
         </span>
-        <span className={retClass(quote.vs_spy_1m_pct)}>
-          vs SPY {fmtPct(quote.vs_spy_1m_pct)}
+        <span className={retClass(quote.vs_spy_range_pct)}>
+          vs SPY {fmtPct(quote.vs_spy_range_pct)}
         </span>
       </div>
-      <Spark quote={quote} />
+      <LiveChart quote={quote} />
       <p>{quote.thesis}</p>
       {quote.expense ? <small>보수 {quote.expense}</small> : null}
       {quote.error ? <p className="empty warn">{quote.error}</p> : null}
@@ -126,14 +147,17 @@ function partyLabel(party: PoliPipelineFund["party"]): string {
 }
 
 export default function PoliThemesTab() {
+  const [range, setRange] = useState<PoliRange>("3mo");
   const [data, setData] = useState<PoliThemesPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextRange: PoliRange) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/poli-themes", { cache: "no-store" });
+      const res = await fetch(`/api/poli-themes?range=${nextRange}`, {
+        cache: "no-store",
+      });
       const json = (await res.json()) as PoliThemesPayload;
       if (!res.ok || json.ok === false) {
         throw new Error(json.error || `HTTP ${res.status}`);
@@ -148,15 +172,17 @@ export default function PoliThemesTab() {
   }, []);
 
   useEffect(() => {
-    void load();
-    const id = window.setInterval(() => void load(), 5 * 60_000);
+    void load(range);
+    const ms = range === "1d" || range === "5d" ? 60_000 : 120_000;
+    const id = window.setInterval(() => void load(range), ms);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [load, range]);
 
   const basketsD = (data?.baskets || []).filter((b) => b.party === "D");
   const basketsR = (data?.baskets || []).filter((b) => b.party === "R");
   const listedPipeline = (data?.pipeline || []).filter((p) => p.listed);
   const pendingPipeline = (data?.pipeline || []).filter((p) => !p.listed);
+  const rangeLabel = POLI_RANGES.find((r) => r.id === range)?.label || range;
 
   return (
     <div className="poli-tab">
@@ -169,9 +195,18 @@ export default function PoliThemesTab() {
               그리고 SEC 심사 중인 정치베팅(예측시장) ETF.
             </p>
           </div>
-          <button type="button" className="ghost-btn" onClick={() => void load()}>
-            {loading ? "갱신 중…" : "새로고침"}
-          </button>
+          <div className="chip-row geo-range-chips" role="group" aria-label="차트 기간">
+            {POLI_RANGES.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className={`chip ${range === r.id ? "active" : ""}`}
+                onClick={() => setRange(r.id)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading && !data ? <p className="empty">시세 불러오는 중…</p> : null}
@@ -183,39 +218,41 @@ export default function PoliThemesTab() {
         ))}
 
         {data ? (
-          <div className="poli-spread-grid">
-            <article>
-              <span>NANC − KRUZ 1M</span>
-              <strong
-                className={retClass(data.nanc_kruz_1m_spread)}
-                data-party={
-                  (data.nanc_kruz_1m_spread ?? 0) >= 0 ? "d" : "r"
-                }
-              >
-                {fmtPct(data.nanc_kruz_1m_spread)}
-              </strong>
-              <em>의원 매매 바스켓 스프레드</em>
-            </article>
-            <article>
-              <span>DEMZ − MAGA 1M</span>
-              <strong
-                className={retClass(data.demz_maga_1m_spread)}
-                data-party={
-                  (data.demz_maga_1m_spread ?? 0) >= 0 ? "d" : "r"
-                }
-              >
-                {fmtPct(data.demz_maga_1m_spread)}
-              </strong>
-              <em>PAC 기부 바스켓 스프레드</em>
-            </article>
-            <article>
-              <span>SPY 1M</span>
-              <strong className={retClass(data.spy_change_1m_pct)}>
-                {fmtPct(data.spy_change_1m_pct)}
-              </strong>
-              <em>벤치마크</em>
-            </article>
-          </div>
+          <>
+            <p className="macro-schedule">
+              {data.interval_label} · {rangeLabel} · 1일·5일은 1분마다, 그 외 2분마다
+              갱신
+            </p>
+            <div className="poli-spread-grid">
+              <article>
+                <span>NANC − KRUZ {rangeLabel}</span>
+                <strong
+                  className={retClass(data.nanc_kruz_spread)}
+                  data-party={(data.nanc_kruz_spread ?? 0) >= 0 ? "d" : "r"}
+                >
+                  {fmtPct(data.nanc_kruz_spread)}
+                </strong>
+                <em>의원 매매 바스켓 스프레드</em>
+              </article>
+              <article>
+                <span>DEMZ − MAGA {rangeLabel}</span>
+                <strong
+                  className={retClass(data.demz_maga_spread)}
+                  data-party={(data.demz_maga_spread ?? 0) >= 0 ? "d" : "r"}
+                >
+                  {fmtPct(data.demz_maga_spread)}
+                </strong>
+                <em>PAC 기부 바스켓 스프레드</em>
+              </article>
+              <article>
+                <span>SPY {rangeLabel}</span>
+                <strong className={retClass(data.spy_change_range_pct)}>
+                  {fmtPct(data.spy_change_range_pct)}
+                </strong>
+                <em>벤치마크</em>
+              </article>
+            </div>
+          </>
         ) : null}
       </section>
 
@@ -230,7 +267,7 @@ export default function PoliThemesTab() {
               <h4 data-party="d">민주당</h4>
               <div className="poli-etf-grid">
                 {basketsD.map((q) => (
-                  <EtfCard key={q.id} quote={q} />
+                  <EtfCard key={q.id} quote={q} rangeLabel={rangeLabel} />
                 ))}
               </div>
             </div>
@@ -238,7 +275,7 @@ export default function PoliThemesTab() {
               <h4 data-party="r">공화당</h4>
               <div className="poli-etf-grid">
                 {basketsR.map((q) => (
-                  <EtfCard key={q.id} quote={q} />
+                  <EtfCard key={q.id} quote={q} rangeLabel={rangeLabel} />
                 ))}
               </div>
             </div>
@@ -251,14 +288,14 @@ export default function PoliThemesTab() {
           <h3 className="geo-section-title">정책 수혜 업종</h3>
           <p className="meta-soft">
             정당 전용 ETF는 아니지만, 중간선거·입법 결과에 따라 수혜·피해가 갈리는
-            업종 프록시. vs SPY는 1개월 초과수익.
+            업종 프록시. vs SPY는 선택한 기간의 초과수익.
           </p>
           <div className="poli-party-cols">
             <div>
               <h4 data-party="d">민주 정책 민감</h4>
               <div className="poli-etf-grid">
                 {data.sectors_d.map((q) => (
-                  <EtfCard key={q.id} quote={q} />
+                  <EtfCard key={q.id} quote={q} rangeLabel={rangeLabel} />
                 ))}
               </div>
             </div>
@@ -266,7 +303,7 @@ export default function PoliThemesTab() {
               <h4 data-party="r">공화 정책 민감</h4>
               <div className="poli-etf-grid">
                 {data.sectors_r.map((q) => (
-                  <EtfCard key={q.id} quote={q} />
+                  <EtfCard key={q.id} quote={q} rangeLabel={rangeLabel} />
                 ))}
               </div>
             </div>
