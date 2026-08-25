@@ -1,4 +1,4 @@
-/** Monthly return seasonality analysis (Event Study tab). */
+/** Monthly return seasonality analysis (Event Study tab, 종목 계절성 mode). */
 
 export const DEFAULT_FOCUS_MONTHS = [6, 7, 8, 9] as const;
 export const LOOKBACK_YEARS = 10;
