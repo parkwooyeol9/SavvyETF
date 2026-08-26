@@ -30,6 +30,7 @@ import CryptoAssetsTab from "@/components/CryptoAssetsTab";
 import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
 import DerivativesTab from "@/components/DerivativesTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
+import NlpPulseTab from "@/components/NlpPulseTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
@@ -216,6 +217,7 @@ export default function Dashboard() {
       tab === "countryetf" ||
       tab === "etf" ||
       tab === "aiport" ||
+      tab === "nlp" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
       tab === "polithemes"
@@ -297,6 +299,8 @@ export default function Dashboard() {
         <TradingIdeasTab />
       ) : tab === "aiport" ? (
         <AiPortTab />
+      ) : tab === "nlp" ? (
+        <NlpPulseTab />
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (

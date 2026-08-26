@@ -30,6 +30,7 @@ export type ShellTabId =
   | "signals"
   | "eventstudy"
   | "aiport"
+  | "nlp"
   | "corridor"
   | "usmidterm"
   | "polithemes"
@@ -41,6 +42,7 @@ export type NavGroupId =
   | "etf"
   | "commodity"
   | "portfolio"
+  | "ai"
   | "esg"
   | "politics"
   | "fundmgr"
@@ -99,6 +101,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "signals",
   "ideas",
   "aiport",
+  "nlp",
   "corridor",
   "etf",
   "leverage",
@@ -154,6 +157,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   kosdaq100: "코스닥100",
   moneyflow: "Money Flow",
   aiport: "AI포트",
+  nlp: "NLP",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
   polithemes: "정치테마상품",
@@ -192,7 +196,12 @@ export const NAV_GROUPS: Array<{
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["simulate", "usportfolio", "signals", "ideas", "aiport", "corridor"],
+    tabs: ["simulate", "usportfolio", "signals", "corridor"],
+  },
+  {
+    id: "ai",
+    label: "AI",
+    tabs: ["ideas", "aiport", "nlp"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {
