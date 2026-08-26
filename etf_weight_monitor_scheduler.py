@@ -1,6 +1,7 @@
 """Daily ETF weight monitor — Roundhill all + iShares top-15 AUM.
 
-Default 07:30 KST. Bootstrap runs collect_all with Roundhill backfill.
+Default 07:30 KST, 60-minute catch-up. Collects only inside that window so a
+late redeploy cannot hold the heavy-work lock through 09:00 ESG Telegram.
 """
 
 from __future__ import annotations
@@ -101,14 +102,14 @@ def start_etf_weight_monitor_scheduler() -> None:
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
-    catchup_minutes = 240
+    catchup_minutes = 60
     try:
         catchup_minutes = max(
             30,
-            int(os.environ.get("ETF_WEIGHT_CATCHUP_MINUTES", "240")),
+            int(os.environ.get("ETF_WEIGHT_CATCHUP_MINUTES", "60")),
         )
     except ValueError:
-        catchup_minutes = 240
+        catchup_minutes = 60
 
     def loop() -> None:
         state = _load_state()
@@ -126,14 +127,6 @@ def start_etf_weight_monitor_scheduler() -> None:
                     time.sleep(poll_seconds)
                     continue
 
-                if not bootstrapped:
-                    bootstrapped = True
-                    print("etf_weight bootstrap collect_all (+14d Roundhill backfill)…")
-                    if run_scheduled_etf_weight_monitor(backfill_roundhill_days=14):
-                        now = datetime.now(KST)
-                        last_slot = f"bootstrap-{now.strftime('%Y%m%d')}"
-                        update_scheduler_state(last_etf_weight_slot=last_slot)
-
                 now = datetime.now(KST)
                 update_scheduler_state(
                     etf_weight_scheduler_heartbeat=now.isoformat()
@@ -145,6 +138,29 @@ def start_etf_weight_monitor_scheduler() -> None:
                     last_slot=last_slot,
                     window_minutes=catchup_minutes,
                 )
+
+                # One collect per morning slot. Do not bootstrap outside the
+                # catch-up window — a late Render redeploy would hold the
+                # heavy-work lock through 09:00 ESG Telegram.
+                if not bootstrapped:
+                    bootstrapped = True
+                    if slot:
+                        print(
+                            "etf_weight in-window collect_all "
+                            "(+14d Roundhill backfill, counts as today's slot)…"
+                        )
+                        if run_scheduled_etf_weight_monitor(
+                            backfill_roundhill_days=14
+                        ):
+                            last_slot = slot
+                            update_scheduler_state(last_etf_weight_slot=slot)
+                        continue
+                    print(
+                        "etf_weight bootstrap skipped: outside "
+                        f"{hour:02d}:{minute:02d} +{catchup_minutes}m window "
+                        "(avoids blocking later Telegram jobs)."
+                    )
+
                 if slot and run_scheduled_etf_weight_monitor(backfill_roundhill_days=0):
                     last_slot = slot
                     update_scheduler_state(last_etf_weight_slot=slot)

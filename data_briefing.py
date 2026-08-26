@@ -565,16 +565,6 @@ def pack_us_summary_context(summary: dict, chart_notes_ko: dict | None = None) -
     elif heatmap.get("error"):
         extra_parts.append(f"heatmap_error: {heatmap.get('error')}")
 
-    macro = summary.get("macro") or {}
-    if macro.get("caption"):
-        extra_parts.append(f"macro: {macro.get('caption')}")
-    if macro.get("ai_comment") or macro.get("macro_brief_ko"):
-        extra_parts.append(
-            f"macro_ai: {macro.get('ai_comment') or macro.get('macro_brief_ko')}"
-        )
-    if macro.get("error"):
-        extra_parts.append(f"macro_error: {macro.get('error')}")
-
     crypto = summary.get("crypto") or {}
     for symbol in ("BTC", "ETH"):
         entry = crypto.get(symbol) or {}

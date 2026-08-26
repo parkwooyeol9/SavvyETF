@@ -284,7 +284,7 @@ def run_scheduled_summary(
             )
             return False
 
-        summary = generate_and_save_summary(public_url=public_url, force_macro=True)
+        summary = generate_and_save_summary(public_url=public_url)
         messages = summary["telegram_messages"]
         delivered = broadcast_fn(token, messages)
         if not delivered:

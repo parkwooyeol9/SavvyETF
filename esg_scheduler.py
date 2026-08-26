@@ -61,7 +61,7 @@ def _events_time_kst() -> tuple[int, int]:
 
 def _monitor_time_kst() -> tuple[int, int]:
     return _parse_hhmm(
-        os.environ.get("ESG_MONITOR_SCHEDULE_KST", "9:00"),
+        os.environ.get("ESG_MONITOR_SCHEDULE_KST", "9:05"),
         DEFAULT_MONITOR_KST,
     )
 
@@ -118,7 +118,7 @@ def run_scheduled_esg_events(token: str, broadcast_fn) -> bool:
     from esg_event_monitor import run_esg_events
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
-    if not begin_heavy_work_blocking("scheduled-esg-events", timeout=240):
+    if not begin_heavy_work_blocking("scheduled-esg-events", timeout=360):
         print(
             "Scheduled esg events skipped: heavy work still busy "
             f"({heavy_work_status()})"

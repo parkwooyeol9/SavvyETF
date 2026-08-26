@@ -2,7 +2,6 @@ import base64
 import html
 import json
 import os
-import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -248,20 +247,6 @@ def _buffer_to_data_uri(buffer, mime: str) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def _telegram_html_to_web_blocks(text: str) -> str:
-    blocks: list[str] = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        cleaned = re.sub(r"<br\s*/?>", "", stripped, flags=re.I)
-        cleaned = re.sub(r"</?i>", "", cleaned)
-        cleaned = re.sub(r"<b>(.*?)</b>", r"<strong>\1</strong>", cleaned, flags=re.I)
-        cleaned = re.sub(r"<code>(.*?)</code>", r"<span class='metric'>\1</span>", cleaned, flags=re.I)
-        blocks.append(f"<p class='macro-line'>{cleaned}</p>")
-    return "".join(blocks)
-
-
 def _render_leader_charts_html(summary: dict) -> str:
     leaders = summary.get("leader_charts") or {}
     chart_notes = (summary.get("ai_analysis") or {}).get("chart_notes_ko") or {}
@@ -291,42 +276,6 @@ def _render_leader_charts_html(summary: dict) -> str:
     return (
         "<section class='appendix-section'><h2>📈 Top leaders</h2>"
         f"<div class='leader-grid'>{''.join(cards)}</div></section>"
-    )
-
-
-def _render_macro_html(summary: dict) -> str:
-    macro = summary.get("macro") or {}
-    if macro.get("error"):
-        return (
-            "<section class='appendix-section'><h2>📊 Macro Risk Monitor</h2>"
-            f"<p class='meta'>Unavailable: {_esc(macro['error'])}</p></section>"
-        )
-
-    chart_html = ""
-    chart = macro.get("chart")
-    if chart is not None:
-        chart_html = (
-            f"<p class='meta'>{_esc(macro.get('caption', ''))}</p>"
-            f"<img src='{_buffer_to_data_uri(chart, 'image/png')}' alt='Macro dashboard' />"
-        )
-
-    text_html = _telegram_html_to_web_blocks(macro.get("text_html", ""))
-    ai_html = ""
-    ai_brief = (macro.get("ai_brief") or "").strip()
-    if ai_brief:
-        ai_html = (
-            "<h3 class='subheading'>AI macro comment</h3>"
-            + "".join(
-                f"<p class='macro-line'>{_esc(line)}</p>"
-                for line in ai_brief.split("\n")
-                if line.strip()
-            )
-        )
-
-    return (
-        "<hr class='section-divider' />"
-        "<section class='appendix-section'><h2>📊 Macro Risk Monitor</h2>"
-        f"{chart_html}{text_html}{ai_html}</section>"
     )
 
 
@@ -457,7 +406,6 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     heatmap_html = _render_heatmap_html(summary)
     ai_html = _render_ai_html(summary)
     leader_html = _render_leader_charts_html(summary)
-    macro_html = _render_macro_html(summary)
     crypto_html = _render_crypto_html(summary)
 
     return f"""<!DOCTYPE html>
@@ -519,7 +467,7 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
       border-radius: 12px; background: var(--panel, #141d2b);
     }}
     .ai-brief {{ border-left: 4px solid var(--accent, #4da3ff); }}
-    .ai-brief p, .macro-line {{ margin: 0.55rem 0; line-height: 1.65; }}
+    .ai-brief p {{ margin: 0.55rem 0; line-height: 1.65; }}
     .ai-brief p.brief-para {{ margin: 0 0 1.25rem; }}
     .ai-brief p.brief-para:last-child {{ margin-bottom: 0; }}
     .leader-grid, .crypto-grid {{ display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
@@ -542,7 +490,6 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
       {link_html}
       <div class="pill-row">
         <span class="pill">ETF + S&amp;P 500</span>
-        <span class="pill">Macro monitor</span>
         <span class="pill">BTC + ETH</span>
         <span class="pill">AI briefing</span>
       </div>
@@ -551,7 +498,6 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
     {leader_html}
     {heatmap_html}
     {ai_html}
-    {macro_html}
     {crypto_html}
     <footer class="summary-footer">
       SavvyETF · Generated {summary['generated_at_display']} · Not financial advice
@@ -662,18 +608,8 @@ def resolve_summary_public_url() -> str:
     return f"http://localhost:{port}/summary"
 
 
-def _format_macro_crypto_telegram(summary: dict) -> list[dict]:
+def _format_crypto_telegram(summary: dict) -> list[dict]:
     messages: list[dict] = []
-
-    macro = summary.get("macro") or {}
-    if macro.get("error"):
-        messages.append({"text": f"📊 Macro dashboard\n\n(unavailable: {macro['error']})"})
-    elif macro.get("chart") is not None:
-        photo = _as_photo_buffer(macro.get("chart"))
-        if photo is not None:
-            messages.append(
-                {"text": macro.get("caption", "Macro risk dashboard"), "photo": photo}
-            )
 
     crypto = summary.get("crypto") or {}
     for symbol in ("BTC", "ETH"):
@@ -699,7 +635,7 @@ def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
 
     messages.extend(_format_heatmap_telegram(summary))
     messages.extend(_format_ai_telegram(summary))
-    messages.extend(_format_macro_crypto_telegram(summary))
+    messages.extend(_format_crypto_telegram(summary))
 
     return messages
 
@@ -805,32 +741,6 @@ def format_summary_pdf_message(summary: dict, public_url: str = "") -> dict | No
     }
 
 
-def _build_macro_appendix(*, force: bool = False) -> dict:
-    try:
-        from macro_analyst import format_macro_ai_telegram, generate_macro_ai_brief
-        from macro_charts import format_macro_chart_caption, format_macro_text, plot_macro_dashboard
-        from macro_data import build_macro_bundle
-        from macro_scores import compute_macro_stress
-
-        bundle = build_macro_bundle(force=force)
-        stress = compute_macro_stress(
-            bundle["snapshot"],
-            edgar=bundle.get("edgar"),
-            finnhub=bundle.get("finnhub"),
-        )
-        chart = plot_macro_dashboard(bundle, stress)
-        chart.seek(0)
-        ai_brief = generate_macro_ai_brief(bundle, stress)
-        return {
-            "chart": chart,
-            "caption": format_macro_chart_caption(bundle, stress),
-            "text_html": format_macro_text(bundle, stress),
-            "ai_brief": format_macro_ai_telegram(ai_brief),
-        }
-    except Exception as exc:
-        return {"error": str(exc)}
-
-
 def _build_crypto_appendix() -> dict:
     from analysis import analyze_crypto
 
@@ -868,10 +778,6 @@ def _freeze_summary_charts(summary: dict) -> None:
             if pack.get(key) is not None:
                 pack[key] = _freeze_chart_buffer(pack.get(key))
 
-    macro = summary.get("macro") or {}
-    if macro.get("chart") is not None:
-        macro["chart"] = _freeze_chart_buffer(macro.get("chart"))
-
     for entry in (summary.get("crypto") or {}).values():
         if isinstance(entry, dict) and entry.get("chart") is not None:
             entry["chart"] = _freeze_chart_buffer(entry.get("chart"))
@@ -900,7 +806,7 @@ a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
 </body></html>"""
 
 
-def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False) -> dict:
+def generate_and_save_summary(public_url: str = "") -> dict:
     summary = build_market_summary()
     leader_charts = collect_leader_charts(summary)
     summary["leader_charts"] = leader_charts
@@ -911,10 +817,9 @@ def generate_and_save_summary(public_url: str = "", *, force_macro: bool = False
     except Exception as exc:
         summary["heatmap_sp"] = {"error": str(exc)}
 
-    summary["macro"] = _build_macro_appendix(force=force_macro)
     summary["crypto"] = _build_crypto_appendix()
 
-    # Final stage: data briefing from boards / notes / news / macro extras
+    # Final stage: data briefing from boards / notes / news.
     # (replaces the previous trending-news AI briefing).
     briefing = generate_data_briefing_from_us_summary(
         summary,
@@ -1004,7 +909,7 @@ def format_summary_web_link_message(summary: dict, public_url: str = "") -> dict
         "🌐 전체 마켓 브리프 (웹 페이지)",
         summary["generated_at_display"],
         "",
-        "랭킹·리더 차트·히트맵·매크로·BTC/ETH·AI 브리핑이 한 페이지에 모여 있습니다.",
+        "랭킹·리더 차트·히트맵·BTC/ETH·AI 브리핑이 한 페이지에 모여 있습니다.",
         f"🔗 {url}",
     ]
     if is_local:

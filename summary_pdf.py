@@ -825,12 +825,10 @@ def _render_chart_showcase(
 
 
 def _render_markets_page(summary: dict) -> bytes | None:
-    """Heatmap + macro stacked on one page, each filling its band."""
+    """S&P 500 heatmap page."""
     heatmap = summary.get("heatmap_sp") or {}
-    macro = summary.get("macro") or {}
     heat_png = chart_to_png_bytes(heatmap.get("chart"))
-    macro_png = chart_to_png_bytes(macro.get("chart"))
-    if not heat_png and not macro_png:
+    if not heat_png:
         if heatmap.get("error"):
             return _render_text_page_png(
                 "S&P 500 heatmap", [f"Unavailable: {heatmap['error']}"]
@@ -840,28 +838,17 @@ def _render_markets_page(summary: dict) -> bytes | None:
     img, draw = _new_page()
     y = _MARGIN
     _draw_section_chip(draw, _MARGIN, y, "MARKETS", ACCENT2)
-    draw.text((_MARGIN + 110, y + 2), "Heatmap & Macro", font=_load_font(22), fill=TEXT)
+    draw.text((_MARGIN + 110, y + 2), "S&P 500 Heatmap", font=_load_font(22), fill=TEXT)
     y += 36
 
-    charts: list[tuple[bytes, str, str, tuple[int, int, int]]] = []
-    if heat_png:
-        charts.append(
-            (
-                heat_png,
-                "S&P 500 Heatmap",
-                _safe(heatmap.get("caption", "")),
-                ACCENT2,
-            )
+    charts: list[tuple[bytes, str, str, tuple[int, int, int]]] = [
+        (
+            heat_png,
+            "S&P 500 Heatmap",
+            _safe(heatmap.get("caption", "")),
+            ACCENT2,
         )
-    if macro_png:
-        charts.append(
-            (
-                macro_png,
-                "Macro Risk",
-                _safe(macro.get("caption", "")),
-                WARN,
-            )
-        )
+    ]
 
     gap = 12
     band = (_CONTENT_BOTTOM - y - gap * (len(charts) - 1)) // len(charts)

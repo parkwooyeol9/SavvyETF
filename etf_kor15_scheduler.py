@@ -1,4 +1,4 @@
-"""Scheduled /etf_kor15 — default 09:00 KST daily → legacy ETF channel + web slot."""
+"""Scheduled /etf_kor15 — default 09:10 KST daily → legacy ETF channel + web slot."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 9
-DEFAULT_MINUTE_KST = 0
+DEFAULT_MINUTE_KST = 10
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETF_KOR15_SCHEDULE_KST", "9:00").strip()
+    raw = os.environ.get("ETF_KOR15_SCHEDULE_KST", "9:10").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)

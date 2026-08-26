@@ -69,7 +69,7 @@ services:
       - key: ETF_SECTOR_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_SECTOR_SCHEDULE_KST
-        value: "7:00"
+        value: "7:05"
       - key: ETF_US_NEW_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_US_NEW_SCHEDULE_KST
@@ -77,9 +77,17 @@ services:
       - key: ETFCHECK_SCHEDULE_ENABLED
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
-        value: "15:40"
+        value: "15:45"
       - key: ETF_KOR15_SCHEDULE_ENABLED
         value: "false"
+      - key: ETF_WEIGHT_SCHEDULE_ENABLED
+        value: "true"
+      - key: ETF_WEIGHT_SCHEDULE_KST
+        value: "7:30"
+      - key: ETF_WEIGHT_CATCHUP_MINUTES
+        value: "60"
+      - key: CREDIT_MONITOR_SCHEDULE_KST
+        value: "9:35"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_EVENTS_SCHEDULE_ENABLED
@@ -89,7 +97,7 @@ services:
       - key: ESG_MONITOR_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_MONITOR_SCHEDULE_KST
-        value: "9:00"
+        value: "9:05"
       - key: ESG_ACCIDENT_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_ACCIDENT_SCHEDULE_KST

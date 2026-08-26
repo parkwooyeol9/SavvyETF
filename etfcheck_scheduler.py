@@ -1,4 +1,4 @@
-"""Scheduled /etfcheck broadcast — default 15:40 KST on KRX trading days.
+"""Scheduled /etfcheck broadcast — default 15:45 KST on KRX trading days.
 
 Delivers to the legacy ETF channel (TELEGRAM_CHAT_ID).
 """
@@ -17,12 +17,12 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 15
-DEFAULT_MINUTE_KST = 40
+DEFAULT_MINUTE_KST = 45
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETFCHECK_SCHEDULE_KST", "15:40").strip()
+    raw = os.environ.get("ETFCHECK_SCHEDULE_KST", "15:45").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -53,7 +53,7 @@ def run_scheduled_etfcheck(token: str, broadcast_fn) -> bool:
     from etfcheck import build_etfcheck_brief, format_etfcheck_telegram
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
-    if not begin_heavy_work_blocking("scheduled-etfcheck", timeout=180):
+    if not begin_heavy_work_blocking("scheduled-etfcheck", timeout=360):
         print(
             "Scheduled etfcheck skipped: heavy work still busy "
             f"({heavy_work_status()})"

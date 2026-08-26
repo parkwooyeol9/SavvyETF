@@ -1,6 +1,7 @@
 import { del, head, list, put } from "@vercel/blob";
 
 import { botBaseUrl, fetchBotJson } from "./bot";
+import { stripUsSummaryMacroSlot } from "./briefSrcDoc";
 import {
   gcSlotImageOrphans,
   publicUrlForKey,
@@ -104,7 +105,7 @@ async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
             const parsed = JSON.parse(text) as BriefSlot;
             if (!parsed?.title || !parsed?.generated_at) return;
             const slotKey = safeKeyPart(String(parsed.slot || name), name);
-            slots[slotKey] = { ...parsed, slot: slotKey };
+            slots[slotKey] = stripUsSummaryMacroSlot({ ...parsed, slot: slotKey });
             bumpUpdated(parsed.received_at);
           } catch (exc) {
             console.warn(`r2 skip corrupt slot ${key}:`, exc);
@@ -121,7 +122,7 @@ async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
           for (const [key, raw] of Object.entries(parsed.slots || {})) {
             const slotKey = safeKeyPart(String(raw?.slot || key), key);
             if (slots[slotKey] || !raw?.title || !raw?.generated_at) continue;
-            slots[slotKey] = { ...raw, slot: slotKey };
+            slots[slotKey] = stripUsSummaryMacroSlot({ ...raw, slot: slotKey });
           }
           bumpUpdated(parsed.updated_at);
         }
@@ -172,7 +173,12 @@ async function readTabFromBlob(tab: TabId): Promise<TabReadResult> {
       tab: {
         tab,
         updated_at: parsed.updated_at ?? null,
-        slots: parsed.slots ?? {},
+        slots: Object.fromEntries(
+          Object.entries(parsed.slots ?? {}).map(([key, value]) => [
+            key,
+            stripUsSummaryMacroSlot({ ...value, slot: value.slot || key }),
+          ]),
+        ),
       },
     };
   } catch (exc) {
@@ -221,7 +227,12 @@ async function loadBriefsFromRender(): Promise<{
         briefs[id] = {
           tab: id,
           updated_at: tab.updated_at ?? null,
-          slots: tab.slots ?? {},
+          slots: Object.fromEntries(
+            Object.entries(tab.slots ?? {}).map(([key, value]) => [
+              key,
+              stripUsSummaryMacroSlot({ ...value, slot: value.slot || key }),
+            ]),
+          ),
         };
       }
     }
@@ -521,7 +532,7 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     html_or_text: sanitizeBriefHtml(section.html_or_text || ""),
   }));
   const now = new Date().toISOString();
-  const slot: BriefSlot = {
+  const slot: BriefSlot = stripUsSummaryMacroSlot({
     slot: slotKey,
     generated_at: body.generated_at,
     title: body.title.slice(0, 200),
@@ -530,7 +541,7 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
     images: uploadedImages,
     meta: body.meta ?? {},
     received_at: now,
-  };
+  });
   const payload = JSON.stringify(slot, null, 2);
 
   if (r2Configured()) {

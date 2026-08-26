@@ -1,4 +1,4 @@
-"""Daily KOSDAQ 100 snapshot + briefing — default 15:45 KST (post close)."""
+"""Daily KOSDAQ 100 snapshot + briefing — default 15:50 KST (post close)."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 15
-DEFAULT_MINUTE_KST = 45
+DEFAULT_MINUTE_KST = 50
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("KOSDAQ100_SCHEDULE_KST", "15:45").strip()
+    raw = os.environ.get("KOSDAQ100_SCHEDULE_KST", "15:50").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)

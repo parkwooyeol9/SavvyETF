@@ -173,7 +173,7 @@ Auto schedule (KST):
   /summary 07:00 · /reddit 21:00  → US channel
   /summary_kor 15:40 (compact Telegram)  → Korea channel
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
-  /etfcheck 15:40 (KRX days)  → legacy ETF channel
+  /etfcheck 15:45 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
   /esg events 09:00 daily     → SavvyESG (ESG 시황)
   /esg accident 09:30 (KRX)  → SavvyESG (중대재해 only)
@@ -220,7 +220,7 @@ def build_help_messages() -> list[dict]:
 <code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
-<code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
+<code>/etfcheck</code> 15:45 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
 <code>/esg events</code> 09:00 — ESG 시황 (SavvyESG / ESG 에이전트)
 <code>/esg accident</code> 09:30 — 중대재해 공시 (SavvyESG, 한국 휴장 제외)
 <i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> climate monitor/overview/aigov · ESG data briefing
@@ -2586,19 +2586,19 @@ def start_web_server():
                             "SUMMARY_NXT_SCHEDULE_KST", "16:40"
                         ),
                         "etf_sector_kst": os.environ.get(
-                            "ETF_SECTOR_SCHEDULE_KST", "7:00"
+                            "ETF_SECTOR_SCHEDULE_KST", "7:05"
                         ),
                         "etfcheck_kst": os.environ.get(
-                            "ETFCHECK_SCHEDULE_KST", "15:40"
+                            "ETFCHECK_SCHEDULE_KST", "15:45"
                         ),
                         "etf_kor15_kst": os.environ.get(
-                            "ETF_KOR15_SCHEDULE_KST", "9:00"
+                            "ETF_KOR15_SCHEDULE_KST", "9:10"
                         ),
                         "esg_events_kst": os.environ.get(
                             "ESG_EVENTS_SCHEDULE_KST", "9:00"
                         ),
                         "esg_monitor_kst": os.environ.get(
-                            "ESG_MONITOR_SCHEDULE_KST", "9:00"
+                            "ESG_MONITOR_SCHEDULE_KST", "9:05"
                         ),
                         "esg_accident_kst": os.environ.get(
                             "ESG_ACCIDENT_SCHEDULE_KST", "9:30"
@@ -2610,10 +2610,13 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
-                            "ON: summary, summary_pre, reddit, summary_kor@15:40 "
-                            "(compact Telegram), summary_nxt@16:40 (web-only), "
-                            "etfcheck, esg events@09:00, esg accident, etfdb. "
-                            "OFF default: kor_intra, etf_sector, etf_us_new, "
+                            "ON: summary@07:00, reddit@21:00, summary_kor@15:40 "
+                            "(compact Telegram), etfcheck@15:45, "
+                            "summary_nxt@16:40 (web-only), "
+                            "esg events@09:00, esg accident@09:30, etfdb@16:05. "
+                            "Staggered 5m so heavy-work lock is sequential. "
+                            "OFF default: summary_pre, kor_intra, etf_sector@07:05, "
+                            "etf_us_new, etf_kor15@09:10, "
                             "esg overview, esg brief; SUMMARY_NXT_TELEGRAM_ENABLED=false. "
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
                             "ETF→TELEGRAM_CHAT_ID; ESG→TELEGRAM_CHAT_ID_ESG."

@@ -20,12 +20,12 @@ from us_calendar import is_us_equity_trading_day
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 7
-DEFAULT_MINUTE_KST = 0
+DEFAULT_MINUTE_KST = 5
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETF_SECTOR_SCHEDULE_KST", "7:00").strip()
+    raw = os.environ.get("ETF_SECTOR_SCHEDULE_KST", "7:05").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
