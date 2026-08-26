@@ -30,6 +30,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/trading-ideas": { limit: 20, windowMs: 60_000 },
   "/api/nlp-pulse": { limit: 12, windowMs: 60_000 },
   "/api/nlp-chart": { limit: 30, windowMs: 60_000 },
+  "/api/quant": { limit: 20, windowMs: 60_000 },
   "/api/wall-street-gurus": { limit: 12, windowMs: 60_000 },
   "/api/kosdaq100": { limit: 10, windowMs: 60_000 },
   "/api/kosdaq-active": { limit: 12, windowMs: 60_000 },

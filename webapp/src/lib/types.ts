@@ -25,6 +25,7 @@ export type ShellTabId =
   | "crypto"
   | "volmonitor"
   | "derivatives"
+  | "quant"
   | "ideas"
   | "gurus"
   | "signals"
@@ -91,6 +92,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "crypto",
   "volmonitor",
   "derivatives",
+  "quant",
   "gurus",
   "eventstudy",
   "kosdaq100",
@@ -150,6 +152,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   crypto: "가상자산",
   volmonitor: "Volatility Monitor",
   derivatives: "Derivatives",
+  quant: "Quant",
   ideas: "AI Pick",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
@@ -222,7 +225,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "derivs",
     label: "파생상품",
-    tabs: ["leverage", "volmonitor", "derivatives"],
+    tabs: ["leverage", "volmonitor", "derivatives", "quant"],
   },
 ];
 
