@@ -55,13 +55,16 @@ MODES = {
     "climate": "monitor",
     "기후": "monitor",
     "기후리스크": "monitor",
+    "events": "events",
+    "event": "events",
+    "시황": "events",
     "overview": "overview",
     "all": "overview",
     "요약": "overview",
 }
 
 # Modes that do not require a company query.
-OPTIONAL_QUERY_MODES = {"accident", "monitor", "aigov", "aibrief"}
+OPTIONAL_QUERY_MODES = {"accident", "monitor", "aigov", "aibrief", "events"}
 
 
 def is_esg_command(command: str) -> bool:
@@ -82,6 +85,7 @@ def parse_esg_command(command: str) -> tuple[str, str | None]:
     /esg aigov                   → aigov, None
     /esg aibrief                 → aibrief, None
     /esg monitor                 → monitor, None
+    /esg events                  → events, None
     """
     parts = command.strip().split()
     if len(parts) < 2:
@@ -146,6 +150,10 @@ def run_esg(
         from climate_pipeline import run_climate_monitor
 
         return run_climate_monitor(publish=publish)
+    elif mode == "events":
+        from esg_event_monitor import run_esg_events
+
+        return run_esg_events(publish=publish)
     else:
         raise ValueError(f"Unknown /esg mode: {mode}")
 

@@ -3,6 +3,7 @@
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgBriefStrip from "@/components/EsgBriefStrip";
 import EsgEtfChips from "@/components/EsgEtfChips";
+import EsgEventsMonitor from "@/components/EsgEventsMonitor";
 import EsgRiskMap from "@/components/EsgRiskMap";
 import { ESG_TAB_BRIEF_SLOTS } from "@/lib/esgShared";
 import type { BriefSlot, ShellTabId } from "@/lib/types";
@@ -21,7 +22,7 @@ export default function EsgTabShell({
   const isFullEsgTab = tab === "esg";
 
   const filteredSlots: BriefSlot[] = isFullEsgTab
-    ? allSlots
+    ? allSlots.filter((s) => s.slot !== "esg_events")
     : slotOrder
         .map((key) => slotMap[key])
         .filter((s): s is BriefSlot => Boolean(s));
@@ -31,22 +32,22 @@ export default function EsgTabShell({
   return (
     <>
       <EsgRiskMap briefSlots={briefSlotsRecord} />
+      {isFullEsgTab ? <EsgEventsMonitor /> : null}
       {children}
       {isFullEsgTab ? (
         <section className="panel kr-briefs">
           <h2 className="kr-briefs-title">ESG 시황 브리프</h2>
           <p className="kr-note">
-            브리프 우선순위: 물리적 기후위험 모니터 → 기업 거버넌스 개요 →
-            중대재해·안전 공시. 전력·그리드 시그널은 위 레이더 1순위를 보세요. 다른
-            ESG 하위 탭에도 관련 브리프가 분산 표시됩니다.
+            위 모니터가 매일 09:00 핵심 사건입니다. 아래는 기후·거버넌스·중대재해
+            보조 브리프입니다. 전력·그리드 시그널은 레이더 1순위를 보세요.
           </p>
-          {!allSlots.length ? (
+          {!filteredSlots.length ? (
             <p className="empty">
               ESG 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후
               자동으로 채워집니다.
             </p>
           ) : (
-            allSlots.map((slot) => <BriefSlotView key={slot.slot} slot={slot} />)
+            filteredSlots.map((slot) => <BriefSlotView key={slot.slot} slot={slot} />)
           )}
         </section>
       ) : (
