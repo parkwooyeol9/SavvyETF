@@ -3,6 +3,7 @@ import type { ShellTabId } from "@/lib/types";
 /** Relevant R2 brief slots per ESG sub-tab (distributed briefs). */
 export const ESG_TAB_BRIEF_SLOTS: Partial<Record<ShellTabId, string[]>> = {
   esg: [
+    "esg_events",
     "esg_monitor",
     "esg_overview",
     "esg_accident",

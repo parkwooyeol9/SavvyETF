@@ -1,10 +1,11 @@
 """Scheduled /esg broadcasts → SavvyESG channel (TELEGRAM_CHAT_ID_ESG).
 
 Default (KST):
-  - 09:30  /esg accident — 중대재해 screen (KRX trading days) only
+  - 09:00  /esg events — ESG 시황 (중대재해·환경·거버넌스), daily
+  - 09:30  /esg accident — 중대재해 screen (KRX trading days)
 
 Opt-in (explicitly enable):
-  - monitor / overview / aigov / aibrief
+  - monitor (climate) / overview / aigov / aibrief
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
+DEFAULT_EVENTS_KST = (9, 0)
 DEFAULT_MONITOR_KST = (9, 0)
 DEFAULT_ACCIDENT_KST = (9, 30)
 DEFAULT_OVERVIEW_KST = (9, 45)
@@ -48,6 +50,13 @@ def _parse_hhmm(raw: str, default: tuple[int, int]) -> tuple[int, int]:
     except ValueError:
         pass
     return default
+
+
+def _events_time_kst() -> tuple[int, int]:
+    return _parse_hhmm(
+        os.environ.get("ESG_EVENTS_SCHEDULE_KST", "9:00"),
+        DEFAULT_EVENTS_KST,
+    )
 
 
 def _monitor_time_kst() -> tuple[int, int]:
@@ -103,6 +112,36 @@ def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
     from kr_calendar import is_kr_equity_trading_day
 
     return not is_kr_equity_trading_day(now_kst.date())
+
+
+def run_scheduled_esg_events(token: str, broadcast_fn) -> bool:
+    from esg_event_monitor import run_esg_events
+    from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
+
+    if not begin_heavy_work_blocking("scheduled-esg-events", timeout=240):
+        print(
+            "Scheduled esg events skipped: heavy work still busy "
+            f"({heavy_work_status()})"
+        )
+        return False
+    try:
+        result = run_esg_events(publish=True)
+        messages = result.get("telegram_messages") or []
+        if not messages:
+            print("Scheduled esg events skipped: empty messages.")
+            return False
+        delivered = broadcast_fn(token, messages)
+        if not delivered:
+            print("Scheduled esg events not delivered: 0 chats.")
+            return False
+        print(f"Scheduled esg events sent → {delivered} chat(s).")
+        return True
+    except Exception as exc:
+        print(f"Scheduled esg events failed: {exc}")
+        update_scheduler_state(last_esg_events_error=str(exc))
+        return False
+    finally:
+        end_heavy_work("scheduled-esg-events")
 
 
 def run_scheduled_esg_monitor(token: str, broadcast_fn) -> bool:
@@ -303,6 +342,7 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         print("esg scheduler disabled.")
         return
 
+    events_h, events_m = _events_time_kst()
     monitor_h, monitor_m = _monitor_time_kst()
     accident_h, accident_m = _accident_time_kst()
     overview_h, overview_m = _overview_time_kst()
@@ -318,6 +358,7 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
     except ValueError:
         catchup_minutes = 120
 
+    events_enabled = _env_on("ESG_EVENTS_SCHEDULE_ENABLED", "true")
     monitor_enabled = _env_on("ESG_MONITOR_SCHEDULE_ENABLED", "false")
     accident_enabled = _env_on("ESG_ACCIDENT_SCHEDULE_ENABLED", "true")
     overview_enabled = _env_on("ESG_OVERVIEW_SCHEDULE_ENABLED", "false")
@@ -327,16 +368,22 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
 
     def loop() -> None:
         state = _load_state()
+        last_events = state.get("last_esg_events_slot")
         last_monitor = state.get("last_esg_monitor_slot")
         last_accident = state.get("last_esg_accident_slot")
         last_overview = state.get("last_esg_overview_slot")
         last_aigov = state.get("last_esg_aigov_slot")
         last_aibrief = state.get("last_esg_aibrief_slot")
         queries = ", ".join(_overview_queries())
+        events_bit = (
+            f"events {events_h:02d}:{events_m:02d} daily"
+            if events_enabled
+            else "events off"
+        )
         monitor_bit = (
-            f"monitor {monitor_h:02d}:{monitor_m:02d} daily"
+            f"climate {monitor_h:02d}:{monitor_m:02d} daily"
             if monitor_enabled
-            else "monitor off"
+            else "climate off"
         )
         accident_bit = (
             f"KRX accident {accident_h:02d}:{accident_m:02d}"
@@ -360,7 +407,7 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
         )
         print(
             f"esg scheduler active — "
-            f"{monitor_bit} · {accident_bit} · "
+            f"{events_bit} · {monitor_bit} · {accident_bit} · "
             f"{overview_bit} · {aigov_bit} · {aibrief_bit} "
             f"→ TELEGRAM_CHAT_ID_ESG ({catchup_minutes}m catch-up)"
         )
@@ -373,6 +420,19 @@ def start_esg_scheduler(token: str, broadcast_fn) -> None:
 
                 now = datetime.now(KST)
                 update_scheduler_state(esg_scheduler_heartbeat=now.isoformat())
+
+                if events_enabled:
+                    events_slot = due_slot_id(
+                        now,
+                        events_h,
+                        events_m,
+                        last_slot=last_events,
+                        window_minutes=catchup_minutes,
+                    )
+                    if events_slot:
+                        if run_scheduled_esg_events(token, broadcast_fn):
+                            last_events = events_slot
+                            update_scheduler_state(last_esg_events_slot=events_slot)
 
                 if monitor_enabled:
                     monitor_slot = due_slot_id(

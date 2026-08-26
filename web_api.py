@@ -870,3 +870,29 @@ def ai_gov_screen_payload(query: str | None = None) -> dict[str, Any]:
             "errors": [str(exc)],
             "error": str(exc),
         }
+
+
+def esg_events_payload(*, refresh: bool = False) -> dict[str, Any]:
+    """Dashboard payload for ESG 시황 daily event monitor."""
+    try:
+        from esg_event_monitor import build_esg_events_bundle, load_latest, persist_bundle
+
+        if not refresh:
+            cached = load_latest()
+            if isinstance(cached, dict) and cached.get("categories"):
+                return {
+                    **cached,
+                    "ok": True,
+                    "source": cached.get("source") or "cache",
+                }
+        bundle = build_esg_events_bundle()
+        persist_bundle(bundle)
+        return bundle
+    except Exception as exc:
+        return {
+            "ok": False,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "categories": [],
+            "summary": {"total": 0, "fresh": 0, "by_pillar": {"E": 0, "S": 0, "G": 0}},
+            "error": str(exc),
+        }

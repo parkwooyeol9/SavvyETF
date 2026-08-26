@@ -94,9 +94,9 @@ const TELEGRAM_CHANNELS = [
     href: "https://t.me/SavvyESG",
     accent: "esg",
     lines: [
-      "전력·그리드 · 물리적 기후 · 거버넌스/AI/사이버",
-      "09:00 — 물리적 기후위험 모니터",
-      "DART 기반 거버넌스·안전 공시",
+      "09:00 — ESG 시황 (중대재해·환경처분·거버넌스)",
+      "09:30 — 중대재해 공시 스크리닝",
+      "전력·그리드 · 물리적 기후 · AI/사이버",
     ],
   },
 ] as const;

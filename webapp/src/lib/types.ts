@@ -228,9 +228,9 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_nxt"],
   us: ["summary", "reddit"],
   etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
-  // Priority framing: physical climate (#2) → governance screen (#3) → safety filings
-  // Append-only AI gov slots — do not reorder/replace existing entries.
+  // Daily ESG 시황 monitor first; AI gov slots stay append-only after existing entries.
   esg: [
+    "esg_events",
     "esg_monitor",
     "esg_overview",
     "esg_accident",

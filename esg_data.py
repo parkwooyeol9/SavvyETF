@@ -532,6 +532,7 @@ def screen_keyword_disclosures(
     corp_code: str | None = None,
     max_pages: int = 10,
     limit: int = 30,
+    pblntf_ty: str | None = None,
 ) -> list[dict[str, Any]]:
     """Market-wide (or single-corp) DART list.json screen by report_nm keywords."""
     end = datetime.now(KST)
@@ -546,6 +547,8 @@ def screen_keyword_disclosures(
         }
         if corp_code:
             params["corp_code"] = corp_code
+        if pblntf_ty:
+            params["pblntf_ty"] = pblntf_ty
         payload = _dart_get_soft("list.json", params)
         rows = list(payload.get("list") or []) if payload else []
         if not rows:
@@ -1120,10 +1123,12 @@ def format_esg_overview_telegram(profile: dict[str, Any]) -> str:
 
 ESG_HELP = """\
 <b>🧭 /esg — ESG 중요도 프레임</b>
+0) 일일 시황 (S·E·G 사건) — <code>/esg events</code> · 09:00 → SavvyESG
 1) 전력·그리드·에너지 안보 (구조적 기회) — 웹 ESG 레이더
 2) 물리적 기후위험·적응 (포트폴리오 하방) — <code>/esg monitor</code>
 3) 거버넌스·AI·사이버 (기업 품질 스크린) — overview / own / accident / aigov
 
+<code>/esg events</code> — 일일 ESG 시황 (중대재해·환경처분·거버넌스)
 <code>/esg monitor</code> — 물리적 기후위험 (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — 거버넌스 허브 요약
 <code>/esg fin 삼성전자</code> — 실적·현금흐름·건전성

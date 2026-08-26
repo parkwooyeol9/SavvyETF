@@ -175,9 +175,10 @@ Auto schedule (KST):
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
   /etfcheck 15:40 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
+  /esg events 09:00 daily     → SavvyESG (ESG 시황)
   /esg accident 09:30 (KRX)  → SavvyESG (중대재해 only)
   (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
-   esg monitor/overview/aigov/brief)
+   esg climate monitor/overview/aigov/brief)
 
 Type /help for the full command list.
 """
@@ -220,8 +221,9 @@ def build_help_messages() -> list[dict]:
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
 <code>/etfcheck</code> 15:40 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
+<code>/esg events</code> 09:00 — ESG 시황 (SavvyESG / ESG 에이전트)
 <code>/esg accident</code> 09:30 — 중대재해 공시 (SavvyESG, 한국 휴장 제외)
-<i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> monitor/overview/aigov · ESG data briefing
+<i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> climate monitor/overview/aigov · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 <code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us/esg)
 
@@ -233,6 +235,7 @@ def build_help_messages() -> list[dict]:
 <code>/nxt 2026-06</code> — 월간 NXT 거래대금 누적
 <code>/nxt dailyvol 2026-06</code> — 시장 일별 대금·점유율
 <code>/dart 삼성전자</code> — DART 재무
+<code>/esg events</code> — ESG 시황 (중대재해·환경처분·거버넌스)
 <code>/esg monitor</code> — Climate Risk Monitor (유럽 이상기후·지진)
 <code>/esg 삼성전자</code> — ESG·거버넌스 (실적/배당/소유/환원/중대재해)
 <code>/dart etf memb 0167A0</code> — ETF 편입·DART 공시
@@ -483,7 +486,7 @@ def broadcast_messages_legacy(token: str, messages: list[str] | list[dict]) -> i
 
 
 def broadcast_messages_esg(token: str, messages: list[str] | list[dict]) -> int:
-    """SavvyESG schedules (/esg monitor|accident|overview) → TELEGRAM_CHAT_ID_ESG only."""
+    """SavvyESG schedules (/esg events|monitor|accident|overview) → TELEGRAM_CHAT_ID_ESG only."""
     return broadcast_messages(token, messages, audience="esg")
 
 
@@ -899,7 +902,16 @@ def _is_private_chat_id(chat_id: int) -> bool:
     return chat_id > 0
 
 
+def _startup_guide_excluded_ids() -> set[int]:
+    """Briefing pins (Korea 국내시황, US, ESG, legacy) never get the command dump."""
+    return _all_pinned_chat_ids()
+
+
 def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
+    if not _is_private_chat_id(chat_id):
+        return False
+    if chat_id in _startup_guide_excluded_ids():
+        return False
     if chat_id in _greeted_this_session:
         return False
     if not send_text(token, chat_id, STARTUP_TEXT):
@@ -910,40 +922,11 @@ def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
     return True
 
 
-def broadcast_startup_guide(token: str, extra_chat_ids: set[int] | None = None) -> bool:
-    """Notify that the bot is online after redeploy.
-
-    Only private 1:1 chats (positive ids) get the startup guide — never channels
-    or groups. Scheduled briefs still go to TELEGRAM_CHAT_ID_* channels as usual.
-    Public channel join is unrestricted (Telegram); this is DM-only notice.
-    """
-    chat_ids = startup_chat_ids()
-    if extra_chat_ids:
-        chat_ids |= extra_chat_ids
-
-    private_ids = {c for c in chat_ids if _is_private_chat_id(c)}
-    skipped = len(chat_ids) - len(private_ids)
-    if skipped:
-        print(
-            f"Startup guide: skipping {skipped} channel/group chat(s); "
-            f"private DMs only."
-        )
-
-    if not private_ids:
-        print("Startup guide deferred: no private (bot DM) chat IDs yet.")
-        print("It will be sent the next time you message the bot in a 1:1 chat.")
-        return False
-
-    sent_any = False
-    for chat_id in sorted(private_ids):
-        if send_startup_guide_to_chat(token, chat_id):
-            sent_any = True
-    return sent_any
-
-
 def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
-    # Channels already skip this caller; also guard groups if invoked elsewhere.
+    # Channels already skip this caller; also guard groups / briefing pins.
     if not _is_private_chat_id(chat_id):
+        return
+    if chat_id in _startup_guide_excluded_ids():
         return
     if chat_id not in _greeted_this_session:
         send_startup_guide_to_chat(token, chat_id)
@@ -1223,7 +1206,6 @@ def handle_telegram_message(message, chat_id: int, user_id: int | None = None):
                 ]
             summary = generate_and_save_summary(
                 public_url=summary_public_url(),
-                force_macro=True,
             )
             return summary["telegram_messages"]
         except Exception as exc:
@@ -1482,7 +1464,11 @@ def handle_telegram_message(message, chat_id: int, user_id: int | None = None):
             mode, query = parse_esg_command(normalized)
             if mode == "help":
                 return run_esg("help")["telegram_messages"]
-            label = query or ("Climate Risk" if mode == "monitor" else "전체")
+            label = query or (
+                "ESG 시황"
+                if mode == "events"
+                else ("Climate Risk" if mode == "monitor" else "전체")
+            )
             replies = [{"text": f"ESG 조회 중 ({mode}): {label}…"}]
             result = run_esg(mode, query)
             replies.extend(result["telegram_messages"])
@@ -1492,6 +1478,7 @@ def handle_telegram_message(message, chat_id: int, user_id: int | None = None):
                 {
                     "text": (
                         "Usage:\n"
+                        "/esg events\n"
                         "/esg monitor\n"
                         "/esg 삼성전자\n"
                         "/esg fin|div|own|return 기업\n"
@@ -2541,6 +2528,7 @@ def start_web_server():
                         "last_etfcheck_slot": state.get("last_etfcheck_slot"),
                         "last_etf_kor15_slot": state.get("last_etf_kor15_slot"),
                         "last_etf_sector_slot": state.get("last_etf_sector_slot"),
+                        "last_esg_events_slot": state.get("last_esg_events_slot"),
                         "last_esg_monitor_slot": state.get("last_esg_monitor_slot"),
                         "last_esg_accident_slot": state.get("last_esg_accident_slot"),
                         "last_esg_overview_slot": state.get("last_esg_overview_slot"),
@@ -2553,6 +2541,7 @@ def start_web_server():
                         "last_etfcheck_error": state.get("last_etfcheck_error"),
                         "last_etf_kor15_error": state.get("last_etf_kor15_error"),
                         "last_etf_sector_error": state.get("last_etf_sector_error"),
+                        "last_esg_events_error": state.get("last_esg_events_error"),
                         "last_esg_monitor_error": state.get("last_esg_monitor_error"),
                         "last_esg_brief_error": state.get("last_esg_brief_error"),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
@@ -2605,6 +2594,9 @@ def start_web_server():
                         "etf_kor15_kst": os.environ.get(
                             "ETF_KOR15_SCHEDULE_KST", "9:00"
                         ),
+                        "esg_events_kst": os.environ.get(
+                            "ESG_EVENTS_SCHEDULE_KST", "9:00"
+                        ),
                         "esg_monitor_kst": os.environ.get(
                             "ESG_MONITOR_SCHEDULE_KST", "9:00"
                         ),
@@ -2620,7 +2612,7 @@ def start_web_server():
                         "note": (
                             "ON: summary, summary_pre, reddit, summary_kor@15:40 "
                             "(compact Telegram), summary_nxt@16:40 (web-only), "
-                            "etfcheck, esg monitor/accident, etfdb. "
+                            "etfcheck, esg events@09:00, esg accident, etfdb. "
                             "OFF default: kor_intra, etf_sector, etf_us_new, "
                             "esg overview, esg brief; SUMMARY_NXT_TELEGRAM_ENABLED=false. "
                             "US→TELEGRAM_CHAT_ID_US; Korea→TELEGRAM_CHAT_ID_KOR; "
@@ -3318,6 +3310,21 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/esg-events":
+                from web_api import esg_events_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                refresh = (query.get("refresh") or ["0"])[0].strip().lower() in {
+                    "1",
+                    "true",
+                    "yes",
+                }
+                payload = esg_events_payload(refresh=refresh)
+                status = 200 if payload.get("ok") else 503
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def _send_cors_json(self, body: bytes, status: int = 200) -> None:
@@ -3614,7 +3621,12 @@ def start_telegram_bot(token: str):
     pending_updates, last_update_id = fetch_pending_updates(token)
     for chat_id in chat_ids_from_updates(pending_updates):
         register_delivery_chat(chat_id)
-    broadcast_startup_guide(token, chat_ids_from_updates(pending_updates))
+    # Do not blast STARTUP_TEXT on redeploy. Korea (국내시황) / US / ESG
+    # briefing chats do not need the command dump; /help still covers DMs.
+    print(
+        "Startup command guide: skipped on boot "
+        "(not sent to 국내시황 or other briefing chats)."
+    )
 
     # Never block the poll loop on command handlers — including backlog at boot.
     for update in pending_updates:

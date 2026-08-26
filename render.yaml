@@ -82,6 +82,10 @@ services:
         value: "false"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
+      - key: ESG_EVENTS_SCHEDULE_ENABLED
+        value: "true"
+      - key: ESG_EVENTS_SCHEDULE_KST
+        value: "9:00"
       - key: ESG_MONITOR_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_MONITOR_SCHEDULE_KST
