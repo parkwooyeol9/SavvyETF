@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import NlpPriceChart from "@/components/NlpPriceChart";
 import type {
   NlpHeadline,
   NlpMarketPulse,
@@ -102,7 +103,7 @@ function HeadlineList({
 export default function NlpPulseTab() {
   const [data, setData] = useState<NlpPulsePayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [market, setMarket] = useState<"all" | "kospi200" | "sp500">("all");
+  const [market, setMarket] = useState<"kospi200" | "sp500">("kospi200");
   const [picked, setPicked] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -124,26 +125,26 @@ export default function NlpPulseTab() {
 
   const names = useMemo(() => {
     const all = [...(data?.kospi.names || []), ...(data?.spx.names || [])];
-    return market === "all" ? all : all.filter((n) => n.market === market);
+    return all.filter((n) => n.market === market);
   }, [data, market]);
 
   const events = useMemo(() => {
     let rows = data?.events || [];
-    if (market !== "all") rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === market);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
   }, [data, market, picked]);
 
   const calls = useMemo(() => {
     let rows = data?.calls || [];
-    if (market !== "all") rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === market);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
   }, [data, market, picked]);
 
   const feed = useMemo(() => {
     let rows = data?.feed || [];
-    if (market !== "all") rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === market);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
   }, [data, market, picked]);
@@ -152,6 +153,12 @@ export default function NlpPulseTab() {
   const friendly = names.filter((n) => n.verdict === "friendly").slice(0, 8);
   const cautious = names.filter((n) => n.verdict === "cautious").slice(0, 8);
 
+  useEffect(() => {
+    if (!names.length) return;
+    if (picked && names.some((n) => n.id === picked)) return;
+    setPicked(names[0]!.id);
+  }, [names, picked]);
+
   return (
     <div className="geo-tab nlp-tab">
       <section className="geo-section geo-featured">
@@ -159,8 +166,8 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              KOSPI200·S&P500 대표주의 뉴스 텍스트, DART·SEC 이벤트 공시, 실적·컨콜
-              신호를 한 화면에서 봅니다. 점수는 호재/악재 키워드 극성입니다.
+              국내·해외 대표주의 뉴스 텍스트, DART·SEC 이벤트 공시, 실적·컨콜을 보고
+              종목 결론과 라이브 캔들 차트를 한 화면에서 봅니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -173,9 +180,8 @@ export default function NlpPulseTab() {
         <div className="nlp-filters">
           {(
             [
-              ["all", "전체"],
-              ["kospi200", "KOSPI 200"],
-              ["sp500", "S&P 500"],
+              ["kospi200", "국내 기업"],
+              ["sp500", "해외 기업"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -194,8 +200,7 @@ export default function NlpPulseTab() {
 
         {data?.ok ? (
           <div className="nlp-gauge-row">
-            {market !== "sp500" ? <Gauge pulse={data.kospi} /> : null}
-            {market !== "kospi200" ? <Gauge pulse={data.spx} /> : null}
+            <Gauge pulse={market === "kospi200" ? data.kospi : data.spx} />
           </div>
         ) : null}
         {data?.error ? <p className="meta-soft">{data.error}</p> : null}
@@ -203,7 +208,7 @@ export default function NlpPulseTab() {
 
       <section className="geo-section">
         <h3 className="geo-section-title">종목 투심 맵</h3>
-        <p className="macro-subhead">칩을 누르면 해당 종목 결론과 뉴스·공시·컨콜이 필터됩니다.</p>
+        <p className="macro-subhead">종목을 누르면 결론·차트·뉴스가 그 기업만 보여 줍니다.</p>
         {!names.length ? (
           <p className="empty">{loading ? "뉴스 수집 중…" : "표시할 종목이 없습니다."}</p>
         ) : (
@@ -213,7 +218,7 @@ export default function NlpPulseTab() {
                 key={card.id}
                 card={card}
                 active={picked === card.id}
-                onPick={(id) => setPicked((cur) => (cur === id ? null : id))}
+                onPick={(id) => setPicked(id)}
               />
             ))}
           </div>
@@ -243,6 +248,10 @@ export default function NlpPulseTab() {
           </article>
         ) : null}
       </section>
+
+      {pickedCard ? (
+        <NlpPriceChart key={pickedCard.ticker} ticker={pickedCard.ticker} name={pickedCard.name} />
+      ) : null}
 
       <div className="nlp-verdict-board">
         <section className="geo-section nlp-verdict-col nlp-friendly">
