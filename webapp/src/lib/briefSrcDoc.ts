@@ -1,3 +1,5 @@
+import type { BriefSlot } from "@/lib/types";
+
 /**
  * Prepare full brief HTML for sandboxed iframe srcDoc.
  *
@@ -86,4 +88,47 @@ export function prepareBriefSrcDoc(html: string): string {
     return trimmed.replace(/<html([^>]*)>/i, `<html$1><head>${THEME_STYLE_TAG}</head>`);
   }
   return wrapBriefFragment(trimmed);
+}
+
+const US_SUMMARY_MACRO_LABEL_RE =
+  /macro\s+(dashboard|risk\s*monitor|monitor)/i;
+
+/** Drop the retired US /summary macro appendix from stored HTML. */
+export function stripUsSummaryMacroHtml(html: string): string {
+  let out = html;
+  out = out.replace(
+    /<hr[^>]*class=['"]section-divider['"][^>]*\/?>\s*<section[^>]*appendix-section[^>]*>[\s\S]*?Macro Risk Monitor[\s\S]*?<\/section>/gi,
+    "",
+  );
+  out = out.replace(
+    /<section[^>]*class=['"][^'"]*appendix-section[^'"]*['"][^>]*>[\s\S]*?Macro Risk Monitor[\s\S]*?<\/section>/gi,
+    "",
+  );
+  out = out.replace(
+    /<span[^>]*class=['"]pill['"][^>]*>\s*Macro monitor\s*<\/span>\s*/gi,
+    "",
+  );
+  out = out.replace(
+    /📊\s*Macro dashboard[\s\S]{0,300}?\(unavailable:[^)]*\)/gi,
+    "",
+  );
+  return out;
+}
+
+export function stripUsSummaryMacroSlot(slot: BriefSlot): BriefSlot {
+  if (slot.slot !== "summary") return slot;
+  const html = slot.html ? stripUsSummaryMacroHtml(slot.html) : slot.html;
+  const sections = (slot.sections || []).filter((section) => {
+    const blob = `${section.heading || ""}\n${section.html_or_text || ""}`;
+    return !US_SUMMARY_MACRO_LABEL_RE.test(blob);
+  });
+  const images = (slot.images || []).filter(
+    (image) => !US_SUMMARY_MACRO_LABEL_RE.test(image.caption || ""),
+  );
+  return {
+    ...slot,
+    html,
+    sections: slot.sections ? sections : undefined,
+    images: slot.images ? images : undefined,
+  };
 }

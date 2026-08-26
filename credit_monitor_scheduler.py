@@ -1,4 +1,4 @@
-"""Daily FreeSIS / credit monitor — default 09:30 KST on KRX trading days.
+"""Daily FreeSIS / credit monitor — default 09:35 KST on KRX trading days.
 
 Scrapes on Render (KR-friendly egress), writes local + R2 so Vercel can read
 credit_monitor/latest.json without hitting FreeSIS from US IPs.
@@ -18,12 +18,12 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 9
-DEFAULT_MINUTE_KST = 30
+DEFAULT_MINUTE_KST = 35
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("CREDIT_MONITOR_SCHEDULE_KST", "09:30").strip()
+    raw = os.environ.get("CREDIT_MONITOR_SCHEDULE_KST", "09:35").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -55,7 +55,7 @@ def run_scheduled_credit_monitor() -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
     from kofia_freesis import collect_and_publish
 
-    if not begin_heavy_work_blocking("scheduled-credit-monitor", timeout=90):
+    if not begin_heavy_work_blocking("scheduled-credit-monitor", timeout=300):
         print(
             "Scheduled credit_monitor skipped: heavy work still busy "
             f"({heavy_work_status()})"

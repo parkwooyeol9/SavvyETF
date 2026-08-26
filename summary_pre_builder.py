@@ -1,7 +1,7 @@
 """Premarket market brief (/summary_pre): Finnhub pre-market quotes only (S&P 500).
 
 Unlike /summary (US close), this brief must NOT pull Yahoo daily rankings, heatmaps,
-macro, crypto, or daily TA leader charts — those are regular-session / post-close data.
+crypto, or daily TA leader charts — those are regular-session / post-close data.
 """
 
 from __future__ import annotations
@@ -98,7 +98,6 @@ def build_premarket_summary(news_limit: int = SUMMARY_PRE_NEWS_PER_TICKER) -> di
             "article_count": 0,
         },
         "heatmap_sp": None,
-        "macro": None,
         "crypto": None,
     }
 
