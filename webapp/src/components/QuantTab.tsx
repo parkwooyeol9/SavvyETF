@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   ComposedChart,
@@ -78,6 +78,14 @@ export default function QuantTab() {
   const [data, setData] = useState<QuantPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusId, setFocusId] = useState("spy");
+  const chartRef = useRef<HTMLElement | null>(null);
+
+  const pick = useCallback((id: string) => {
+    setFocusId(id);
+    window.requestAnimationFrame(() => {
+      chartRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, []);
 
   const load = useCallback(async (next: QuantRange) => {
     setLoading(true);
@@ -128,11 +136,7 @@ export default function QuantTab() {
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">Quant</h2>
-            <p className="kr-hero-sub">
-              GS Quant 공개 시계열 함수(변동성·낙폭·베타·샤프·RSI·볼린저)를 이 프로젝트의
-              시황·파생·변동성 모니터 유니버스에 적용합니다.
-            </p>
+            <h2 className="kr-hero-title">Technical</h2>
           </div>
           <div className="kr-hero-actions">
             <button type="button" className="ghost-btn" onClick={() => void load(range)} disabled={loading}>
@@ -190,7 +194,7 @@ export default function QuantTab() {
                   <tr
                     key={r.id}
                     className={focus?.id === r.id ? "volmon-row-active" : ""}
-                    onClick={() => setFocusId(r.id)}
+                    onClick={() => pick(r.id)}
                   >
                     <td>
                       <strong>{r.short}</strong>
@@ -224,7 +228,7 @@ export default function QuantTab() {
       </section>
 
       {focus ? (
-        <section className="geo-section nlp-chart-panel">
+        <section ref={chartRef} className="geo-section nlp-chart-panel">
           <div className="nlp-chart-head">
             <div>
               <h3 className="geo-section-title">
@@ -300,6 +304,53 @@ export default function QuantTab() {
         </section>
       ) : null}
 
+      <section className="geo-section">
+        <h3 className="geo-section-title">63일 수익률 상관 (GS correlation)</h3>
+        <p className="macro-subhead">셀을 누르면 바로 위 심층 차트가 바뀝니다. 대각선은 1입니다.</p>
+        {data?.heatmap?.length ? (
+          <div className="deriv-table-wrap quant-table-wrap">
+            <table className="deriv-table quant-heat-table">
+              <thead>
+                <tr>
+                  <th />
+                  {data.ids.map((id) => (
+                    <th key={`h-${id}`}>{shorts.get(id) || id}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.ids.map((rowId) => (
+                  <tr key={`r-${rowId}`}>
+                    <th>
+                      <button type="button" className="quant-heat-lab" onClick={() => pick(rowId)}>
+                        {shorts.get(rowId) || rowId}
+                      </button>
+                    </th>
+                    {data.ids.map((colId) => {
+                      const cell = data.heatmap.find((c) => c.a === rowId && c.b === colId);
+                      return (
+                        <td key={`${rowId}-${colId}`} style={{ background: heatColor(cell?.value ?? null) }}>
+                          <button
+                            type="button"
+                            className="quant-heat-cell"
+                            title={`${shorts.get(rowId)}–${shorts.get(colId)} ${cell?.value != null ? cell.value.toFixed(2) : "—"}`}
+                            onClick={() => pick(colId)}
+                          >
+                            {cell?.value != null ? cell.value.toFixed(2) : "—"}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="empty">{loading ? "상관 계산 중…" : "상관 행렬 없음"}</p>
+        )}
+      </section>
+
       <div className="nlp-verdict-board">
         <section className="geo-section nlp-verdict-col nlp-cautious">
           <h3 className="geo-section-title">과열</h3>
@@ -309,7 +360,7 @@ export default function QuantTab() {
             <ul className="nlp-verdict-list">
               {hot.map((r) => (
                 <li key={r.id}>
-                  <button type="button" onClick={() => setFocusId(r.id)}>
+                  <button type="button" onClick={() => pick(r.id)}>
                     <strong>{r.short}</strong>
                     <span className="up">RSI {r.rsi != null ? r.rsi.toFixed(0) : "—"}</span>
                   </button>
@@ -329,7 +380,7 @@ export default function QuantTab() {
             <ul className="nlp-verdict-list">
               {[...cold, ...drawn].map((r) => (
                 <li key={r.id}>
-                  <button type="button" onClick={() => setFocusId(r.id)}>
+                  <button type="button" onClick={() => pick(r.id)}>
                     <strong>{r.short}</strong>
                     <span className="down">{r.stretch_ko}</span>
                   </button>
@@ -345,53 +396,6 @@ export default function QuantTab() {
       </div>
 
       <section className="geo-section">
-        <h3 className="geo-section-title">63일 수익률 상관 (GS correlation)</h3>
-        <p className="macro-subhead">셀을 누르면 해당 자산 심층 차트로 이동합니다. 대각선은 1입니다.</p>
-        {data?.heatmap?.length ? (
-          <div className="deriv-table-wrap quant-table-wrap">
-            <table className="deriv-table quant-heat-table">
-              <thead>
-                <tr>
-                  <th />
-                  {data.ids.map((id) => (
-                    <th key={`h-${id}`}>{shorts.get(id) || id}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.ids.map((rowId) => (
-                  <tr key={`r-${rowId}`}>
-                    <th>
-                      <button type="button" className="quant-heat-lab" onClick={() => setFocusId(rowId)}>
-                        {shorts.get(rowId) || rowId}
-                      </button>
-                    </th>
-                    {data.ids.map((colId) => {
-                      const cell = data.heatmap.find((c) => c.a === rowId && c.b === colId);
-                      return (
-                        <td key={`${rowId}-${colId}`} style={{ background: heatColor(cell?.value ?? null) }}>
-                          <button
-                            type="button"
-                            className="quant-heat-cell"
-                            title={`${shorts.get(rowId)}–${shorts.get(colId)} ${cell?.value != null ? cell.value.toFixed(2) : "—"}`}
-                            onClick={() => setFocusId(colId)}
-                          >
-                            {cell?.value != null ? cell.value.toFixed(2) : "—"}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="empty">{loading ? "상관 계산 중…" : "상관 행렬 없음"}</p>
-        )}
-      </section>
-
-      <section className="geo-section">
         <h3 className="geo-section-title">방법론</h3>
         <ul className="ideas-summary">
           {QUANT_METHODOLOGY.map((line) => (
@@ -399,11 +403,8 @@ export default function QuantTab() {
           ))}
         </ul>
         <p className="macro-schedule">
-          <a href="https://github.com/goldmansachs/gs-quant" target="_blank" rel="noreferrer">
-            goldmansachs/gs-quant
-          </a>
           {data?.generated_at
-            ? ` · ${new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })}`
+            ? new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })
             : ""}
         </p>
       </section>

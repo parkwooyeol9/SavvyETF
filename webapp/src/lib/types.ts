@@ -152,7 +152,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   crypto: "가상자산",
   volmonitor: "Volatility Monitor",
   derivatives: "Derivatives",
-  quant: "Quant",
+  quant: "Technical",
   ideas: "AI Pick",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
@@ -178,7 +178,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "eventstudy", "kosdaq100"],
+    tabs: ["kr", "us", "eventstudy", "kosdaq100", "quant"],
   },
   {
     id: "etf",
@@ -225,7 +225,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "derivs",
     label: "파생상품",
-    tabs: ["leverage", "volmonitor", "derivatives", "quant"],
+    tabs: ["leverage", "volmonitor", "derivatives"],
   },
 ];
 

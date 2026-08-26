@@ -286,7 +286,6 @@ export function quantDeskComment(rows: QuantSnapshot[]): string {
 }
 
 export const QUANT_METHODOLOGY: string[] = [
-  "함수: Goldman Sachs gs-quant 공개 시계열 (Apache-2.0)을 TypeScript로 재구현. Marquee 로그인이 필요한 데이터 API는 쓰지 않습니다.",
   "econometrics: returns(simple) · volatility(22, √252·100) · max_drawdown · beta/correlation vs SPY(63) · sharpe(63, rf=0)",
   "statistics: zscores(일간 수익률, 63) · 가격 percentile",
   "technicals: moving_average(22) · bollinger_bands(22, k=2) · RSI(14, SMMA) · MACD(12·26·9)",
