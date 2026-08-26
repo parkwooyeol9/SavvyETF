@@ -6997,3 +6997,93 @@ button.country-etf-card {
     flex-direction: column;
   }
 }
+
+.quant-comment {
+  margin: 0.85rem 0 0;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.quant-table-wrap {
+  max-height: 520px;
+}
+
+.quant-table-wrap tbody tr {
+  cursor: pointer;
+}
+
+.quant-pill {
+  display: inline-block;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.quant-hot {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.16);
+}
+
+.quant-cold {
+  color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.16);
+}
+
+.quant-drawn {
+  color: #fdba74;
+  background: rgba(251, 146, 60, 0.16);
+}
+
+.quant-neutral {
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.quant-split-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.55rem;
+}
+
+.quant-mini-wrap {
+  height: 160px;
+}
+
+.quant-heat-table th,
+.quant-heat-table td {
+  padding: 0;
+  text-align: center;
+}
+
+.quant-heat-table th:first-child,
+.quant-heat-table td:first-child {
+  text-align: left;
+  padding: 0.28rem 0.4rem;
+}
+
+.quant-heat-lab,
+.quant-heat-cell {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.28rem 0.2rem;
+}
+
+.quant-heat-cell {
+  min-width: 2.4rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 980px) {
+  .quant-split-charts {
+    grid-template-columns: 1fr;
+  }
+}
