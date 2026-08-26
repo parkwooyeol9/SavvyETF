@@ -32,6 +32,8 @@ export type ShellTabId =
   | "eventstudy"
   | "aiport"
   | "nlp"
+  | "ripple"
+  | "chain"
   | "corridor"
   | "usmidterm"
   | "polithemes"
@@ -104,6 +106,8 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "ideas",
   "aiport",
   "nlp",
+  "ripple",
+  "chain",
   "corridor",
   "etf",
   "leverage",
@@ -161,6 +165,8 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   moneyflow: "Money Flow",
   aiport: "AI포트",
   nlp: "NLP",
+  ripple: "Ripple",
+  chain: "Chain",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
   polithemes: "정치테마상품",
@@ -204,7 +210,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "ai",
     label: "AI",
-    tabs: ["ideas", "aiport", "nlp"],
+    tabs: ["ideas", "aiport", "nlp", "ripple", "chain"],
   },
   // Append-only: do not replace existing ESG sub-tabs when adding entries.
   {
