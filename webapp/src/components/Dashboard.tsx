@@ -32,6 +32,8 @@ import DerivativesTab from "@/components/DerivativesTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import NlpPulseTab from "@/components/NlpPulseTab";
+import RippleTab from "@/components/RippleTab";
+import ChainTab from "@/components/ChainTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
@@ -220,6 +222,8 @@ export default function Dashboard() {
       tab === "etf" ||
       tab === "aiport" ||
       tab === "nlp" ||
+      tab === "ripple" ||
+      tab === "chain" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
       tab === "polithemes"
@@ -303,6 +307,10 @@ export default function Dashboard() {
         <AiPortTab />
       ) : tab === "nlp" ? (
         <NlpPulseTab />
+      ) : tab === "ripple" ? (
+        <RippleTab />
+      ) : tab === "chain" ? (
+        <ChainTab />
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (

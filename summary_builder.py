@@ -490,7 +490,6 @@ def render_summary_html(summary: dict, public_url: str = "") -> str:
       {link_html}
       <div class="pill-row">
         <span class="pill">ETF + S&amp;P 500</span>
-        <span class="pill">BTC + ETH</span>
         <span class="pill">AI briefing</span>
       </div>
     </section>
@@ -635,7 +634,6 @@ def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
 
     messages.extend(_format_heatmap_telegram(summary))
     messages.extend(_format_ai_telegram(summary))
-    messages.extend(_format_crypto_telegram(summary))
 
     return messages
 
@@ -817,7 +815,8 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     except Exception as exc:
         summary["heatmap_sp"] = {"error": str(exc)}
 
-    summary["crypto"] = _build_crypto_appendix()
+    # CoinGecko free-tier 429s turn BTC/ETH into "Chart unavailable" Telegram noise.
+    summary["crypto"] = {}
 
     # Final stage: data briefing from boards / notes / news.
     # (replaces the previous trending-news AI briefing).
@@ -909,7 +908,7 @@ def format_summary_web_link_message(summary: dict, public_url: str = "") -> dict
         "🌐 전체 마켓 브리프 (웹 페이지)",
         summary["generated_at_display"],
         "",
-        "랭킹·리더 차트·히트맵·BTC/ETH·AI 브리핑이 한 페이지에 모여 있습니다.",
+        "랭킹·리더 차트·히트맵·AI 브리핑이 한 페이지에 모여 있습니다.",
         f"🔗 {url}",
     ]
     if is_local:
