@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
+import { fetchBotJson } from "@/lib/bot";
 import {
   NLP_LOOKBACK_DAYS,
   NLP_UNIVERSE,
@@ -359,26 +360,203 @@ function uniqueHeadlines(rows: NlpHeadline[]): NlpHeadline[] {
   return out;
 }
 
+type BotNlp = {
+  ok?: boolean;
+  dart?: Array<{
+    corp_name?: string;
+    stock_code?: string;
+    report_nm?: string;
+    date?: string;
+    matched?: string[];
+    url?: string | null;
+  }>;
+  sec?: Array<{
+    company?: string;
+    tickers?: string[];
+    items?: string[];
+    form?: string;
+    file_date?: string;
+    url?: string;
+  }>;
+  earnings?: Array<{
+    symbol?: string;
+    date?: string;
+    hour?: string;
+    epsEstimate?: number | null;
+    epsActual?: number | null;
+  }>;
+  sources?: string[];
+  errors?: string[];
+};
+
+function aliasTicker(sym: string): string {
+  const u = sym.toUpperCase();
+  if (u === "GOOG") return "GOOGL";
+  if (u === "BRK-B") return "BRK.B";
+  return u;
+}
+
+function mapBotDart(rows: NonNullable<BotNlp["dart"]>): NlpHeadline[] {
+  const hits: NlpHeadline[] = [];
+  for (const row of rows) {
+    const report = (row.report_nm || "").trim();
+    const names = matchUniverse(`${row.corp_name || ""} ${report}`, {
+      stock_code: (row.stock_code || "").trim(),
+    });
+    for (const spec of names.filter((n) => n.market === "kospi200")) {
+      const scored = scoreText(`${report} ${row.corp_name || ""}`);
+      hits.push({
+        id: `dart|${row.date}|${spec.id}|${report.slice(0, 40)}`,
+        name_id: spec.id,
+        market: "kospi200",
+        ticker: spec.ticker,
+        name: spec.name,
+        date: row.date || isoDate(new Date()),
+        title: `${row.corp_name || spec.name} · ${report}`,
+        source: "DART",
+        url: row.url || undefined,
+        score: scored.score,
+        matched: row.matched?.length ? row.matched : scored.matched,
+        kind: "dart",
+      });
+    }
+  }
+  return hits;
+}
+
+function mapBotSec(rows: NonNullable<BotNlp["sec"]>): NlpHeadline[] {
+  const hits: NlpHeadline[] = [];
+  for (const row of rows) {
+    const ticker = aliasTicker((row.tickers || [])[0] || "");
+    const names = matchUniverse(`${row.company || ""} ${ticker}`, { ticker });
+    const us = names.filter((n) => n.market === "sp500");
+    if (!us.length) continue;
+    const items = (row.items || []).join(", ");
+    const title = `${row.company || us[0]!.name} · 8-K ${items || row.form || ""}`.trim();
+    const scored = scoreText(title);
+    for (const spec of us) {
+      hits.push({
+        id: `sec|${row.file_date}|${spec.id}|${title.slice(0, 40)}`,
+        name_id: spec.id,
+        market: "sp500",
+        ticker: spec.ticker,
+        name: spec.name,
+        date: row.file_date || isoDate(new Date()),
+        title,
+        source: "SEC",
+        url: row.url,
+        score: scored.score,
+        matched: items ? items.split(",").slice(0, 4) : scored.matched,
+        kind: "sec",
+      });
+    }
+  }
+  return hits;
+}
+
+function mapBotEarnings(rows: NonNullable<BotNlp["earnings"]>): NlpHeadline[] {
+  const hits: NlpHeadline[] = [];
+  for (const row of rows) {
+    const raw = (row.symbol || "").toUpperCase();
+    const spec = NLP_UNIVERSE.find(
+      (n) =>
+        n.ticker.toUpperCase() === aliasTicker(raw) ||
+        n.stock_code === raw.replace(/\.(KS|KQ)$/i, "") ||
+        n.ticker.toUpperCase() === raw,
+    );
+    if (!spec) continue;
+    const actual = row.epsActual;
+    const est = row.epsEstimate;
+    let title = `${spec.name} 실적 (${row.hour || "TBD"})`;
+    let score = 0;
+    const matched: string[] = ["earnings"];
+    if (actual != null && est != null) {
+      if (actual > est) {
+        title = `${spec.name} EPS 서프라이즈 ${actual} vs ${est}`;
+        score = 70;
+        matched.push("beat");
+      } else if (actual < est) {
+        title = `${spec.name} EPS 하회 ${actual} vs ${est}`;
+        score = -70;
+        matched.push("miss");
+      } else {
+        title = `${spec.name} EPS 컨센서스 부합 ${actual}`;
+      }
+    } else {
+      title = `${spec.name} 실적·컨콜 ${row.date || ""} ${row.hour || ""}`.trim();
+    }
+    hits.push({
+      id: `call|${raw}|${row.date}`,
+      name_id: spec.id,
+      market: spec.market,
+      ticker: spec.ticker,
+      name: spec.name,
+      date: row.date || isoDate(new Date()),
+      title,
+      source: "Finnhub",
+      url: `https://finance.yahoo.com/quote/${encodeURIComponent(raw)}`,
+      score,
+      matched,
+      kind: "call",
+    });
+  }
+  return hits;
+}
+
+function isSkippableKeyedError(text: string): boolean {
+  return /API_KEY 없음|not set|DART_API_KEY|FINNHUB_API_KEY|SEC HTTP 403|HTTP 403/i.test(
+    text,
+  );
+}
+
+async function fetchKeyedSources(): Promise<{
+  hits: NlpHeadline[];
+  sources: string[];
+  errors: string[];
+}> {
+  try {
+    const bot = await fetchBotJson<BotNlp>("/api/web/nlp-pulse", { timeoutMs: 28_000 });
+    if (bot && bot.ok !== false) {
+      return {
+        hits: [
+          ...mapBotDart(bot.dart || []),
+          ...mapBotSec(bot.sec || []),
+          ...mapBotEarnings(bot.earnings || []),
+        ],
+        sources: bot.sources || [],
+        errors: (bot.errors || []).filter((e) => !isSkippableKeyedError(e)),
+      };
+    }
+  } catch {
+    // Render cold start / timeout — try Vercel env keys next.
+  }
+
+  const [dart, earnings] = await Promise.all([fetchDartEvents(), fetchEarningsCalls()]);
+  const sources: string[] = [];
+  const errors: string[] = [];
+  if (!dart.error) sources.push("Open DART");
+  else if (!isSkippableKeyedError(dart.error)) errors.push(dart.error);
+  if (!earnings.error) sources.push("Finnhub earnings");
+  else if (!isSkippableKeyedError(earnings.error)) errors.push(earnings.error);
+  if (!sources.length && !errors.length) {
+    errors.push("공시·실적은 Render 봇 배포 후 표시됩니다");
+  }
+  return {
+    hits: [...dart.hits, ...earnings.hits],
+    sources,
+    errors,
+  };
+}
+
 async function buildPayload(): Promise<NlpPulsePayload> {
   const sources: string[] = ["Google News"];
-  const newsLists = await poolMap(NLP_UNIVERSE, 6, fetchNameNews);
-  let headlines: NlpHeadline[] = newsLists.flat();
-
-  const [dart, sec, earnings] = await Promise.all([
-    fetchDartEvents(),
-    fetchSecEvents(),
-    fetchEarningsCalls(),
+  const [newsLists, keyed] = await Promise.all([
+    poolMap(NLP_UNIVERSE, 6, fetchNameNews),
+    fetchKeyedSources(),
   ]);
-  if (!dart.error) sources.push("Open DART");
-  if (!sec.error) sources.push("SEC EDGAR");
-  if (!earnings.error) sources.push("Finnhub earnings");
+  sources.push(...keyed.sources);
 
-  headlines = uniqueHeadlines([
-    ...headlines,
-    ...dart.hits,
-    ...sec.hits,
-    ...earnings.hits,
-  ]);
+  const headlines = uniqueHeadlines([...newsLists.flat(), ...keyed.hits]);
 
   const cards = assembleNameCards(headlines);
   const kospi = buildMarketPulse("kospi200", cards, headlines);
@@ -396,7 +574,6 @@ async function buildPayload(): Promise<NlpPulsePayload> {
     .sort((a, b) => Math.abs(b.score) - Math.abs(a.score) || b.date.localeCompare(a.date))
     .slice(0, 16);
 
-  const errors = [dart.error, sec.error, earnings.error].filter(Boolean);
   const payload = emptyNlpPayload();
   return {
     ...payload,
@@ -408,13 +585,13 @@ async function buildPayload(): Promise<NlpPulsePayload> {
     calls,
     feed,
     sources,
-    error: errors.length ? errors.join(" · ") : undefined,
+    error: keyed.errors.length ? keyed.errors.join(" · ") : undefined,
   };
 }
 
 export async function GET() {
   try {
-    const payload = await withServerCache("nlp-pulse:v1", 180_000, 600_000, buildPayload);
+    const payload = await withServerCache("nlp-pulse:v3", 180_000, 600_000, buildPayload);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahoo") },
     });

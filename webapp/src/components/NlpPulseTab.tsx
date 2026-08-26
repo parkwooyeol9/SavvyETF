@@ -9,6 +9,7 @@ import type {
   NlpPulsePayload,
   NlpTone,
 } from "@/lib/nlpPulse";
+import { emptyNlpPayload } from "@/lib/nlpPulse";
 
 function fmtScore(n: number): string {
   const sign = n > 0 ? "+" : "";
@@ -39,8 +40,9 @@ function Gauge({ pulse }: { pulse: NlpMarketPulse }) {
         <span className="nlp-gauge-mid" />
       </div>
       <p className="nlp-gauge-meta">
-        뉴스 {pulse.news_n} · 공시 {pulse.event_n} · 호조 {pulse.bull_n} · 경계 {pulse.bear_n}
+        {pulse.verdict_ko} · 뉴스 {pulse.news_n} · 공시 {pulse.event_n} · 호조 {pulse.bull_n} · 경계 {pulse.bear_n}
       </p>
+      <p className="nlp-gauge-comment">{pulse.comment}</p>
     </article>
   );
 }
@@ -51,10 +53,11 @@ function NameChip({ card, onPick, active }: { card: NlpNameCard; onPick: (id: st
       type="button"
       className={`nlp-chip nlp-${card.tone} ${active ? "active" : ""}`}
       onClick={() => onPick(card.id)}
-      title={card.top_title}
+      title={card.comment}
     >
       <span>{card.name}</span>
       <strong className={toneClass(card.tone)}>{fmtScore(card.score)}</strong>
+      <em className={`nlp-verdict-tag nlp-${card.verdict}`}>{card.verdict_ko}</em>
       {card.event_n ? <em>공시 {card.event_n}</em> : null}
       {card.call_n ? <em>콜 {card.call_n}</em> : null}
     </button>
@@ -109,41 +112,7 @@ export default function NlpPulseTab() {
       const json = (await res.json()) as NlpPulsePayload;
       setData(json);
     } catch (exc) {
-      setData({
-        ok: false,
-        generated_at: new Date().toISOString(),
-        lookback_days: 2,
-        kospi: {
-          market: "kospi200",
-          label: "KOSPI 200",
-          score: 0,
-          tone: "flat",
-          news_n: 0,
-          event_n: 0,
-          bull_n: 0,
-          bear_n: 0,
-          names: [],
-        },
-        spx: {
-          market: "sp500",
-          label: "S&P 500",
-          score: 0,
-          tone: "flat",
-          news_n: 0,
-          event_n: 0,
-          bull_n: 0,
-          bear_n: 0,
-          names: [],
-        },
-        events: [],
-        calls: [],
-        feed: [],
-        sources: [],
-        note: "",
-        methodology: [],
-        disclaimer: "",
-        error: exc instanceof Error ? exc.message : "로드 실패",
-      });
+      setData(emptyNlpPayload(exc instanceof Error ? exc.message : "로드 실패"));
     } finally {
       setLoading(false);
     }
@@ -180,6 +149,8 @@ export default function NlpPulseTab() {
   }, [data, market, picked]);
 
   const pickedCard = names.find((n) => n.id === picked);
+  const friendly = names.filter((n) => n.verdict === "friendly").slice(0, 8);
+  const cautious = names.filter((n) => n.verdict === "cautious").slice(0, 8);
 
   return (
     <div className="geo-tab nlp-tab">
@@ -232,7 +203,7 @@ export default function NlpPulseTab() {
 
       <section className="geo-section">
         <h3 className="geo-section-title">종목 투심 맵</h3>
-        <p className="macro-subhead">칩을 누르면 아래 뉴스 피드가 해당 종목만 보여 줍니다.</p>
+        <p className="macro-subhead">칩을 누르면 해당 종목 결론과 뉴스·공시·컨콜이 필터됩니다.</p>
         {!names.length ? (
           <p className="empty">{loading ? "뉴스 수집 중…" : "표시할 종목이 없습니다."}</p>
         ) : (
@@ -248,18 +219,69 @@ export default function NlpPulseTab() {
           </div>
         )}
         {pickedCard ? (
-          <p className="nlp-picked">
-            {pickedCard.name} ({pickedCard.ticker}) · 뉴스 {pickedCard.news_n} ·{" "}
-            {pickedCard.top_url ? (
-              <a href={pickedCard.top_url} target="_blank" rel="noreferrer">
-                {pickedCard.top_title}
-              </a>
-            ) : (
-              pickedCard.top_title
-            )}
-          </p>
+          <article className={`nlp-verdict nlp-${pickedCard.verdict}`}>
+            <header>
+              <strong>{pickedCard.name}</strong>
+              <span className={toneClass(pickedCard.tone)}>
+                {pickedCard.verdict_ko} {fmtScore(pickedCard.score)}
+              </span>
+            </header>
+            <p>{pickedCard.comment}</p>
+            <p className="nlp-picked">
+              뉴스 {pickedCard.news_n} · 공시 {pickedCard.event_n} · 컨콜 {pickedCard.call_n}
+              {pickedCard.top_url ? (
+                <>
+                  {" · "}
+                  <a href={pickedCard.top_url} target="_blank" rel="noreferrer">
+                    {pickedCard.top_title}
+                  </a>
+                </>
+              ) : pickedCard.top_title ? (
+                <> · {pickedCard.top_title}</>
+              ) : null}
+            </p>
+          </article>
         ) : null}
       </section>
+
+      <div className="nlp-verdict-board">
+        <section className="geo-section nlp-verdict-col nlp-friendly">
+          <h3 className="geo-section-title">우호적으로 본 종목</h3>
+          {!friendly.length ? (
+            <p className="empty">뚜렷한 우호 기울기 종목이 없습니다.</p>
+          ) : (
+            <ul className="nlp-verdict-list">
+              {friendly.map((card) => (
+                <li key={card.id}>
+                  <button type="button" onClick={() => setPicked(card.id)}>
+                    <strong>{card.name}</strong>
+                    <span className="up">{fmtScore(card.score)}</span>
+                  </button>
+                  <p>{card.comment}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="geo-section nlp-verdict-col nlp-cautious">
+          <h3 className="geo-section-title">경계로 본 종목</h3>
+          {!cautious.length ? (
+            <p className="empty">뚜렷한 경계 기울기 종목이 없습니다.</p>
+          ) : (
+            <ul className="nlp-verdict-list">
+              {cautious.map((card) => (
+                <li key={card.id}>
+                  <button type="button" onClick={() => setPicked(card.id)}>
+                    <strong>{card.name}</strong>
+                    <span className="down">{fmtScore(card.score)}</span>
+                  </button>
+                  <p>{card.comment}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
 
       <div className="nlp-three">
         <section className="geo-section">
