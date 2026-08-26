@@ -32,6 +32,8 @@ export type NlpHeadline = {
   kind: "news" | "dart" | "sec" | "call";
 };
 
+export type NlpVerdict = "friendly" | "cautious" | "neutral";
+
 export type NlpNameCard = {
   id: string;
   market: NlpMarket;
@@ -39,6 +41,9 @@ export type NlpNameCard = {
   ticker: string;
   score: number;
   tone: NlpTone;
+  verdict: NlpVerdict;
+  verdict_ko: string;
+  comment: string;
   news_n: number;
   event_n: number;
   call_n: number;
@@ -51,6 +56,9 @@ export type NlpMarketPulse = {
   label: string;
   score: number;
   tone: NlpTone;
+  verdict: NlpVerdict;
+  verdict_ko: string;
+  comment: string;
   news_n: number;
   event_n: number;
   bull_n: number;
@@ -88,7 +96,8 @@ export const NLP_METHODOLOGY: string[] = [
   "국내 공시: Open DART 주요 이벤트(실적·배당·계약·지배구조·이슈)",
   "미국 공시: SEC EDGAR 8-K (실적 Item 2.02, 기타 중요 이벤트)",
   "컨콜: Finnhub 실적 캘린더 + 콜/가이던스 키워드 헤드라인",
-  "점수: 호재−악재 키워드 순점수 (−100~+100), 건수 가중 시장 합성",
+  "점수: 호재−악재 키워드 순점수 (−100~+100), 공시·컨콜 가중 후 종목 결론(우호/중립/경계)",
+  "DART·Finnhub·SEC 키는 Render 봇(/api/web/nlp-pulse)을 통해 사용",
 ];
 
 export const NLP_UNIVERSE: NlpName[] = [
@@ -172,6 +181,94 @@ export function nlpTone(score: number): NlpTone {
   return "flat";
 }
 
+export function nlpVerdict(score: number): NlpVerdict {
+  if (score >= 12) return "friendly";
+  if (score <= -12) return "cautious";
+  return "neutral";
+}
+
+export function nlpVerdictKo(verdict: NlpVerdict): string {
+  if (verdict === "friendly") return "우호";
+  if (verdict === "cautious") return "경계";
+  return "중립";
+}
+
+function uniqueKeys(rows: NlpHeadline[], limit = 4): string[] {
+  const out: string[] = [];
+  for (const row of rows) {
+    for (const k of row.matched) {
+      if (!out.includes(k)) out.push(k);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+function kindWeight(kind: NlpHeadline["kind"]): number {
+  if (kind === "call") return 1.4;
+  if (kind === "dart" || kind === "sec") return 1.2;
+  return 1;
+}
+
+export function buildNameComment(
+  name: string,
+  news: NlpHeadline[],
+  events: NlpHeadline[],
+  calls: NlpHeadline[],
+  score: number,
+): string {
+  const parts: string[] = [];
+  if (news.length) {
+    const pos = news.filter((n) => n.score >= 12).length;
+    const neg = news.filter((n) => n.score <= -12).length;
+    const keys = uniqueKeys(news);
+    const keyBit = keys.length ? `(${keys.join("·")})` : "";
+    if (pos > neg) {
+      parts.push(`뉴스 ${news.length}건은 호재 키워드${keyBit}가 더 많습니다.`);
+    } else if (neg > pos) {
+      parts.push(`뉴스 ${news.length}건은 악재·경계 키워드${keyBit}가 두드러집니다.`);
+    } else {
+      parts.push(`뉴스 ${news.length}건은 호재·악재가 혼재합니다${keyBit ? ` ${keyBit}` : ""}.`);
+    }
+  } else {
+    parts.push("최근 극성 뉴스가 적어 뉴스만으로는 판단이 약합니다.");
+  }
+
+  if (events.length) {
+    const titles = events
+      .slice(0, 2)
+      .map((e) => e.title.replace(`${e.name} · `, "").slice(0, 28))
+      .join(" / ");
+    parts.push(`공시 ${events.length}건(${events[0]?.source || "DART·SEC"}): ${titles}.`);
+  } else {
+    parts.push("최근 DART·SEC 이벤트 공시는 없습니다.");
+  }
+
+  if (calls.length) {
+    const beat = calls.filter((c) => c.score >= 12).length;
+    const miss = calls.filter((c) => c.score <= -12).length;
+    if (beat > miss) {
+      parts.push(`컨콜·실적 ${calls.length}건은 서프라이즈·가이던스 쪽입니다.`);
+    } else if (miss > beat) {
+      parts.push(`컨콜·실적 ${calls.length}건은 하회·가이던스 경계가 있습니다.`);
+    } else {
+      parts.push(`컨콜·실적 ${calls.length}건이 포착됐습니다.`);
+    }
+  } else {
+    parts.push("컨콜·실적 캘린더 신호는 없습니다.");
+  }
+
+  const verdict = nlpVerdict(score);
+  if (verdict === "friendly") {
+    parts.push(`종합하면 ${name}의 단기 텍스트 투심은 우호적입니다.`);
+  } else if (verdict === "cautious") {
+    parts.push(`종합하면 ${name}의 단기 텍스트 투심은 경계 쪽입니다.`);
+  } else {
+    parts.push(`종합하면 ${name}은 뚜렷한 우호·경계 기울기가 없습니다.`);
+  }
+  return parts.join(" ");
+}
+
 export function scoreText(text: string): { score: number; matched: string[] } {
   const raw = text.toLowerCase();
   const matched: string[] = [];
@@ -245,6 +342,9 @@ export function emptyMarket(market: NlpMarket): NlpMarketPulse {
     label: market === "kospi200" ? "KOSPI 200" : "S&P 500",
     score: 0,
     tone: "flat",
+    verdict: "neutral",
+    verdict_ko: "중립",
+    comment: "아직 충분한 헤드라인이 없습니다.",
     news_n: 0,
     event_n: 0,
     bull_n: 0,
@@ -266,20 +366,41 @@ export function buildMarketPulse(
   let wsum = 0;
   let w = 0;
   for (const c of mine) {
-    const wt = 1 + Math.log1p(c.news_n);
+    const wt = 1 + Math.log1p(c.news_n + c.event_n + c.call_n);
     wsum += c.score * wt;
     w += wt;
   }
   const score = w ? clip(wsum / w, -100, 100) : 0;
+  const verdict = nlpVerdict(score);
+  const bull = mine.filter((c) => c.verdict === "friendly");
+  const bear = mine.filter((c) => c.verdict === "cautious");
+  const label = market === "kospi200" ? "KOSPI 200" : "S&P 500";
+  let comment = `${label} 대표주 텍스트 투심은 ${nlpVerdictKo(verdict)}입니다.`;
+  if (bull.length) {
+    comment += ` 우호 ${bull.slice(0, 3).map((c) => c.name).join("·")}`;
+    if (bull.length > 3) comment += ` 외 ${bull.length - 3}곳`;
+    comment += ".";
+  }
+  if (bear.length) {
+    comment += ` 경계 ${bear.slice(0, 3).map((c) => c.name).join("·")}`;
+    if (bear.length > 3) comment += ` 외 ${bear.length - 3}곳`;
+    comment += ".";
+  }
+  if (!bull.length && !bear.length) {
+    comment += " 개별 종목은 대체로 중립입니다.";
+  }
   return {
     market,
-    label: market === "kospi200" ? "KOSPI 200" : "S&P 500",
+    label,
     score,
     tone: nlpTone(score),
+    verdict,
+    verdict_ko: nlpVerdictKo(verdict),
+    comment,
     news_n: news.length,
     event_n: events.length,
-    bull_n: mine.filter((c) => c.tone === "bull").length,
-    bear_n: mine.filter((c) => c.tone === "bear").length,
+    bull_n: bull.length,
+    bear_n: bear.length,
     names: [...mine].sort((a, b) => Math.abs(b.score) - Math.abs(a.score) || b.news_n - a.news_n),
   };
 }
@@ -301,11 +422,12 @@ export function assembleNameCards(
     const calls = rows.filter((r) => r.kind === "call");
     let wsum = 0;
     let w = 0;
-    for (const r of news) {
-      wsum += r.score;
-      w += 1;
+    for (const r of rows) {
+      wsum += r.score * kindWeight(r.kind);
+      w += kindWeight(r.kind);
     }
     const score = w ? clip(wsum / w, -100, 100) : 0;
+    const verdict = nlpVerdict(score);
     const top = [...rows].sort(
       (a, b) => Math.abs(b.score) - Math.abs(a.score) || b.date.localeCompare(a.date),
     )[0];
@@ -316,6 +438,9 @@ export function assembleNameCards(
       ticker: spec.ticker,
       score,
       tone: nlpTone(score),
+      verdict,
+      verdict_ko: nlpVerdictKo(verdict),
+      comment: buildNameComment(spec.name, news, events, calls, score),
       news_n: news.length,
       event_n: events.length,
       call_n: calls.length,

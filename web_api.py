@@ -896,3 +896,22 @@ def esg_events_payload(*, refresh: bool = False) -> dict[str, Any]:
             "summary": {"total": 0, "fresh": 0, "by_pillar": {"E": 0, "S": 0, "G": 0}},
             "error": str(exc),
         }
+
+
+def nlp_pulse_payload() -> dict[str, Any]:
+    """Dashboard payload for AI → NLP (DART + SEC + Finnhub, bot keys)."""
+    try:
+        from nlp_pulse import build_nlp_pulse_keyed
+
+        return build_nlp_pulse_keyed()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "dart": [],
+            "sec": [],
+            "earnings": [],
+            "sources": [],
+            "errors": [str(exc)],
+            "error": str(exc),
+        }
