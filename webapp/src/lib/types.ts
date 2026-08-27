@@ -195,25 +195,9 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    id: "commodity",
-    label: "원자재",
-    tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
-  },
-  {
-    id: "portfolio",
-    label: "포트폴리오",
-    tabs: ["simulate", "usportfolio", "signals", "corridor"],
-  },
-  {
     id: "ai",
     label: "AI",
     tabs: ["graph", "nlp", "ideas", "aiport"],
-  },
-  // Append-only: do not replace existing ESG sub-tabs when adding entries.
-  {
-    id: "esg",
-    label: "ESG",
-    tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"],
   },
   {
     id: "politics",
@@ -221,14 +205,30 @@ export const NAV_GROUPS: Array<{
     tabs: ["usmidterm", "polithemes"],
   },
   {
+    id: "commodity",
+    label: "원자재",
+    tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
+  },
+  {
     id: "fundmgr",
     label: "펀드매니저",
     tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
   },
   {
+    id: "portfolio",
+    label: "포트폴리오",
+    tabs: ["simulate", "usportfolio", "signals", "corridor"],
+  },
+  {
     id: "derivs",
     label: "파생상품",
     tabs: ["leverage", "volmonitor", "derivatives"],
+  },
+  // Append-only: do not replace existing ESG sub-tabs when adding entries.
+  {
+    id: "esg",
+    label: "ESG",
+    tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"],
   },
 ];
 
