@@ -181,7 +181,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "market",
     label: "시황",
-    tabs: ["kr", "us", "eventstudy", "kosdaq100", "quant"],
+    tabs: ["kr", "us", "eventstudy", "quant"],
   },
   {
     id: "etf",
@@ -233,6 +233,7 @@ export const NAV_GROUPS: Array<{
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
+  if (tab === "kosdaq100") return "fundmgr";
   for (const group of NAV_GROUPS) {
     if (group.tabs.includes(tab)) return group.id;
   }

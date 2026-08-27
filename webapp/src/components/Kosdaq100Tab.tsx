@@ -52,7 +52,49 @@ function qualityClass(label?: string | null): string {
   return "kq-badge";
 }
 
-export default function Kosdaq100Tab() {
+function sparkUp(values?: number[]): boolean {
+  if (!values || values.length < 2) return true;
+  return values[values.length - 1]! >= values[0]!;
+}
+
+function MiniSpark({ values, wide }: { values?: number[]; wide?: boolean }) {
+  if (!values || values.length < 2) {
+    return <span className="kq-spark-empty">—</span>;
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const w = wide ? 160 : 72;
+  const h = wide ? 36 : 28;
+  const pad = 1.5;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (w - 2 * pad);
+    const y = h - pad - ((v - min) / span) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const up = sparkUp(values);
+  return (
+    <svg
+      className={wide ? "kq-spark kq-spark-wide" : "kq-spark"}
+      viewBox={`0 0 ${w} ${h}`}
+      width={w}
+      height={h}
+      preserveAspectRatio={wide ? "none" : "xMidYMid meet"}
+      aria-hidden
+    >
+      <polyline
+        fill="none"
+        stroke={up ? "var(--up, #34d399)" : "var(--down, #f87171)"}
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        points={pts.join(" ")}
+      />
+    </svg>
+  );
+}
+
+export default function Kosdaq100Tab({ embedded = false }: { embedded?: boolean }) {
   const [data, setData] = useState<Kosdaq100Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -151,14 +193,26 @@ export default function Kosdaq100Tab() {
     );
   }
 
+  const sparkCards = useMemo(
+    () =>
+      (data?.rows || [])
+        .filter((r) => (r.sparkline || []).length >= 2)
+        .slice(0, 8),
+    [data],
+  );
+
   const summary = data?.summary;
 
   return (
-    <div className="panel-stack">
+    <div className={embedded ? "panel-stack kq-embedded" : "panel-stack"}>
       <section className="geo-section geo-featured">
         <div className="kq-hero">
           <div>
-            <h2 className="geo-section-title">코스닥100</h2>
+            {embedded ? (
+              <h3 className="geo-section-title">코스닥100 모니터</h3>
+            ) : (
+              <h2 className="geo-section-title">코스닥100</h2>
+            )}
             {data?.briefing?.length ? (
               <div className="kq-briefing">
                 {data.briefing.map((line) => (
@@ -221,6 +275,13 @@ export default function Kosdaq100Tab() {
                 {fmtNum(summary.median_per, 1)} / {fmtPct(summary.median_roe, 1)}
               </strong>
             </div>
+            <div className="kq-stat kq-stat-spark">
+              <span className="meta-soft">코스닥 20일</span>
+              <strong className={toneClass(summary.index_change_pct)}>
+                {fmtPct(summary.index_change_pct, 1)}
+              </strong>
+              <MiniSpark values={summary.index_spark} wide />
+            </div>
           </div>
           {summary.top_weight?.length ? (
             <p className="meta-soft" style={{ marginTop: 10 }}>
@@ -229,6 +290,22 @@ export default function Kosdaq100Tab() {
                 .map((t) => `${t.name} ${t.weight_pct.toFixed(1)}%`)
                 .join(" · ")}
             </p>
+          ) : null}
+          {sparkCards.length ? (
+            <div className="kq-spark-row">
+              {sparkCards.map((r) => (
+                <article key={r.code} className="kq-spark-card">
+                  <div className="kq-spark-card-top">
+                    <strong>{r.name}</strong>
+                    <span className={toneClass(r.change_pct)}>{fmtPct(r.change_pct, 1)}</span>
+                  </div>
+                  <MiniSpark values={r.sparkline} wide />
+                  <span className="meta-soft">
+                    {fmtPrice(r.price)} · {r.theme || r.code}
+                  </span>
+                </article>
+              ))}
+            </div>
           ) : null}
         </section>
       ) : null}
@@ -275,6 +352,7 @@ export default function Kosdaq100Tab() {
                   <th>테마</th>
                   <SortTh label="편입비*" k="weight_pct" />
                   <SortTh label="현재가" k="price" />
+                  <th>20일</th>
                   <SortTh label="등락" k="change_pct" />
                   <SortTh label="시총" k="market_cap" />
                   <SortTh label="PER" k="per" />
@@ -314,6 +392,9 @@ function Row({ row, rank }: { row: Kosdaq100Row; rank: number }) {
       <td>{row.theme || "—"}</td>
       <td>{fmtPct(row.weight_pct, 2)}</td>
       <td>{fmtPrice(row.price)}</td>
+      <td className="kq-spark-cell">
+        <MiniSpark values={row.sparkline} />
+      </td>
       <td className={toneClass(row.change_pct)}>{fmtPct(row.change_pct, 2)}</td>
       <td>{fmtMcap(row.market_cap)}</td>
       <td>{fmtNum(row.per, 1)}</td>
