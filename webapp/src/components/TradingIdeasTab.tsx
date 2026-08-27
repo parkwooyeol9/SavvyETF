@@ -60,8 +60,8 @@ export default function TradingIdeasTab() {
           <div>
             <h2 className="kr-hero-title">AI Pick</h2>
             <p className="kr-hero-sub">
-              프로젝트 내 시그널·리스크 레짐으로 매수/매도 후보와 제안 비중을 조합합니다.
-              향후 AI 자동매매 근거 · AI포트에서 추종 성과를 추적할 수 있습니다.
+              그래프·NLP 시황과 시그널 레짐을 합쳐 매수/매도 후보와 목표 비중을 제안합니다.
+              AI포트에서 미국 슬리브 추종 성과를 추적할 수 있습니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -95,6 +95,7 @@ export default function TradingIdeasTab() {
               })}`
             : ""}
         </p>
+        {data?.comment ? <p className="quant-comment">{data.comment}</p> : null}
         {data?.summary?.length ? (
           <ul className="ideas-summary">
             {data.summary.map((s) => (

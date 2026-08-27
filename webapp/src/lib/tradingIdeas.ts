@@ -1,9 +1,13 @@
 /**
  * Daily trading ideas — portfolio sleeve suggestions from existing
- * SavvyETF rule signals (trend/momentum/RS/vol/macro) + mega-cap stock tilt.
+ * SavvyETF rule signals (trend/momentum/RS/vol/macro) + mega-cap stock tilt,
+ * blended with Graph + NLP AI 시황 candidates.
  * Designed as the feed for future AI auto-trading and AI포트 tracking.
  */
 
+import { buildAiBrief, emptyAiBrief, type AiBrief, type BriefCandidate } from "@/lib/aiBrief";
+import type { ChainPayload } from "@/lib/chainGraph";
+import type { NlpPulsePayload } from "@/lib/nlpPulse";
 import type {
   AssetSignal,
   RiskRegime,
@@ -40,23 +44,26 @@ export type TradingIdeasPayload = {
   methodology: string[];
   disclaimer: string;
   schedule_note: string;
+  /** Graph + NLP 시황 paragraph shown on AI Pick */
+  comment: string;
   /** Flattened long weights for AI포트 (cash excluded) — sums to invested_pct */
   target_weights: Array<{ symbol: string; weight_pct: number; name: string }>;
   error?: string;
 };
 
 export const IDEAS_SCHEDULE_NOTE =
-  "일봉 시그널 앙상블 · 트레이딩 시그널 + 리스크 레짐 · 교육용 (투자 권유 아님)";
+  "일봉 시그널 + 그래프·NLP 시황 · 교육용 (투자 권유 아님)";
 
 export const IDEAS_DISCLAIMER =
-  "본 아이디어는 SavvyETF 내 규칙 기반 시그널을 조합한 자동 제안입니다. AI 자동매매·투자 자문이 아니며, 손실 가능성을 배제하지 않습니다.";
+  "본 아이디어는 SavvyETF 내 규칙 기반 시그널과 그래프·NLP 점수를 조합한 자동 제안입니다. AI 자동매매·투자 자문이 아니며, 손실 가능성을 배제하지 않습니다.";
 
 export const IDEAS_METHODOLOGY: string[] = [
   "기반: /api/trading-signals 점수 (추세·모멘텀·RS·변동성·매크로)",
-  "Buy(≥65) 중 상위 ETF/테마를 롱 후보, Sell(≤34)은 회피·감축",
+  "AI 시황: 그래프 클러스터 1일 평균·노드 등락 + NLP 우호/경계를 규칙 점수화",
+  "Buy(≥65) 중 상위 ETF/테마를 롱 후보, 강한 클러스터는 테마 ETF 점수를 가산",
+  "미국 주식 후보는 시그널 메가캡 틸트와 합쳐 목표 비중. 국내 후보는 시황 코멘트",
   "리스크 레짐 Elevated/High → 현금·방어(XLP/XLU/TLT/GLD) 비중 확대",
-  "메가캡 주식 틸트: 시그널 강세 시 기술·금융 대표주 소량 편입",
-  "비중: 점수 비례 후 종목 상한 22%, 총 투자 비중 = 100% − 현금",
+  "비중: 점수 비례 후 ETF 상한 22%·주식 상한 6%, 총 투자 비중 = 100% − 현금",
 ];
 
 /** Mega-cap stock sleeve candidates (Yahoo-tradable). */
@@ -98,21 +105,45 @@ function isDefensive(symbol: string): boolean {
   return ["XLP", "XLU", "TLT", "GLD", "SLV", "BND"].includes(symbol);
 }
 
+function etfScore(a: AssetSignal, boosts: Record<string, number>): number {
+  return a.score + (boosts[a.symbol] || 0);
+}
+
+function applyEtfBoosts(rows: AssetSignal[], boosts: Record<string, number>): AssetSignal[] {
+  return rows.map((a) => {
+    const d = boosts[a.symbol] || 0;
+    if (!d) return a;
+    const tag = d > 0 ? `그래프·NLP 가산 +${d}` : `그래프·NLP 감점 ${d}`;
+    return {
+      ...a,
+      score: Math.min(100, Math.max(0, a.score + d)),
+      drivers: [tag, ...a.drivers].slice(0, 4),
+    };
+  });
+}
+
 function pickLongEtfs(
   signals: TradingSignalsPayload,
   risk: RiskRegime | null,
+  boosts: Record<string, number> = {},
 ): AssetSignal[] {
-  const pool = [
+  const all = [
     ...signals.core.filter((a) => a.group !== "metal"),
     ...signals.sectors,
     ...signals.themes,
     ...signals.core.filter((a) => a.group === "metal"),
-  ].filter((a) => a.signal === "buy" && a.score >= 65 && !a.error);
+  ].filter((a) => !a.error);
+
+  const pool = all.filter((a) => {
+    if (a.signal === "buy" && a.score >= 65) return true;
+    const d = boosts[a.symbol] || 0;
+    return d >= 6 && etfScore(a, boosts) >= 60;
+  });
 
   const boost = defensiveBoost(risk);
   const ranked = [...pool].sort((a, b) => {
-    const sa = a.score * (isDefensive(a.symbol) ? boost : 1);
-    const sb = b.score * (isDefensive(b.symbol) ? boost : 1);
+    const sa = etfScore(a, boosts) * (isDefensive(a.symbol) ? boost : 1);
+    const sb = etfScore(b, boosts) * (isDefensive(b.symbol) ? boost : 1);
     return sb - sa;
   });
 
@@ -149,11 +180,21 @@ function pickLongEtfs(
   return out;
 }
 
-function pickSellEtfs(signals: TradingSignalsPayload): AssetSignal[] {
-  return [...signals.sectors, ...signals.themes, ...signals.core]
-    .filter((a) => a.signal === "sell" && a.score <= 34)
+function pickSellEtfs(
+  signals: TradingSignalsPayload,
+  extra: string[] = [],
+): AssetSignal[] {
+  const all = [...signals.sectors, ...signals.themes, ...signals.core];
+  const fromSignal = all.filter((a) => a.signal === "sell" && a.score <= 34);
+  const fromBrief = all.filter(
+    (a) =>
+      extra.includes(a.symbol) &&
+      a.score <= 48 &&
+      !fromSignal.some((s) => s.symbol === a.symbol),
+  );
+  return [...fromSignal, ...fromBrief]
     .sort((a, b) => a.score - b.score)
-    .slice(0, 6);
+    .slice(0, 8);
 }
 
 function allocateWeights(
@@ -235,10 +276,90 @@ export function buildStockTilts(
   }));
 }
 
+function candidateToIdea(c: BriefCandidate, qqq?: AssetSignal): TradingIdea {
+  return {
+    symbol: c.symbol,
+    name: c.name,
+    asset_class: "stock",
+    group: "graph_nlp",
+    action: "buy",
+    action_ko: "매수 제안",
+    score: c.score,
+    weight_pct: 0,
+    rationale: c.rationale,
+    change_20d_pct: qqq?.change_20d_pct ?? null,
+    excess_20d_vs_spy: qqq?.excess_20d_vs_spy ?? null,
+  };
+}
+
+function mergeStockBuys(
+  classic: TradingIdea[],
+  brief: AiBrief,
+  qqq: AssetSignal | undefined,
+): TradingIdea[] {
+  const sellSym = new Set(brief.sells.filter((s) => s.market === "us").map((s) => s.symbol));
+  const bySym = new Map<string, TradingIdea>();
+  for (const p of classic) {
+    if (sellSym.has(p.symbol)) continue;
+    bySym.set(p.symbol, p);
+  }
+  for (const c of brief.buys.filter((b) => b.market === "us")) {
+    if (sellSym.has(c.symbol)) continue;
+    const prev = bySym.get(c.symbol);
+    const next = candidateToIdea(c, qqq);
+    if (prev) {
+      bySym.set(c.symbol, {
+        ...prev,
+        score: Math.max(prev.score, c.score),
+        rationale: [...c.rationale, ...prev.rationale.filter((r) => !c.rationale.includes(r))].slice(
+          0,
+          3,
+        ),
+      });
+    } else {
+      bySym.set(c.symbol, next);
+    }
+  }
+  return [...bySym.values()].sort((a, b) => b.score - a.score).slice(0, 4);
+}
+
+function allocateStockWeights(picks: TradingIdea[], budget: number): TradingIdea[] {
+  if (!picks.length || budget < 3) return [];
+  const raw = picks.map((p) => ({ p, s: Math.max(p.score, 1) }));
+  const sum = raw.reduce((t, x) => t + x.s, 0) || 1;
+  const capped = raw.map(({ p, s }) => ({ p, w: Math.min((s / sum) * budget, 6) }));
+  const wSum = capped.reduce((t, x) => t + x.w, 0) || 1;
+  return capped.map(({ p, w }) => ({
+    ...p,
+    weight_pct: Math.round((w / wSum) * budget * 10) / 10,
+  }));
+}
+
+function stockBudgetFor(
+  cashPct: number,
+  qqqScore: number,
+  risk: RiskRegime | null,
+  brief: AiBrief,
+): number {
+  const regime = (risk?.regime || "").toLowerCase();
+  if (regime.includes("high")) return 0;
+  const usBuys = brief.buys.filter((b) => b.market === "us").length;
+  let budget = 0;
+  if (cashPct <= 12 && qqqScore >= 60) budget = 12;
+  if (usBuys >= 2) budget = Math.max(budget, regime.includes("elevated") ? 8 : 14);
+  else if (usBuys === 1 && budget === 0 && !regime.includes("elevated")) budget = 8;
+  if (brief.cashDelta >= 4) budget = Math.min(budget || 0, 8);
+  return budget;
+}
+
 export function buildTradingIdeasFromSignals(
   signals: TradingSignalsPayload,
+  extras?: { nlp?: NlpPulsePayload | null; chain?: ChainPayload | null },
 ): TradingIdeasPayload {
   const generated_at = new Date().toISOString();
+  const brief = extras
+    ? buildAiBrief(extras.nlp || null, extras.chain || null)
+    : emptyAiBrief();
   if (!signals.ok) {
     return {
       ok: false,
@@ -254,26 +375,24 @@ export function buildTradingIdeasFromSignals(
       methodology: IDEAS_METHODOLOGY,
       disclaimer: IDEAS_DISCLAIMER,
       schedule_note: IDEAS_SCHEDULE_NOTE,
+      comment: brief.comment,
       target_weights: [],
       error: signals.error || "시그널을 불러오지 못했습니다.",
     };
   }
 
   const risk = signals.risk;
-  let cash_pct = cashTargetFromRisk(risk);
-  const longs = pickLongEtfs(signals, risk);
-  const sellsRaw = pickSellEtfs(signals);
-
-  // Reserve up to 15% for stock tilts when calm
-  const stockBudget =
-    cash_pct <= 12 && (signals.core.find((c) => c.symbol === "QQQ")?.score || 0) >= 60
-      ? 12
-      : 0;
-
+  let cash_pct = Math.min(40, Math.max(5, cashTargetFromRisk(risk) + brief.cashDelta));
+  const longs = applyEtfBoosts(pickLongEtfs(signals, risk, brief.etfBoosts), brief.etfBoosts);
+  const sellsRaw = pickSellEtfs(signals, brief.etfSells);
+  const qqq = signals.core.find((c) => c.symbol === "QQQ");
+  const tentativeStock = stockBudgetFor(cash_pct, qqq?.score || 0, risk, brief);
+  const classicTilts = buildStockTilts(signals, risk, tentativeStock);
+  const mergedStocks = mergeStockBuys(classicTilts, brief, qqq);
+  const stockBudget = mergedStocks.length ? tentativeStock : 0;
+  const stockIdeas = allocateStockWeights(mergedStocks, stockBudget);
   let etfIdeas = allocateWeights(longs, cash_pct + stockBudget, risk);
-  const stockIdeas = buildStockTilts(signals, risk, stockBudget);
 
-  // If stocks added, shrink ETF weights proportionally to free budget
   if (stockIdeas.length) {
     const stockSum = stockIdeas.reduce((s, i) => s + i.weight_pct, 0);
     const etfSum = etfIdeas.reduce((s, i) => s + i.weight_pct, 0);
@@ -288,23 +407,38 @@ export function buildTradingIdeasFromSignals(
   }
 
   const buys = [...etfIdeas, ...stockIdeas].filter((i) => i.weight_pct > 0);
-  // Fix rounding so buys + cash ≈ 100
   const buySum = buys.reduce((s, i) => s + i.weight_pct, 0);
   cash_pct = Math.round((100 - buySum) * 10) / 10;
 
-  const sells: TradingIdea[] = sellsRaw.map((a) => ({
-    symbol: a.symbol,
-    name: a.label,
-    asset_class: "etf",
-    group: a.group,
-    action: "sell",
-    action_ko: "매도·회피",
-    score: a.score,
-    weight_pct: 0,
-    rationale: a.drivers.slice(0, 3),
-    change_20d_pct: a.change_20d_pct,
-    excess_20d_vs_spy: a.excess_20d_vs_spy,
-  }));
+  const buySym = new Set(buys.map((b) => b.symbol));
+  const sells: TradingIdea[] = [
+    ...sellsRaw.map((a) => ({
+      symbol: a.symbol,
+      name: a.label,
+      asset_class: "etf" as const,
+      group: a.group,
+      action: "sell" as const,
+      action_ko: "매도·회피",
+      score: a.score,
+      weight_pct: 0,
+      rationale: a.drivers.slice(0, 3),
+      change_20d_pct: a.change_20d_pct,
+      excess_20d_vs_spy: a.excess_20d_vs_spy,
+    })),
+    ...brief.sells.map((s) => ({
+      symbol: s.symbol,
+      name: s.name,
+      asset_class: "stock" as const,
+      group: s.market === "us" ? "graph_nlp" : "kr_nlp",
+      action: "sell" as const,
+      action_ko: "매도·회피",
+      score: s.score,
+      weight_pct: 0,
+      rationale: s.rationale,
+      change_20d_pct: null,
+      excess_20d_vs_spy: null,
+    })),
+  ].filter((s, i, arr) => !buySym.has(s.symbol) && arr.findIndex((x) => x.symbol === s.symbol) === i);
 
   const cashIdea: TradingIdea = {
     symbol: "CASH",
@@ -317,6 +451,7 @@ export function buildTradingIdeasFromSignals(
     weight_pct: cash_pct,
     rationale: [
       risk ? `리스크 레짐 ${risk.regime_ko} (점수 ${risk.score})` : "기본 현금",
+      ...(brief.cashDelta ? [`NLP 현금 조정 ${brief.cashDelta > 0 ? "+" : ""}${brief.cashDelta}%p`] : []),
       ...(risk?.drivers || []).slice(0, 2),
     ],
     change_20d_pct: null,
@@ -329,7 +464,8 @@ export function buildTradingIdeasFromSignals(
     risk
       ? `레짐 ${risk.regime_ko} · VIX ${risk.vix?.toFixed(1) ?? "—"} · HY OAS ${risk.hy_oas?.toFixed(0) ?? "—"}`
       : "레짐 데이터 없음",
-    ...signals.summary.slice(0, 2),
+    `AI 시황 · 그래프·NLP 매수 ${brief.buys.length} · 회피 ${brief.sells.length}`,
+    ...signals.summary.slice(0, 1),
   ];
 
   return {
@@ -346,6 +482,7 @@ export function buildTradingIdeasFromSignals(
     methodology: IDEAS_METHODOLOGY,
     disclaimer: IDEAS_DISCLAIMER,
     schedule_note: IDEAS_SCHEDULE_NOTE,
+    comment: brief.comment,
     target_weights: buys.map((b) => ({
       symbol: b.symbol,
       weight_pct: b.weight_pct,
