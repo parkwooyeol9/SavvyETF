@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import EtfMarketStructurePanel from "@/components/EtfMarketStructurePanel";
 import {
   COUNTRY_ETF_UNIVERSE,
   regionsFromUniverse,
@@ -273,6 +274,8 @@ export default function CountryEtfTab() {
           ) : null}
         </div>
       </section>
+
+      <EtfMarketStructurePanel />
     </div>
   );
 }

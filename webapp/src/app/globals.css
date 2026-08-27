@@ -5656,6 +5656,98 @@ button.country-etf-card {
   }
 }
 
+.etf-ms-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 12px;
+}
+
+.etf-ms-table td,
+.etf-ms-table th {
+  vertical-align: top;
+}
+
+.etf-ms-table tbody tr {
+  cursor: pointer;
+}
+
+.etf-ms-row-active td {
+  background: color-mix(in srgb, #60a5fa 12%, transparent);
+}
+
+.etf-ms-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.etf-ms-live {
+  margin-left: 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: #34d399;
+  border: 1px solid color-mix(in srgb, #34d399 45%, transparent);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+}
+
+.etf-ms-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .etf-ms-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.etf-ms-chart {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 4px 4px;
+  background: color-mix(in srgb, var(--panel, #121820) 88%, transparent);
+}
+
+.etf-ms-mini-bar {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.etf-ms-spot {
+  margin-top: 18px;
+}
+
+.etf-ms-spot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.etf-ms-spot-grid .us-snap p {
+  margin: 0.35rem 0 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.etf-ms-notes {
+  margin: 14px 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 /* Money Flow Monitor */
 .mf-legend {
   display: flex;
