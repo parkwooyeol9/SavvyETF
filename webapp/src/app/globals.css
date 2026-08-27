@@ -5055,6 +5055,60 @@ a.geo-choke-hl:hover {
   font-variant-numeric: tabular-nums;
   font-size: 1.05rem;
 }
+.kq-stat-spark .kq-spark-wide {
+  width: 100%;
+  height: 36px;
+  margin-top: 4px;
+}
+.kq-spark-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+.kq-spark-card {
+  padding: 0.5rem 0.6rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  display: grid;
+  gap: 0.2rem;
+}
+.kq-spark-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+.kq-spark-card-top strong {
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kq-spark-card-top span {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.kq-spark {
+  display: block;
+}
+.kq-spark-wide {
+  width: 100%;
+  height: 36px;
+}
+.kq-spark-empty {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.kq-spark-cell {
+  min-width: 76px;
+}
+.kq-embedded {
+  margin-top: 1.4rem;
+}
 .kq-filters {
   display: flex;
   flex-wrap: wrap;

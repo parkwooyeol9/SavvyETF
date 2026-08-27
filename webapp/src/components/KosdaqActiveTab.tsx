@@ -8,6 +8,7 @@ import type {
   ManagerOverweight,
   MatrixRow,
 } from "@/lib/kosdaqActive";
+import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import { KOSDAQ_ACTIVE_UNIVERSE } from "@/lib/kosdaqActive";
 
 function fmtPct(n?: number | null, digits = 2): string {
@@ -284,7 +285,7 @@ export default function KosdaqActiveTab() {
             <h2 className="geo-section-title">코스닥액티브 ETF</h2>
             <p className="geo-thesis">
               KoAct · TIME · PLUS · TIGER · MIDAS · DS 6종 상위 편입비 비교 ·
-              편출입 · 운용사 특화 오버웨이트
+              편출입 · 운용사 특화. 아래 코스닥100 모니터에서 유니버스 등락·우량을 봅니다.
             </p>
           </div>
           <button
@@ -374,6 +375,8 @@ export default function KosdaqActiveTab() {
           </p>
         </>
       ) : null}
+
+      <Kosdaq100Tab embedded />
     </div>
   );
 }

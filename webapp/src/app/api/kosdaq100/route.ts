@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { fetchBotJson } from "@/lib/bot";
 import {
+  attachKosdaqSparks,
   buildKosdaq100Payload,
   KOSDAQ100_SCHEDULE_NOTE,
   loadKosdaq100FromR2,
@@ -117,12 +118,13 @@ export async function GET(req: Request) {
   const { freshMs, staleMs } = cacheTtls();
   const cacheKey = refresh
     ? `kosdaq100:refresh:${Date.now()}`
-    : "kosdaq100:v2";
+    : "kosdaq100:v3";
 
   try {
-    const payload = await withServerCache(cacheKey, freshMs, staleMs, () =>
-      buildPayload(refresh),
-    );
+    const payload = await withServerCache(cacheKey, freshMs, staleMs, async () => {
+      const raw = await buildPayload(refresh);
+      return attachKosdaqSparks(raw);
+    });
     return NextResponse.json(payload, {
       status: payload.ok ? 200 : 502,
       headers: { "Cache-Control": cdnCacheHeader("market") },

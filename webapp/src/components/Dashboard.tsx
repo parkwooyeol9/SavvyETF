@@ -35,7 +35,6 @@ import NlpPulseTab from "@/components/NlpPulseTab";
 import GraphTab from "@/components/GraphTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
-import Kosdaq100Tab from "@/components/Kosdaq100Tab";
 import MoneyFlowTab from "@/components/MoneyFlowTab";
 import SimulateTab from "@/components/SimulateTab";
 import UsPortfolioTab from "@/components/UsPortfolioTab";
@@ -148,6 +147,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (tab === "kosdaq100") setTab("kosdaqactive");
+  }, [tab]);
+
+  useEffect(() => {
     void load();
     // Poll every 3 minutes while the tab is visible (was 60s) to cut origin transfer.
     const id = window.setInterval(() => {
@@ -168,7 +171,12 @@ export default function Dashboard() {
           : detail && typeof detail === "object"
             ? detail.tab
             : undefined;
-      const next = raw === "ripple" || raw === "chain" ? "graph" : raw;
+      const next =
+        raw === "ripple" || raw === "chain"
+          ? "graph"
+          : raw === "kosdaq100"
+            ? "kosdaqactive"
+            : raw;
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
@@ -211,7 +219,6 @@ export default function Dashboard() {
       tab === "gurus" ||
       tab === "signals" ||
       tab === "eventstudy" ||
-      tab === "kosdaq100" ||
       tab === "moneyflow" ||
       tab === "etfdb" ||
       tab === "etfdbus" ||
@@ -368,8 +375,6 @@ export default function Dashboard() {
         <WallStreetGurusTab />
       ) : tab === "eventstudy" ? (
         <EventStudyTab />
-      ) : tab === "kosdaq100" ? (
-        <Kosdaq100Tab />
       ) : tab === "moneyflow" ? (
         <MoneyFlowTab />
       ) : tab === "kr" ? (

@@ -52,6 +52,7 @@ export type Kosdaq100Row = Kosdaq100Fundamentals & {
   volume: number | null;
   value: number | null;
   market_status?: string | null;
+  sparkline?: number[];
 };
 
 export type Kosdaq100Payload = {
@@ -72,6 +73,8 @@ export type Kosdaq100Payload = {
     median_per: number | null;
     median_roe: number | null;
     top_weight: Array<{ code: string; name: string; weight_pct: number }>;
+    index_spark?: number[];
+    index_change_pct?: number | null;
   };
   rows: Kosdaq100Row[];
   briefing?: string[];
@@ -376,6 +379,77 @@ async function fetchQuotes(
     }
   }
   return out;
+}
+
+async function fetchCloseSeries(kind: "stock" | "index", code: string, n = 20): Promise<number[]> {
+  const path =
+    kind === "index"
+      ? `https://m.stock.naver.com/api/index/${code}/price?pageSize=${n}&page=1`
+      : `https://m.stock.naver.com/api/stock/${code}/price?pageSize=${n}&page=1`;
+  try {
+    const res = await fetch(path, {
+      headers: { "User-Agent": UA, Referer: "https://m.stock.naver.com/" },
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const rows = (await res.json()) as Array<{ closePrice?: string }>;
+    const closes = (rows || [])
+      .map((r) => num(r.closePrice))
+      .filter((v): v is number => v != null && v > 0);
+    return closes.reverse();
+  } catch {
+    return [];
+  }
+}
+
+/** Overlay 20d close series for the index + top names (R2/bot snapshots have none). */
+export async function attachKosdaqSparks(
+  payload: Kosdaq100Payload,
+  topN = 18,
+): Promise<Kosdaq100Payload> {
+  if (!payload.ok || !payload.rows.length) return payload;
+  const haveRows = payload.rows.filter((r) => (r.sparkline || []).length >= 2).length >= 8;
+  const haveIndex = (payload.summary.index_spark || []).length >= 2;
+  if (haveRows && haveIndex) return payload;
+
+  try {
+    const top = payload.rows
+      .filter((r) => r.code)
+      .slice()
+      .sort((a, b) => (b.weight_pct || 0) - (a.weight_pct || 0))
+      .slice(0, topN);
+
+    const [indexSpark, series] = await Promise.all([
+      haveIndex ? Promise.resolve(payload.summary.index_spark || []) : fetchCloseSeries("index", "KOSDAQ", 40),
+      haveRows
+        ? Promise.resolve(top.map((r) => r.sparkline || []))
+        : mapPool(top, 6, (r) => fetchCloseSeries("stock", r.code, 20)),
+    ]);
+
+    const byCode = new Map(top.map((r, i) => [r.code, series[i] || []]));
+    const rows = payload.rows.map((r) => ({
+      ...r,
+      sparkline: (r.sparkline && r.sparkline.length >= 2 ? r.sparkline : byCode.get(r.code)) || r.sparkline,
+    }));
+    const idx = indexSpark.length >= 2 ? indexSpark : payload.summary.index_spark || [];
+    const base = idx.length > 20 ? idx[idx.length - 20]! : idx[0];
+    const index_change_pct =
+      idx.length >= 2 && base
+        ? ((idx[idx.length - 1]! - base) / base) * 100
+        : payload.summary.index_change_pct ?? null;
+
+    return {
+      ...payload,
+      rows,
+      summary: {
+        ...payload.summary,
+        index_spark: idx,
+        index_change_pct,
+      },
+    };
+  } catch {
+    return payload;
+  }
 }
 
 async function fetchAnnualFundamentals(
