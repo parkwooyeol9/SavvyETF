@@ -1,5 +1,5 @@
 /**
- * Curated supply / customer / peer graph for the Chain + Ripple tabs.
+ * Curated supply / customer / peer graph for the Graph tab.
  * Edges are public-knowledge seeds (10-K Item 1A phrasing, well-known
  * customers, KR 사업보고서 매출처 패턴) — not a live EDGAR extractor.
  */
@@ -72,6 +72,7 @@ export type ChainLayout = {
   height: number;
   nodes: LaidNode[];
   edges: LaidEdge[];
+  bands: Array<{ rank: number; x: number; label: string }>;
 };
 
 export type RippleHit = {
@@ -110,8 +111,8 @@ export const CHAIN_CLUSTERS: ChainCluster[] = [
 export const CHAIN_METHODOLOGY: string[] = [
   "간선은 공개 공시·관용 서술로 고정한 시드입니다. 실시간 10-K 추출기가 아닙니다.",
   "supply: 공급 → 고객. peer: 동종. complement: 같은 밸류체인 보완.",
-  "노드 색은 Yahoo 1일 등락. 2홉 이웃만 그립니다.",
-  "Ripple은 NLP 헤드라인에서 종목명·티커·별칭을 찾고, 없으면 시드 1홉을 붙입니다.",
+  "노드 색은 Yahoo 1일 등락, 숫자는 1일·5일. 2홉 이웃만 그립니다.",
+  "뉴스를 누르면 발원 종목이 포커스가 되고, 헤드라인 언급·1홉 이웃이 하이라이트됩니다.",
 ];
 
 export const CHAIN_DISCLAIMER =
@@ -347,16 +348,25 @@ export function layoutNeighborhood(
     grouped.set(r, arr);
   }
   const ranks = [...grouped.keys()].sort((a, b) => a - b);
-  const nodeW = 128;
-  const nodeH = 52;
-  const rankGap = 168;
-  const rowGap = 14;
+  const nodeW = 132;
+  const nodeH = 56;
+  const rankGap = 172;
+  const rowGap = 16;
   const padX = 28;
-  const padY = 20;
+  const padY = 36;
 
   const maxRows = Math.max(1, ...ranks.map((r) => grouped.get(r)!.length));
   const height = padY * 2 + maxRows * nodeH + (maxRows - 1) * rowGap;
   const width = padX * 2 + Math.max(1, ranks.length) * nodeW + Math.max(0, ranks.length - 1) * (rankGap - nodeW);
+
+  const rankLabel = (rank: number): string => {
+    if (rank === 0) return "포커스";
+    const ups = ranks.filter((r) => r < 0);
+    const downs = ranks.filter((r) => r > 0);
+    if (rank < 0) return rank === Math.min(...ups) && ups.length > 1 ? "상류" : "공급";
+    if (rank > 0) return rank === Math.max(...downs) && downs.length > 1 ? "하류" : "고객";
+    return "";
+  };
 
   const placed: LaidNode[] = [];
   ranks.forEach((rank, col) => {
@@ -396,7 +406,13 @@ export function layoutNeighborhood(
     });
   }
 
-  return { width: Math.max(width, 320), height: Math.max(height, 200), nodes: placed, edges: links };
+  const bands = ranks.map((rank, col) => ({
+    rank,
+    x: padX + col * rankGap,
+    label: rankLabel(rank),
+  }));
+
+  return { width: Math.max(width, 320), height: Math.max(height, 220), nodes: placed, edges: links, bands };
 }
 
 export function chainComment(nodes: ChainNodeView[]): string {
@@ -486,4 +502,100 @@ export function fmtPct(n: number | null | undefined, digits = 1): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}%`;
+}
+
+export const GRAPH_NODE_W = 132;
+export const GRAPH_NODE_H = 56;
+
+export function meanRet(values: Array<number | null | undefined>): number | null {
+  const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+export function clusterHeat(nodes: ChainNodeView[]): Array<{
+  id: string;
+  label: string;
+  hub: string;
+  avg1d: number | null;
+  n: number;
+}> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return CHAIN_CLUSTERS.map((c) => {
+    const ids = [...neighborhoodIds(c.hub, 2).keys()];
+    const members = ids.map((id) => byId.get(id)).filter((n): n is ChainNodeView => Boolean(n));
+    return {
+      id: c.id,
+      label: c.label,
+      hub: c.hub,
+      avg1d: meanRet(members.map((n) => n.ret1d)),
+      n: members.length,
+    };
+  });
+}
+
+export function nodeDegrees(): Map<string, { in: number; out: number; all: number }> {
+  const m = new Map<string, { in: number; out: number; all: number }>();
+  const bump = (id: string, key: "in" | "out") => {
+    const cur = m.get(id) || { in: 0, out: 0, all: 0 };
+    cur[key] += 1;
+    cur.all += 1;
+    m.set(id, cur);
+  };
+  for (const e of CHAIN_EDGES) {
+    bump(e.from, "out");
+    bump(e.to, "in");
+  }
+  return m;
+}
+
+export function supplyChainToFocus(focusId: string, maxHops = 3): string[] {
+  const dist = bfs(focusId, FLOW.rev, maxHops);
+  let farthest = focusId;
+  let best = 0;
+  for (const [id, d] of dist) {
+    if (d > best) {
+      best = d;
+      farthest = id;
+    }
+  }
+  if (best === 0) return [focusId];
+  const path = [farthest];
+  let cur = farthest;
+  for (let i = 0; i < maxHops; i++) {
+    const nexts = FLOW.fwd.get(cur) || [];
+    const step = nexts.find((n) => dist.has(n) && (dist.get(n) || 0) === (dist.get(cur) || 0) - 1);
+    if (!step) break;
+    path.push(step);
+    cur = step;
+    if (cur === focusId) break;
+  }
+  if (path[path.length - 1] !== focusId) path.push(focusId);
+  return path;
+}
+
+export function supplyChainFromFocus(focusId: string, maxHops = 3): string[] {
+  const dist = bfs(focusId, FLOW.fwd, maxHops);
+  let farthest = focusId;
+  let best = 0;
+  for (const [id, d] of dist) {
+    if (d > best) {
+      best = d;
+      farthest = id;
+    }
+  }
+  if (best === 0) return [focusId];
+  const path = [focusId];
+  let cur = focusId;
+  for (let i = 0; i < maxHops; i++) {
+    const nexts = FLOW.fwd.get(cur) || [];
+    const step = nexts
+      .filter((n) => dist.has(n) && (dist.get(n) || 0) === (dist.get(cur) || 0) + 1)
+      .sort((a, b) => (dist.get(b) || 0) - (dist.get(a) || 0))[0];
+    if (!step) break;
+    path.push(step);
+    cur = step;
+    if (cur === farthest) break;
+  }
+  return path;
 }

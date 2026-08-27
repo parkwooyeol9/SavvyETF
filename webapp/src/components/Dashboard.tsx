@@ -32,8 +32,7 @@ import DerivativesTab from "@/components/DerivativesTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import NlpPulseTab from "@/components/NlpPulseTab";
-import RippleTab from "@/components/RippleTab";
-import ChainTab from "@/components/ChainTab";
+import GraphTab from "@/components/GraphTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
 import Kosdaq100Tab from "@/components/Kosdaq100Tab";
@@ -163,12 +162,13 @@ export default function Dashboard() {
     };
     const onNav = (e: Event) => {
       const detail = (e as CustomEvent<ShellTabId | { tab?: string }>).detail;
-      const next =
+      const raw =
         typeof detail === "string"
           ? detail
           : detail && typeof detail === "object"
             ? detail.tab
             : undefined;
+      const next = raw === "ripple" || raw === "chain" ? "graph" : raw;
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
@@ -222,8 +222,7 @@ export default function Dashboard() {
       tab === "etf" ||
       tab === "aiport" ||
       tab === "nlp" ||
-      tab === "ripple" ||
-      tab === "chain" ||
+      tab === "graph" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
       tab === "polithemes"
@@ -301,16 +300,14 @@ export default function Dashboard() {
         <UsPortfolioTab />
       ) : tab === "signals" ? (
         <TradingSignalsTab />
+      ) : tab === "graph" ? (
+        <GraphTab />
+      ) : tab === "nlp" ? (
+        <NlpPulseTab />
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
       ) : tab === "aiport" ? (
         <AiPortTab />
-      ) : tab === "nlp" ? (
-        <NlpPulseTab />
-      ) : tab === "ripple" ? (
-        <RippleTab />
-      ) : tab === "chain" ? (
-        <ChainTab />
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (
