@@ -2,7 +2,7 @@
 
 import { NAV_GROUPS, SHELL_TAB_LABELS, type ShellTabId } from "@/lib/types";
 
-const ESG_TABS: ShellTabId[] = ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"];
+const ESG_TABS: ShellTabId[] = ["esg", "geo", "infra", "esgreg", "greenmin"];
 
 export function navigateDashboardTab(tab: ShellTabId) {
   window.dispatchEvent(new CustomEvent("savvyetf-nav-tab", { detail: tab }));

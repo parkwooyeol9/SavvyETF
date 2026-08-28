@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import AiGovTab from "@/components/AiGovTab";
-import AiInfraTab from "@/components/AiInfraTab";
+import InfraTab from "@/components/InfraTab";
 import EsgRegTab from "@/components/EsgRegTab";
 import GreenMineralsTab from "@/components/GreenMineralsTab";
 import MainTab from "@/components/MainTab";
@@ -148,6 +147,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (tab === "kosdaq100") setTab("kosdaqactive");
+    if (tab === "aigov" || tab === "aiinfra") setTab("infra");
   }, [tab]);
 
   useEffect(() => {
@@ -176,7 +176,9 @@ export default function Dashboard() {
           ? "graph"
           : raw === "kosdaq100"
             ? "kosdaqactive"
-            : raw;
+            : raw === "aigov" || raw === "aiinfra"
+              ? "infra"
+              : raw;
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
@@ -202,8 +204,7 @@ export default function Dashboard() {
       tab === "usportfolio" ||
       tab === "education" ||
       tab === "geo" ||
-      tab === "aigov" ||
-      tab === "aiinfra" ||
+      tab === "infra" ||
       tab === "esgreg" ||
       tab === "greenmin" ||
       tab === "esg" ||
@@ -339,13 +340,9 @@ export default function Dashboard() {
         <EsgTabShell tab="geo" allSlots={esgSlots}>
           <GeoTab />
         </EsgTabShell>
-      ) : tab === "aigov" ? (
-        <EsgTabShell tab="aigov" allSlots={esgSlots}>
-          <AiGovTab />
-        </EsgTabShell>
-      ) : tab === "aiinfra" ? (
-        <EsgTabShell tab="aiinfra" allSlots={esgSlots}>
-          <AiInfraTab />
+      ) : tab === "infra" ? (
+        <EsgTabShell tab="infra" allSlots={esgSlots}>
+          <InfraTab />
         </EsgTabShell>
       ) : tab === "esgreg" ? (
         <EsgTabShell tab="esgreg" allSlots={esgSlots}>

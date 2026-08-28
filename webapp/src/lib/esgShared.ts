@@ -12,16 +12,14 @@ export const ESG_TAB_BRIEF_SLOTS: Partial<Record<ShellTabId, string[]>> = {
     "esg_ai_gov_brief",
   ],
   geo: ["esg_monitor", "esg_data_briefing"],
-  aigov: ["esg_ai_gov", "esg_ai_gov_brief"],
-  aiinfra: ["esg_monitor"],
+  infra: ["esg_ai_gov", "esg_ai_gov_brief"],
   esgreg: ["esg_data_briefing", "esg_overview"],
   greenmin: ["esg_data_briefing", "esg_monitor"],
 };
 
 export const ESG_TAB_BRIEF_NOTES: Partial<Record<ShellTabId, string>> = {
   geo: "지정학 맥락: 기후 모니터 + Geo·ESG 통합 브리핑(텔레그램 /data_briefing esg).",
-  aigov: "AI 거버넌스 공시 스크린 + 주간 AI 브리프(스케줄 또는 /esg aibrief).",
-  aiinfra: "전력·기후 물리 리스크는 esg_monitor 브리프와 함께 보세요.",
+  infra: "전력·그리드 프록시와 AI 정책·공시 스크린. 주간 AI 브리프는 스케줄 또는 /esg aibrief.",
   esgreg: "규제 모멘텀은 데이터 브리핑·기업 거버넌스 개요와 연계됩니다.",
   greenmin: "공급망·지정학은 esg_data_briefing + 기후 모니터를 참고하세요.",
 };
@@ -45,17 +43,11 @@ export const ESG_TAB_ETF_CHIPS: Partial<Record<ShellTabId, EsgEtfChip[]>> = {
     { symbol: "ITA", label: "방산", thesis: "지정학 리스크 헤지" },
     { symbol: "REMX", label: "희토류", thesis: "공급망 병목" },
   ],
-  aigov: [
-    { symbol: "AIQ", label: "AI", thesis: "AI 전환" },
-    { symbol: "HACK", label: "사이버", thesis: "AI·데이터 보안" },
-    { symbol: "IGV", label: "소프트웨어", thesis: "플랫폼 거버넌스" },
-    { symbol: "DTCR", label: "데이터센터", thesis: "AI 인프라 규제" },
-  ],
-  aiinfra: [
+  infra: [
     { symbol: "GRID", label: "전력망", thesis: "AI 전력 수요" },
-    { symbol: "NLR", label: "원전", thesis: "베이스로드 전력" },
     { symbol: "SMH", label: "반도체", thesis: "AI 칩 공급" },
-    { symbol: "PAVE", label: "인프라", thesis: "물리적 투자" },
+    { symbol: "HACK", label: "사이버", thesis: "AI·데이터 보안" },
+    { symbol: "DTCR", label: "데이터센터", thesis: "디지털 인프라" },
   ],
   esgreg: [
     { symbol: "ESGU", label: "ESG 미국", thesis: "ESG 선별 주식" },
@@ -74,8 +66,7 @@ export const ESG_TAB_ETF_CHIPS: Partial<Record<ShellTabId, EsgEtfChip[]>> = {
 export const ESG_SUB_TABS: ShellTabId[] = [
   "esg",
   "geo",
-  "aigov",
-  "aiinfra",
+  "infra",
   "esgreg",
   "greenmin",
 ];
