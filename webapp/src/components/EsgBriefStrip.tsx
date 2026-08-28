@@ -12,7 +12,7 @@ export default function EsgBriefStrip({
   slots: BriefSlot[];
 }) {
   const note = ESG_TAB_BRIEF_NOTES[tab];
-  const missingAibrief = tab === "aigov" && !slots.some((s) => s.slot === "esg_ai_gov_brief");
+  const missingAibrief = tab === "infra" && !slots.some((s) => s.slot === "esg_ai_gov_brief");
 
   return (
     <section className="panel kr-briefs esg-brief-strip">

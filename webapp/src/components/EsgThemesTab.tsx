@@ -176,7 +176,7 @@ export default function EsgThemesTab() {
           <h2 className="kr-hero-title">ESG 중요도 레이더</h2>
           <p className="kr-hero-sub">
             재무 영향이 큰 세 축 — 전력·그리드, 물리적 기후위험, 거버넌스·AI·사이버 —
-            을 시장 프록시와 함께 봅니다. 상세 분석은 하위 탭(지정학·AI 인프라·규제·녹색
+            을 시장 프록시와 함께 봅니다. 상세 분석은 하위 탭(지정학·인프라·규제·녹색
             광물)과 위 리스크 맵을 함께 보세요.
           </p>
         </div>

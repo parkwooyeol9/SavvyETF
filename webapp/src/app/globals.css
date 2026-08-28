@@ -2202,6 +2202,114 @@ a.geo-choke-hl:hover {
   }
 }
 
+.infra-kpis {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr 1fr;
+  gap: 0.65rem;
+  margin: 0.85rem 0 1.2rem;
+}
+
+.infra-kpi {
+  border: 1px solid #2b3648;
+  border-radius: 12px;
+  padding: 0.75rem 0.95rem;
+  background: rgba(12, 18, 28, 0.55);
+  display: grid;
+  gap: 0.18rem;
+}
+
+.infra-kpi.stress {
+  border-color: rgba(96, 165, 250, 0.38);
+  background: linear-gradient(
+    165deg,
+    rgba(37, 99, 235, 0.16),
+    rgba(12, 18, 28, 0.55)
+  );
+}
+
+.infra-kpi strong {
+  font-size: 1.35rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.infra-kpi-unit {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9db0c7;
+}
+
+.infra-kpi em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: #7f91a8;
+  line-height: 1.35;
+}
+
+.infra-block {
+  margin: 1.15rem 0 1.45rem;
+}
+
+.infra-block > .esg-carbon-support-title {
+  margin-bottom: 0.1rem;
+}
+
+.infra-proxy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.8rem;
+  align-items: start;
+}
+
+.infra-col {
+  border: 1px solid #2b3648;
+  border-radius: 14px;
+  padding: 0.9rem 0.95rem 1rem;
+  background: rgba(12, 18, 28, 0.45);
+  border-left-width: 3px;
+  min-width: 0;
+}
+
+.infra-col.accent-power {
+  border-left-color: #fbbf24;
+}
+
+.infra-col.accent-stack {
+  border-left-color: #60a5fa;
+}
+
+.infra-col.accent-trust {
+  border-left-color: #34d399;
+}
+
+.infra-col header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.infra-col .esg-pillar-blurb {
+  margin: 0.45rem 0 0;
+}
+
+.infra-col .esg-theme-signal-grid {
+  grid-template-columns: 1fr;
+  margin-top: 0.65rem;
+}
+
+.infra-tab .ai-infra-annual {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .infra-kpis,
+  .infra-proxy-grid,
+  .infra-tab .ai-infra-annual {
+    grid-template-columns: 1fr;
+  }
+}
+
 .esg-reg-score-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

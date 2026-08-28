@@ -6,6 +6,7 @@ export type ShellTabId =
   | "usportfolio"
   | "education"
   | "geo"
+  | "infra"
   | "aigov"
   | "aiinfra"
   | "esgreg"
@@ -116,6 +117,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "countryetf",
   "esg",
   "geo",
+  "infra",
   "aigov",
   "aiinfra",
   "esgreg",
@@ -143,8 +145,9 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   kosdaqactive: "코스닥액티브 ETF",
   countryetf: "국가ETF",
   geo: "지정학",
-  aigov: "AI 거버넌스",
-  aiinfra: "AI 인프라",
+  infra: "인프라",
+  aigov: "인프라",
+  aiinfra: "인프라",
   esgreg: "ESG 규제",
   greenmin: "녹색 광물",
   economy: "경제",
@@ -224,16 +227,17 @@ export const NAV_GROUPS: Array<{
     label: "파생상품",
     tabs: ["leverage", "volmonitor", "derivatives"],
   },
-  // Append-only: do not replace existing ESG sub-tabs when adding entries.
+  // aigov/aiinfra remain in SHELL_TAB_IDS for redirects to infra.
   {
     id: "esg",
     label: "ESG",
-    tabs: ["esg", "geo", "aigov", "aiinfra", "esgreg", "greenmin"],
+    tabs: ["esg", "geo", "infra", "esgreg", "greenmin"],
   },
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
   if (tab === "kosdaq100") return "fundmgr";
+  if (tab === "aigov" || tab === "aiinfra") return "esg";
   for (const group of NAV_GROUPS) {
     if (group.tabs.includes(tab)) return group.id;
   }
