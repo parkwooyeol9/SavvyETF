@@ -26,6 +26,7 @@ export type ShellTabId =
   | "crypto"
   | "volmonitor"
   | "derivatives"
+  | "gamma"
   | "quant"
   | "ideas"
   | "gurus"
@@ -94,6 +95,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "crypto",
   "volmonitor",
   "derivatives",
+  "gamma",
   "quant",
   "gurus",
   "eventstudy",
@@ -157,6 +159,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   crypto: "가상자산",
   volmonitor: "Volatility Monitor",
   derivatives: "Derivatives",
+  gamma: "감마",
   quant: "Technical",
   ideas: "AI Pick",
   gurus: "월가 구루",
@@ -225,7 +228,7 @@ export const NAV_GROUPS: Array<{
   {
     id: "derivs",
     label: "파생상품",
-    tabs: ["leverage", "volmonitor", "derivatives"],
+    tabs: ["leverage", "volmonitor", "derivatives", "gamma"],
   },
   // aigov/aiinfra remain in SHELL_TAB_IDS for redirects to infra.
   {
