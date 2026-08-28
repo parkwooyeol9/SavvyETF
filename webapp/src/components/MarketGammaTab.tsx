@@ -136,10 +136,8 @@ export default function MarketGammaTab() {
     return () => window.clearInterval(id);
   }, [load, marketId]);
 
-  const familyIds = useMemo(
-    () => GAMMA_FAMILIES.find((f) => f.id === family)?.ids || ["spx"],
-    [family],
-  );
+  const familyIds: GammaMarketId[] =
+    GAMMA_FAMILIES.find((f) => f.id === family)?.ids ?? GAMMA_FAMILIES[0]!.ids;
 
   const snap = data?.market ?? null;
 
