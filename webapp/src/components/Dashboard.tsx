@@ -28,6 +28,7 @@ import PreciousMetalsTab from "@/components/PreciousMetalsTab";
 import CryptoAssetsTab from "@/components/CryptoAssetsTab";
 import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
 import DerivativesTab from "@/components/DerivativesTab";
+import MarketGammaTab from "@/components/MarketGammaTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import NlpPulseTab from "@/components/NlpPulseTab";
@@ -215,6 +216,7 @@ export default function Dashboard() {
       tab === "crypto" ||
       tab === "volmonitor" ||
       tab === "derivatives" ||
+      tab === "gamma" ||
       tab === "quant" ||
       tab === "ideas" ||
       tab === "gurus" ||
@@ -366,6 +368,8 @@ export default function Dashboard() {
         <VolatilityMonitorTab />
       ) : tab === "derivatives" ? (
         <DerivativesTab />
+      ) : tab === "gamma" ? (
+        <MarketGammaTab />
       ) : tab === "quant" ? (
         <QuantTab />
       ) : tab === "gurus" ? (
