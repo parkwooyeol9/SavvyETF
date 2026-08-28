@@ -12,6 +12,18 @@ import {
 } from "recharts";
 
 import {
+  OVERLAY_ALIKE,
+  OVERLAY_ISSUERS,
+  OVERLAY_MATCHUPS,
+  OVERLAY_NOTE,
+  OVERLAY_PRODUCTS,
+  OVERLAY_SCORE_AXES,
+  OVERLAY_UNLIKE,
+  type OverlayIssuer,
+  type OverlayIssuerId,
+  type OverlayProductQuote,
+} from "@/lib/derivOverlay";
+import {
   THEME_ISSUERS,
   THEME_KIND_KO,
   THEME_NOTE,
@@ -68,7 +80,16 @@ function ScoreDots({ n }: { n: number }) {
   );
 }
 
-function LiveChart({ quote }: { quote: ThemeProductQuote }) {
+function LiveChart({
+  quote,
+}: {
+  quote: {
+    id: string;
+    symbol: string;
+    change_3m_pct: number | null;
+    series: { date: string; label: string; close: number }[];
+  };
+}) {
   const data = quote.series || [];
   const stroke = chartStroke(quote.change_3m_pct);
   const gradId = `themeetf-${quote.id}`;
@@ -152,8 +173,47 @@ function ProductCard({ quote }: { quote: ThemeProductQuote }) {
   );
 }
 
+function OverlayCard({ quote }: { quote: OverlayProductQuote }) {
+  return (
+    <article className="poli-etf-card">
+      <header>
+        <div>
+          <em>
+            {quote.sleeve} · {quote.family === "buffer" ? "버퍼" : "커버드콜"}
+          </em>
+          <h4>{quote.name_ko}</h4>
+          <span>{quote.name}</span>
+        </div>
+        <code>{quote.symbol}</code>
+      </header>
+      <div className="poli-etf-px">
+        <strong>{fmtPrice(quote.price)}</strong>
+        <span className={retClass(quote.change_1d_pct)}>
+          1일 {fmtPct(quote.change_1d_pct)}
+        </span>
+        <span className={retClass(quote.change_3m_pct)}>
+          3개월 {fmtPct(quote.change_3m_pct)}
+        </span>
+      </div>
+      <LiveChart quote={quote} />
+      <p>{quote.blurb}</p>
+      {quote.expense ? <small>보수 {quote.expense}</small> : null}
+    </article>
+  );
+}
+
 function emptyQuotes(): ThemeProductQuote[] {
   return THEME_PRODUCTS.map((spec) => ({
+    ...spec,
+    price: null,
+    change_1d_pct: null,
+    change_3m_pct: null,
+    series: [],
+  }));
+}
+
+function emptyOverlayQuotes(): OverlayProductQuote[] {
+  return OVERLAY_PRODUCTS.map((spec) => ({
     ...spec,
     price: null,
     change_1d_pct: null,
@@ -170,10 +230,14 @@ const CATALOG_SEED: ThemePayload = {
   products: emptyQuotes(),
   pipeline: THEME_PIPELINE,
   rivals: THEME_RIVALS,
+  overlay_issuers: OVERLAY_ISSUERS,
+  overlay_products: emptyOverlayQuotes(),
+  overlay_matchups: OVERLAY_MATCHUPS,
 };
 
 export default function ThemeEtfTab() {
   const [issuerId, setIssuerId] = useState<ThemeIssuerId>("corgi");
+  const [overlayId, setOverlayId] = useState<OverlayIssuerId>("neos");
   const [pipeFilter, setPipeFilter] = useState<"all" | "issuer">("all");
   const [data, setData] = useState<ThemePayload>(CATALOG_SEED);
   const [loading, setLoading] = useState(true);
@@ -192,6 +256,13 @@ export default function ThemeEtfTab() {
         products: json.products?.length ? json.products : emptyQuotes(),
         pipeline: json.pipeline?.length ? json.pipeline : THEME_PIPELINE,
         rivals: json.rivals?.length ? json.rivals : THEME_RIVALS,
+        overlay_issuers: json.overlay_issuers?.length ? json.overlay_issuers : OVERLAY_ISSUERS,
+        overlay_products: json.overlay_products?.length
+          ? json.overlay_products
+          : emptyOverlayQuotes(),
+        overlay_matchups: json.overlay_matchups?.length
+          ? json.overlay_matchups
+          : OVERLAY_MATCHUPS,
         note: json.note || THEME_NOTE,
       });
       setError(json.ok === false ? json.error || "시세 일부 실패" : null);
@@ -224,6 +295,21 @@ export default function ThemeEtfTab() {
     (row) => pipeFilter === "all" || row.issuer === (issuer?.id || issuerId),
   );
   const rivals = data.rivals;
+  const overlayIssuers = data.overlay_issuers || OVERLAY_ISSUERS;
+  const overlayHouse: OverlayIssuer | undefined =
+    overlayIssuers.find((i) => i.id === overlayId) || overlayIssuers[0];
+  const overlayProducts = useMemo(
+    () =>
+      data.overlay_products.filter(
+        (p) => p.issuer === (overlayHouse?.id || overlayId),
+      ),
+    [data.overlay_products, overlayHouse?.id, overlayId],
+  );
+  const overlayQuoteBySymbol = useMemo(() => {
+    const map = new Map<string, OverlayProductQuote>();
+    for (const p of data.overlay_products) map.set(p.symbol, p);
+    return map;
+  }, [data.overlay_products]);
 
   return (
     <div className="themeetf-tab poli-tab">
@@ -443,6 +529,169 @@ export default function ThemeEtfTab() {
           </table>
         </div>
       </section>
+
+      <section className="feature-block">
+        <div className="feature-head">
+          <div>
+            <h3 className="feature-title">파생상품 ETF · 버퍼 vs 커버드콜</h3>
+            <p className="feature-lead">
+              미국 옵션 오버레이의 두 갈래입니다. 커버드콜(NEOS·JEPI·QYLD)은 콜을 팔아
+              월분배를 만들고, 버퍼(이노베이터·FT 베스트)는 그 프리미엄으로 풋을 사서
+              1년 하락을 깎습니다. 둘 다 상승을 담보로 잡습니다.
+            </p>
+          </div>
+        </div>
+        <p className="themeetf-note">{OVERLAY_NOTE}</p>
+
+        <div className="chip-row themeetf-issuer-chips" role="tablist" aria-label="파생 ETF 운용사">
+          {overlayIssuers.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              role="tab"
+              aria-selected={row.id === overlayHouse?.id}
+              className={`chip ${row.id === overlayHouse?.id ? "active" : ""}`}
+              onClick={() => setOverlayId(row.id)}
+            >
+              {row.name_ko}
+              <em>{row.family === "buffer" ? "버퍼" : "커버드콜"}</em>
+            </button>
+          ))}
+        </div>
+
+        <div className="poli-pipe-table-wrap">
+          <table className="poli-pipe-table themeetf-compare">
+            <thead>
+              <tr>
+                <th>운용사</th>
+                <th>유형</th>
+                <th>플레이북</th>
+                <th>어떻게</th>
+                <th>세금</th>
+                <th>보수</th>
+                {OVERLAY_SCORE_AXES.map((axis) => (
+                  <th key={axis.key}>{axis.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {overlayIssuers.map((row) => (
+                <tr
+                  key={row.id}
+                  data-active={row.id === overlayHouse?.id ? "1" : "0"}
+                  onClick={() => setOverlayId(row.id)}
+                >
+                  <td>
+                    <strong>{row.name_ko}</strong>
+                    <div className="themeetf-sub">
+                      {row.name} · {row.founded}
+                    </div>
+                  </td>
+                  <td>{row.family === "buffer" ? "버퍼" : "커버드콜"}</td>
+                  <td className="themeetf-play">{row.playbook_ko}</td>
+                  <td className="themeetf-play">{row.mechanic_ko}</td>
+                  <td className="themeetf-play">{row.tax_ko}</td>
+                  <td>{row.fee_band}</td>
+                  {OVERLAY_SCORE_AXES.map((axis) => (
+                    <td key={axis.key}>
+                      <ScoreDots n={row.scores[axis.key]} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="feature-block">
+        <h3 className="feature-title">비슷한 점 · 다른 점</h3>
+        <p className="feature-lead">
+          옵션을 판다는 점은 같고, 그 돈을 주머니에 넣느냐 보험으로 쓰느냐가 갈립니다.
+        </p>
+        <div className="themeetf-split">
+          <article>
+            <h4>비슷한 점</h4>
+            <ul>
+              {OVERLAY_ALIKE.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </article>
+          <article>
+            <h4>다른 점</h4>
+            <ul>
+              {OVERLAY_UNLIKE.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="feature-block">
+        <h3 className="feature-title">같은 슬리브, 다른 하우스</h3>
+        <p className="feature-lead">
+          S&P 인컴·나스닥 인컴·버퍼 10%는 티커만 다른 복제 전장입니다. 보호 깊이는
+          같은 이노베이터 안에서도 갈립니다.
+        </p>
+        <div className="themeetf-rival-grid">
+          {(data.overlay_matchups || []).map((rival) => (
+            <article key={rival.id} className="themeetf-rival">
+              <header>
+                <em>{rival.theme}</em>
+                <h4>{rival.theme_ko}</h4>
+              </header>
+              <p className="themeetf-match-alike">{rival.alike}</p>
+              <p className="themeetf-match-unlike">{rival.unlike}</p>
+              <ul>
+                {rival.seats.map((seat) => {
+                  const q = overlayQuoteBySymbol.get(seat.symbol);
+                  const house = overlayIssuers.find((i) => i.id === seat.issuer);
+                  return (
+                    <li key={`${seat.issuer}-${seat.symbol}`}>
+                      <button type="button" onClick={() => setOverlayId(seat.issuer)}>
+                        <strong>{house?.name_ko || seat.issuer}</strong>
+                        <code>{seat.symbol}</code>
+                        <span className={retClass(q?.change_3m_pct)}>
+                          3m {fmtPct(q?.change_3m_pct)}
+                        </span>
+                      </button>
+                      <p>{seat.note}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {overlayHouse ? (
+        <section className="feature-block">
+          <div className="feature-head">
+            <div>
+              <h3 className="feature-title">
+                {overlayHouse.name_ko} · {overlayHouse.name}
+              </h3>
+              <p className="feature-lead">{overlayHouse.playbook_ko}</p>
+            </div>
+          </div>
+          <div className="themeetf-issuer-meta">
+            <span>{overlayHouse.family === "buffer" ? "버퍼" : "커버드콜"}</span>
+            <span>설립 {overlayHouse.founded}</span>
+            <span>{overlayHouse.hq}</span>
+            <span>보수 {overlayHouse.fee_band}</span>
+            <span>대표 {overlayHouse.signature}</span>
+          </div>
+          <p className="themeetf-risk">{overlayHouse.risk_ko}</p>
+          <div className="themeetf-product-grid">
+            {overlayProducts.map((quote) => (
+              <OverlayCard key={quote.id} quote={quote} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
