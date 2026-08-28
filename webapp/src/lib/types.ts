@@ -38,6 +38,7 @@ export type ShellTabId =
   | "corridor"
   | "usmidterm"
   | "polithemes"
+  | "themeetf"
   | TabId;
 
 export type NavGroupId =
@@ -126,6 +127,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "greenmin",
   "usmidterm",
   "polithemes",
+  "themeetf",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -173,6 +175,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
   polithemes: "정치테마상품",
+  themeetf: "테마 ETF",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -198,6 +201,7 @@ export const NAV_GROUPS: Array<{
       "etfdb",
       "etfdbus",
       "countryetf",
+      "themeetf",
     ],
   },
   {
