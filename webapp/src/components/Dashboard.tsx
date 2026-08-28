@@ -43,6 +43,7 @@ import CorridorTab from "@/components/CorridorTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import UsMidtermTab from "@/components/UsMidtermTab";
 import PoliThemesTab from "@/components/PoliThemesTab";
+import ThemeEtfTab from "@/components/ThemeEtfTab";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
@@ -235,7 +236,8 @@ export default function Dashboard() {
       tab === "graph" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
-      tab === "polithemes"
+      tab === "polithemes" ||
+      tab === "themeetf"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -336,6 +338,8 @@ export default function Dashboard() {
         <KosdaqActiveTab />
       ) : tab === "countryetf" ? (
         <CountryEtfTab />
+      ) : tab === "themeetf" ? (
+        <ThemeEtfTab />
       ) : tab === "leverage" ? (
         <LeverageEtfTab />
       ) : tab === "geo" ? (
