@@ -4,6 +4,12 @@
  * DTCC reserved symbols (status F = not yet trading).
  */
 
+import type {
+  OverlayIssuer,
+  OverlayMatchup,
+  OverlayProductQuote,
+} from "@/lib/derivOverlay";
+
 export type ThemeIssuerId =
   | "corgi"
   | "roundhill"
@@ -96,6 +102,9 @@ export type ThemePayload = {
   products: ThemeProductQuote[];
   pipeline: ThemePipeline[];
   rivals: ThemeRival[];
+  overlay_issuers: OverlayIssuer[];
+  overlay_products: OverlayProductQuote[];
+  overlay_matchups: OverlayMatchup[];
   error?: string;
 };
 

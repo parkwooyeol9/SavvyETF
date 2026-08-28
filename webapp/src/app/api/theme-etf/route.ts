@@ -1,5 +1,11 @@
 import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
 import {
+  OVERLAY_ISSUERS,
+  OVERLAY_MATCHUPS,
+  OVERLAY_PRODUCTS,
+  type OverlayProductQuote,
+} from "@/lib/derivOverlay";
+import {
   THEME_ISSUERS,
   THEME_NOTE,
   THEME_PIPELINE,
@@ -121,18 +127,39 @@ async function mapPool<T, R>(
   return out;
 }
 
+async function quoteTheme(
+  spec: (typeof THEME_PRODUCTS)[number],
+): Promise<ThemeProductQuote> {
+  const chart = await fetchChart(spec.symbol);
+  return {
+    ...spec,
+    price: chart.price,
+    change_1d_pct: chart.change_1d_pct,
+    change_3m_pct: chart.change_3m_pct,
+    series: chart.series,
+    error: chart.error,
+  };
+}
+
+async function quoteOverlay(
+  spec: (typeof OVERLAY_PRODUCTS)[number],
+): Promise<OverlayProductQuote> {
+  const chart = await fetchChart(spec.symbol);
+  return {
+    ...spec,
+    price: chart.price,
+    change_1d_pct: chart.change_1d_pct,
+    change_3m_pct: chart.change_3m_pct,
+    series: chart.series,
+    error: chart.error,
+  };
+}
+
 async function buildPayload(): Promise<ThemePayload> {
-  const products: ThemeProductQuote[] = await mapPool(THEME_PRODUCTS, 8, async (spec) => {
-    const chart = await fetchChart(spec.symbol);
-    return {
-      ...spec,
-      price: chart.price,
-      change_1d_pct: chart.change_1d_pct,
-      change_3m_pct: chart.change_3m_pct,
-      series: chart.series,
-      error: chart.error,
-    };
-  });
+  const [products, overlay_products] = await Promise.all([
+    mapPool(THEME_PRODUCTS, 8, quoteTheme),
+    mapPool(OVERLAY_PRODUCTS, 8, quoteOverlay),
+  ]);
 
   return {
     ok: true,
@@ -142,6 +169,9 @@ async function buildPayload(): Promise<ThemePayload> {
     products,
     pipeline: THEME_PIPELINE,
     rivals: THEME_RIVALS,
+    overlay_issuers: OVERLAY_ISSUERS,
+    overlay_products,
+    overlay_matchups: OVERLAY_MATCHUPS,
   };
 }
 
@@ -160,6 +190,15 @@ function emptyPayload(error?: string): ThemePayload {
     })),
     pipeline: THEME_PIPELINE,
     rivals: THEME_RIVALS,
+    overlay_issuers: OVERLAY_ISSUERS,
+    overlay_products: OVERLAY_PRODUCTS.map((spec) => ({
+      ...spec,
+      price: null,
+      change_1d_pct: null,
+      change_3m_pct: null,
+      series: [],
+    })),
+    overlay_matchups: OVERLAY_MATCHUPS,
     error,
   };
 }
@@ -167,7 +206,7 @@ function emptyPayload(error?: string): ThemePayload {
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "theme-etf:v1",
+      "theme-etf:v2",
       180_000,
       600_000,
       () => buildPayload(),
