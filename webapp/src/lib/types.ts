@@ -39,6 +39,8 @@ export type ShellTabId =
   | "usmidterm"
   | "polithemes"
   | "themeetf"
+  | "bookclub"
+  | "bookclubboard"
   | TabId;
 
 export type NavGroupId =
@@ -51,7 +53,8 @@ export type NavGroupId =
   | "esg"
   | "politics"
   | "fundmgr"
-  | "derivs";
+  | "derivs"
+  | "bookclub";
 
 export type BriefSection = {
   heading?: string;
@@ -128,6 +131,8 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "usmidterm",
   "polithemes",
   "themeetf",
+  "bookclub",
+  "bookclubboard",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -176,6 +181,8 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   usmidterm: "미 중간선거",
   polithemes: "정치테마상품",
   themeetf: "테마 ETF",
+  bookclub: "북클럽",
+  bookclubboard: "게시판",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -239,6 +246,11 @@ export const NAV_GROUPS: Array<{
     id: "esg",
     label: "ESG",
     tabs: ["esg", "geo", "infra", "esgreg", "greenmin"],
+  },
+  {
+    id: "bookclub",
+    label: "북클럽",
+    tabs: ["bookclub", "bookclubboard"],
   },
 ];
 

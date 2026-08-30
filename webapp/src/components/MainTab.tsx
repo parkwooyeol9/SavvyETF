@@ -49,6 +49,8 @@ const UNIVERSES = [
   { id: "nas", label: "Nasdaq 100" },
 ] as const;
 
+const HOMEPAGE_URL = "https://savvyetf.vercel.app";
+
 const TELEGRAM_CHANNELS = [
   {
     id: "us",
@@ -381,6 +383,37 @@ export default function MainTab() {
               <span className="tg-channel-cta">채널 입장 →</span>
             </a>
           ))}
+        </div>
+      </section>
+
+      <section className="feature-block homepage-qr" aria-labelledby="homepage-qr-title">
+        <div className="feature-head">
+          <h2 className="feature-title" id="homepage-qr-title">
+            홈페이지 QR
+          </h2>
+          <p className="feature-lead">
+            휴대폰 카메라로 스캔하면 이 사이트로 바로 연결됩니다.
+          </p>
+        </div>
+        <div className="homepage-qr-card">
+          <img
+            className="homepage-qr-img"
+            src="/homepage-qr.svg"
+            alt="SavvyETF 홈페이지로 연결되는 QR 코드"
+            width={180}
+            height={180}
+          />
+          <div className="homepage-qr-meta">
+            <p className="homepage-qr-url">{HOMEPAGE_URL}</p>
+            <a
+              className="homepage-qr-link"
+              href={HOMEPAGE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              링크로 열기 →
+            </a>
+          </div>
         </div>
       </section>
     </div>

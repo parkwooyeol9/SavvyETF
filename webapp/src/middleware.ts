@@ -44,6 +44,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/theme-etf": { limit: 12, windowMs: 60_000 },
   "/api/ingest": { limit: 60, windowMs: 60_000 },
   "/api/community/posts": { limit: 30, windowMs: 60_000 },
+  "/api/bookclub/posts": { limit: 20, windowMs: 60_000 },
 };
 
 export async function middleware(request: NextRequest) {
@@ -62,7 +63,7 @@ export async function middleware(request: NextRequest) {
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com https://*.googleusercontent.com https://*.supabase.co https://upload.wikimedia.org https://*.wikimedia.org https://*.wikipedia.org",
       "font-src 'self' data:",
       "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com",
-      "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co",
+      "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co https://savvybookclub.vercel.app",
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com https://*.supabase.co",
     ].join("; "),
