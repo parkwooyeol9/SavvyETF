@@ -3586,6 +3586,116 @@ a.geo-choke-hl:hover {
   text-decoration: none;
 }
 
+button.community-post-title,
+button.community-back {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.community-post-title {
+  width: 100%;
+}
+
+/* —— Homepage QR —— */
+.homepage-qr {
+  margin-top: 0.15rem;
+}
+
+.homepage-qr-card {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  flex-wrap: wrap;
+  padding: 0.95rem 1.05rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    165deg,
+    rgba(26, 37, 56, 0.55) 0%,
+    rgba(20, 29, 43, 0.35) 100%
+  );
+}
+
+.homepage-qr-img {
+  display: block;
+  width: 180px;
+  height: 180px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.homepage-qr-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 12rem;
+}
+
+.homepage-qr-url {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.homepage-qr-link {
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.homepage-qr-link:hover {
+  color: #7cbcff;
+}
+
+/* —— Book club embed —— */
+.bookclub-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.bookclub-embed-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.bookclub-open {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.bookclub-open:hover {
+  color: #7cbcff;
+  border-color: #3a5478;
+}
+
+.bookclub-frame {
+  width: 100%;
+  height: min(88vh, 1100px);
+  min-height: 720px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0a0f16;
+}
+
 @media (max-width: 720px) {
   .community-userbox {
     align-items: stretch;
@@ -3594,6 +3704,21 @@ a.geo-choke-hl:hover {
 
   .community-nav-link {
     margin-left: 0;
+  }
+
+  .homepage-qr-card {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .homepage-qr-meta {
+    align-items: center;
+    width: 100%;
+  }
+
+  .bookclub-frame {
+    min-height: 560px;
+    height: 78vh;
   }
 }
 

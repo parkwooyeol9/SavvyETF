@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import InfraTab from "@/components/InfraTab";
 import EsgRegTab from "@/components/EsgRegTab";
 import GreenMineralsTab from "@/components/GreenMineralsTab";
+import BookClubBoard from "@/components/BookClubBoard";
+import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
 import EventStudyTab from "@/components/EventStudyTab";
@@ -237,7 +239,9 @@ export default function Dashboard() {
       tab === "corridor" ||
       tab === "usmidterm" ||
       tab === "polithemes" ||
-      tab === "themeetf"
+      tab === "themeetf" ||
+      tab === "bookclub" ||
+      tab === "bookclubboard"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -306,6 +310,10 @@ export default function Dashboard() {
 
       {tab === "main" ? (
         <MainTab />
+      ) : tab === "bookclub" ? (
+        <BookClubTab />
+      ) : tab === "bookclubboard" ? (
+        <BookClubBoard />
       ) : tab === "simulate" ? (
         <SimulateTab />
       ) : tab === "usportfolio" ? (

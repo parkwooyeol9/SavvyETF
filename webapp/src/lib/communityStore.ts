@@ -4,6 +4,8 @@
  */
 
 import { randomBytes, randomUUID } from "crypto";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import path from "path";
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
 import {
@@ -12,9 +14,16 @@ import {
   type CommunityCategory,
 } from "@/lib/community";
 
-const STORE_KEY = "community/board.json";
+export type BoardKind = "community" | "bookclub";
+
+const STORE_KEYS: Record<BoardKind, string> = {
+  community: "community/board.json",
+  bookclub: "community/bookclub.json",
+};
+
 const MAX_POSTS = 200;
 const MAX_COMMENTS_PER_POST = 100;
+const ANON_NICK = "익명";
 
 export type BoardComment = {
   id: string;
@@ -52,9 +61,7 @@ export function communityBoardConfigured(): boolean {
   return r2Configured();
 }
 
-export async function loadBoard(): Promise<BoardStore> {
-  if (!r2Configured()) return emptyStore();
-  const raw = await r2GetObjectText(STORE_KEY);
+function parseStore(raw: string | null): BoardStore {
   if (!raw) return emptyStore();
   try {
     const parsed = JSON.parse(raw) as BoardStore;
@@ -68,19 +75,64 @@ export async function loadBoard(): Promise<BoardStore> {
   }
 }
 
-async function saveBoard(store: BoardStore): Promise<void> {
+function localBoardPath(kind: BoardKind): string {
+  const dir =
+    process.env.VERCEL === "1"
+      ? "/tmp"
+      : path.join(process.cwd(), "data");
+  return path.join(dir, `${kind}-board.json`);
+}
+
+async function loadLocalBoard(kind: BoardKind): Promise<BoardStore> {
+  try {
+    const raw = await readFile(localBoardPath(kind), "utf8");
+    return parseStore(raw);
+  } catch {
+    return emptyStore();
+  }
+}
+
+async function saveLocalBoard(store: BoardStore, kind: BoardKind): Promise<void> {
+  const file = localBoardPath(kind);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(store), "utf8");
+}
+
+export async function loadBoard(
+  kind: BoardKind = "community",
+): Promise<BoardStore> {
+  if (r2Configured()) {
+    const raw = await r2GetObjectText(STORE_KEYS[kind]);
+    return parseStore(raw);
+  }
+  if (kind === "bookclub") return loadLocalBoard(kind);
+  return emptyStore();
+}
+
+async function saveBoard(
+  store: BoardStore,
+  kind: BoardKind = "community",
+): Promise<void> {
   store.updated_at = new Date().toISOString();
   // Keep newest first, cap size
   store.posts = store.posts
     .slice()
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     .slice(0, MAX_POSTS);
-  await r2PutObject(
-    STORE_KEY,
-    JSON.stringify(store),
-    "application/json; charset=utf-8",
-    "private, max-age=0",
-  );
+  const payload = JSON.stringify(store);
+  if (r2Configured()) {
+    await r2PutObject(
+      STORE_KEYS[kind],
+      payload,
+      "application/json; charset=utf-8",
+      "private, max-age=0",
+    );
+    return;
+  }
+  if (kind !== "bookclub") {
+    throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
+  }
+  await saveLocalBoard(store, kind);
 }
 
 export function sanitizeNickname(raw: string): string {
@@ -112,23 +164,33 @@ export async function createPost(input: {
   title: string;
   body: string;
   category: string;
+  board?: BoardKind;
 }): Promise<{ post: ReturnType<typeof publicPost>; delete_key: string }> {
-  if (!r2Configured()) throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
-  const nickname = sanitizeNickname(input.nickname);
+  const board = input.board || "community";
+  if (!r2Configured() && board !== "bookclub") {
+    throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
+  }
+  const anonymous = board === "bookclub";
+  let nickname = sanitizeNickname(input.nickname);
+  if (anonymous && !nickname) nickname = ANON_NICK;
   const title = input.title.trim().slice(0, 120);
   const body = input.body.trim().slice(0, 8000);
   if (nickname.length < 1) throw new Error("닉네임을 입력해 주세요.");
   if (title.length < 2) throw new Error("제목은 2자 이상이어야 합니다.");
   if (body.length < 2) throw new Error("본문은 2자 이상이어야 합니다.");
-  if (!isCommunityCategory(input.category)) {
-    throw new Error("잘못된 카테고리입니다.");
+  let category: CommunityCategory = "question";
+  if (!anonymous) {
+    if (!isCommunityCategory(input.category)) {
+      throw new Error("잘못된 카테고리입니다.");
+    }
+    category = input.category;
   }
 
-  const store = await loadBoard();
+  const store = await loadBoard(board);
   const delete_key = newDeleteKey();
   const post: BoardPost = {
     id: randomUUID(),
-    category: input.category,
+    category,
     title,
     body,
     nickname,
@@ -137,7 +199,7 @@ export async function createPost(input: {
     comments: [],
   };
   store.posts.unshift(post);
-  await saveBoard(store);
+  await saveBoard(store, board);
   return { post: publicPost(post), delete_key };
 }
 
@@ -145,14 +207,20 @@ export async function createComment(input: {
   postId: string;
   nickname: string;
   body: string;
+  board?: BoardKind;
 }): Promise<{ comment: Omit<BoardComment, "delete_key">; delete_key: string }> {
-  if (!r2Configured()) throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
-  const nickname = sanitizeNickname(input.nickname);
+  const board = input.board || "community";
+  if (!r2Configured() && board !== "bookclub") {
+    throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
+  }
+  const anonymous = board === "bookclub";
+  let nickname = sanitizeNickname(input.nickname);
+  if (anonymous && !nickname) nickname = ANON_NICK;
   const body = input.body.trim().slice(0, 4000);
   if (nickname.length < 1) throw new Error("닉네임을 입력해 주세요.");
   if (body.length < 1) throw new Error("댓글을 입력해 주세요.");
 
-  const store = await loadBoard();
+  const store = await loadBoard(board);
   const post = store.posts.find((p) => p.id === input.postId);
   if (!post) throw new Error("게시글을 찾을 수 없습니다.");
   if (post.comments.length >= MAX_COMMENTS_PER_POST) {
@@ -167,7 +235,7 @@ export async function createComment(input: {
     delete_key,
   };
   post.comments.push(comment);
-  await saveBoard(store);
+  await saveBoard(store, board);
   const { delete_key: _d, ...pub } = comment;
   return { comment: pub, delete_key };
 }
@@ -176,9 +244,12 @@ export async function deletePost(
   postId: string,
   deleteKey: string,
   adminSecret?: string,
+  board: BoardKind = "community",
 ): Promise<void> {
-  if (!r2Configured()) throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
-  const store = await loadBoard();
+  if (!r2Configured() && board !== "bookclub") {
+    throw new Error("게시판 저장소(R2)가 설정되지 않았습니다.");
+  }
+  const store = await loadBoard(board);
   const post = store.posts.find((p) => p.id === postId);
   if (!post) throw new Error("게시글을 찾을 수 없습니다.");
   const admin =
@@ -189,7 +260,7 @@ export async function deletePost(
     throw new Error("삭제 권한이 없습니다.");
   }
   store.posts = store.posts.filter((p) => p.id !== postId);
-  await saveBoard(store);
+  await saveBoard(store, board);
 }
 
 export { COMMUNITY_CATEGORIES };
