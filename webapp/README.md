@@ -48,7 +48,8 @@ Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 | `R2_SECRET_ACCESS_KEY` | R2 API token secret |
 | `R2_BUCKET_NAME` | e.g. `savvyetf-briefs` |
 | `R2_PUBLIC_BASE_URL` | optional `https://pub-….r2.dev` (else media proxy) |
-| `RENDER_BOT_URL` | `https://savvyetf-bot.onrender.com` (optional) |
+| `RENDER_BOT_URL` | Render bot origin (required for dashboard bot APIs) |
+| `BOT_WEB_API_SECRET` | same as Render `BOT_WEB_API_SECRET` (or reuse `WEB_INGEST_SECRET`) |
 | `BLOB_READ_WRITE_TOKEN` | **optional legacy** — not required if R2 is set |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (community) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |

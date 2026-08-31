@@ -11,11 +11,13 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: TELEGRAM_CHAT_ID_US
-        value: "-1004323836037"
+        sync: false
       - key: TELEGRAM_CHAT_ID_KOR
-        value: "-1004386688578"
+        sync: false
       - key: TELEGRAM_CHAT_ID_ESG
-        value: "-1004486166524"
+        sync: false
+      - key: BOT_WEB_API_SECRET
+        sync: false
       - key: SUMMARY_PUBLIC_URL
         value: https://savvyetf-bot.onrender.com
       - key: WEB_PUBLISH_URL

@@ -273,9 +273,7 @@ def is_interaction_allowed(
         return True
     if user_id is not None and user_id in allowed_users:
         return True
-    # If allowlists are empty, treat as open for safety (misconfig)
-    if not env_allowed_chat_ids() and not env_allowed_user_ids():
-        return True
+    # Explicit allowlist with empty IDs must not fall open.
     return False
 
 

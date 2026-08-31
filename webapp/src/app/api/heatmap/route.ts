@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
-import { botBaseUrl } from "@/lib/bot";
+import { fetchBotJson } from "@/lib/bot";
 import { buildLocalHeatmap, isHeatmapUniverse } from "@/lib/heatmap";
 
 export const dynamic = "force-dynamic";
@@ -31,18 +31,12 @@ export async function GET(request: Request) {
           top_n: String(topN),
           image: "0",
         });
-        const res = await fetch(`${botBaseUrl()}/api/web/heatmap?${qs}`, {
-          headers: { Accept: "application/json" },
-          signal: AbortSignal.timeout(20_000),
-        });
-        const text = await res.text();
-        try {
-          const data = JSON.parse(text) as { ok?: boolean };
-          if (data?.ok) {
-            return { ...data, source: "render" };
-          }
-        } catch {
-          // ignore non-JSON
+        const data = await fetchBotJson<{ ok?: boolean }>(
+          `/api/web/heatmap?${qs}`,
+          { timeoutMs: 20_000 },
+        );
+        if (data?.ok) {
+          return { ...data, source: "render" };
         }
       } catch {
         // ignore upstream errors

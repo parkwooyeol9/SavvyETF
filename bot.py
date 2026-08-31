@@ -1,3 +1,4 @@
+import hmac
 import html
 import json
 import os
@@ -2320,6 +2321,22 @@ def start_web_server():
             self.end_headers()
             self.wfile.write(body)
 
+        def _token_matches(self, presented: str, secret: str) -> bool:
+            if not presented or not secret:
+                return False
+            return hmac.compare_digest(presented, secret)
+
+        def _token_matches_any(self, presented: str, secrets: set[str]) -> bool:
+            if not presented:
+                return False
+            return any(self._token_matches(presented, secret) for secret in secrets)
+
+        def _presented_bearer(self) -> str:
+            auth = self.headers.get("Authorization", "")
+            if auth.lower().startswith("bearer "):
+                return auth[7:].strip()
+            return ""
+
         def _admin_secret_ok(self) -> bool:
             secret = (
                 os.environ.get("BOT_ADMIN_SECRET", "").strip()
@@ -2327,26 +2344,30 @@ def start_web_server():
             )
             if not secret:
                 return False
-            auth = self.headers.get("Authorization", "")
-            bearer = (
-                auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-            )
             qs = parse_qs(urlparse(self.path).query)
             token_q = (qs.get("token") or [""])[0]
-            return bearer == secret or token_q == secret
+            return self._token_matches(
+                self._presented_bearer(), secret
+            ) or self._token_matches(token_q, secret)
 
         def _bot_web_api_ok(self) -> bool:
-            secret = os.environ.get("BOT_WEB_API_SECRET", "").strip()
-            if not secret:
-                return True
-            auth = self.headers.get("Authorization", "")
-            bearer = (
-                auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-            )
-            qs = parse_qs(urlparse(self.path).query)
-            token_q = (qs.get("token") or [""])[0]
+            # Fail closed: dashboard APIs require a shared secret.
+            # WEB_INGEST_SECRET is accepted so existing Vercel/Render deploys
+            # keep working without a second env var.
+            secrets = {
+                s
+                for s in (
+                    os.environ.get("BOT_WEB_API_SECRET", "").strip(),
+                    os.environ.get("WEB_INGEST_SECRET", "").strip(),
+                )
+                if s
+            }
+            if not secrets:
+                return False
             header_key = (self.headers.get("X-Bot-Web-Key") or "").strip()
-            return bearer == secret or token_q == secret or header_key == secret
+            return self._token_matches_any(
+                self._presented_bearer(), secrets
+            ) or self._token_matches_any(header_key, secrets)
 
         def _reject_unauthorized(self, cors: bool = False) -> None:
             body = b'{"ok":false,"error":"Unauthorized"}'
@@ -2370,6 +2391,9 @@ def start_web_server():
             path = urlparse(self.path).path
 
             if path == "/api/web-briefs":
+                if not self._bot_web_api_ok():
+                    self._reject_unauthorized()
+                    return
                 try:
                     from web_briefs_store import load_all_briefs
 
@@ -2430,15 +2454,12 @@ def start_web_server():
 
                 health_secret = os.environ.get("HEALTH_CHECK_SECRET", "").strip()
                 if health_secret:
-                    auth = self.headers.get("Authorization", "")
                     qs = parse_qs(urlparse(self.path).query)
                     token_q = (qs.get("token") or [""])[0]
-                    bearer = (
-                        auth[7:].strip()
-                        if auth.lower().startswith("bearer ")
-                        else ""
-                    )
-                    if token_q != health_secret and bearer != health_secret:
+                    if not (
+                        self._token_matches(self._presented_bearer(), health_secret)
+                        or self._token_matches(token_q, health_secret)
+                    ):
                         self.send_response(401)
                         self.send_header("Content-Type", "application/json")
                         self.end_headers()
@@ -3354,7 +3375,10 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self.send_response(204)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header(
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, Authorization, X-Bot-Web-Key",
+                )
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -3375,11 +3399,7 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                         503,
                     )
                     return
-                auth = self.headers.get("Authorization", "")
-                bearer = (
-                    auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-                )
-                if bearer not in allowed:
+                if not self._token_matches_any(self._presented_bearer(), allowed):
                     self._reject_unauthorized()
                     return
                 length = int(self.headers.get("Content-Length") or 0)

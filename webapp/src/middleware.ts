@@ -26,6 +26,11 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/money-flow": { limit: 15, windowMs: 60_000 },
   "/api/precious-metals": { limit: 20, windowMs: 60_000 },
   "/api/crypto-paper": { limit: 20, windowMs: 60_000 },
+  "/api/binance-paper": { limit: 20, windowMs: 60_000 },
+  "/api/challenge": { limit: 20, windowMs: 60_000 },
+  "/api/labor-risk": { limit: 10, windowMs: 60_000 },
+  "/api/seasonality": { limit: 10, windowMs: 60_000 },
+  "/api/event-episodes": { limit: 10, windowMs: 60_000 },
   "/api/crypto-assets": { limit: 20, windowMs: 60_000 },
   "/api/trading-signals": { limit: 20, windowMs: 60_000 },
   "/api/trading-ideas": { limit: 20, windowMs: 60_000 },
@@ -47,9 +52,17 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/bookclub/posts": { limit: 20, windowMs: 60_000 },
 };
 
+const WRITE_PATH =
+  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$/;
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const rule = HEAVY_PATHS[pathname];
+  const method = request.method.toUpperCase();
+  const writeRule =
+    (method === "POST" || method === "DELETE") && WRITE_PATH.test(pathname)
+      ? { limit: 8, windowMs: 60_000 }
+      : null;
+  const rule = writeRule || HEAVY_PATHS[pathname];
   const responseHeaders = new Headers();
   responseHeaders.set("X-Content-Type-Options", "nosniff");
   responseHeaders.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -71,7 +84,7 @@ export async function middleware(request: NextRequest) {
 
   if (rule) {
     const ip = clientIp(request);
-    const result = rateLimit(`${pathname}:${ip}`, rule);
+    const result = rateLimit(`${method}:${pathname}:${ip}`, rule);
     if (!result.ok) {
       return NextResponse.json(
         { ok: false, error: "Too many requests" },

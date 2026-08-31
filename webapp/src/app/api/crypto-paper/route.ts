@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { buildCryptoPaperPayload } from "@/lib/cryptoPaperTrading";
+import { cronAuthorized } from "@/lib/secretsEqual";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,8 @@ export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const force = url.searchParams.get("refresh") === "1";
+  const force =
+    url.searchParams.get("refresh") === "1" && cronAuthorized(request);
   try {
     const payload = await buildCryptoPaperPayload({ forceTick: force });
     return NextResponse.json(payload, {
