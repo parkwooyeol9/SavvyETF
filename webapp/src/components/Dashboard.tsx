@@ -9,7 +9,7 @@ import BookClubBoard from "@/components/BookClubBoard";
 import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
-import DailyRoundTab from "@/components/DailyRoundTab";
+import ChartTradeTab from "@/components/ChartTradeTab";
 import EventStudyTab from "@/components/EventStudyTab";
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgTabShell from "@/components/EsgTabShell";
@@ -154,6 +154,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (tab === "kosdaq100") setTab("kosdaqactive");
     if (tab === "aigov" || tab === "aiinfra") setTab("infra");
+    if (tab === "round") setTab("heatpick");
   }, [tab]);
 
   useEffect(() => {
@@ -184,7 +185,9 @@ export default function Dashboard() {
             ? "kosdaqactive"
             : raw === "aigov" || raw === "aiinfra"
               ? "infra"
-              : raw;
+              : raw === "round"
+                ? "heatpick"
+                : raw;
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
@@ -209,7 +212,7 @@ export default function Dashboard() {
       tab === "simulate" ||
       tab === "usportfolio" ||
       tab === "education" ||
-      tab === "round" ||
+      tab === "heatpick" ||
       tab === "derivedu" ||
       tab === "geo" ||
       tab === "infra" ||
@@ -338,8 +341,8 @@ export default function Dashboard() {
         <UsMidtermTab />
       ) : tab === "polithemes" ? (
         <PoliThemesTab />
-      ) : tab === "round" ? (
-        <DailyRoundTab />
+      ) : tab === "heatpick" ? (
+        <ChartTradeTab />
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "derivedu" ? (

@@ -28,6 +28,7 @@ export type ShellTabId =
   | "derivatives"
   | "derivedu"
   | "round"
+  | "heatpick"
   | "gamma"
   | "quant"
   | "ideas"
@@ -104,6 +105,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "derivedu",
   "gamma",
   "round",
+  "heatpick",
   "quant",
   "gurus",
   "eventstudy",
@@ -151,7 +153,8 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   simulate: "ETF 배분",
   usportfolio: "미국 주식",
   education: "환율",
-  round: "오늘의 라운드",
+  heatpick: "모의투자",
+  round: "모의투자",
   derivedu: "파생상품",
   etfdb: "ETF DB",
   etfdbus: "ETF DB(US)",
@@ -255,14 +258,19 @@ export const NAV_GROUPS: Array<{
   {
     id: "learn",
     label: "교육",
-    tabs: ["round", "education", "derivedu", "bookclub", "bookclubboard"],
+    tabs: ["bookclub", "heatpick", "education", "derivedu", "bookclubboard"],
   },
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
   if (tab === "kosdaq100") return "fundmgr";
   if (tab === "aigov" || tab === "aiinfra") return "esg";
-  if (tab === "education" || tab === "derivedu" || tab === "round") {
+  if (
+    tab === "education" ||
+    tab === "derivedu" ||
+    tab === "round" ||
+    tab === "heatpick"
+  ) {
     return "learn";
   }
   for (const group of NAV_GROUPS) {
