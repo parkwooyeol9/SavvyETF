@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+import { secretsEqual } from "@/lib/secretsEqual";
 import {
   COMMUNITY_CATEGORIES,
   isCommunityCategory,
@@ -252,10 +253,12 @@ export async function deletePost(
   const store = await loadBoard(board);
   const post = store.posts.find((p) => p.id === postId);
   if (!post) throw new Error("게시글을 찾을 수 없습니다.");
+  const adminSecretEnv = process.env.COMMUNITY_ADMIN_SECRET?.trim() || "";
   const admin =
-    adminSecret &&
-    process.env.COMMUNITY_ADMIN_SECRET?.trim() &&
-    adminSecret === process.env.COMMUNITY_ADMIN_SECRET.trim();
+    typeof adminSecret === "string" &&
+    adminSecret.length > 0 &&
+    adminSecretEnv.length > 0 &&
+    secretsEqual(adminSecret, adminSecretEnv);
   if (!admin && post.delete_key !== deleteKey) {
     throw new Error("삭제 권한이 없습니다.");
   }

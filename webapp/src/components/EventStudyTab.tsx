@@ -23,6 +23,7 @@ import {
   type EventEpisodesPayload,
   type SuggestedEpisode,
 } from "@/lib/eventEpisodes";
+import LaborRiskPanel from "@/components/LaborRiskPanel";
 import {
   DEFAULT_FOCUS_MONTHS,
   EXAMPLE_TICKERS,
@@ -60,7 +61,15 @@ function shortLabel(label: string, max = 10): string {
   return label.length > max ? `${label.slice(0, max)}…` : label;
 }
 
-type StudyMode = "episodes" | "seasonality";
+type StudyMode = "episodes" | "seasonality" | "labor";
+
+const MODE_SUBHEAD: Record<StudyMode, string> = {
+  episodes:
+    "과거 코스피·코스닥 수익률과 코스피 업종별 수익률을 구간별로 나란히 비교합니다. 날짜를 직접 넣거나, 원달러·유가 등 과거 사건이 있던 구간을 골라 볼 수 있습니다.",
+  seasonality: `특정 종목의 과거 ${LOOKBACK_YEARS}년 월별 수익률을 분석해 집중 시즌(기본 6·7·8·9월) 계절성을 Welch t-검정으로 검증합니다.`,
+  labor:
+    "노조 리스크가 공개·쟁의권·파업(또는 타결)로 번진 뒤 주가가 어떻게 반응했는지를 D / D+5 / D+20으로 봅니다. 삼성전자·바이오·하이닉스·현대차·기아·포스코홀딩스·HD현대중공업·네이버·카카오·한화오션.",
+};
 
 export default function EventStudyTab() {
   const [mode, setMode] = useState<StudyMode>("episodes");
@@ -71,11 +80,7 @@ export default function EventStudyTab() {
         <div className="panel-head eventstudy-hero">
           <div>
             <h2 className="panel-title">이벤트 스터디</h2>
-            <p className="macro-subhead">
-              {mode === "episodes"
-                ? "과거 코스피·코스닥 수익률과 코스피 업종별 수익률을 구간별로 나란히 비교합니다. 날짜를 직접 넣거나, 원달러·유가 등 과거 사건이 있던 구간을 골라 볼 수 있습니다."
-                : `특정 종목의 과거 ${LOOKBACK_YEARS}년 월별 수익률을 분석해 집중 시즌(기본 6·7·8·9월) 계절성을 Welch t-검정으로 검증합니다.`}
-            </p>
+            <p className="macro-subhead">{MODE_SUBHEAD[mode]}</p>
           </div>
           <div className="seg" role="tablist" aria-label="이벤트 스터디 모드">
             <button
@@ -96,11 +101,26 @@ export default function EventStudyTab() {
             >
               종목 계절성
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "labor"}
+              className={mode === "labor" ? "active" : ""}
+              onClick={() => setMode("labor")}
+            >
+              노동리스크
+            </button>
           </div>
         </div>
       </section>
 
-      {mode === "episodes" ? <EpisodesPanel /> : <SeasonalityPanel />}
+      {mode === "episodes" ? (
+        <EpisodesPanel />
+      ) : mode === "seasonality" ? (
+        <SeasonalityPanel />
+      ) : (
+        <LaborRiskPanel />
+      )}
     </div>
   );
 }

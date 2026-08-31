@@ -4972,6 +4972,90 @@ button.community-post-title {
   }
 }
 
+.labor-filter-row {
+  margin-top: 0.65rem;
+}
+
+.labor-metric-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.labor-diff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.labor-diff-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  background: var(--panel-2);
+}
+
+.labor-diff-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.labor-diff-card header strong {
+  font-size: 0.9rem;
+}
+
+.labor-diff-card header span {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.labor-diff-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #c5d0dc;
+  line-height: 1.5;
+}
+
+.labor-event-table td.labor-event-cell,
+.labor-event-cell {
+  text-align: left;
+  min-width: 16rem;
+  white-space: normal;
+}
+
+.labor-event-cell strong {
+  display: block;
+  font-size: 0.84rem;
+}
+
+.labor-event-cell span,
+.labor-event-cell em {
+  display: block;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin-top: 0.2rem;
+}
+
+.labor-event-cell em {
+  color: #9aa8b8;
+}
+
+@media (max-width: 980px) {
+  .labor-metric-toggle {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
 .empty.err {
   color: #f87171;
   margin-top: 0.75rem;

@@ -6,7 +6,11 @@ export function botBaseUrl(): string {
 }
 
 function botWebHeaders(extra?: HeadersInit): HeadersInit {
-  const secret = (process.env.BOT_WEB_API_SECRET || "").trim();
+  const secret = (
+    process.env.BOT_WEB_API_SECRET ||
+    process.env.WEB_INGEST_SECRET ||
+    ""
+  ).trim();
   return {
     Accept: "application/json",
     ...(secret
@@ -36,10 +40,14 @@ export async function fetchBotJson<T>(
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<T> {
   const timeoutMs = init?.timeoutMs ?? 45_000;
+  const base = botBaseUrl();
+  if (!base) {
+    throw new Error("RENDER_BOT_URL is not set");
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${botBaseUrl()}${path}`, {
+    const res = await fetch(`${base}${path}`, {
       ...init,
       signal: controller.signal,
       headers: botWebHeaders(init?.headers),
@@ -49,6 +57,9 @@ export async function fetchBotJson<T>(
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error(`Bot ${path} returned empty body (HTTP ${res.status})`);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`Bot ${path} unauthorized (HTTP ${res.status})`);
     }
     if (looksLikeHtml(trimmed)) {
       throw new Error(
