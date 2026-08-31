@@ -255,7 +255,9 @@ export async function deletePost(
   if (!post) throw new Error("게시글을 찾을 수 없습니다.");
   const adminSecretEnv = process.env.COMMUNITY_ADMIN_SECRET?.trim() || "";
   const admin =
-    Boolean(adminSecret && adminSecretEnv) &&
+    typeof adminSecret === "string" &&
+    adminSecret.length > 0 &&
+    adminSecretEnv.length > 0 &&
     secretsEqual(adminSecret, adminSecretEnv);
   if (!admin && post.delete_key !== deleteKey) {
     throw new Error("삭제 권한이 없습니다.");
