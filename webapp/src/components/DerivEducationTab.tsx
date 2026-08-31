@@ -531,9 +531,8 @@ export default function DerivEducationTab() {
         <div className="feature-head">
           <h2 className="feature-title">파생 페이오프 도판</h2>
           <p className="feature-lead">
-            보고서용 규격(7.0 × 4.2 cm)으로 만기 손익을 그렸습니다. 커버드콜 ETF
-            세대부터 버퍼, 오토콜·ELS, 옵션 블록, 선물 헤지 순입니다. 가로축은
-            기초자산 가격(S₀=100), 세로축은 포인트 손익입니다.
+            커버드콜 ETF 세대부터 버퍼, 오토콜·ELS, 옵션 블록, 선물 헤지 순입니다.
+            가로축은 기초자산 가격(S₀=100), 세로축은 포인트 손익입니다.
           </p>
         </div>
         <p className="edu-disclaimer">{DERIV_EDU_DISCLAIMER}</p>

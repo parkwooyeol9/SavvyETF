@@ -23,7 +23,6 @@ import {
   fmtValueEok,
   type KrMarketPayload,
 } from "@/lib/krMarket";
-import type { KrShortCreditBoard, KrStockShortBoard } from "@/lib/krShortCredit";
 
 type ChartMode = "intraday" | "daily";
 type FlowMarket = "kospi" | "kosdaq";
@@ -299,312 +298,6 @@ function FlowPanel({
   );
 }
 
-function ShortStockCard({ stock }: { stock: KrStockShortBoard }) {
-  const tradeChart = useMemo(
-    () =>
-      stock.trade.slice(-40).map((p) => ({
-        t: p.date.slice(5),
-        공매도비중: p.short_volume_wt_pct,
-        공매도수량: Math.round(p.short_volume / 1000) / 10, // 만주
-      })),
-    [stock.trade],
-  );
-  const balChart = useMemo(
-    () =>
-      stock.balance.map((p) => ({
-        t: p.date.slice(5),
-        순보유비중: p.bal_rto_pct,
-        잔고수량: Math.round(p.bal_qty / 1000) / 10,
-      })),
-    [stock.balance],
-  );
-  const lt = stock.latest_trade;
-  const lb = stock.latest_balance;
-
-  return (
-    <article className="kr-card">
-      <div className="kr-card-head">
-        <div>
-          <h3 className="kr-card-title">
-            {stock.name} <code>{stock.code}</code>
-          </h3>
-          <p className="kr-card-sub">공매도 거래비중 · 순보유잔고 (KRX)</p>
-        </div>
-        <div className="kr-credit-kpis">
-          <div>
-            <span>공매도/거래량</span>
-            <strong>{fmtPct(lt?.short_volume_wt_pct ?? null, 2)}</strong>
-          </div>
-          <div>
-            <span>순보유비중</span>
-            <strong>{fmtPct(lb?.bal_rto_pct ?? null, 2)}</strong>
-          </div>
-          <div>
-            <span>잔고수량</span>
-            <strong>
-              {lb ? `${Math.round(lb.bal_qty).toLocaleString("ko-KR")}주` : "—"}
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      <div className="kr-chart" style={{ height: 220 }}>
-        {!tradeChart.length ? (
-          <p className="empty">공매도 거래 시계열 없음</p>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={tradeChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-              <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={28} />
-              <YAxis
-                yAxisId="left"
-                tick={{ fill: "#f472b6", fontSize: 10 }}
-                width={42}
-                unit="%"
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: "#94a3b8", fontSize: 10 }}
-                width={44}
-              />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number, name: string) => [
-                  name.includes("비중")
-                    ? `${Number(value).toFixed(2)}%`
-                    : `${Number(value).toLocaleString("ko-KR")}만주`,
-                  name,
-                ]}
-              />
-              <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
-              <Bar
-                yAxisId="right"
-                dataKey="공매도수량"
-                name="공매도수량(만주)"
-                fill="rgba(148,163,184,0.35)"
-                radius={[2, 2, 0, 0]}
-              />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="공매도비중"
-                name="공매도/거래량%"
-                stroke="#f472b6"
-                strokeWidth={2.2}
-                dot={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {balChart.length ? (
-        <div className="kr-chart" style={{ height: 180, marginTop: 8 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={balChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-              <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
-              <YAxis tick={{ fill: "#38bdf8", fontSize: 10 }} width={42} unit="%" />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number) => [`${Number(value).toFixed(2)}%`, "순보유비중"]}
-              />
-              <Line
-                type="monotone"
-                dataKey="순보유비중"
-                stroke="#38bdf8"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function ShortCreditPanel({ board }: { board: KrShortCreditBoard }) {
-  const mktChart = useMemo(() => {
-    const byDate = new Map<string, Record<string, number | string>>();
-    for (const m of ["KOSPI", "KOSDAQ"] as const) {
-      for (const row of board.market_balance_history?.[m] || []) {
-        const rec = byDate.get(row.as_of) || { t: row.as_of.slice(5) };
-        rec[m] = row.bal_rto_pct ?? 0;
-        byDate.set(row.as_of, rec);
-      }
-    }
-    return [...byDate.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([, v]) => v);
-  }, [board.market_balance_history]);
-
-  return (
-    <div className="kr-short-block">
-      <div className="kr-card">
-        <div className="kr-card-head">
-          <div>
-            <h3 className="kr-card-title">공매도 · 신용 레버리지 모니터</h3>
-            <p className="kr-card-sub">{board.source_note}</p>
-          </div>
-        </div>
-        {board.unavailable.length ? (
-          <p className="kr-note">미제공: {board.unavailable.join(" · ")}</p>
-        ) : null}
-
-        <div className="kr-credit-kpis" style={{ marginBottom: 12 }}>
-          {board.market_balance.map((m) => (
-            <div key={m.market}>
-              <span>
-                {m.market} 순보유비중
-                {m.as_of ? ` (${m.as_of})` : ""}
-              </span>
-              <strong>{fmtPct(m.bal_rto_pct, 2)}</strong>
-            </div>
-          ))}
-        </div>
-
-        <div className="kr-chart" style={{ height: 220 }}>
-          {!mktChart.length ? (
-            <p className="empty">시장 공매도 잔고 시계열 없음 (공시 지연일 수 있음)</p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mktChart} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-                <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
-                <YAxis tick={{ fill: "#8fa3b8", fontSize: 10 }} width={42} unit="%" />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value: number, name: string) => [
-                    `${Number(value).toFixed(2)}%`,
-                    name,
-                  ]}
-                />
-                <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
-                <Line type="monotone" dataKey="KOSPI" stroke="#60a5fa" strokeWidth={2.2} dot={false} />
-                <Line type="monotone" dataKey="KOSDAQ" stroke="#34d399" strokeWidth={2.2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      <div className="kr-grid-2">
-        {board.stocks.map((s) => (
-          <ShortStockCard key={s.code} stock={s} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CreditPanel({ credit }: { credit: NonNullable<KrMarketPayload["credit"]> }) {
-  const chartData = useMemo(
-    () =>
-      credit.rows.slice(-30).map((r) => ({
-        t: r.date.slice(5),
-        예탁금: r.customer_deposit,
-        신용잔고: r.credit_balance,
-      })),
-    [credit.rows],
-  );
-  const latest = credit.latest;
-
-  return (
-    <article className="kr-card">
-      <div className="kr-card-head">
-        <div>
-          <h3 className="kr-card-title">신용 · 증시자금</h3>
-          <p className="kr-card-sub">
-            좌축 고객예탁금 · 우축 신용잔고 (억원) — 단위 차이 반영
-          </p>
-        </div>
-        {latest ? (
-          <div className="kr-credit-kpis">
-            <div>
-              <span>예탁금</span>
-              <strong>{fmtKrwEok(latest.customer_deposit).replace("+", "")}</strong>
-            </div>
-            <div>
-              <span>신용잔고</span>
-              <strong>{fmtKrwEok(latest.credit_balance).replace("+", "")}</strong>
-            </div>
-            <div>
-              <span>신용/예탁</span>
-              <strong>{fmtPct(credit.credit_ratio_proxy, 2)}</strong>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="kr-chart" style={{ height: 260 }}>
-        {!chartData.length ? (
-          <p className="empty">신용 데이터가 없습니다.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-              <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={28} />
-              <YAxis
-                yAxisId="left"
-                orientation="left"
-                tick={{ fill: "#a78bfa", fontSize: 10 }}
-                width={58}
-                tickFormatter={(v: number) =>
-                  v >= 10000 ? `${(v / 10000).toFixed(1)}조` : `${Math.round(v / 1000)}천`
-                }
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: "#f472b6", fontSize: 10 }}
-                width={52}
-                tickFormatter={(v: number) => `${Math.round(v / 1000)}천`}
-              />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number, name: string) => [
-                  `${Number(value).toLocaleString("ko-KR")}억`,
-                  name === "예탁금" ? "예탁금 (좌)" : "신용잔고 (우)",
-                ]}
-              />
-              <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="예탁금"
-                name="예탁금 (좌)"
-                stroke="#a78bfa"
-                strokeWidth={2.2}
-                dot={false}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="신용잔고"
-                name="신용잔고 (우)"
-                stroke="#f472b6"
-                strokeWidth={2.2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {latest ? (
-        <div className="kr-fund-row">
-          <span>주식형 펀드 {fmtKrwEok(latest.fund_stock).replace("+", "")}</span>
-          <span>혼합형 {fmtKrwEok(latest.fund_mixed).replace("+", "")}</span>
-          <span>채권형 {fmtKrwEok(latest.fund_bond).replace("+", "")}</span>
-          <span>기준일 {latest.date}</span>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 function SingleStockLevPanel({
   board,
 }: {
@@ -860,7 +553,7 @@ export default function KrMarketTab({
           <div>
             <h2 className="kr-hero-title">국내 시황 모니터</h2>
             <p className="kr-hero-sub">
-              코스피 · 코스닥 라이브 차트, 수급, 신용·공매도, 기술적 지표를 한눈에 봅니다.
+              코스피 · 코스닥 라이브 차트와 수급을 한눈에 봅니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -910,8 +603,6 @@ export default function KrMarketTab({
         <>
           {showMarket ? (
             <>
-              {data.note ? <p className="kr-note">{data.note}</p> : null}
-
               <div className="kr-grid-2">
                 {(data.kospi || data.kospi200) ? (
                   <IndexCard
@@ -931,46 +622,6 @@ export default function KrMarketTab({
                 ) : null}
               </div>
 
-              {data.kosdaq150 ? (
-                <article className="kr-card kr-card-compact">
-                  <div className="kr-card-head">
-                    <div>
-                      <h3 className="kr-card-title">코스닥150 (舊 코스닥100 후속)</h3>
-                      <p className="kr-card-sub">KODEX 코스닥150 ETF 프록시 · 대형주 추세</p>
-                    </div>
-                    <div className={`kr-quote ${toneClass(data.kosdaq150.quote.change)}`}>
-                      <div className="kr-last">
-                        {fmtNum(data.kosdaq150.quote.last, 0)}원
-                      </div>
-                      <div className="kr-chg">
-                        {fmtNum(data.kosdaq150.quote.change, 0)} (
-                        {fmtPct(data.kosdaq150.quote.change_pct)})
-                      </div>
-                    </div>
-                  </div>
-                  <div className="kr-ta-grid">
-                    <div>
-                      <span className="kr-ta-label">추세</span>
-                      <strong>{data.kosdaq150.technicals.regime}</strong>
-                    </div>
-                    <div>
-                      <span className="kr-ta-label">RSI</span>
-                      <strong>{fmtNum(data.kosdaq150.technicals.rsi14, 1)}</strong>
-                    </div>
-                    <div>
-                      <span className="kr-ta-label">MACD hist</span>
-                      <strong className={toneClass(data.kosdaq150.technicals.macd_hist)}>
-                        {fmtNum(data.kosdaq150.technicals.macd_hist, 2)}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="kr-ta-label">SMA20</span>
-                      <strong>{fmtNum(data.kosdaq150.technicals.sma20, 0)}</strong>
-                    </div>
-                  </div>
-                </article>
-              ) : null}
-
               {data.flows ? (
                 <FlowPanel
                   data={data.flows}
@@ -980,9 +631,6 @@ export default function KrMarketTab({
                   onMode={setFlowMode}
                 />
               ) : null}
-
-              {data.credit ? <CreditPanel credit={data.credit} /> : null}
-              {data.short_credit ? <ShortCreditPanel board={data.short_credit} /> : null}
             </>
           ) : null}
 
@@ -991,7 +639,7 @@ export default function KrMarketTab({
           ) : null}
 
           <p className="kr-foot">
-            출처: Naver Finance (지수·수급·증시자금) · KRX 공매도(MDCSTAT) · 약 45초마다 갱신 ·{" "}
+            출처: Naver Finance (지수·수급) · 약 45초마다 갱신 ·{" "}
             {data.generated_at
               ? new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })
               : ""}
