@@ -8067,3 +8067,125 @@ button.country-etf-card {
     grid-template-columns: 1fr;
   }
 }
+
+.deriv-edu-tab {
+  gap: 1.15rem;
+}
+
+.deriv-edu-toc.chip-row {
+  margin: 0.85rem 0 0;
+}
+
+a.chip {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.deriv-edu-section {
+  scroll-margin-top: 0.75rem;
+}
+
+.deriv-edu-kicker {
+  margin: 0 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.deriv-edu-section .contrib-table-wrap {
+  margin-bottom: 1rem;
+}
+
+.deriv-edu-atlas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.4cm, 1fr));
+  gap: 1.15rem 1.1rem;
+  align-items: start;
+}
+
+.deriv-edu-fig {
+  margin: 0;
+  min-width: 0;
+}
+
+.deriv-edu-fig-head {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  margin-bottom: 0.4rem;
+}
+
+.deriv-edu-fig-no {
+  flex: 0 0 auto;
+  margin-top: 0.12rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.deriv-edu-fig-head h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.02rem;
+  font-weight: 400;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.deriv-edu-fig-head em {
+  display: block;
+  margin-top: 0.08rem;
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.deriv-edu-plate {
+  width: min(7cm, 100%);
+  aspect-ratio: 70 / 42;
+  height: auto;
+  border: 1px solid #d5d8de;
+  background: #f6f7f9;
+  overflow: hidden;
+}
+
+.deriv-edu-plate svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.deriv-edu-fig figcaption {
+  margin: 0.4rem 0 0;
+  max-width: 7.2cm;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .deriv-edu-atlas {
+    grid-template-columns: 1fr;
+  }
+
+  .deriv-edu-plate {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 70 / 42;
+  }
+
+  .deriv-edu-fig figcaption {
+    max-width: none;
+  }
+}
+
+@media print {
+  .deriv-edu-plate {
+    width: 7cm;
+    height: 4.2cm;
+  }
+}
