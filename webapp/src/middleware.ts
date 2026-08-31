@@ -31,6 +31,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/labor-risk": { limit: 10, windowMs: 60_000 },
   "/api/seasonality": { limit: 10, windowMs: 60_000 },
   "/api/event-episodes": { limit: 10, windowMs: 60_000 },
+  "/api/daily-round": { limit: 20, windowMs: 60_000 },
   "/api/crypto-assets": { limit: 20, windowMs: 60_000 },
   "/api/trading-signals": { limit: 20, windowMs: 60_000 },
   "/api/trading-ideas": { limit: 20, windowMs: 60_000 },

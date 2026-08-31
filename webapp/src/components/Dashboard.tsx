@@ -9,6 +9,7 @@ import BookClubBoard from "@/components/BookClubBoard";
 import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
+import DailyRoundTab from "@/components/DailyRoundTab";
 import EventStudyTab from "@/components/EventStudyTab";
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgTabShell from "@/components/EsgTabShell";
@@ -30,6 +31,7 @@ import PreciousMetalsTab from "@/components/PreciousMetalsTab";
 import CryptoAssetsTab from "@/components/CryptoAssetsTab";
 import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
 import DerivativesTab from "@/components/DerivativesTab";
+import DerivEducationTab from "@/components/DerivEducationTab";
 import MarketGammaTab from "@/components/MarketGammaTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
@@ -207,6 +209,8 @@ export default function Dashboard() {
       tab === "simulate" ||
       tab === "usportfolio" ||
       tab === "education" ||
+      tab === "round" ||
+      tab === "derivedu" ||
       tab === "geo" ||
       tab === "infra" ||
       tab === "esgreg" ||
@@ -334,8 +338,12 @@ export default function Dashboard() {
         <UsMidtermTab />
       ) : tab === "polithemes" ? (
         <PoliThemesTab />
+      ) : tab === "round" ? (
+        <DailyRoundTab />
       ) : tab === "education" ? (
         <EducationTab />
+      ) : tab === "derivedu" ? (
+        <DerivEducationTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
       ) : tab === "etfdbus" ? (
