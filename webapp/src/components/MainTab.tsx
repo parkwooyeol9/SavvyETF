@@ -386,15 +386,7 @@ export default function MainTab() {
         </div>
       </section>
 
-      <section className="feature-block homepage-qr" aria-labelledby="homepage-qr-title">
-        <div className="feature-head">
-          <h2 className="feature-title" id="homepage-qr-title">
-            홈페이지 QR
-          </h2>
-          <p className="feature-lead">
-            휴대폰 카메라로 스캔하면 이 사이트로 바로 연결됩니다.
-          </p>
-        </div>
+      <section className="feature-block homepage-qr" aria-label="홈페이지 QR">
         <div className="homepage-qr-card">
           <img
             className="homepage-qr-img"

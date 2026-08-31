@@ -152,7 +152,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "ETF 배분",
   usportfolio: "미국 주식",
-  education: "환율",
+  education: "ETF절세",
   heatpick: "모의투자",
   round: "모의투자",
   derivedu: "파생상품",
@@ -191,7 +191,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   polithemes: "정치테마상품",
   themeetf: "테마 ETF",
   bookclub: "북클럽",
-  bookclubboard: "게시판",
+  bookclubboard: "Contact",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
