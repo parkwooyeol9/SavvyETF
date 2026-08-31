@@ -90,10 +90,10 @@ export default function EducationTab() {
     <div className="edu-tab">
       <section className="feature-block">
         <div className="feature-head">
-          <h2 className="feature-title">한국 투자자를 위한 ETF 교육</h2>
+          <h2 className="feature-title">환율</h2>
           <p className="feature-lead">
-            세금·계좌·환율을 한곳에서 정리했습니다. 원화·달러 계좌를 같이 운용할 때
-            환전 타이밍이 배분의 일부가 됩니다.
+            원화·달러 계좌를 같이 쓸 때 환전 타이밍이 배분의 일부가 됩니다.
+            아래는 세금·계좌 요약입니다.
           </p>
         </div>
         <p className="edu-disclaimer">{EDUCATION_DISCLAIMER}</p>

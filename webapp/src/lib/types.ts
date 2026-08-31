@@ -26,6 +26,9 @@ export type ShellTabId =
   | "crypto"
   | "volmonitor"
   | "derivatives"
+  | "derivedu"
+  | "round"
+  | "heatpick"
   | "gamma"
   | "quant"
   | "ideas"
@@ -54,7 +57,7 @@ export type NavGroupId =
   | "politics"
   | "fundmgr"
   | "derivs"
-  | "bookclub";
+  | "learn";
 
 export type BriefSection = {
   heading?: string;
@@ -99,7 +102,10 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "crypto",
   "volmonitor",
   "derivatives",
+  "derivedu",
   "gamma",
+  "round",
+  "heatpick",
   "quant",
   "gurus",
   "eventstudy",
@@ -146,7 +152,10 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "ETF 배분",
   usportfolio: "미국 주식",
-  education: "교육",
+  education: "환율",
+  heatpick: "모의투자",
+  round: "모의투자",
+  derivedu: "파생상품",
   etfdb: "ETF DB",
   etfdbus: "ETF DB(US)",
   leverage: "레버리지 ETF",
@@ -203,7 +212,6 @@ export const NAV_GROUPS: Array<{
     id: "etf",
     label: "ETF",
     tabs: [
-      "education",
       "etf",
       "etfdb",
       "etfdbus",
@@ -248,15 +256,23 @@ export const NAV_GROUPS: Array<{
     tabs: ["esg", "geo", "infra", "esgreg", "greenmin"],
   },
   {
-    id: "bookclub",
-    label: "북클럽",
-    tabs: ["bookclub", "bookclubboard"],
+    id: "learn",
+    label: "교육",
+    tabs: ["bookclub", "heatpick", "education", "derivedu", "bookclubboard"],
   },
 ];
 
 export function navGroupForTab(tab: ShellTabId): NavGroupId {
   if (tab === "kosdaq100") return "fundmgr";
   if (tab === "aigov" || tab === "aiinfra") return "esg";
+  if (
+    tab === "education" ||
+    tab === "derivedu" ||
+    tab === "round" ||
+    tab === "heatpick"
+  ) {
+    return "learn";
+  }
   for (const group of NAV_GROUPS) {
     if (group.tabs.includes(tab)) return group.id;
   }
