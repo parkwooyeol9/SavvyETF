@@ -1,6 +1,6 @@
 "use client";
 
-import { NAV_GROUPS, SHELL_TAB_LABELS, type ShellTabId } from "@/lib/types";
+import { findNavGroup, SHELL_TAB_LABELS, type ShellTabId } from "@/lib/types";
 
 const ESG_TABS: ShellTabId[] = ["esg", "geo", "infra", "esgreg", "greenmin"];
 
@@ -9,7 +9,7 @@ export function navigateDashboardTab(tab: ShellTabId) {
 }
 
 export default function EsgSubNav({ active }: { active: ShellTabId }) {
-  const group = NAV_GROUPS.find((g) => g.id === "esg");
+  const group = findNavGroup("esg");
   const tabs = group?.tabs || ESG_TABS;
 
   return (

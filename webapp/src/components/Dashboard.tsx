@@ -61,7 +61,7 @@ import {
   emptyAllBriefs,
   isBriefTabId,
   isShellTabId,
-  navGroupForTab,
+  navPlacement,
   type TabId,
 } from "@/lib/types";
 
@@ -129,9 +129,13 @@ export default function Dashboard() {
   const [warning, setWarning] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
-  const groupId: NavGroupId = navGroupForTab(tab);
+  const { groupId, nestedId } = navPlacement(tab);
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
-  const showSubNav = activeGroup.tabs.length > 1 || activeGroup.id === "politics";
+  const activeNested =
+    activeGroup.nested?.find((item) => item.id === nestedId) || null;
+  const showSubNav =
+    activeGroup.tabs.length + (activeGroup.nested?.length || 0) > 1;
+  const showTertiary = Boolean(activeNested && activeNested.tabs.length > 1);
 
   const load = useCallback(async () => {
     try {
@@ -273,8 +277,16 @@ export default function Dashboard() {
   function selectGroup(nextGroup: NavGroupId) {
     const group = NAV_GROUPS.find((g) => g.id === nextGroup);
     if (!group) return;
-    if (group.tabs.includes(tab)) return;
-    setTab(group.tabs[0]);
+    if (navPlacement(tab).groupId === nextGroup) return;
+    const first = group.tabs[0] || group.nested?.[0]?.tabs[0];
+    if (first) setTab(first);
+  }
+
+  function selectNested(nestedId: NavGroupId) {
+    const nested = activeGroup.nested?.find((item) => item.id === nestedId);
+    if (!nested?.tabs[0]) return;
+    if (activeNested?.id === nestedId) return;
+    setTab(nested.tabs[0]);
   }
 
   return (
@@ -307,12 +319,43 @@ export default function Dashboard() {
       </nav>
 
       {showSubNav ? (
-        <nav className="tabs tabs-secondary" aria-label={`${activeGroup.label} 하위 탭`}>
+        <nav
+          className={`tabs tabs-secondary ${showTertiary ? "has-tertiary" : ""}`}
+          aria-label={`${activeGroup.label} 하위 탭`}
+        >
           {activeGroup.tabs.map((id) => (
             <button
               key={id}
               type="button"
-              className={`tab-btn sub ${tab === id ? "active" : ""}`}
+              className={`tab-btn sub ${!activeNested && tab === id ? "active" : ""}`}
+              onClick={() => setTab(id)}
+            >
+              {SHELL_TAB_LABELS[id]}
+            </button>
+          ))}
+          {(activeGroup.nested || []).map((nested) => (
+            <button
+              key={nested.id}
+              type="button"
+              className={`tab-btn sub ${activeNested?.id === nested.id ? "active" : ""}`}
+              onClick={() => selectNested(nested.id)}
+            >
+              {nested.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
+      {showTertiary && activeNested ? (
+        <nav
+          className="tabs tabs-tertiary"
+          aria-label={`${activeNested.label} 세부 탭`}
+        >
+          {activeNested.tabs.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`tab-btn sub leaf ${tab === id ? "active" : ""}`}
               onClick={() => setTab(id)}
             >
               {SHELL_TAB_LABELS[id]}

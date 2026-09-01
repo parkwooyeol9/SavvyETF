@@ -199,12 +199,15 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   ...TAB_LABELS,
 };
 
-/** Top-level groups with nested content tabs. */
-export const NAV_GROUPS: Array<{
+export type NavGroup = {
   id: NavGroupId;
   label: string;
   tabs: ShellTabId[];
-}> = [
+  nested?: NavGroup[];
+};
+
+/** Top-level groups with nested content tabs. */
+export const NAV_GROUPS: NavGroup[] = [
   { id: "main", label: "메인", tabs: ["main"] },
   {
     id: "market",
@@ -226,16 +229,18 @@ export const NAV_GROUPS: Array<{
     id: "ai",
     label: "AI",
     tabs: ["graph", "nlp", "ideas", "aiport"],
-  },
-  {
-    id: "politics",
-    label: "정치분석",
-    tabs: ["usmidterm", "polithemes"],
-  },
-  {
-    id: "commodity",
-    label: "원자재",
-    tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
+    nested: [
+      {
+        id: "politics",
+        label: "정치분석",
+        tabs: ["usmidterm", "polithemes"],
+      },
+      {
+        id: "commodity",
+        label: "원자재",
+        tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
+      },
+    ],
   },
   {
     id: "fundmgr",
@@ -246,17 +251,18 @@ export const NAV_GROUPS: Array<{
     id: "portfolio",
     label: "포트폴리오",
     tabs: ["simulate", "usportfolio", "signals", "corridor"],
-  },
-  {
-    id: "derivs",
-    label: "파생상품",
-    tabs: ["leverage", "volmonitor", "derivatives", "gamma"],
-  },
-  // aigov/aiinfra remain in SHELL_TAB_IDS for redirects to infra.
-  {
-    id: "esg",
-    label: "ESG",
-    tabs: ["esg", "geo", "infra", "esgreg", "greenmin"],
+    nested: [
+      {
+        id: "derivs",
+        label: "파생상품",
+        tabs: ["leverage", "volmonitor", "derivatives", "gamma"],
+      },
+      {
+        id: "esg",
+        label: "ESG",
+        tabs: ["esg", "geo", "infra", "esgreg", "greenmin"],
+      },
+    ],
   },
   {
     id: "learn",
@@ -265,9 +271,23 @@ export const NAV_GROUPS: Array<{
   },
 ];
 
-export function navGroupForTab(tab: ShellTabId): NavGroupId {
-  if (tab === "kosdaq100") return "fundmgr";
-  if (tab === "aigov" || tab === "aiinfra") return "esg";
+export function findNavGroup(id: NavGroupId): NavGroup | undefined {
+  for (const group of NAV_GROUPS) {
+    if (group.id === id) return group;
+    const nested = group.nested?.find((item) => item.id === id);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+export function navPlacement(tab: ShellTabId): {
+  groupId: NavGroupId;
+  nestedId: NavGroupId | null;
+} {
+  if (tab === "kosdaq100") return { groupId: "fundmgr", nestedId: null };
+  if (tab === "aigov" || tab === "aiinfra") {
+    return { groupId: "portfolio", nestedId: "esg" };
+  }
   if (
     tab === "education" ||
     tab === "derivedu" ||
@@ -275,12 +295,23 @@ export function navGroupForTab(tab: ShellTabId): NavGroupId {
     tab === "heatpick" ||
     tab === "cardnews"
   ) {
-    return "learn";
+    return { groupId: "learn", nestedId: null };
   }
   for (const group of NAV_GROUPS) {
-    if (group.tabs.includes(tab)) return group.id;
+    if (group.tabs.includes(tab)) {
+      return { groupId: group.id, nestedId: null };
+    }
+    for (const nested of group.nested || []) {
+      if (nested.tabs.includes(tab)) {
+        return { groupId: group.id, nestedId: nested.id };
+      }
+    }
   }
-  return "main";
+  return { groupId: "main", nestedId: null };
+}
+
+export function navGroupForTab(tab: ShellTabId): NavGroupId {
+  return navPlacement(tab).groupId;
 }
 
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
