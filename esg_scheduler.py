@@ -1,10 +1,10 @@
 """Scheduled /esg broadcasts → SavvyESG channel (TELEGRAM_CHAT_ID_ESG).
 
-Default (KST):
-  - 09:00  /esg events — ESG 시황 (중대재해·환경·거버넌스), daily
-  - 09:30  /esg accident — 중대재해 screen (KRX trading days)
+Default (KST), important items only, hard-capped at 5 Telegram posts/day:
+  - 09:00  /esg events — high-impact S·E·G digest
+  - 09:30  /esg accident — Telegram only if a 중대재해 hit is <36h old
 
-Opt-in (explicitly enable):
+Opt-in (explicitly enable; still share the daily cap):
   - monitor (climate) / overview / aigov / aibrief
 """
 
@@ -128,12 +128,12 @@ def run_scheduled_esg_events(token: str, broadcast_fn) -> bool:
         result = run_esg_events(publish=True)
         messages = result.get("telegram_messages") or []
         if not messages:
-            print("Scheduled esg events skipped: empty messages.")
-            return False
+            print("Scheduled esg events: no high-impact items — Telegram skipped.")
+            return True
         delivered = broadcast_fn(token, messages)
         if not delivered:
-            print("Scheduled esg events not delivered: 0 chats.")
-            return False
+            print("Scheduled esg events not delivered: 0 chats (cap or empty audience).")
+            return True
         print(f"Scheduled esg events sent → {delivered} chat(s).")
         return True
     except Exception as exc:
@@ -175,6 +175,8 @@ def run_scheduled_esg_monitor(token: str, broadcast_fn) -> bool:
 
 
 def run_scheduled_esg_accident(token: str, broadcast_fn) -> bool:
+    from esg_data import format_esg_accident_alert_telegram
+    from esg_event_monitor import is_recent_esg_date
     from esg_pipeline import run_esg
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
@@ -187,15 +189,27 @@ def run_scheduled_esg_accident(token: str, broadcast_fn) -> bool:
     try:
         # publish=True inside run_esg → Vercel dashboard slot esg_accident
         result = run_esg("accident", None)
-        messages = result.get("telegram_messages") or []
-        if not messages:
-            print("Scheduled esg accident skipped: empty messages.")
-            return False
+        profile = result.get("profile") or {}
+        fresh = [
+            hit
+            for hit in (profile.get("hits") or [])
+            if is_recent_esg_date(hit.get("date"), hours=36)
+        ]
+        if not fresh:
+            print("Scheduled esg accident: no fresh 중대재해 — Telegram skipped.")
+            return True
+        alert = {**profile, "hits": fresh[:5]}
+        messages = [
+            {
+                "text": format_esg_accident_alert_telegram(alert),
+                "parse_mode": "HTML",
+            }
+        ]
         delivered = broadcast_fn(token, messages)
         if not delivered:
-            print("Scheduled esg accident not delivered: 0 chats.")
-            return False
-        print(f"Scheduled esg accident sent → {delivered} chat(s).")
+            print("Scheduled esg accident not delivered: 0 chats (cap or empty audience).")
+            return True
+        print(f"Scheduled esg accident alert sent ({len(fresh)} fresh) → {delivered} chat(s).")
         return True
     except Exception as exc:
         print(f"Scheduled esg accident failed: {exc}")

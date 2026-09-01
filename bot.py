@@ -176,8 +176,8 @@ Auto schedule (KST):
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
   /etfcheck 15:45 (KRX days)  → legacy ETF channel
   /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
-  /esg events 09:00 daily     → SavvyESG (ESG 시황)
-  /esg accident 09:30 (KRX)  → SavvyESG (중대재해 only)
+  /esg events 09:00 daily     → SavvyESG (중요 건만, 하루 최대 5건)
+  /esg accident 09:30 (KRX)  → SavvyESG (당일 중대재해 속보만)
   (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
    esg climate monitor/overview/aigov/brief)
 
@@ -222,8 +222,8 @@ def build_help_messages() -> list[dict]:
 <code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
 <code>/etfcheck</code> 15:45 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
-<code>/esg events</code> 09:00 — ESG 시황 (SavvyESG / ESG 에이전트)
-<code>/esg accident</code> 09:30 — 중대재해 공시 (SavvyESG, 한국 휴장 제외)
+<code>/esg events</code> 09:00 — ESG 시황 (중요 건만, SavvyESG 하루 최대 5건)
+<code>/esg accident</code> 09:30 — 중대재해 속보 (당일 발생 시에만)
 <i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> climate monitor/overview/aigov · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 <code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us/esg)
@@ -487,8 +487,38 @@ def broadcast_messages_legacy(token: str, messages: list[str] | list[dict]) -> i
 
 
 def broadcast_messages_esg(token: str, messages: list[str] | list[dict]) -> int:
-    """SavvyESG schedules (/esg events|monitor|accident|overview) → TELEGRAM_CHAT_ID_ESG only."""
-    return broadcast_messages(token, messages, audience="esg")
+    """SavvyESG schedules → TELEGRAM_CHAT_ID_ESG only, capped at 5 Telegram posts/day."""
+    payload = list(messages or [])
+    if not payload:
+        return 0
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from summary_scheduler import claim_daily_quota
+
+    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+    try:
+        max_n = max(1, int(os.environ.get("ESG_DAILY_TG_MAX", "5")))
+    except ValueError:
+        max_n = 5
+    grant = claim_daily_quota(
+        date_key="esg_tg_date",
+        count_key="esg_tg_count",
+        n=len(payload),
+        max_n=max_n,
+        today=today,
+    )
+    if grant <= 0:
+        print(
+            f"SavvyESG daily cap ({max_n}) reached — skipped {len(payload)} message(s)."
+        )
+        return 0
+    if grant < len(payload):
+        print(
+            f"SavvyESG daily cap: sending {grant}/{len(payload)} (max {max_n}/day)."
+        )
+        payload = payload[:grant]
+    return broadcast_messages(token, payload, audience="esg")
 
 
 def _telegram_error_description(response: requests.Response) -> str:

@@ -123,6 +123,28 @@ def update_scheduler_state(**updates) -> dict:
         return dict(state)
 
 
+def claim_daily_quota(
+    *,
+    date_key: str,
+    count_key: str,
+    n: int,
+    max_n: int,
+    today: str,
+) -> int:
+    """Atomically reserve up to n units of a per-day counter. Returns granted count."""
+    with _STATE_LOCK:
+        state = _load_state()
+        if state.get(date_key) != today:
+            state[date_key] = today
+            state[count_key] = 0
+        used = int(state.get(count_key) or 0)
+        remain = max(0, int(max_n) - used)
+        grant = min(max(0, int(n)), remain)
+        state[count_key] = used + grant
+        _save_state(state)
+        return grant
+
+
 def _current_fixed_slot(now: datetime) -> str:
     return now.strftime("%Y-%m-%d-%H-%M")
 

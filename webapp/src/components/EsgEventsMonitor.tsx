@@ -131,15 +131,15 @@ export default function EsgEventsMonitor() {
           <h2 className="kr-hero-title">ESG 시황 모니터</h2>
           <p className="kr-hero-sub">
             매일 09:00 KST 갱신 · 중대재해·환경 위반·거버넌스 사건을 KIND·DART·보도로
-            스크리닝합니다. 같은 내용이{" "}
-            {channel?.href ? (
-              <a href={channel.href} target="_blank" rel="noreferrer">
-                {channel.name || "ESG 에이전트"} ({channel.handle || "@SavvyESG"})
-              </a>
-            ) : (
-              "ESG 에이전트 (@SavvyESG)"
-            )}
-            로 송출됩니다.
+            스크리닝합니다.{" "}
+            <a
+              href={channel?.href || "https://t.me/SavvyESG"}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {channel?.handle || "@SavvyESG"}
+            </a>
+            에는 고중요도·당일 건만 하루 최대 5건 송출됩니다.
           </p>
         </div>
         <div className="kr-hero-actions">

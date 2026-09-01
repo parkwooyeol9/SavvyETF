@@ -1028,6 +1028,28 @@ def format_esg_accident_telegram(profile: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_esg_accident_alert_telegram(profile: dict[str, Any]) -> str:
+    """Short SavvyESG alert for fresh 중대재해 hits only (not the 90-day dump)."""
+    scope = profile.get("corp_name") or "전체 시장"
+    hits = profile.get("hits") or []
+    lines = [
+        f"<b>⚠️ ESG · 중대재해 속보 — {_esc(scope)}</b>",
+        f"<i>{profile.get('generated_at', '')} · 최근 36시간</i>",
+        "",
+        f"<b>{len(hits)}건</b>",
+    ]
+    for idx, item in enumerate(hits[:5], start=1):
+        code = item.get("stock_code") or ""
+        code_s = f" <code>{code}</code>" if code else ""
+        link = f'<a href="{item["viewer"]}">원문</a>' if item.get("viewer") else ""
+        lines.append(
+            f"{idx}. {item.get('date')} {_esc(item.get('corp_name'))}{code_s}\n"
+            f"    {_esc(item.get('report_nm'))} {link}"
+        )
+    lines.extend(["", "<i>Source: Open DART · Not legal advice.</i>"])
+    return "\n".join(lines)
+
+
 def format_esg_ai_gov_telegram(profile: dict[str, Any]) -> str:
     scope = profile.get("corp_name") or "전체 시장"
     keywords = profile.get("keywords") or list(AI_GOV_KEYWORDS)
@@ -1123,7 +1145,7 @@ def format_esg_overview_telegram(profile: dict[str, Any]) -> str:
 
 ESG_HELP = """\
 <b>🧭 /esg — ESG 중요도 프레임</b>
-0) 일일 시황 (S·E·G 사건) — <code>/esg events</code> · 09:00 → SavvyESG
+0) 일일 시황 (S·E·G 고중요도) — <code>/esg events</code> · 09:00 → SavvyESG (하루 최대 5건)
 1) 전력·그리드·에너지 안보 (구조적 기회) — 웹 ESG 레이더
 2) 물리적 기후위험·적응 (포트폴리오 하방) — <code>/esg monitor</code>
 3) 거버넌스·AI·사이버 (기업 품질 스크린) — overview / own / accident / aigov

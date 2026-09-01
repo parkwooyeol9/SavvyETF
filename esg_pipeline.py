@@ -153,7 +153,18 @@ def run_esg(
     elif mode == "events":
         from esg_event_monitor import run_esg_events
 
-        return run_esg_events(publish=publish)
+        result = run_esg_events(publish=publish)
+        if not result.get("telegram_messages"):
+            result["telegram_messages"] = [
+                {
+                    "text": (
+                        "오늘은 송출할 고중요도 ESG 신규 건이 없습니다. "
+                        "전체 목록은 웹 ESG 시황에서 확인할 수 있습니다."
+                    ),
+                    "parse_mode": "HTML",
+                }
+            ]
+        return result
     else:
         raise ValueError(f"Unknown /esg mode: {mode}")
 

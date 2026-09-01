@@ -38,6 +38,9 @@ LOOKBACK_DAYS = 14
 MAX_HITS_PER_CATEGORY = 18
 MAX_NEWS_PER_CATEGORY = 8
 MAX_TG = 3800
+MAX_TG_DIGEST_ITEMS = 8
+MAX_TG_PER_CATEGORY = 3
+MAX_TG_NEWS = 2
 REQUEST_TIMEOUT = 22
 
 UA = (
@@ -204,6 +207,11 @@ def _is_fresh(ymd: str, hours: int = 36) -> bool:
     except ValueError:
         return False
     return (_now() - dt) <= timedelta(hours=hours)
+
+
+def is_recent_esg_date(raw: Any, hours: int = 36) -> bool:
+    """True when a KIND/DART date string falls within the last `hours`."""
+    return _is_fresh(_norm_date(raw), hours=hours)
 
 
 def _title_matches(title: str, keywords: tuple[str, ...]) -> list[str]:
@@ -676,7 +684,7 @@ def build_esg_events_bundle(*, days: int = LOOKBACK_DAYS) -> dict[str, Any]:
         "timezone": "Asia/Seoul",
         "note": (
             "매일 09:00 KST 갱신 · KIND·DART 공시 + 법원·고용노동부·환경부·증선위 관련 보도. "
-            "법적·투자 자문이 아닙니다."
+            "텔레그램은 고중요도·당일 건만 하루 최대 5건. 법적·투자 자문이 아닙니다."
         ),
         "channel": {
             "name": "ESG 에이전트",
@@ -746,43 +754,99 @@ def _fmt_hit_line(item: dict[str, Any], *, idx: int | None = None) -> str:
     return f"{head}\n    {title} · {src}{link}"
 
 
-def _format_category_block(cat: dict[str, Any]) -> str:
-    imp = cat.get("importance") or ""
-    lines = [
-        f"<b>{_esc(cat.get('pillar'))} · {_esc(cat.get('title'))}</b> "
-        f"({_esc(imp)})",
-        f"<i>{_esc(cat.get('sources_note'))}</i>",
-    ]
-    hits = cat.get("hits") or []
-    news = cat.get("news") or []
-    if not hits and not news:
-        lines.append("해당 기간 신규 건 없음.")
-        return "\n".join(lines)
-    if hits:
-        lines.append(f"공시 {len(hits)}건")
-        for i, item in enumerate(hits[:12], start=1):
+def _digest_worthy(item: dict[str, Any], cat: dict[str, Any]) -> bool:
+    if item.get("fresh"):
+        return True
+    if cat.get("importance") == "매우 높음" and _is_fresh(
+        item.get("date") or "", hours=72
+    ):
+        return True
+    return False
+
+
+def _digest_rank(item: dict[str, Any], cat: dict[str, Any]) -> tuple:
+    fresh = 1 if item.get("fresh") else 0
+    imp = 2 if cat.get("importance") == "매우 높음" else 1 if cat.get("importance") == "높음" else 0
+    pillar = {
+        "s_accident": 4,
+        "s_csa": 4,
+        "g_fraud": 3,
+        "e_env": 3,
+        "g_control": 1,
+    }.get(str(cat.get("id") or ""), 0)
+    return (fresh, imp, pillar, item.get("date") or "")
+
+
+def _collect_digest_items(
+    bundle: dict[str, Any],
+) -> list[tuple[dict[str, Any], dict[str, Any], str]]:
+    picked: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    per_cat: dict[str, int] = {}
+    news_n = 0
+    candidates: list[tuple[tuple, dict[str, Any], dict[str, Any], str]] = []
+    for cat in bundle.get("categories") or []:
+        for item in cat.get("hits") or []:
+            if _digest_worthy(item, cat):
+                candidates.append((_digest_rank(item, cat), cat, item, "hit"))
+        for item in cat.get("news") or []:
+            if item.get("fresh"):
+                candidates.append((_digest_rank(item, cat), cat, item, "news"))
+    candidates.sort(key=lambda row: row[0], reverse=True)
+    for _rank, cat, item, kind in candidates:
+        cat_id = str(cat.get("id") or "")
+        if per_cat.get(cat_id, 0) >= MAX_TG_PER_CATEGORY:
+            continue
+        if kind == "news" and news_n >= MAX_TG_NEWS:
+            continue
+        picked.append((cat, item, kind))
+        per_cat[cat_id] = per_cat.get(cat_id, 0) + 1
+        if kind == "news":
+            news_n += 1
+        if len(picked) >= MAX_TG_DIGEST_ITEMS:
+            break
+    return picked
+
+
+def _format_digest_blocks(picked: list[tuple[dict[str, Any], dict[str, Any], str]]) -> list[str]:
+    grouped: list[tuple[dict[str, Any], list[tuple[dict[str, Any], str]]]] = []
+    index: dict[str, int] = {}
+    for cat, item, kind in picked:
+        cat_id = str(cat.get("id") or "")
+        if cat_id not in index:
+            index[cat_id] = len(grouped)
+            grouped.append((cat, []))
+        grouped[index[cat_id]][1].append((item, kind))
+    blocks: list[str] = []
+    for cat, rows in grouped:
+        lines = [
+            f"<b>{_esc(cat.get('pillar'))} · {_esc(cat.get('title'))}</b> "
+            f"({_esc(cat.get('importance'))})",
+        ]
+        for i, (item, _kind) in enumerate(rows, start=1):
             lines.append(_fmt_hit_line(item, idx=i))
-    if news:
-        lines.append(f"보도 {len(news)}건")
-        for item in news[:6]:
-            lines.append(_fmt_hit_line(item))
-    return "\n".join(lines)
+        blocks.append("\n".join(lines))
+    return blocks
 
 
 def format_esg_events_telegram(bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    """Channel digest: high-impact / fresh items only, packed into as few messages as possible."""
+    picked = _collect_digest_items(bundle)
+    if not picked:
+        return []
     summary = bundle.get("summary") or {}
     by_p = summary.get("by_pillar") or {}
     header = "\n".join(
         [
-            "<b>ESG 에이전트 · 일일 시황</b>",
+            "<b>ESG 에이전트 · 일일 시황 (중요 건)</b>",
             f"<i>{_esc(bundle.get('generated_at_display') or bundle.get('generated_at'))} · "
             f"최근 {bundle.get('lookback_days', LOOKBACK_DAYS)}일 · @SavvyESG</i>",
             "",
             f"S {by_p.get('S', 0)} · E {by_p.get('E', 0)} · G {by_p.get('G', 0)} · "
-            f"24h 신규 {summary.get('fresh', 0)}",
+            f"24h 신규 {summary.get('fresh', 0)} · 송출 {len(picked)}건",
+            "<i>과열 공시·단순 스크리닝은 생략. 전체는 웹 ESG 시황.</i>",
         ]
     )
-    blocks = [_format_category_block(cat) for cat in bundle.get("categories") or []]
+    blocks = _format_digest_blocks(picked)
     footer = (
         "\n<i>Source: KIND · Open DART · 뉴스 · Not legal/investment advice.</i>"
     )
