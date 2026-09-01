@@ -8489,3 +8489,160 @@ a.chip {
     display: none;
   }
 }
+
+.cardnews-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cardnews-auth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.cardnews-auth label,
+.cardnews-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.cardnews-auth input,
+.cardnews-date input {
+  font: inherit;
+  color: var(--text);
+  background: rgba(10, 15, 22, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+}
+
+.cardnews-drop {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: rgba(10, 15, 22, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.cardnews-drop.dragging {
+  border-color: var(--accent);
+  background: rgba(77, 163, 255, 0.08);
+}
+
+.cardnews-drop p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.cardnews-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.cardnews-day-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cardnews-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.cardnews-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(10, 15, 22, 0.55);
+  cursor: pointer;
+}
+
+.cardnews-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.cardnews-caption {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.cardnews-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.cardnews-count {
+  margin: 0 0.2rem;
+}
+
+.cardnews-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(7, 10, 16, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.cardnews-lightbox-inner {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cardnews-lightbox-inner img {
+  width: 100%;
+  max-height: min(78vh, 720px);
+  object-fit: contain;
+  background: #0b1018;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.cardnews-lightbox-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 720px) {
+  .cardnews-grid {
+    grid-template-columns: 1fr;
+  }
+}

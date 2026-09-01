@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import InfraTab from "@/components/InfraTab";
 import EsgRegTab from "@/components/EsgRegTab";
 import GreenMineralsTab from "@/components/GreenMineralsTab";
-import BookClubBoard from "@/components/BookClubBoard";
 import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
+import CardNewsTab from "@/components/CardNewsTab";
 import ChartTradeTab from "@/components/ChartTradeTab";
 import EventStudyTab from "@/components/EventStudyTab";
 import BriefSlotView from "@/components/BriefSlotView";
@@ -31,7 +31,6 @@ import PreciousMetalsTab from "@/components/PreciousMetalsTab";
 import CryptoAssetsTab from "@/components/CryptoAssetsTab";
 import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
 import DerivativesTab from "@/components/DerivativesTab";
-import DerivEducationTab from "@/components/DerivEducationTab";
 import MarketGammaTab from "@/components/MarketGammaTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
@@ -155,6 +154,8 @@ export default function Dashboard() {
     if (tab === "kosdaq100") setTab("kosdaqactive");
     if (tab === "aigov" || tab === "aiinfra") setTab("infra");
     if (tab === "round") setTab("heatpick");
+    if (tab === "derivedu") setTab("derivatives");
+    if (tab === "bookclubboard") setTab("bookclub");
   }, [tab]);
 
   useEffect(() => {
@@ -187,7 +188,11 @@ export default function Dashboard() {
               ? "infra"
               : raw === "round"
                 ? "heatpick"
-                : raw;
+                : raw === "derivedu"
+                  ? "derivatives"
+                  : raw === "bookclubboard"
+                    ? "bookclub"
+                    : raw;
       if (next && isShellTabId(next)) setTab(next);
     };
     window.addEventListener("focus", onFocus);
@@ -213,6 +218,7 @@ export default function Dashboard() {
       tab === "usportfolio" ||
       tab === "education" ||
       tab === "heatpick" ||
+      tab === "cardnews" ||
       tab === "derivedu" ||
       tab === "geo" ||
       tab === "infra" ||
@@ -248,6 +254,7 @@ export default function Dashboard() {
       tab === "polithemes" ||
       tab === "themeetf" ||
       tab === "bookclub" ||
+      tab === "cardnews" ||
       tab === "bookclubboard"
     ) {
       return error
@@ -319,8 +326,6 @@ export default function Dashboard() {
         <MainTab />
       ) : tab === "bookclub" ? (
         <BookClubTab />
-      ) : tab === "bookclubboard" ? (
-        <BookClubBoard />
       ) : tab === "simulate" ? (
         <SimulateTab />
       ) : tab === "usportfolio" ? (
@@ -343,10 +348,10 @@ export default function Dashboard() {
         <PoliThemesTab />
       ) : tab === "heatpick" ? (
         <ChartTradeTab />
+      ) : tab === "cardnews" ? (
+        <CardNewsTab />
       ) : tab === "education" ? (
         <EducationTab />
-      ) : tab === "derivedu" ? (
-        <DerivEducationTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
       ) : tab === "etfdbus" ? (

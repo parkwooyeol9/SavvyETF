@@ -55,6 +55,7 @@ Prefer project name `savvyetf` → `https://savvyetf.vercel.app`.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | optional — admin delete of others’ posts |
 | `COMMUNITY_ADMIN_EMAILS` | optional comma-separated Google emails |
+| `CARDNEWS_ADMIN_SECRET` | card-news upload password (falls back to `COMMUNITY_ADMIN_SECRET`) |
 
 ### Community board (live, no login)
 
