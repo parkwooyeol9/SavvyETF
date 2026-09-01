@@ -49,8 +49,6 @@ const UNIVERSES = [
   { id: "nas", label: "Nasdaq 100" },
 ] as const;
 
-const HOMEPAGE_URL = "https://savvyetf.vercel.app";
-
 const TELEGRAM_CHANNELS = [
   {
     id: "us",
@@ -174,10 +172,12 @@ export default function MainTab() {
 
   return (
     <div className="main-tab">
-      <section className="feature-block">
-        <div className="feature-head">
-          <h2 className="feature-title">ETF 히트맵</h2>
-        </div>
+      <section className="feature-block heatmap-block">
+        <div className="heatmap-with-qr">
+          <div className="heatmap-main">
+            <div className="feature-head">
+              <h2 className="feature-title">ETF 히트맵</h2>
+            </div>
 
         <div className="chip-row" role="tablist" aria-label="히트맵 유니버스">
           {UNIVERSES.map((u) => (
@@ -281,6 +281,17 @@ export default function MainTab() {
             </div>
           </>
         ) : null}
+          </div>
+          <aside className="heatmap-qr" aria-label="홈페이지 QR">
+            <img
+              className="heatmap-qr-img"
+              src="/homepage-qr.svg"
+              alt="SavvyETF 홈페이지 QR"
+              width={168}
+              height={168}
+            />
+          </aside>
+        </div>
       </section>
 
       <section className="feature-block">
@@ -383,29 +394,6 @@ export default function MainTab() {
               <span className="tg-channel-cta">채널 입장 →</span>
             </a>
           ))}
-        </div>
-      </section>
-
-      <section className="feature-block homepage-qr" aria-label="홈페이지 QR">
-        <div className="homepage-qr-card">
-          <img
-            className="homepage-qr-img"
-            src="/homepage-qr.svg"
-            alt="SavvyETF 홈페이지로 연결되는 QR 코드"
-            width={180}
-            height={180}
-          />
-          <div className="homepage-qr-meta">
-            <p className="homepage-qr-url">{HOMEPAGE_URL}</p>
-            <a
-              className="homepage-qr-link"
-              href={HOMEPAGE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              링크로 열기 →
-            </a>
-          </div>
         </div>
       </section>
     </div>

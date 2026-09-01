@@ -3617,59 +3617,27 @@ button.community-post-title {
   width: 100%;
 }
 
-/* —— Homepage QR —— */
-.homepage-qr {
-  margin-top: 0.15rem;
+.heatmap-with-qr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10.5rem;
+  gap: 1rem 1.15rem;
+  align-items: start;
 }
 
-.homepage-qr-card {
-  display: flex;
-  align-items: center;
-  gap: 1.15rem;
-  flex-wrap: wrap;
-  padding: 0.95rem 1.05rem;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: linear-gradient(
-    165deg,
-    rgba(26, 37, 56, 0.55) 0%,
-    rgba(20, 29, 43, 0.35) 100%
-  );
+.heatmap-qr {
+  margin-top: 0.1rem;
+  justify-self: end;
 }
 
-.homepage-qr-img {
+.heatmap-qr-img {
   display: block;
-  width: 180px;
-  height: 180px;
+  width: 10.5rem;
+  height: 10.5rem;
   border-radius: 10px;
   background: #fff;
   padding: 8px;
   box-sizing: border-box;
-}
-
-.homepage-qr-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-width: 12rem;
-}
-
-.homepage-qr-url {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.homepage-qr-link {
-  color: var(--accent);
-  font-size: 0.88rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.homepage-qr-link:hover {
-  color: #7cbcff;
+  border: 1px solid var(--border);
 }
 
 /* —— Book club embed —— */
@@ -3722,14 +3690,15 @@ button.community-post-title {
     margin-left: 0;
   }
 
-  .homepage-qr-card {
-    justify-content: center;
-    text-align: center;
+  .heatmap-with-qr {
+    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    gap: 0.75rem;
   }
 
-  .homepage-qr-meta {
-    align-items: center;
-    width: 100%;
+  .heatmap-qr-img {
+    width: 6.5rem;
+    height: 6.5rem;
+    padding: 5px;
   }
 
   .bookclub-frame {
