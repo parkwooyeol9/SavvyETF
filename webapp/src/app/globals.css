@@ -3617,25 +3617,29 @@ button.community-post-title {
   width: 100%;
 }
 
-.heatmap-with-qr {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 10.5rem;
-  gap: 1rem 1.15rem;
-  align-items: start;
+.heatmap-block {
+  position: relative;
+}
+
+.heatmap-head,
+.heatmap-block .chip-row {
+  padding-right: 10.25rem;
 }
 
 .heatmap-qr {
-  margin-top: 0.1rem;
-  justify-self: end;
+  position: absolute;
+  top: 1.05rem;
+  right: 1.75rem;
+  z-index: 2;
 }
 
 .heatmap-qr-img {
   display: block;
-  width: 10.5rem;
-  height: 10.5rem;
+  width: 8.5rem;
+  height: 8.5rem;
   border-radius: 10px;
   background: #fff;
-  padding: 8px;
+  padding: 7px;
   box-sizing: border-box;
   border: 1px solid var(--border);
 }
@@ -3690,14 +3694,19 @@ button.community-post-title {
     margin-left: 0;
   }
 
-  .heatmap-with-qr {
-    grid-template-columns: minmax(0, 1fr) 6.5rem;
-    gap: 0.75rem;
+  .heatmap-head,
+  .heatmap-block .chip-row {
+    padding-right: 6.75rem;
+  }
+
+  .heatmap-qr {
+    top: 0.95rem;
+    right: 1.1rem;
   }
 
   .heatmap-qr-img {
-    width: 6.5rem;
-    height: 6.5rem;
+    width: 5.5rem;
+    height: 5.5rem;
     padding: 5px;
   }
 

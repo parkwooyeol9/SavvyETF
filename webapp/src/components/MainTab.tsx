@@ -173,11 +173,18 @@ export default function MainTab() {
   return (
     <div className="main-tab">
       <section className="feature-block heatmap-block">
-        <div className="heatmap-with-qr">
-          <div className="heatmap-main">
-            <div className="feature-head">
-              <h2 className="feature-title">ETF 히트맵</h2>
-            </div>
+        <aside className="heatmap-qr" aria-label="홈페이지 QR">
+          <img
+            className="heatmap-qr-img"
+            src="/homepage-qr.svg"
+            alt="SavvyETF 홈페이지 QR"
+            width={136}
+            height={136}
+          />
+        </aside>
+        <div className="feature-head heatmap-head">
+          <h2 className="feature-title">ETF 히트맵</h2>
+        </div>
 
         <div className="chip-row" role="tablist" aria-label="히트맵 유니버스">
           {UNIVERSES.map((u) => (
@@ -281,17 +288,6 @@ export default function MainTab() {
             </div>
           </>
         ) : null}
-          </div>
-          <aside className="heatmap-qr" aria-label="홈페이지 QR">
-            <img
-              className="heatmap-qr-img"
-              src="/homepage-qr.svg"
-              alt="SavvyETF 홈페이지 QR"
-              width={168}
-              height={168}
-            />
-          </aside>
-        </div>
       </section>
 
       <section className="feature-block">

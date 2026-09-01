@@ -269,7 +269,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "learn",
     label: "교육",
-    tabs: ["bookclub", "cardnews", "heatpick", "education"],
+    tabs: ["cardnews", "bookclub", "heatpick", "education"],
   },
 ];
 
