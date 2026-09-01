@@ -254,7 +254,6 @@ export default function Dashboard() {
       tab === "polithemes" ||
       tab === "themeetf" ||
       tab === "bookclub" ||
-      tab === "cardnews" ||
       tab === "bookclubboard"
     ) {
       return error
