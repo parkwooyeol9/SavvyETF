@@ -51,10 +51,12 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/ingest": { limit: 60, windowMs: 60_000 },
   "/api/community/posts": { limit: 30, windowMs: 60_000 },
   "/api/bookclub/posts": { limit: 20, windowMs: 60_000 },
+  "/api/cardnews": { limit: 40, windowMs: 60_000 },
+  "/api/cardnews/auth": { limit: 8, windowMs: 60_000 },
 };
 
 const WRITE_PATH =
-  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$/;
+  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/cardnews(?:\/auth)?$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
