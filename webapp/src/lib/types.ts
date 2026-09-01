@@ -213,6 +213,13 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "market",
     label: "시황",
     tabs: ["kr", "us", "eventstudy", "quant"],
+    nested: [
+      {
+        id: "fundmgr",
+        label: "펀드매니저",
+        tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
+      },
+    ],
   },
   {
     id: "etf",
@@ -241,11 +248,6 @@ export const NAV_GROUPS: NavGroup[] = [
         tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
       },
     ],
-  },
-  {
-    id: "fundmgr",
-    label: "펀드매니저",
-    tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
   },
   {
     id: "portfolio",
@@ -284,7 +286,7 @@ export function navPlacement(tab: ShellTabId): {
   groupId: NavGroupId;
   nestedId: NavGroupId | null;
 } {
-  if (tab === "kosdaq100") return { groupId: "fundmgr", nestedId: null };
+  if (tab === "kosdaq100") return { groupId: "market", nestedId: "fundmgr" };
   if (tab === "aigov" || tab === "aiinfra") {
     return { groupId: "portfolio", nestedId: "esg" };
   }
