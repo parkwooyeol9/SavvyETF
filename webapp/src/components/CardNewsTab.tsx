@@ -7,6 +7,7 @@ type CardItem = {
   date: string;
   order: number;
   caption: string;
+  key: string;
   url: string;
   contentType: string;
   uploaded_at: string;
@@ -61,28 +62,113 @@ function clearSecret() {
   window.sessionStorage.removeItem(SECRET_KEY);
 }
 
-async function shareCard(item: CardItem): Promise<"shared" | "downloaded"> {
-  const res = await fetch(item.url);
-  const blob = await res.blob();
-  const ext = item.contentType.includes("png")
-    ? "png"
-    : item.contentType.includes("webp")
-      ? "webp"
-      : "jpg";
-  const file = new File([blob], `savvyetf-cardnews-${item.date}-${item.order}.${ext}`, {
-    type: blob.type || item.contentType,
-  });
-  const title = item.caption || `SavvyETF 카드뉴스 ${item.date}`;
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ title, files: [file] });
-    return "shared";
-  }
-  const href = URL.createObjectURL(blob);
+function mediaUrl(item: CardItem): string {
+  if (item.key) return `/api/cardnews/media/${item.key}`;
+  return item.url;
+}
+
+function extForType(type: string): string {
+  if (type.includes("png")) return "png";
+  if (type.includes("webp")) return "webp";
+  if (type.includes("gif")) return "gif";
+  return "jpg";
+}
+
+function downloadFile(file: File) {
+  const href = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = href;
   a.download = file.name;
   a.click();
   URL.revokeObjectURL(href);
+}
+
+async function fetchCardBlob(item: CardItem): Promise<Blob> {
+  const res = await fetch(mediaUrl(item), { cache: "no-store" });
+  if (!res.ok) throw new Error("이미지를 가져오지 못했습니다.");
+  return res.blob();
+}
+
+function blobToFile(item: CardItem, blob: Blob, index: number): File {
+  const type = blob.type || item.contentType || "image/jpeg";
+  return new File(
+    [blob],
+    `savvyetf-cardnews-${item.date}-${String(item.order || index + 1).padStart(2, "0")}.${extForType(type)}`,
+    { type },
+  );
+}
+
+function loadImage(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const href = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(href);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(href);
+      reject(new Error("이미지 로드 실패"));
+    };
+    img.src = href;
+  });
+}
+
+async function stitchCards(blobs: Blob[]): Promise<File> {
+  const images = await Promise.all(blobs.map(loadImage));
+  const width = Math.max(...images.map((img) => img.naturalWidth));
+  const gap = 20;
+  const pad = 20;
+  const heights = images.map((img) =>
+    Math.round((img.naturalHeight * width) / img.naturalWidth),
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width + pad * 2;
+  canvas.height =
+    pad * 2 + heights.reduce((sum, h) => sum + h, 0) + gap * Math.max(0, images.length - 1);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas");
+  ctx.fillStyle = "#0b1018";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let y = pad;
+  images.forEach((img, i) => {
+    ctx.drawImage(img, pad, y, width, heights[i]!);
+    y += heights[i]! + gap;
+  });
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (out) => (out ? resolve(out) : reject(new Error("카드 합치기 실패"))),
+      "image/jpeg",
+      0.92,
+    );
+  });
+  return new File([blob], `savvyetf-cardnews-${Date.now()}.jpg`, {
+    type: "image/jpeg",
+  });
+}
+
+async function shareCards(items: CardItem[]): Promise<"shared" | "downloaded"> {
+  if (!items.length) throw new Error("공유할 카드가 없습니다.");
+  const blobs = await Promise.all(items.map(fetchCardBlob));
+  const files = items.map((item, i) => blobToFile(item, blobs[i]!, i));
+  const title = `SavvyETF 카드뉴스 ${items[0]!.date}`;
+  try {
+    if (navigator.share && navigator.canShare?.({ files })) {
+      await navigator.share({ title, text: title, files });
+      return "shared";
+    }
+  } catch (exc) {
+    if (exc instanceof Error && exc.name === "AbortError") throw exc;
+  }
+  const stacked = await stitchCards(blobs);
+  const named = new File([stacked], `savvyetf-cardnews-${items[0]!.date}.jpg`, {
+    type: "image/jpeg",
+  });
+  if (navigator.share && navigator.canShare?.({ files: [named] })) {
+    await navigator.share({ title, text: title, files: [named] });
+    return "shared";
+  }
+  downloadFile(named);
   return "downloaded";
 }
 
@@ -249,14 +335,16 @@ export default function CardNewsTab() {
     }
   }
 
-  async function onShare(item: CardItem) {
+  async function onShareDay(day: DayGroup) {
     setShareNote(null);
+    setError(null);
     try {
-      const how = await shareCard(item);
+      const how = await shareCards(day.items);
       setShareNote(
-        how === "shared" ? "공유 창을 열었습니다." : "이미지를 저장했습니다.",
+        how === "shared" ? "공유 창을 열었습니다." : "카드뉴스 이미지를 저장했습니다.",
       );
     } catch (exc) {
+      if (exc instanceof Error && exc.name === "AbortError") return;
       setError(friendlyError(exc instanceof Error ? exc.message : "공유 실패"));
     }
   }
@@ -268,8 +356,8 @@ export default function CardNewsTab() {
           <div>
             <h1 className="feature-title">카드뉴스</h1>
             <p className="feature-lead">
-              매일 세 장의 카드뉴스를 날짜순으로 모아 둡니다. 이미지를 눌러
-              크게 보고, 카카오톡·텔레그램으로 공유할 수 있습니다.
+              매일 세 장의 카드뉴스를 날짜순으로 모아 둡니다. 날짜마다 세 장을
+              한꺼번에 카카오톡·텔레그램으로 공유할 수 있습니다.
             </p>
           </div>
           {unlocked ? (
@@ -375,7 +463,16 @@ export default function CardNewsTab() {
         <section key={day.date} className="feature-block cardnews-day">
           <div className="cardnews-day-head">
             <h2>{formatDay(day.date)}</h2>
-            <span className="meta-soft">{day.items.length}장</span>
+            <div className="cardnews-day-actions">
+              <span className="meta-soft">{day.items.length}장</span>
+              <button
+                type="button"
+                className="chip active"
+                onClick={() => void onShareDay(day)}
+              >
+                {day.items.length}장 공유
+              </button>
+            </div>
           </div>
           <ul className="cardnews-grid">
             {day.items.map((item) => (
@@ -396,11 +493,8 @@ export default function CardNewsTab() {
                   />
                 </button>
                 {item.caption ? <p className="cardnews-caption">{item.caption}</p> : null}
-                <div className="cardnews-card-actions">
-                  <button type="button" className="chip" onClick={() => void onShare(item)}>
-                    공유
-                  </button>
-                  {unlocked ? (
+                {unlocked ? (
+                  <div className="cardnews-card-actions">
                     <button
                       type="button"
                       className="ghost-btn danger-btn"
@@ -409,8 +503,8 @@ export default function CardNewsTab() {
                     >
                       삭제
                     </button>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -437,8 +531,15 @@ export default function CardNewsTab() {
             <div className="cardnews-lightbox-bar">
               <span>{formatDay(open.date)}</span>
               <div className="charttrade-share-row">
-                <button type="button" className="chip active" onClick={() => void onShare(open)}>
-                  공유
+                <button
+                  type="button"
+                  className="chip active"
+                  onClick={() => {
+                    const day = days.find((d) => d.date === open.date);
+                    if (day) void onShareDay(day);
+                  }}
+                >
+                  {days.find((d) => d.date === open.date)?.items.length || 1}장 공유
                 </button>
                 {unlocked ? (
                   <button

@@ -8555,6 +8555,12 @@ a.chip {
   margin-bottom: 0.85rem;
 }
 
+.cardnews-day-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 .cardnews-day-head h2 {
   margin: 0;
   font-size: 1.05rem;
@@ -8567,6 +8573,7 @@ a.chip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.85rem;
+  align-items: start;
 }
 
 .cardnews-thumb {
@@ -8576,15 +8583,15 @@ a.chip {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(10, 15, 22, 0.55);
-  cursor: pointer;
+  background: #0b1018;
+  cursor: zoom-in;
 }
 
 .cardnews-thumb img {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 .cardnews-caption {
@@ -8610,13 +8617,14 @@ a.chip {
   z-index: 40;
   background: rgba(7, 10, 16, 0.82);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 1.25rem;
+  overflow: auto;
 }
 
 .cardnews-lightbox-inner {
-  width: min(720px, 100%);
+  width: min(420px, 100%);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -8624,7 +8632,7 @@ a.chip {
 
 .cardnews-lightbox-inner img {
   width: 100%;
-  max-height: min(78vh, 720px);
+  height: auto;
   object-fit: contain;
   background: #0b1018;
   border-radius: 12px;
