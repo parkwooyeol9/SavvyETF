@@ -233,18 +233,6 @@ export default function MainTab() {
                   {heatmap.stats?.up_count ?? "—"} / {heatmap.stats?.down_count ?? "—"}
                 </span>
               </div>
-              <div className="stat">
-                <span className="stat-label">최고</span>
-                <span className="stat-value up">
-                  {heatmap.stats?.best.ticker} {fmtPct(heatmap.stats?.best.daily_return_pct)}
-                </span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">최저</span>
-                <span className="stat-value down">
-                  {heatmap.stats?.worst.ticker} {fmtPct(heatmap.stats?.worst.daily_return_pct)}
-                </span>
-              </div>
             </div>
 
             <TreemapHeatmap cells={heatmap.cells} />

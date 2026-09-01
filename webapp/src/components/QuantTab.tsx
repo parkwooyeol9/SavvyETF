@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CartesianGrid,
   ComposedChart,
@@ -16,6 +16,7 @@ import {
   QUANT_METHODOLOGY,
   QUANT_RANGES,
   QUANT_WINDOWS,
+  parseQuantTicker,
   type QuantPayload,
   type QuantRange,
   type QuantSnapshot,
@@ -46,13 +47,6 @@ function tone(n?: number | null): string {
   return n > 0 ? "up" : "down";
 }
 
-function heatColor(v: number | null): string {
-  if (v == null) return "rgba(148,163,184,0.12)";
-  const t = Math.max(-1, Math.min(1, v));
-  if (t >= 0) return `rgba(52, 211, 153, ${0.12 + t * 0.72})`;
-  return `rgba(248, 113, 113, ${0.12 + -t * 0.72})`;
-}
-
 function ChartTip({
   active,
   payload,
@@ -78,6 +72,11 @@ export default function QuantTab() {
   const [data, setData] = useState<QuantPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusId, setFocusId] = useState("spy");
+  const [tickerInput, setTickerInput] = useState("");
+  const [customTicker, setCustomTicker] = useState<string | null>(null);
+  const [lookup, setLookup] = useState<QuantSnapshot | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const chartRef = useRef<HTMLElement | null>(null);
 
   const pick = useCallback((id: string) => {
@@ -101,7 +100,6 @@ export default function QuantTab() {
         note: "",
         comment: "",
         snapshots: [],
-        heatmap: [],
         ids: [],
         errors: [exc instanceof Error ? exc.message : "로드 실패"],
         error: exc instanceof Error ? exc.message : "로드 실패",
@@ -111,32 +109,102 @@ export default function QuantTab() {
     }
   }, []);
 
+  const fetchLookup = useCallback(
+    async (raw: string, nextRange: QuantRange) => {
+      const parsed = parseQuantTicker(raw);
+      if (!parsed) {
+        setLookupError("티커 형식을 확인해 주세요. 예: XLK, SMH, 069500");
+        return;
+      }
+      setLookupLoading(true);
+      setLookupError(null);
+      try {
+        const res = await fetch(
+          `/api/quant?range=${nextRange}&ticker=${encodeURIComponent(parsed)}`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as QuantPayload;
+        const hit = json.snapshots[0];
+        if (!json.ok || !hit) {
+          setLookup(null);
+          setLookupError(json.error || `${parsed} 시세를 찾지 못했습니다.`);
+          return;
+        }
+        setLookup(hit);
+        setFocusId(hit.id);
+        window.requestAnimationFrame(() => {
+          chartRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      } catch (exc) {
+        setLookup(null);
+        setLookupError(exc instanceof Error ? exc.message : "조회 실패");
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     void load(range);
   }, [load, range]);
 
-  const rows = data?.snapshots || [];
+  useEffect(() => {
+    if (!customTicker) return;
+    void fetchLookup(customTicker, range);
+  }, [customTicker, range, fetchLookup]);
+
+  const boardRows = data?.snapshots || [];
+  const rows = useMemo(() => {
+    if (!lookup) return boardRows;
+    const rest = boardRows.filter(
+      (r) => r.id !== lookup.id && r.yahoo.toUpperCase() !== lookup.yahoo.toUpperCase(),
+    );
+    return [lookup, ...rest];
+  }, [boardRows, lookup]);
+
   const focus: QuantSnapshot | null =
     rows.find((r) => r.id === focusId && r.chart.length) ||
     rows.find((r) => r.chart.length) ||
     null;
 
-  const shorts = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of rows) m.set(r.id, r.short);
-    return m;
-  }, [rows]);
-
   const hot = rows.filter((r) => r.stretch === "hot");
   const cold = rows.filter((r) => r.stretch === "cold");
   const drawn = rows.filter((r) => r.stretch === "drawn");
+
+  function onLookupSubmit(e: FormEvent) {
+    e.preventDefault();
+    const parsed = parseQuantTicker(tickerInput);
+    if (!parsed) {
+      setLookupError("티커 형식을 확인해 주세요. 예: XLK, SMH, 069500");
+      return;
+    }
+    const existing = boardRows.find(
+      (r) =>
+        r.yahoo.toUpperCase() === parsed ||
+        r.short.toUpperCase() === parsed ||
+        r.id.toUpperCase() === parsed,
+    );
+    if (existing) {
+      setCustomTicker(null);
+      setLookup(null);
+      setLookupError(null);
+      pick(existing.id);
+      return;
+    }
+    if (customTicker === parsed) {
+      void fetchLookup(parsed, range);
+      return;
+    }
+    setCustomTicker(parsed);
+  }
 
   return (
     <div className="geo-tab quant-tab">
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">Technical</h2>
+            <h2 className="kr-hero-title">기술적분석</h2>
           </div>
           <div className="kr-hero-actions">
             <button type="button" className="ghost-btn" onClick={() => void load(range)} disabled={loading}>
@@ -161,9 +229,9 @@ export default function QuantTab() {
       </section>
 
       <section className="geo-section">
-        <h3 className="geo-section-title">GS 시계열 스코어보드</h3>
+        <h3 className="geo-section-title">Score</h3>
         <p className="macro-subhead">
-          행을 누르면 아래 차트에 볼린저·낙폭·RSI가 뜹니다. Vol {QUANT_WINDOWS.vol}일 ·
+          행을 누르면 아래 차트에 볼린저·낙폭·RSI와 매수/매도 코멘트가 뜹니다. Vol {QUANT_WINDOWS.vol}일 ·
           Beta/Sharpe {QUANT_WINDOWS.beta}일 · RSI {QUANT_WINDOWS.rsi}일.
         </p>
         {!rows.length ? (
@@ -187,6 +255,7 @@ export default function QuantTab() {
                   <th>z</th>
                   <th>%ile</th>
                   <th>상태</th>
+                  <th>타이밍</th>
                 </tr>
               </thead>
               <tbody>
@@ -219,12 +288,38 @@ export default function QuantTab() {
                     <td>
                       <span className={`quant-pill quant-${r.stretch}`}>{r.stretch_ko}</span>
                     </td>
+                    <td>
+                      <span className={`quant-pill quant-${r.timing}`}>{r.timing_ko}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+      </section>
+
+      <section className="geo-section">
+        <h3 className="geo-section-title">티커 조회</h3>
+        <p className="macro-subhead">
+          Score에 없는 ETF도 티커를 넣으면 아래에서 같은 기술적 분석이 돌아갑니다. 국내 ETF는
+          6자리 코드(예: 069500)로 조회하세요.
+        </p>
+        <form className="quant-lookup-form" onSubmit={onLookupSubmit}>
+          <input
+            value={tickerInput}
+            onChange={(e) => setTickerInput(e.target.value)}
+            placeholder="예: XLK, SMH, ARKK, 069500"
+            aria-label="ETF 티커"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <button type="submit" className="ghost-btn" disabled={lookupLoading}>
+            {lookupLoading ? "조회 중…" : "분석"}
+          </button>
+        </form>
+        {lookupError ? <p className="empty warn">{lookupError}</p> : null}
       </section>
 
       {focus ? (
@@ -244,6 +339,16 @@ export default function QuantTab() {
                   {fmtNum(focus.macd, 2)}
                 </span>
               </p>
+              <div className="quant-timing-flags">
+                <span className={`quant-pill ${focus.stretch === "hot" ? "quant-hot" : "quant-neutral"}`}>
+                  과열 {focus.stretch === "hot" ? "예" : "아니오"}
+                </span>
+                <span className={`quant-pill ${focus.momentum === "up" ? "quant-buy" : "quant-neutral"}`}>
+                  상승 모멘텀 {focus.momentum === "up" ? "예" : "아니오"}
+                </span>
+                <span className={`quant-pill quant-${focus.timing}`}>{focus.timing_ko}</span>
+              </div>
+              <p className={`quant-timing-comment quant-timing-${focus.timing}`}>{focus.timing_comment}</p>
             </div>
           </div>
           <div className="geo-chart-wrap nlp-live-wrap">
@@ -303,53 +408,6 @@ export default function QuantTab() {
           <p className="macro-schedule">위: 가격+볼린저 · 아래 좌: 낙폭(max_drawdown) · 아래 우: RSI</p>
         </section>
       ) : null}
-
-      <section className="geo-section">
-        <h3 className="geo-section-title">63일 수익률 상관 (GS correlation)</h3>
-        <p className="macro-subhead">셀을 누르면 바로 위 심층 차트가 바뀝니다. 대각선은 1입니다.</p>
-        {data?.heatmap?.length ? (
-          <div className="deriv-table-wrap quant-table-wrap">
-            <table className="deriv-table quant-heat-table">
-              <thead>
-                <tr>
-                  <th />
-                  {data.ids.map((id) => (
-                    <th key={`h-${id}`}>{shorts.get(id) || id}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.ids.map((rowId) => (
-                  <tr key={`r-${rowId}`}>
-                    <th>
-                      <button type="button" className="quant-heat-lab" onClick={() => pick(rowId)}>
-                        {shorts.get(rowId) || rowId}
-                      </button>
-                    </th>
-                    {data.ids.map((colId) => {
-                      const cell = data.heatmap.find((c) => c.a === rowId && c.b === colId);
-                      return (
-                        <td key={`${rowId}-${colId}`} style={{ background: heatColor(cell?.value ?? null) }}>
-                          <button
-                            type="button"
-                            className="quant-heat-cell"
-                            title={`${shorts.get(rowId)}–${shorts.get(colId)} ${cell?.value != null ? cell.value.toFixed(2) : "—"}`}
-                            onClick={() => pick(colId)}
-                          >
-                            {cell?.value != null ? cell.value.toFixed(2) : "—"}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="empty">{loading ? "상관 계산 중…" : "상관 행렬 없음"}</p>
-        )}
-      </section>
 
       <div className="nlp-verdict-board">
         <section className="geo-section nlp-verdict-col nlp-cautious">

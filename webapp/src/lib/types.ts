@@ -179,7 +179,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   volmonitor: "Volatility Monitor",
   derivatives: "Derivatives",
   gamma: "감마",
-  quant: "Technical",
+  quant: "기술적분석",
   ideas: "AI Pick",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
