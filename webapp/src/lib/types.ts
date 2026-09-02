@@ -350,6 +350,40 @@ export function isShellTabId(value: string): value is ShellTabId {
   return (SHELL_TAB_IDS as string[]).includes(value);
 }
 
+export function canonicalShellTab(id: ShellTabId): ShellTabId {
+  if (id === "kosdaq100") return "kosdaqactive";
+  if (id === "aigov" || id === "aiinfra") return "infra";
+  if (id === "round") return "heatpick";
+  if (id === "derivedu") return "derivatives";
+  if (id === "bookclubboard") return "bookclub";
+  return id;
+}
+
+/** Query/path aliases for deep links (`/?tab=heatpick`, `/play`). */
+export function parseShellTab(raw: string | null | undefined): ShellTabId | null {
+  if (!raw) return null;
+  let v = raw.trim();
+  try {
+    v = decodeURIComponent(v);
+  } catch {
+    /* keep raw */
+  }
+  v = v.toLowerCase();
+  if (
+    v === "play" ||
+    v === "game" ||
+    v === "round" ||
+    v === "heatpick" ||
+    v === "charttrade" ||
+    v === "chart-trade" ||
+    v === "모의투자"
+  ) {
+    return "heatpick";
+  }
+  if (isShellTabId(v)) return canonicalShellTab(v);
+  return null;
+}
+
 export function emptyTab(tab: TabId): TabBriefs {
   return { tab, updated_at: null, slots: {} };
 }

@@ -62,6 +62,7 @@ import {
   isBriefTabId,
   isShellTabId,
   navPlacement,
+  canonicalShellTab,
   type TabId,
 } from "@/lib/types";
 
@@ -121,8 +122,12 @@ function BriefSlotsPanel({
   );
 }
 
-export default function Dashboard() {
-  const [tab, setTab] = useState<ShellTabId>("main");
+export default function Dashboard({
+  initialTab = "main",
+}: {
+  initialTab?: ShellTabId;
+}) {
+  const [tab, setTab] = useState<ShellTabId>(() => canonicalShellTab(initialTab));
   const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +165,18 @@ export default function Dashboard() {
     if (tab === "round") setTab("heatpick");
     if (tab === "derivedu") setTab("derivatives");
     if (tab === "bookclubboard") setTab("bookclub");
+  }, [tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    if (tab === "heatpick" && path !== "/play") {
+      window.history.replaceState(null, "", "/play");
+      return;
+    }
+    if (tab !== "heatpick" && path === "/play") {
+      window.history.replaceState(null, "", "/");
+    }
   }, [tab]);
 
   useEffect(() => {

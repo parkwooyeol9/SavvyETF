@@ -24,6 +24,14 @@ import {
 
 export type PricePoint = { date: string; close: number };
 
+export type OhlcPoint = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 export type LegInput = { symbol: string; weight: number };
 
 export type SimMetrics = {
@@ -139,6 +147,70 @@ export async function fetchDailyCloses(
   return [...map.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, close]) => ({ date, close }));
+}
+
+export async function fetchDailyOhlc(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+): Promise<OhlcPoint[]> {
+  const start = new Date(`${startDate}T00:00:00Z`).getTime();
+  const end = new Date(`${endDate}T23:59:59Z`).getTime();
+  const period1 = Math.floor((start - 7 * 86_400_000) / 1000);
+  const period2 = Math.floor(end / 1000) + 86_400;
+  const yahooSym = toYahooSymbol(symbol);
+  const url = `${YAHOO_CHART}/${encodeURIComponent(yahooSym)}?period1=${period1}&period2=${period2}&interval=1d&includePrePost=false`;
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA, Accept: "application/json" },
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) {
+    throw new Error(`Yahoo ${symbol}: HTTP ${res.status}`);
+  }
+  const payload = (await res.json()) as {
+    chart?: {
+      result?: Array<{
+        timestamp?: number[];
+        indicators?: {
+          quote?: Array<{
+            open?: Array<number | null>;
+            high?: Array<number | null>;
+            low?: Array<number | null>;
+            close?: Array<number | null>;
+          }>;
+        };
+      }>;
+    };
+  };
+  const result = payload.chart?.result?.[0];
+  const timestamps = result?.timestamp || [];
+  const quote = result?.indicators?.quote?.[0];
+  const map = new Map<string, OhlcPoint>();
+  for (let i = 0; i < timestamps.length; i++) {
+    const open = quote?.open?.[i];
+    const high = quote?.high?.[i];
+    const low = quote?.low?.[i];
+    const close = quote?.close?.[i];
+    if (
+      open == null ||
+      high == null ||
+      low == null ||
+      close == null ||
+      !Number.isFinite(open) ||
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(close) ||
+      !(close > 0)
+    ) {
+      continue;
+    }
+    const ms = timestamps[i]! * 1000;
+    if (ms < start || ms > end) continue;
+    const date = new Date(ms).toISOString().slice(0, 10);
+    map.set(date, { date, open, high, low, close });
+  }
+  return [...map.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 function alignCloses(
