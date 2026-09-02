@@ -8337,9 +8337,103 @@ a.chip {
 }
 
 .charttrade-hud-sub {
-  margin: 0.25rem 0 0;
+  margin: 0.2rem 0 0;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.charttrade-gap {
+  margin: 0.28rem 0 0;
+  color: #c9d6e5;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.charttrade-dealer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.charttrade-dealer span {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #4da3ff;
+  border: 1px solid rgba(77, 163, 255, 0.38);
+  border-radius: 4px;
+  padding: 0.06rem 0.34rem;
+}
+
+.charttrade-ceremony {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(7, 11, 18, 0.72);
+}
+
+.charttrade-ceremony-card {
+  width: min(28rem, 100%);
+  padding: 1.35rem 1.4rem 1.2rem;
+  border-radius: 14px;
+  border: 1px solid #2b3648;
+  background: #141d2b;
+}
+
+.charttrade-ceremony-card h2 {
+  margin: 0.2rem 0 0.45rem;
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-weight: 400;
+}
+
+.charttrade-ceremony-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.charttrade-ceremony-card .chip {
+  margin-top: 1rem;
+}
+
+.charttrade-compare {
+  margin: 1rem 0 0.2rem;
+  padding: 0.7rem 0.75rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid #2b3648;
+  background: rgba(20, 29, 43, 0.55);
+}
+
+.charttrade-compare-list {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.charttrade-compare-list li {
+  display: grid;
+  grid-template-columns: 1.4rem 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.charttrade-compare-list em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .charttrade-dots {
@@ -8765,6 +8859,10 @@ a.chip {
 .charttrade-rank-list li.you {
   border-color: var(--accent);
   background: rgba(77, 163, 255, 0.08);
+}
+
+.charttrade-rank-list li.lead strong {
+  color: #e8d48b;
 }
 
 .charttrade-rank-list em {

@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { isoTodayKst } from "@/lib/chartTrade";
 import {
   loadRankStore,
-  publicEntry,
   rankBoards,
   submitRank,
+  toPublic,
 } from "@/lib/chartTradeRank";
 
 export const runtime = "nodejs";
@@ -15,11 +15,13 @@ export async function GET() {
   const store = await loadRankStore();
   const date = isoTodayKst();
   const boards = rankBoards(store, date);
+  const today = boards.today.map(toPublic);
   return NextResponse.json({
     ok: true,
     date,
-    today: boards.today.map(publicEntry),
-    all: boards.all.map(publicEntry),
+    leader: today[0] || null,
+    today,
+    all: boards.all.map(toPublic),
     updated_at: store.updated_at,
   });
 }
@@ -38,10 +40,14 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({
       ok: true,
-      entry: publicEntry(result.entry),
+      entry: result.entry,
       rank: result.rank,
-      today: result.boards.today.map(publicEntry),
-      all: result.boards.all.map(publicEntry),
+      hallRank: result.hallRank,
+      improved: result.improved,
+      ceremony: result.ceremony,
+      rival: result.rival,
+      today: result.boards.today,
+      all: result.boards.all,
     });
   } catch (exc) {
     return NextResponse.json(

@@ -22,9 +22,12 @@ import {
   WEIGHT_PRESETS,
   WEIGHT_STEP,
   clampWeight,
+  dealerRevealLine,
+  dealerWeightLine,
   equityFromPicks,
   fmtKrw,
   fmtPct,
+  gapToLeaderLine,
   resultTitle,
   scoreRound,
   shareText,
@@ -36,30 +39,27 @@ import {
   type ChartTradeRound,
   type TradePick,
 } from "@/lib/chartTrade";
-
-type ChartRow = CandlePoint & { phase: "seen" | "next" };
-
-type RankEntry = {
-  id: string;
-  nickname: string;
-  date: string;
-  equity: number;
-  pnl_pct: number;
-  weights: number[];
-  created_at: string;
-};
+import type { Ceremony, RankPublic, RankRival } from "@/lib/chartTradeRank";
 
 type RankPayload = {
   ok: boolean;
   error?: string;
   date?: string;
-  today?: RankEntry[];
-  all?: RankEntry[];
+  leader?: RankPublic | null;
+  today?: RankPublic[];
+  all?: RankPublic[];
   rank?: number;
-  entry?: RankEntry;
+  hallRank?: number;
+  improved?: boolean;
+  ceremony?: Ceremony;
+  rival?: RankRival | null;
+  entry?: RankPublic;
 };
 
+type ChartRow = CandlePoint & { phase: "seen" | "next" };
+
 const NICK_KEY = "savvy_charttrade_nick";
+const EMPTY_CEREMONY: Ceremony = { kind: "none", title: "", body: "", dealer: "" };
 
 function buildChartRows(round: ChartTradeRound, revealed: boolean): ChartRow[] {
   const seen: ChartRow[] = round.seen.map((p) => ({ ...p, phase: "seen" }));
@@ -148,7 +148,11 @@ function CandleTip({
   );
 }
 
-async function canvasPng(picks: TradePick[], date: string): Promise<Blob> {
+async function canvasPng(
+  picks: TradePick[],
+  date: string,
+  rankLine?: string,
+): Promise<Blob> {
   const W = 720;
   const H = 980;
   const canvas = document.createElement("canvas");
@@ -179,7 +183,11 @@ async function canvasPng(picks: TradePick[], date: string): Promise<Blob> {
   ctx.fillText(fmtKrw(equity), 56, 150);
   ctx.fillStyle = "#e8eef5";
   ctx.font = "400 22px 'Instrument Serif', Georgia, serif";
-  ctx.fillText(`${fmtPct(total)}  ·  ${resultTitle(total)}`, 56, 188);
+  ctx.fillText(
+    rankLine || `${fmtPct(total)}  ·  ${resultTitle(total)}`,
+    56,
+    188,
+  );
 
   ctx.font = "500 13px 'DM Sans', system-ui, sans-serif";
   ctx.fillStyle = "#8fa3b8";
@@ -239,9 +247,21 @@ function roundRect(
   ctx.closePath();
 }
 
-async function shareRun(date: string, picks: TradePick[]) {
-  const text = shareText(date, picks);
-  const blob = await canvasPng(picks, date);
+async function shareRun(
+  date: string,
+  picks: TradePick[],
+  extra?: { rank?: number | null; ceremonyTitle?: string | null },
+) {
+  const text = shareText(date, picks, extra);
+  const rankLine =
+    extra?.rank === 1
+      ? `오늘 1위  ·  ${fmtPct(totalPnlPct(picks))}`
+      : extra?.rank
+        ? `오늘 ${extra.rank}위  ·  ${fmtPct(totalPnlPct(picks))}`
+        : extra?.ceremonyTitle
+          ? `${extra.ceremonyTitle}  ·  ${fmtPct(totalPnlPct(picks))}`
+          : undefined;
+  const blob = await canvasPng(picks, date, rankLine);
   const file = new File([blob], `savvyetf-${date}.png`, { type: "image/png" });
   try {
     if (navigator.canShare?.({ files: [file] })) {
@@ -272,7 +292,7 @@ function RankTable({
 }: {
   title: string;
   note?: string;
-  rows: RankEntry[];
+  rows: RankPublic[];
   mine?: string | null;
 }) {
   return (
@@ -287,11 +307,15 @@ function RankTable({
         <ol className="charttrade-rank-list">
           {rows.map((row, i) => {
             const you = mine && row.nickname === mine;
+            const cls = [you ? "you" : "", i === 0 ? "lead" : ""]
+              .filter(Boolean)
+              .join(" ");
             return (
-              <li key={row.id} className={you ? "you" : undefined}>
+              <li key={row.id} className={cls || undefined}>
                 <em>{i + 1}</em>
                 <strong>
                   {row.nickname}
+                  {i === 0 ? " · 1위" : ""}
                   {you ? " · 나" : ""}
                 </strong>
                 <span className={row.pnl_pct >= 0 ? "up" : "down"}>
@@ -309,6 +333,96 @@ function RankTable({
   );
 }
 
+function DealerLine({ text }: { text: string }) {
+  return (
+    <p className="charttrade-dealer">
+      <span>딜러</span>
+      {text}
+    </p>
+  );
+}
+
+function sameNick(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function hudGapLine(
+  equity: number,
+  leader: RankPublic | null,
+  remaining: number,
+  myNick: string,
+) {
+  if (leader && myNick.trim() && sameNick(leader.nickname, myNick)) {
+    const d = leader.equity - equity;
+    const rest = remaining > 0 ? ` · ${remaining}장 남음` : "";
+    if (d > 500) return `내 1위 기록까지 ${fmtKrw(d)}${rest}`;
+    if (d < -500) return `내 1위보다 ${fmtKrw(-d)} 앞선다${rest}`;
+    return `1위 방어 중${rest}`;
+  }
+  return gapToLeaderLine(equity, leader, remaining);
+}
+
+function CeremonyOverlay({
+  ceremony,
+  onDismiss,
+}: {
+  ceremony: Ceremony;
+  onDismiss: () => void;
+}) {
+  if (ceremony.kind === "none") return null;
+  return (
+    <div
+      className="charttrade-ceremony"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="charttrade-ceremony-title"
+    >
+      <div className="charttrade-ceremony-card">
+        <p className="charttrade-kicker">SavvyETF 모의투자</p>
+        <h2 id="charttrade-ceremony-title">{ceremony.title}</h2>
+        <p>{ceremony.body}</p>
+        <DealerLine text={ceremony.dealer} />
+        <button type="button" className="chip active" onClick={onDismiss}>
+          확인
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RivalCompare({
+  picks,
+  rival,
+}: {
+  picks: TradePick[];
+  rival: RankRival;
+}) {
+  return (
+    <div className="charttrade-compare">
+      <div className="charttrade-rank-head">
+        <h3>오늘 1위와 비중</h3>
+        <span>끝난 뒤에만 공개</span>
+      </div>
+      <ol className="charttrade-compare-list">
+        {picks.map((p, i) => {
+          const theirs = rival.weights[i] ?? 0;
+          return (
+            <li key={p.roundId}>
+              <em>{i + 1}</em>
+              <span>
+                나 {weightLabel(p.weight_pct)}
+              </span>
+              <span>
+                {rival.nickname} {weightLabel(theirs)}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 export default function ChartTradeTab() {
   const [data, setData] = useState<ChartTradePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -319,12 +433,16 @@ export default function ChartTradeTab() {
   const [weight, setWeight] = useState(100);
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [nickname, setNickname] = useState("");
-  const [rankToday, setRankToday] = useState<RankEntry[]>([]);
-  const [rankAll, setRankAll] = useState<RankEntry[]>([]);
+  const [rankToday, setRankToday] = useState<RankPublic[]>([]);
+  const [rankAll, setRankAll] = useState<RankPublic[]>([]);
+  const [leader, setLeader] = useState<RankPublic | null>(null);
   const [rankNote, setRankNote] = useState<string | null>(null);
   const [rankBusy, setRankBusy] = useState(false);
   const [submittedName, setSubmittedName] = useState<string | null>(null);
   const [myRank, setMyRank] = useState<number | null>(null);
+  const [ceremony, setCeremony] = useState<Ceremony>(EMPTY_CEREMONY);
+  const [showCeremony, setShowCeremony] = useState(false);
+  const [rival, setRival] = useState<RankRival | null>(null);
 
   const loadRanks = useCallback(async () => {
     try {
@@ -333,6 +451,7 @@ export default function ChartTradeTab() {
       if (!res.ok || !json.ok) return;
       setRankToday(json.today || []);
       setRankAll(json.all || []);
+      setLeader(json.leader ?? json.today?.[0] ?? null);
     } catch {
       /* board is optional */
     }
@@ -394,6 +513,10 @@ export default function ChartTradeTab() {
   const lastPick = picks[picks.length - 1];
   const w = clampWeight(weight);
   const wTone = w > 0 ? "buy" : w < 0 ? "sell" : "flat";
+  const remainingRounds = Math.max(0, ROUNDS - picks.length);
+  const defending = Boolean(
+    leader && nickname.trim() && sameNick(leader.nickname, nickname),
+  );
 
   const commit = useCallback(() => {
     if (!round || revealed) return;
@@ -416,13 +539,21 @@ export default function ChartTradeTab() {
     setRankNote(null);
     setSubmittedName(null);
     setMyRank(null);
+    setCeremony(EMPTY_CEREMONY);
+    setShowCeremony(false);
+    setRival(null);
     setWeight(100);
   }
+
+  const shareExtra = {
+    rank: myRank,
+    ceremonyTitle: ceremony.kind !== "none" ? ceremony.title : null,
+  };
 
   async function onShare() {
     if (!data) return;
     try {
-      const how = await shareRun(data.date, picks);
+      const how = await shareRun(data.date, picks, shareExtra);
       if (how === "shared") setShareNote("공유 창을 열었습니다.");
       else if (how === "downloaded") setShareNote("결과 이미지를 저장했습니다.");
     } catch {
@@ -433,7 +564,7 @@ export default function ChartTradeTab() {
   async function onCopy() {
     if (!data) return;
     try {
-      await navigator.clipboard.writeText(shareText(data.date, picks));
+      await navigator.clipboard.writeText(shareText(data.date, picks, shareExtra));
       setShareNote("결과 문구를 복사했습니다.");
     } catch {
       setShareNote("복사에 실패했습니다.");
@@ -467,13 +598,26 @@ export default function ChartTradeTab() {
       }
       setRankToday(json.today || []);
       setRankAll(json.all || []);
+      setLeader(json.today?.[0] ?? null);
       setSubmittedName(json.entry?.nickname || name);
       setMyRank(json.rank ?? null);
-      setRankNote(
-        json.rank
-          ? `오늘 ${json.rank}위로 기록했습니다.`
-          : "랭킹에 기록했습니다.",
-      );
+      setRival(json.rival ?? null);
+      const nextCeremony = json.ceremony || EMPTY_CEREMONY;
+      setCeremony(nextCeremony);
+      setShowCeremony(nextCeremony.kind !== "none");
+      if (!json.improved) {
+        setRankNote("이번 점수는 못 이겼습니다. 이전 기록이 유지됩니다.");
+      } else if (nextCeremony.kind !== "none") {
+        setRankNote(
+          json.rank
+            ? `${nextCeremony.title} · 오늘 ${json.rank}위`
+            : nextCeremony.title,
+        );
+      } else if (json.rank) {
+        setRankNote(`오늘 ${json.rank}위로 기록했습니다.`);
+      } else {
+        setRankNote("랭킹에 기록했습니다.");
+      }
     } catch (exc) {
       setRankNote(exc instanceof Error ? exc.message : "기록에 실패했습니다.");
     } finally {
@@ -530,6 +674,12 @@ export default function ChartTradeTab() {
     const up = runPct >= 0;
     return (
       <div className="edu-tab charttrade-tab">
+        {showCeremony ? (
+          <CeremonyOverlay
+            ceremony={ceremony}
+            onDismiss={() => setShowCeremony(false)}
+          />
+        ) : null}
         <section className="feature-block charttrade-sheet">
           <p className="charttrade-kicker">SavvyETF 모의투자 · {data.date}</p>
           <p className={`charttrade-total ${up ? "up" : "down"}`}>{fmtKrw(equity)}</p>
@@ -559,6 +709,7 @@ export default function ChartTradeTab() {
               </li>
             ))}
           </ol>
+          {rival && submittedName ? <RivalCompare picks={picks} rival={rival} /> : null}
           <form className="charttrade-rank-form" onSubmit={(e) => void onSubmitRank(e)}>
             <label>
               <span>랭킹 이름</span>
@@ -572,7 +723,13 @@ export default function ChartTradeTab() {
               />
             </label>
             <button type="submit" className="chip active" disabled={rankBusy}>
-              {rankBusy ? "기록 중…" : submittedName ? "더 높은 점수만 갱신" : "랭킹에 남기기"}
+              {rankBusy
+                ? "기록 중…"
+                : defending
+                  ? "1위 방어전"
+                  : submittedName
+                    ? "더 높은 점수만 갱신"
+                    : "랭킹에 남기기"}
             </button>
           </form>
           {myRank ? (
@@ -611,6 +768,9 @@ export default function ChartTradeTab() {
             <p className="charttrade-hud-sub">
               {picks.length ? fmtPct(runPct) : "평가액"} · {step + 1}/{ROUNDS}판 · 다음{" "}
               {HORIZON}거래일
+            </p>
+            <p className="charttrade-gap">
+              {hudGapLine(equity, leader, remainingRounds, nickname)}
             </p>
           </div>
           <ol className="charttrade-dots" aria-label="진행">
@@ -680,6 +840,7 @@ export default function ChartTradeTab() {
               {" · "}
               {fmtKrw(equity)}
             </p>
+            <DealerLine text={dealerRevealLine(lastPick)} />
             <button type="button" className="chip active" onClick={next}>
               {step + 1 < ROUNDS ? "다음 차트" : "결과지 보기"}
             </button>
@@ -691,6 +852,7 @@ export default function ChartTradeTab() {
               <p className="charttrade-weight-hint">
                 이 구간이 1% 움직이면 계좌는 {fmtPct(w / 100, 1)}
               </p>
+              <DealerLine text={dealerWeightLine(w)} />
               <div className="charttrade-slider-wrap">
                 <span>매도 2×</span>
                 <input

@@ -146,12 +146,57 @@ export function resultTitle(pnlPct: number): string {
   return "리셋이 답";
 }
 
-export function shareText(date: string, picks: TradePick[]): string {
+export function dealerWeightLine(weightPct: number): string {
+  const w = clampWeight(weightPct);
+  if (w === 0) return "관망도 포지션이다. 이 장 패스하는 거야?";
+  if (w === 200) return "배 걸었네. 롱 2배.";
+  if (w === -200) return "배 걸었네. 숏 2배.";
+  if (w > 100) return "레버리지 롱. 손맛 아니면 이빨.";
+  if (w < -100) return "레버리지 숏. 맞으면 빨리 아프다.";
+  if (w > 0) return "그냥 매수. 무난하지.";
+  return "그냥 매도. 무난하지.";
+}
+
+export function dealerRevealLine(pick: TradePick): string {
+  const lever = Math.abs(pick.weight_pct) > 100;
+  if (pick.pnl_pct > 0.05) {
+    return lever ? "손맛. 배율이 네 편이었다." : "맞혔다. 다음.";
+  }
+  if (pick.pnl_pct < -0.05) {
+    return lever ? "레버리지가 먼저 물었다." : "한 대. 다음 장.";
+  }
+  return "본전. 재미는 없지.";
+}
+
+export function gapToLeaderLine(
+  equity: number,
+  leader: { nickname: string; equity: number } | null,
+  remaining: number,
+): string {
+  if (!leader) return "오늘 아직 1위 없음. 이 장이 전당이다.";
+  const d = leader.equity - equity;
+  const rest = remaining > 0 ? ` · ${remaining}장 남음` : "";
+  if (d > 500) return `1위 ${leader.nickname}까지 ${fmtKrw(d)}${rest}`;
+  if (d < -500) return `1위 ${leader.nickname}보다 ${fmtKrw(-d)} 앞선다${rest}`;
+  return `1위 ${leader.nickname}과 동점${rest}`;
+}
+
+export function shareText(
+  date: string,
+  picks: TradePick[],
+  extra?: { rank?: number | null; ceremonyTitle?: string | null },
+): string {
   const equity = equityFromPicks(picks);
   const total = totalPnlPct(picks);
+  const rankBit =
+    extra?.rank === 1
+      ? "오늘 1위"
+      : extra?.rank
+        ? `오늘 ${extra.rank}위`
+        : extra?.ceremonyTitle || resultTitle(total);
   const lines = [
     `SavvyETF 모의투자  ${date}`,
-    `${fmtKrw(equity)}  ·  ${fmtPct(total)}  ·  ${resultTitle(total)}`,
+    `${rankBit}  ·  ${fmtKrw(equity)}  ·  ${fmtPct(total)}`,
     `원금 ${fmtKrw(START_EQUITY)} · 캔들 ${ROUNDS}판`,
     "",
     ...picks.map(
