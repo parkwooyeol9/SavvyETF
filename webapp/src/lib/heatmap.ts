@@ -1,6 +1,10 @@
-/** Curated market heatmaps built from Yahoo daily bars (no Render dependency). */
+/** Curated market heatmaps from Yahoo daily bars, with post-close Finnhub/Stooq fill. */
 
-import { fetchDailyCloses } from "@/lib/simulate";
+import { fetchYahooDailyChart } from "@/lib/simulate";
+import {
+  fillUsSessionCloseIfNeeded,
+  type CloseFillSource,
+} from "@/lib/usDailyCloseFallback";
 
 export type HeatmapUniverse = "etf" | "sp" | "nas";
 
@@ -21,6 +25,8 @@ export type HeatmapPayload = {
   top_n?: number;
   generated_at?: string;
   session_label?: string;
+  as_of?: string;
+  close_source?: CloseFillSource;
   stats?: {
     avg_return_pct: number;
     best: { ticker: string; daily_return_pct: number };
@@ -186,17 +192,43 @@ function startDate(): string {
   return new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
 }
 
-async function dailyReturnPct(ticker: string): Promise<number | null> {
+async function dailyReturnForTicker(ticker: string): Promise<{
+  pct: number;
+  as_of: string | null;
+  source: CloseFillSource;
+} | null> {
   try {
-    const points = await fetchDailyCloses(ticker, startDate(), endDate());
+    const end = endDate();
+    const { points: yahoo, sessionQuote } = await fetchYahooDailyChart(
+      ticker,
+      startDate(),
+      end,
+    );
+    const filled = await fillUsSessionCloseIfNeeded(ticker, yahoo, {
+      endDate: end,
+      sessionQuote,
+    });
+    const points = filled.points;
     if (points.length < 2) return null;
-    const prev = points[points.length - 2].close;
-    const last = points[points.length - 1].close;
+    const prev = points[points.length - 2]!.close;
+    const last = points[points.length - 1]!;
     if (!prev) return null;
-    return ((last / prev - 1) * 100);
+    return {
+      pct: ((last.close / prev - 1) * 100),
+      as_of: filled.as_of ?? last.date,
+      source: filled.source,
+    };
   } catch {
     return null;
   }
+}
+
+function closeSourceLabel(source: CloseFillSource, filledCount: number): string {
+  if (filledCount <= 0) return "Yahoo daily";
+  if (source === "finnhub") return "Finnhub close (Yahoo 1d pending)";
+  if (source === "stooq") return "Stooq close (Yahoo 1d pending)";
+  if (source === "yahoo-quote") return "Yahoo quote (1d pending)";
+  return "Yahoo daily";
 }
 
 export async function buildLocalHeatmap(
@@ -213,22 +245,45 @@ export async function buildLocalHeatmap(
 
   const settled = await Promise.all(
     members.map(async (m) => {
-      const ret = await dailyReturnPct(m.ticker);
-      return ret == null ? null : { ...m, daily_return_pct: round(ret, 3) };
+      const ret = await dailyReturnForTicker(m.ticker);
+      return ret == null
+        ? null
+        : { ...m, daily_return_pct: round(ret.pct, 3), as_of: ret.as_of, source: ret.source };
     }),
   );
 
-  const cells = settled.filter((c): c is HeatmapCell => c != null);
+  const cells = settled
+    .filter((c): c is NonNullable<typeof c> => c != null)
+    .map(({ ticker, name, size, daily_return_pct }) => ({
+      ticker,
+      name,
+      size,
+      daily_return_pct,
+    }));
   if (cells.length < 5) {
     return {
       ok: false,
       universe,
       label: meta.label,
       size_label: meta.size_label,
-      error: "Could not load enough Yahoo price bars for the heatmap.",
+      error: "Could not load enough price bars for the heatmap.",
       source: "vercel",
     };
   }
+
+  const filledRows = settled.filter((c) => c && c.source !== "yahoo") as Array<{
+    as_of: string | null;
+    source: CloseFillSource;
+  }>;
+  const asOf =
+    filledRows[0]?.as_of ||
+    settled.find((c) => c?.as_of)?.as_of ||
+    null;
+  const closeSource: CloseFillSource = filledRows.some((r) => r.source === "finnhub")
+    ? "finnhub"
+    : filledRows.some((r) => r.source === "stooq")
+      ? "stooq"
+      : filledRows[0]?.source || "yahoo";
 
   const returns = cells.map((c) => c.daily_return_pct);
   const avg = returns.reduce((a, b) => a + b, 0) / returns.length;
@@ -243,7 +298,9 @@ export async function buildLocalHeatmap(
     size_label: meta.size_label,
     top_n: cells.length,
     generated_at: new Date().toISOString(),
-    session_label: `${meta.short} · Yahoo daily · tile size ≈ ${meta.size_label}`,
+    as_of: asOf || undefined,
+    close_source: closeSource,
+    session_label: `${meta.short} · as_of ${asOf || "?"} ET · ${closeSourceLabel(closeSource, filledRows.length)} · tile size ≈ ${meta.size_label}`,
     stats: {
       avg_return_pct: round(avg, 3),
       best: { ticker: best.ticker, daily_return_pct: best.daily_return_pct },

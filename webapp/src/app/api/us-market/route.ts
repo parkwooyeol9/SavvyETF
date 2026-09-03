@@ -9,7 +9,7 @@ export const maxDuration = 30;
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "us-market:v1",
+      "us-market:v2",
       90_000,
       300_000,
       () => buildUsMarketPayload(),

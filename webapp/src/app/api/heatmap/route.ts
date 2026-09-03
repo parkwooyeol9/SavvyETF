@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const topN = Number(searchParams.get("top_n") || "30");
   const prefer = searchParams.get("prefer") || "local";
   const universe = isHeatmapUniverse(universeRaw) ? universeRaw : "etf";
-  const cacheKey = `heatmap:v1:${universe}:${topN}:${prefer}`;
+  const cacheKey = `heatmap:v2:${universe}:${topN}:${prefer}`;
 
   const payload = await withServerCache(
     cacheKey,

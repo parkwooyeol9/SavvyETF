@@ -1,6 +1,8 @@
 /** Yahoo Finance chart client + portfolio simulation for the dashboard. */
 
 import { resolveMethodWeights } from "@/lib/allocation";
+import { fillUsSessionCloseIfNeeded } from "@/lib/usDailyCloseFallback";
+import { unixToEtYmd } from "@/lib/usEquitySession";
 import type { VolDiag } from "@/lib/allocation";
 import {
   ASSET_LABELS,
@@ -105,11 +107,16 @@ function toYahooSymbol(ticker: string): string {
   return symbol.replace(/\./g, "-");
 }
 
-export async function fetchDailyCloses(
+export type YahooDailyFetch = {
+  points: PricePoint[];
+  sessionQuote: { date: string; close: number } | null;
+};
+
+export async function fetchYahooDailyChart(
   symbol: string,
   startDate: string,
   endDate: string,
-): Promise<PricePoint[]> {
+): Promise<YahooDailyFetch> {
   const start = new Date(`${startDate}T00:00:00Z`).getTime();
   const end = new Date(`${endDate}T23:59:59Z`).getTime();
   // period1/period2 returns reliable daily bars for KR ETFs; range=max often sparsifies.
@@ -126,7 +133,13 @@ export async function fetchDailyCloses(
     throw new Error(`Yahoo ${symbol}: HTTP ${res.status}`);
   }
   const payload = (await res.json()) as {
-    chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> };
+    chart?: {
+      result?: Array<{
+        timestamp?: number[];
+        meta?: { regularMarketPrice?: number; regularMarketTime?: number };
+        indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+      }>;
+    };
   };
   const result = payload.chart?.result?.[0];
   const timestamps = result?.timestamp || [];
@@ -141,12 +154,39 @@ export async function fetchDailyCloses(
     const iso = d.toISOString().slice(0, 10);
     out.push({ date: iso, close });
   }
-  // Deduplicate by date (keep last)
   const map = new Map<string, number>();
   for (const p of out) map.set(p.date, p.close);
-  return [...map.entries()]
+  const points = [...map.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([date, close]) => ({ date, close }));
+
+  const px = result?.meta?.regularMarketPrice;
+  const ts = result?.meta?.regularMarketTime;
+  const sessionQuote =
+    typeof px === "number" && Number.isFinite(px) && px > 0 && typeof ts === "number" && ts > 0
+      ? { date: unixToEtYmd(ts), close: px }
+      : null;
+
+  return { points, sessionQuote };
+}
+
+export async function fetchYahooDailyCloses(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+): Promise<PricePoint[]> {
+  const { points } = await fetchYahooDailyChart(symbol, startDate, endDate);
+  return points;
+}
+
+export async function fetchDailyCloses(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+): Promise<PricePoint[]> {
+  const { points, sessionQuote } = await fetchYahooDailyChart(symbol, startDate, endDate);
+  const filled = await fillUsSessionCloseIfNeeded(symbol, points, { endDate, sessionQuote });
+  return filled.points;
 }
 
 export async function fetchDailyOhlc(
