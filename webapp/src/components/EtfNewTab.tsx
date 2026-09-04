@@ -126,9 +126,8 @@ function ListingTable({
 }
 
 export default function EtfNewTab({
-  initialDelayMs = 2000,
+  initialDelayMs = 0,
 }: {
-  /** Stagger load so KOR15 and etf-new don't hit Render at once. */
   initialDelayMs?: number;
 }) {
   const [data, setData] = useState<ApiPayload | null>(null);
@@ -137,7 +136,7 @@ export default function EtfNewTab({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/etf-new");
+      const res = await fetch("/api/etf-new?kr=10&us=10");
       const text = await res.text();
       let json: ApiPayload;
       try {
@@ -150,11 +149,6 @@ export default function EtfNewTab({
         );
       }
       setData(json);
-      setSelected((prev) => {
-        if (prev) return prev;
-        const firstOk = (json.analyses || []).find((a) => a.ok)?.code;
-        return firstOk || json.kr_new?.[0]?.code || json.us_new?.[0]?.code || "";
-      });
     } catch (exc) {
       setData({
         ok: false,
@@ -176,7 +170,7 @@ export default function EtfNewTab({
 
   const analyses = data?.analyses || [];
   const active = useMemo(
-    () => analyses.find((a) => a.code === selected) || analyses[0] || null,
+    () => (selected ? analyses.find((a) => a.code === selected) || null : null),
     [analyses, selected],
   );
 
@@ -186,7 +180,7 @@ export default function EtfNewTab({
         <div>
           <h2>신규 상장 ETF</h2>
           <p className="kr-note">
-            ETF CHECK 한국·미국 신규상장 + 주식형 구성종목 분석
+            한국·미국 최근 상장 · 주식형 행을 클릭하면 구성종목
             {data?.generated_at_display ? ` · ${data.generated_at_display}` : ""}
           </p>
         </div>
@@ -210,115 +204,84 @@ export default function EtfNewTab({
               title="🇰🇷 한국 신규상장"
               rows={data.kr_new || []}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={(code) => setSelected((prev) => (prev === code ? "" : code))}
             />
             <ListingTable
               title="🇺🇸 미국 신규상장"
               rows={data.us_new || []}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={(code) => setSelected((prev) => (prev === code ? "" : code))}
             />
           </div>
 
-          <div className="etf-new-block">
-            <h3>주식형 구성종목 분석</h3>
-            {!analyses.length ? (
-              <p className="empty">분석 가능한 주식형 신규상장이 없습니다.</p>
-            ) : (
-              <>
-                <div className="chip-row">
-                  {analyses.map((a) => (
-                    <button
-                      key={`${a.market}-${a.code}`}
-                      type="button"
-                      className={`chip ${active?.code === a.code ? "active" : ""}`}
-                      onClick={() => setSelected(a.code)}
-                    >
-                      {a.market} {a.code}
-                    </button>
-                  ))}
+          {active ? (
+            <div className="etf-new-block">
+              <h3>구성종목</h3>
+              <div className="etf-new-analysis">
+                <div className="etf-new-meta">
+                  <strong>
+                    {active.code} · {active.name || "—"}
+                  </strong>
+                  <span>
+                    상장 {active.list_date || "—"}
+                    {active.as_of ? ` · 비중기준 ${active.as_of}` : ""}
+                  </span>
                 </div>
-
-                {active ? (
-                  <div className="etf-new-analysis">
-                    <div className="etf-new-meta">
-                      <strong>
-                        {active.code} · {active.name || "—"}
-                      </strong>
-                      <span>
-                        상장 {active.list_date || "—"}
-                        {active.as_of ? ` · 비중기준 ${active.as_of}` : ""}
-                        {active.source ? ` · ${active.source}` : ""}
-                      </span>
+                {!active.ok ? (
+                  <p className="empty">{active.error || "구성종목 조회 실패"}</p>
+                ) : (
+                  <>
+                    <div className="etf-new-stats">
+                      <div>
+                        <em>Top5</em>
+                        <strong>{fmtPct(active.stats?.top5_weight_pct)}</strong>
+                      </div>
+                      <div>
+                        <em>Top10</em>
+                        <strong>{fmtPct(active.stats?.top10_weight_pct)}</strong>
+                      </div>
+                      <div>
+                        <em>최대비중</em>
+                        <strong>{fmtPct(active.stats?.max_weight_pct)}</strong>
+                      </div>
                     </div>
-                    {!active.ok ? (
-                      <p className="empty">{active.error || "구성종목 조회 실패"}</p>
-                    ) : (
-                      <>
-                        <div className="etf-new-stats">
-                          <div>
-                            <em>Top5</em>
-                            <strong>{fmtPct(active.stats?.top5_weight_pct)}</strong>
-                          </div>
-                          <div>
-                            <em>Top10</em>
-                            <strong>{fmtPct(active.stats?.top10_weight_pct)}</strong>
-                          </div>
-                          <div>
-                            <em>최대비중</em>
-                            <strong>{fmtPct(active.stats?.max_weight_pct)}</strong>
-                          </div>
-                          <div>
-                            <em>HHI</em>
-                            <strong>
-                              {active.stats?.hhi != null ? active.stats.hhi.toFixed(4) : "—"}
-                            </strong>
-                          </div>
-                        </div>
-                        {active.note ? <p className="kr-note">{active.note}</p> : null}
-                        <div className="table-wrap">
-                          <table className="kr-table">
-                            <thead>
-                              <tr>
-                                <th>#</th>
-                                <th>코드</th>
-                                <th>종목</th>
-                                <th>비중</th>
-                                <th>등락</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(active.holdings || []).map((h, idx) => (
-                                <tr key={`${h.code}-${idx}`}>
-                                  <td>{idx + 1}</td>
-                                  <td>
-                                    <code>{h.code || "—"}</code>
-                                  </td>
-                                  <td>{h.name || "—"}</td>
-                                  <td>{fmtPct(h.weight_pct)}</td>
-                                  <td className={toneClass(h.change_pct)}>
-                                    {fmtPct(h.change_pct)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          {data.notes?.length ? (
-            <ul className="kr-note etf-new-notes">
-              {data.notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          ) : null}
+                    <div className="table-wrap">
+                      <table className="kr-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>코드</th>
+                            <th>종목</th>
+                            <th>비중</th>
+                            <th>등락</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(active.holdings || []).slice(0, 10).map((h, idx) => (
+                            <tr key={`${h.code}-${idx}`}>
+                              <td>{idx + 1}</td>
+                              <td>
+                                <code>{h.code || "—"}</code>
+                              </td>
+                              <td>{h.name || "—"}</td>
+                              <td>{fmtPct(h.weight_pct)}</td>
+                              <td className={toneClass(h.change_pct)}>
+                                {fmtPct(h.change_pct)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : selected ? (
+            <p className="kr-note">이 종목은 구성종목 분석이 없습니다.</p>
+          ) : (
+            <p className="kr-note">주식형 종목을 클릭하면 상위 구성종목을 봅니다.</p>
+          )}
         </>
       )}
     </section>

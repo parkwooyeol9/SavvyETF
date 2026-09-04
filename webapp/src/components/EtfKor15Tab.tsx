@@ -18,16 +18,6 @@ type Holding = {
   weight_pct?: number | null;
 };
 
-type Special = {
-  label?: string;
-  code?: string;
-  name?: string;
-  weight_pct?: number | null;
-  value_usd_bn?: number | null;
-  in_top3?: boolean;
-  missing?: boolean;
-};
-
 type Kor15Row = {
   symbol: string;
   resolved_symbol?: string | null;
@@ -38,7 +28,6 @@ type Kor15Row = {
   aum_usd_bn?: number | null;
   adv_m_shares?: number | null;
   top3?: Holding[];
-  specials?: Special[];
   samsung_weight_pct?: number | null;
   hynix_weight_pct?: number | null;
   samsung_value_usd_bn?: number | null;
@@ -76,18 +65,11 @@ function fmtTop3(top3?: Holding[]): string {
     .join(" · ");
 }
 
-function fmtSpecials(specials?: Special[]): string {
-  if (!specials?.length) return "—";
-  return specials
-    .map((s) => {
-      if (s.missing) return `${s.label} n/a`;
-      const mark = s.in_top3 ? "" : "★";
-      return `${mark}${s.label} ${fmtPct(s.weight_pct)}`;
-    })
-    .join(" · ");
-}
-
-export default function EtfKor15Tab() {
+export default function EtfKor15Tab({
+  initialDelayMs = 0,
+}: {
+  initialDelayMs?: number;
+}) {
   const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<ChartMode>("weight");
@@ -119,10 +101,13 @@ export default function EtfKor15Tab() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), initialDelayMs);
     const id = window.setInterval(() => void load(), 10 * 60_000);
-    return () => window.clearInterval(id);
-  }, [load]);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(id);
+    };
+  }, [load, initialDelayMs]);
 
   const rows = data?.rows || [];
 
@@ -151,7 +136,7 @@ export default function EtfKor15Tab() {
         <div>
           <h2>ETF KOR15 — 한국 노출 미국 ETF</h2>
           <p className="kr-note">
-            etfcheck AUM · ADV · Top3 · 삼성전자/SK하이닉스
+            삼성전자·SK하이닉스 편입
             {data?.generated_at_display ? ` · ${data.generated_at_display}` : ""}
             {data?.ok_count != null ? ` · ${data.ok_count}/${rows.length || 15}` : ""}
           </p>
@@ -235,7 +220,6 @@ export default function EtfKor15Tab() {
                   <th>AUM($B)</th>
                   <th>ADV(M)</th>
                   <th>Top3</th>
-                  <th>삼성/하이닉스</th>
                   <th>{mode === "weight" ? "삼성%" : "삼성$B"}</th>
                   <th>{mode === "weight" ? "하이닉스%" : "하이닉스$B"}</th>
                 </tr>
@@ -257,7 +241,6 @@ export default function EtfKor15Tab() {
                     <td className="num">{fmtBn(row.aum_usd_bn)}</td>
                     <td className="num">{fmtBn(row.adv_m_shares)}</td>
                     <td>{fmtTop3(row.top3)}</td>
-                    <td>{fmtSpecials(row.specials)}</td>
                     <td className="num">
                       {mode === "weight"
                         ? fmtPct(row.samsung_weight_pct)
@@ -273,14 +256,6 @@ export default function EtfKor15Tab() {
               </tbody>
             </table>
           </div>
-
-          {data.notes?.length ? (
-            <ul className="kr-note etf-new-notes">
-              {data.notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          ) : null}
         </>
       )}
     </section>

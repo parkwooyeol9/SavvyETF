@@ -319,7 +319,7 @@ export function navGroupForTab(tab: ShellTabId): NavGroupId {
 export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
   kr: ["summary_kor", "summary_nxt"],
   us: ["summary", "reddit"],
-  etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
+  etf: [],
   // Daily ESG 시황 monitor first; AI gov slots stay append-only after existing entries.
   esg: [
     "esg_events",
@@ -336,6 +336,8 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
 export const TAB_SLOT_HIDDEN: Partial<Record<TabId, readonly string[]>> = {
   kr: ["summary_kor_intra"],
   us: ["summary_pre"],
+  // Live EtfNewTab + EtfKor15Tab replace these Telegram dumps (most schedules are OFF).
+  etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
 };
 
 export function isTabId(value: string): value is TabId {
