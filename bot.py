@@ -3208,6 +3208,33 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/etf-holdings":
+                from etf_holdings_web import holdings_lookup_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                ticker = ((query.get("ticker") or [""])[0] or "").strip()
+                market = ((query.get("market") or [""])[0] or "").strip() or None
+                try:
+                    limit = int((query.get("limit") or ["80"])[0])
+                except ValueError:
+                    limit = 80
+                try:
+                    payload = holdings_lookup_payload(
+                        ticker, limit=limit, market=market
+                    )
+                except Exception as exc:
+                    payload = {
+                        "ok": False,
+                        "ticker": ticker.upper() if ticker else None,
+                        "error": f"etf-holdings failed: {exc}",
+                    }
+                status = 200 if payload.get("ok") else 404
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode(
+                    "utf-8"
+                )
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/etf-weights":
                 from etf_weight_monitor import (
                     load_snapshot,

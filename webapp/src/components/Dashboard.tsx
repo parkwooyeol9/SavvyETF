@@ -16,6 +16,7 @@ import EsgTabShell from "@/components/EsgTabShell";
 import EsgThemesTab from "@/components/EsgThemesTab";
 import EtfDbTab from "@/components/EtfDbTab";
 import EtfDbUsTab from "@/components/EtfDbUsTab";
+import EtfHoldingsTab from "@/components/EtfHoldingsTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
 import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
@@ -264,6 +265,7 @@ export default function Dashboard({
       tab === "etfdbus" ||
       tab === "leverage" ||
       tab === "etfweights" ||
+      tab === "etfholdings" ||
       tab === "kosdaqactive" ||
       tab === "countryetf" ||
       tab === "etf" ||
@@ -415,6 +417,8 @@ export default function Dashboard({
         <EtfDbTab />
       ) : tab === "etfdbus" ? (
         <EtfDbUsTab />
+      ) : tab === "etfholdings" ? (
+        <EtfHoldingsTab />
       ) : tab === "etfweights" ? (
         <EtfWeightMonitorTab />
       ) : tab === "kosdaqactive" ? (

@@ -15,6 +15,7 @@ export type ShellTabId =
   | "etfdbus"
   | "leverage"
   | "etfweights"
+  | "etfholdings"
   | "kosdaqactive"
   | "countryetf"
   | "kosdaq100"
@@ -57,6 +58,7 @@ export type NavGroupId =
   | "esg"
   | "politics"
   | "fundmgr"
+  | "weights"
   | "derivs"
   | "learn";
 
@@ -127,6 +129,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "etfdb",
   "etfdbus",
   "etfweights",
+  "etfholdings",
   "kosdaqactive",
   "countryetf",
   "esg",
@@ -163,6 +166,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfdbus: "ETF DB(US)",
   leverage: "레버리지 ETF",
   etfweights: "편입비 모니터",
+  etfholdings: "메인",
   kosdaqactive: "코스닥액티브 ETF",
   countryetf: "국가ETF",
   geo: "지정학",
@@ -217,7 +221,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "fundmgr",
         label: "펀드매니저",
-        tabs: ["gurus", "etfweights", "kosdaqactive", "moneyflow"],
+        tabs: ["gurus", "moneyflow"],
       },
     ],
   },
@@ -230,6 +234,13 @@ export const NAV_GROUPS: NavGroup[] = [
       "etfdbus",
       "countryetf",
       "themeetf",
+    ],
+    nested: [
+      {
+        id: "weights",
+        label: "편입비",
+        tabs: ["etfholdings", "etfweights", "kosdaqactive"],
+      },
     ],
   },
   {
@@ -286,7 +297,7 @@ export function navPlacement(tab: ShellTabId): {
   groupId: NavGroupId;
   nestedId: NavGroupId | null;
 } {
-  if (tab === "kosdaq100") return { groupId: "market", nestedId: "fundmgr" };
+  if (tab === "kosdaq100") return { groupId: "etf", nestedId: "weights" };
   if (tab === "aigov" || tab === "aiinfra") {
     return { groupId: "portfolio", nestedId: "esg" };
   }
@@ -383,6 +394,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
     return "heatpick";
   }
   if (isShellTabId(v)) return canonicalShellTab(v);
+  if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
   return null;
 }
 
