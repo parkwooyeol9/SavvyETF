@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from summary_builder import (
     _buffer_to_data_uri,
     _freeze_chart_buffer,
     format_summary_pdf_message,
+    pack_telegram_html_parts,
     resolve_summary_public_url,
 )
 
@@ -382,44 +384,57 @@ a{{color:#4da3ff}}.meta{{color:#8fa3b8}}</style></head>
 </body></html>"""
 
 
+def reddit_telegram_compact_mode() -> bool:
+    """Default ON — skip financial chart photos and PDF uploads on Telegram."""
+    return os.environ.get("REDDIT_TELEGRAM_COMPACT", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
 def render_reddit_telegram_full(brief: dict[str, Any], public_url: str = "") -> list[dict]:
+    compact = reddit_telegram_compact_mode()
     messages = format_reddit_telegram(brief)
 
-    for pack in brief.get("financials") or []:
-        if not isinstance(pack, dict):
-            continue
-        symbol = pack.get("symbol") or "?"
-        if pack.get("error"):
-            messages.append({"text": f"📊 /financial ${symbol} unavailable: {pack['error']}"})
-            continue
-        # Prefer pipeline telegram payloads; rebuild photo from frozen bytes if needed.
-        for msg in pack.get("telegram_messages") or []:
-            out = dict(msg)
-            if "photo" in out:
-                photo = _as_photo_buffer(out.get("photo") or pack.get("chart"))
-                if photo is None:
-                    out.pop("photo", None)
-                else:
-                    out["photo"] = photo
-            messages.append(out)
-        if not pack.get("telegram_messages"):
-            photo = _as_photo_buffer(pack.get("chart"))
-            caption = f"📊 Financial — ${symbol}"
-            if photo is not None:
-                messages.append({"text": caption, "photo": photo})
-            if pack.get("text_summary"):
-                messages.append({"text": pack["text_summary"], "parse_mode": "HTML"})
+    if not compact:
+        for pack in brief.get("financials") or []:
+            if not isinstance(pack, dict):
+                continue
+            symbol = pack.get("symbol") or "?"
+            if pack.get("error"):
+                messages.append(
+                    {"text": f"📊 /financial ${symbol} unavailable: {pack['error']}"}
+                )
+                continue
+            for msg in pack.get("telegram_messages") or []:
+                out = dict(msg)
+                if "photo" in out:
+                    photo = _as_photo_buffer(out.get("photo") or pack.get("chart"))
+                    if photo is None:
+                        out.pop("photo", None)
+                    else:
+                        out["photo"] = photo
+                messages.append(out)
+            if not pack.get("telegram_messages"):
+                photo = _as_photo_buffer(pack.get("chart"))
+                caption = f"📊 Financial — ${symbol}"
+                if photo is not None:
+                    messages.append({"text": caption, "photo": photo})
+                if pack.get("text_summary"):
+                    messages.append({"text": pack["text_summary"], "parse_mode": "HTML"})
 
     reddit_web = resolve_reddit_public_url(public_url)
     pdf_url = resolve_reddit_pdf_public_url(public_url)
-    messages.append(
-        {
-            "text": (
-                f"🟠 Reddit / WSB brief (web): {reddit_web}\n"
-                f"📄 PDF: {pdf_url}"
-            )
-        }
+    link = (
+        f"🟠 Reddit / WSB brief (web): {reddit_web}\n"
+        f"📄 PDF: {pdf_url}"
     )
+    if compact:
+        parts = [str(msg.get("text") or "") for msg in messages] + [link]
+        return pack_telegram_html_parts(parts)
+
+    messages.append({"text": link})
     pdf_message = format_summary_pdf_message(brief, public_url or reddit_web)
     if pdf_message:
         messages.append(pdf_message)

@@ -1,4 +1,4 @@
-"""Daily FreeSIS / credit monitor — default 09:35 KST on KRX trading days.
+"""Daily FreeSIS / credit monitor — default 11:10 KST on KRX trading days.
 
 Scrapes on Render (KR-friendly egress), writes local + R2 so Vercel can read
 credit_monitor/latest.json without hitting FreeSIS from US IPs.
@@ -17,13 +17,13 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 9
-DEFAULT_MINUTE_KST = 35
+DEFAULT_HOUR_KST = 11
+DEFAULT_MINUTE_KST = 10
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("CREDIT_MONITOR_SCHEDULE_KST", "09:35").strip()
+    raw = os.environ.get("CREDIT_MONITOR_SCHEDULE_KST", "11:10").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -118,7 +118,7 @@ def start_credit_monitor_scheduler() -> None:
                     time.sleep(poll_seconds)
                     continue
 
-                # One bootstrap scrape after grace so Vercel gets data before 09:30.
+                # One bootstrap scrape after grace so Vercel gets data before 11:10.
                 if not bootstrapped:
                     bootstrapped = True
                     if not last_slot:

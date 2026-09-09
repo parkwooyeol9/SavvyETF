@@ -36,6 +36,7 @@ from summary_builder import (
     _freeze_chart_buffer,
     _freeze_summary_charts,
     format_summary_pdf_message,
+    pack_telegram_html_parts,
     resolve_summary_public_url,
 )
 
@@ -419,12 +420,26 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
             if not intraday
             else "요약 모드 · 장중 보드 + 브리핑 · 상세는 웹 참고"
         )
-    else:
-        source_line = (
-            "KOSPI 200 + KOSDAQ 100 · Naver 1분봉 vs 전일 종가 · Naver News · DART"
-            if intraday
-            else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
-        )
+        parts = [
+            (
+                f"<b>{title}</b>\n"
+                f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
+                f"{source_line}\n"
+                "<i>Not financial advice.</i>"
+            )
+        ]
+        for universe in summary.get("universes") or []:
+            for msg in _format_universe_telegram(universe, summary):
+                parts.append(str(msg.get("text") or ""))
+        for msg in _format_kor_data_briefing_telegram(summary):
+            parts.append(str(msg.get("text") or ""))
+        return pack_telegram_html_parts(parts)
+
+    source_line = (
+        "KOSPI 200 + KOSDAQ 100 · Naver 1분봉 vs 전일 종가 · Naver News · DART"
+        if intraday
+        else "KOSPI 200 + KOSDAQ 100 · Yahoo prices · Naver News · DART"
+    )
     messages: list[dict] = [
         {
             "text": (

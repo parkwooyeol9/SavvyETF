@@ -60,6 +60,8 @@ services:
         value: "true"
       - key: SUMMARY_KOR_SCHEDULE_KST
         value: "15:40"
+      - key: SUMMARY_KOR_CATCHUP_MINUTES
+        value: "45"
       - key: SUMMARY_NXT_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_NXT_SCHEDULE_KST
@@ -67,6 +69,10 @@ services:
       - key: SUMMARY_NXT_TELEGRAM_ENABLED
         value: "false"
       - key: SUMMARY_KOR_TELEGRAM_COMPACT
+        value: "true"
+      - key: SUMMARY_US_TELEGRAM_COMPACT
+        value: "true"
+      - key: REDDIT_TELEGRAM_COMPACT
         value: "true"
       - key: ETF_SECTOR_SCHEDULE_ENABLED
         value: "false"
@@ -79,23 +85,41 @@ services:
       - key: ETFCHECK_SCHEDULE_ENABLED
         value: "true"
       - key: ETFCHECK_SCHEDULE_KST
-        value: "15:45"
+        value: "16:20"
+      - key: ETFCHECK_CATCHUP_MINUTES
+        value: "45"
       - key: ETF_KOR15_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_WEIGHT_SCHEDULE_ENABLED
         value: "true"
       - key: ETF_WEIGHT_SCHEDULE_KST
-        value: "7:30"
+        value: "8:20"
       - key: ETF_WEIGHT_CATCHUP_MINUTES
         value: "60"
       - key: CREDIT_MONITOR_SCHEDULE_KST
-        value: "9:35"
+        value: "11:10"
+      - key: KOSDAQ100_SCHEDULE_KST
+        value: "17:15"
+      - key: KOSDAQ100_CATCHUP_MINUTES
+        value: "45"
+      - key: KOSDAQ_ACTIVE_SCHEDULE_KST
+        value: "17:50"
+      - key: KOSDAQ_ACTIVE_CATCHUP_MINUTES
+        value: "45"
+      - key: ETFDB_SCHEDULE_KST
+        value: "18:20"
+      - key: ETFDB_CATCHUP_MINUTES
+        value: "45"
       - key: ESG_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_EVENTS_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_EVENTS_SCHEDULE_KST
         value: "9:00"
+      - key: ESG_EVENTS_TELEGRAM_MAX
+        value: "1"
+      - key: ESG_DAILY_TG_MAX
+        value: "3"
       - key: ESG_MONITOR_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_MONITOR_SCHEDULE_KST
@@ -103,7 +127,7 @@ services:
       - key: ESG_ACCIDENT_SCHEDULE_ENABLED
         value: "true"
       - key: ESG_ACCIDENT_SCHEDULE_KST
-        value: "9:30"
+        value: "10:20"
       - key: ESG_OVERVIEW_SCHEDULE_ENABLED
         value: "false"
       - key: ESG_OVERVIEW_SCHEDULE_KST

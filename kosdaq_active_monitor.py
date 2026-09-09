@@ -2,7 +2,7 @@
 
 Universe (2026): KoAct · TIME · PLUS · TIGER · MIDAS · DS
 Source: Koscom ETF CHECK ``getEtfPdfRankListWeight`` (daily top PDF ranks)
-Schedule: 15:50 KST (post close) via ``kosdaq_active_scheduler``
+Schedule: 17:50 KST (post close) via ``kosdaq_active_scheduler``
 
 Layout
 ------
@@ -250,7 +250,7 @@ def save_universe(entries: list[dict[str, Any]]) -> None:
         "updated_at": _now_kst().isoformat(),
         "count": len(entries),
         "tickers": entries,
-        "schedule_note": "매일 15:50 KST(장마감 후) ETF CHECK PDF 상위 편입비 스냅샷",
+        "schedule_note": "매일 17:50 KST(장마감 후) ETF CHECK PDF 상위 편입비 스냅샷",
     }
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     UNIVERSE_PATH.write_text(
@@ -286,7 +286,7 @@ def load_universe() -> dict[str, Any]:
             {**u, "as_of": None, "aum_krw_eok": None, "holdings": None}
             for u in KOSDAQ_ACTIVE_UNIVERSE
         ],
-        "schedule_note": "매일 15:50 KST(장마감 후) ETF CHECK PDF 상위 편입비 스냅샷",
+        "schedule_note": "매일 17:50 KST(장마감 후) ETF CHECK PDF 상위 편입비 스냅샷",
     }
 
 
@@ -634,7 +634,7 @@ def build_compare_payload(funds: list[dict[str, Any]]) -> dict[str, Any]:
         "generated_at": _now_kst().isoformat(),
         "as_of": as_of_dates[-1] if as_of_dates else None,
         "as_of_list": as_of_dates,
-        "schedule_note": "매일 15:50 KST 장마감 후 ETF CHECK 편입비 스냅샷 · 웹은 장중에도 최신 공개 랭킹을 불러옵니다",
+        "schedule_note": "매일 17:50 KST 장마감 후 ETF CHECK 편입비 스냅샷 · 웹은 장중에도 최신 공개 랭킹을 불러옵니다",
         "disclaimer": "운용사 공식 코멘트가 아닌 PDF 상위 랭킹·피어 대비 휴리스틱 해석입니다. 투자 권유가 아닙니다.",
         "source_note": "ETF CHECK 일별 PDF 상위 편입비중(보통 Top10 내외, 현금 제외) · Naver 메타(AUM/운용사)",
         "universe_count": len(funds),

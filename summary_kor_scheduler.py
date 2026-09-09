@@ -91,14 +91,14 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
-    catchup_minutes = 180
+    catchup_minutes = 45
     try:
         catchup_minutes = max(
             30,
-            int(os.environ.get("SUMMARY_KOR_CATCHUP_MINUTES", "180")),
+            int(os.environ.get("SUMMARY_KOR_CATCHUP_MINUTES", "45")),
         )
     except ValueError:
-        catchup_minutes = 180
+        catchup_minutes = 45
 
     def loop() -> None:
         state = _load_state()

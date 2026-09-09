@@ -631,7 +631,7 @@ export function buildComparePayload(
     as_of: asOfList[asOfList.length - 1] || null,
     as_of_list: asOfList,
     schedule_note:
-      "매일 15:50 KST 장마감 후 스냅샷 · 웹은 장중에도 ETF CHECK 최신 공개 랭킹을 불러옵니다",
+      "매일 17:50 KST 장마감 후 스냅샷 · 웹은 장중에도 ETF CHECK 최신 공개 랭킹을 불러옵니다",
     disclaimer:
       "운용사 공식 코멘트가 아닌 PDF 상위 랭킹·피어 대비 휴리스틱 해석입니다. 투자 권유가 아닙니다.",
     source_note:

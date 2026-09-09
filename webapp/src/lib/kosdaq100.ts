@@ -11,7 +11,7 @@ const UA =
 const R2_KEY = "kosdaq100/latest.json";
 const R2_FUND_KEY = "kosdaq100/fundamentals/latest.json";
 export const KOSDAQ100_SCHEDULE_NOTE =
-  "평일 15:45 KST(장마감 후) 데이터·브리핑 갱신";
+  "평일 17:15 KST(장마감 후) 데이터·브리핑 갱신";
 
 export type Kosdaq100Constituent = {
   code: string;

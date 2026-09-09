@@ -1,4 +1,4 @@
-"""Daily Korean ETF DB snapshot — default 16:05 KST on KRX trading days.
+"""Daily Korean ETF DB snapshot — default 18:20 KST on KRX trading days.
 
 Persists Naver universe + classification so NAV×Δ설정좌수 flows accumulate.
 Does not broadcast to Telegram (web /etfdb + manual /etfdb only).
@@ -17,13 +17,13 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 16
-DEFAULT_MINUTE_KST = 5
+DEFAULT_HOUR_KST = 18
+DEFAULT_MINUTE_KST = 20
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETFDB_SCHEDULE_KST", "16:05").strip()
+    raw = os.environ.get("ETFDB_SCHEDULE_KST", "18:20").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -128,14 +128,14 @@ def start_etf_db_scheduler() -> None:
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
-    catchup_minutes = 180
+    catchup_minutes = 45
     try:
         catchup_minutes = max(
             30,
-            int(os.environ.get("ETFDB_CATCHUP_MINUTES", "180")),
+            int(os.environ.get("ETFDB_CATCHUP_MINUTES", "45")),
         )
     except ValueError:
-        catchup_minutes = 180
+        catchup_minutes = 45
 
     def loop() -> None:
         state = _load_state()

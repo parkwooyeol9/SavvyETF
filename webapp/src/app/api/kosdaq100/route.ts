@@ -25,11 +25,11 @@ function kstHourMinute(): { hour: number; minute: number } {
   return { hour, minute };
 }
 
-/** After 15:45 KST prefer fresher scheduled snapshot + briefing. */
+/** After 17:15 KST prefer fresher scheduled snapshot + briefing. */
 function cacheTtls(): { freshMs: number; staleMs: number } {
   const { hour, minute } = kstHourMinute();
   const mins = hour * 60 + minute;
-  if (mins >= 15 * 60 + 45 && mins < 18 * 60) {
+  if (mins >= 17 * 60 + 15 && mins < 19 * 60) {
     return { freshMs: 60_000, staleMs: 180_000 };
   }
   return { freshMs: 90_000, staleMs: 300_000 };
@@ -71,7 +71,7 @@ async function buildPayload(refresh: boolean): Promise<Kosdaq100Payload> {
         timeZone: "Asia/Seoul",
       });
       const { hour, minute } = kstHourMinute();
-      const afterClose = hour > 15 || (hour === 15 && minute >= 45);
+      const afterClose = hour > 17 || (hour === 17 && minute >= 15);
       if (!afterClose || !fromR2.as_of || fromR2.as_of >= todayKst) {
         return fromR2;
       }

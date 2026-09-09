@@ -1,6 +1,6 @@
 """Daily ETF weight monitor — Roundhill all + iShares top-15 AUM.
 
-Default 07:30 KST, 60-minute catch-up. Collects only inside that window so a
+Default 08:20 KST, 60-minute catch-up. Collects only inside that window so a
 late redeploy cannot hold the heavy-work lock through 09:00 ESG Telegram.
 """
 
@@ -17,13 +17,13 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 7
-DEFAULT_MINUTE_KST = 30
+DEFAULT_HOUR_KST = 8
+DEFAULT_MINUTE_KST = 20
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETF_WEIGHT_SCHEDULE_KST", "07:30").strip()
+    raw = os.environ.get("ETF_WEIGHT_SCHEDULE_KST", "08:20").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)

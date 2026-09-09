@@ -684,7 +684,7 @@ def build_esg_events_bundle(*, days: int = LOOKBACK_DAYS) -> dict[str, Any]:
         "timezone": "Asia/Seoul",
         "note": (
             "매일 09:00 KST 갱신 · KIND·DART 공시 + 법원·고용노동부·환경부·증선위 관련 보도. "
-            "텔레그램은 고중요도·당일 건만 하루 최대 5건. 법적·투자 자문이 아닙니다."
+            "텔레그램은 고중요도·당일 건만 하루 최대 3건. 법적·투자 자문이 아닙니다."
         ),
         "channel": {
             "name": "ESG 에이전트",

@@ -238,7 +238,7 @@ export default function Kosdaq100Tab({ embedded = false }: { embedded?: boolean 
           </button>
         </div>
         <p className="meta-soft">
-          {data?.schedule_note || "평일 15:45 KST(장마감 후) 데이터·브리핑 갱신"}
+          {data?.schedule_note || "평일 17:15 KST(장마감 후) 데이터·브리핑 갱신"}
           {data?.as_of ? ` · 기준 ${data.as_of}` : ""}
           {data?.generated_at
             ? ` · 조회 ${new Date(data.generated_at).toLocaleString("ko-KR", {

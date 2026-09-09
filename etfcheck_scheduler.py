@@ -1,4 +1,4 @@
-"""Scheduled /etfcheck broadcast — default 15:45 KST on KRX trading days.
+"""Scheduled /etfcheck broadcast — default 16:20 KST on KRX trading days.
 
 Delivers to the legacy ETF channel (TELEGRAM_CHAT_ID).
 """
@@ -16,13 +16,13 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 15
-DEFAULT_MINUTE_KST = 45
+DEFAULT_HOUR_KST = 16
+DEFAULT_MINUTE_KST = 20
 DEFAULT_POLL_SECONDS = 30
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETFCHECK_SCHEDULE_KST", "15:45").strip()
+    raw = os.environ.get("ETFCHECK_SCHEDULE_KST", "16:20").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -110,14 +110,14 @@ def start_etfcheck_scheduler(token: str, broadcast_fn) -> None:
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
-    catchup_minutes = 180
+    catchup_minutes = 45
     try:
         catchup_minutes = max(
             30,
-            int(os.environ.get("ETFCHECK_CATCHUP_MINUTES", "180")),
+            int(os.environ.get("ETFCHECK_CATCHUP_MINUTES", "45")),
         )
     except ValueError:
-        catchup_minutes = 180
+        catchup_minutes = 45
 
     def loop() -> None:
         state = _load_state()

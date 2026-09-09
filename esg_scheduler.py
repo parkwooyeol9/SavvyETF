@@ -1,8 +1,8 @@
 """Scheduled /esg broadcasts → SavvyESG channel (TELEGRAM_CHAT_ID_ESG).
 
-Default (KST), important items only, hard-capped at 5 Telegram posts/day:
-  - 09:00  /esg events — high-impact S·E·G digest
-  - 09:30  /esg accident — Telegram only if a 중대재해 hit is <36h old
+Default (KST), important items only, hard-capped at 3 Telegram posts/day:
+  - 09:00  /esg events — high-impact S·E·G digest (1 message)
+  - 10:20  /esg accident — Telegram only if a 중대재해 hit is <36h old
 
 Opt-in (explicitly enable; still share the daily cap):
   - monitor (climate) / overview / aigov / aibrief
@@ -23,7 +23,7 @@ from summary_scheduler import _load_state, update_scheduler_state
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_EVENTS_KST = (9, 0)
 DEFAULT_MONITOR_KST = (9, 0)
-DEFAULT_ACCIDENT_KST = (9, 30)
+DEFAULT_ACCIDENT_KST = (10, 20)
 DEFAULT_OVERVIEW_KST = (9, 45)
 DEFAULT_AIGOV_KST = (10, 0)
 DEFAULT_AIBRIEF_KST = (10, 15)
@@ -68,7 +68,7 @@ def _monitor_time_kst() -> tuple[int, int]:
 
 def _accident_time_kst() -> tuple[int, int]:
     return _parse_hhmm(
-        os.environ.get("ESG_ACCIDENT_SCHEDULE_KST", "9:30"),
+        os.environ.get("ESG_ACCIDENT_SCHEDULE_KST", "10:20"),
         DEFAULT_ACCIDENT_KST,
     )
 
@@ -127,6 +127,16 @@ def run_scheduled_esg_events(token: str, broadcast_fn) -> bool:
     try:
         result = run_esg_events(publish=True)
         messages = result.get("telegram_messages") or []
+        try:
+            max_msgs = max(1, int(os.environ.get("ESG_EVENTS_TELEGRAM_MAX", "1")))
+        except ValueError:
+            max_msgs = 1
+        if len(messages) > max_msgs:
+            print(
+                f"Scheduled esg events: truncating {len(messages)} → {max_msgs} "
+                "Telegram message(s)."
+            )
+            messages = messages[:max_msgs]
         if not messages:
             print("Scheduled esg events: no high-impact items — Telegram skipped.")
             return True

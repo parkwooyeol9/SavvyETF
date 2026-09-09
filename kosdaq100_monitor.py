@@ -1,6 +1,6 @@
 """KOSDAQ 100 monitor — daily EOD snapshot + 3–4 line AI brief.
 
-Schedule: 15:45 KST (post close) via kosdaq100_scheduler.py
+Schedule: 17:15 KST (post close) via kosdaq100_scheduler.py
 R2: kosdaq100/latest.json
 """
 
@@ -38,7 +38,7 @@ THEME_TAGS: list[tuple[str, tuple[str, ...]]] = [
     ("로봇·AI", ("로보티즈", "레인보우로보틱스", "클로봇")),
 ]
 
-SCHEDULE_NOTE = "평일 15:45 KST(장마감 후) 데이터·브리핑 갱신"
+SCHEDULE_NOTE = "평일 17:15 KST(장마감 후) 데이터·브리핑 갱신"
 
 
 def _now_kst() -> datetime:

@@ -170,14 +170,15 @@ What each command returns:
 /dart etf memb 0167A0
 → 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
 
-Auto schedule (KST):
-  /summary 07:00 · /reddit 21:00  → US channel
+Auto schedule (KST, staggered so Render jobs do not overlap):
+  /summary 07:00 (compact Telegram)  → US channel
+  /reddit 21:00 (compact Telegram)  → US channel
   /summary_kor 15:40 (compact Telegram)  → Korea channel
   /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
-  /etfcheck 15:45 (KRX days)  → legacy ETF channel
-  /etfdb snapshot 16:05 (KRX days, no Telegram)  → web /etfdb
-  /esg events 09:00 daily     → SavvyESG (중요 건만, 하루 최대 5건)
-  /esg accident 09:30 (KRX)  → SavvyESG (당일 중대재해 속보만)
+  /etfcheck 16:20 (KRX days)  → legacy ETF channel
+  /etfdb snapshot 18:20 (KRX days, no Telegram)  → web /etfdb
+  /esg events 09:00 daily     → SavvyESG (중요 건만, 하루 최대 3건)
+  /esg accident 10:20 (KRX)  → SavvyESG (당일 중대재해 속보만)
   (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
    esg climate monitor/overview/aigov/brief)
 
@@ -218,12 +219,12 @@ def build_help_messages() -> list[dict]:
 <code>/news_naver</code> — 네이버 뉴스 (키워드 선택 가능)"""
 
     msg2 = """<b>📋 브리핑 · 자동 스케줄 (KST)</b>
-<code>/summary</code> 07:00 — 미국 마감 브리핑 (US 채널)
-<code>/reddit</code> 21:00 — WSB 핫토픽 + 재무 (US 채널)
+<code>/summary</code> 07:00 — 미국 마감 요약 (US 채널; 상세·차트는 웹)
+<code>/reddit</code> 21:00 — WSB 핫토픽 요약 (US 채널; 재무 차트는 웹)
 <code>/summary_kor</code> 15:40 — 한국 마감 요약 (Korea 채널; 상세·차트는 웹)
-<code>/etfcheck</code> 15:45 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
-<code>/esg events</code> 09:00 — ESG 시황 (중요 건만, SavvyESG 하루 최대 5건)
-<code>/esg accident</code> 09:30 — 중대재해 속보 (당일 발생 시에만)
+<code>/etfcheck</code> 16:20 — ETF CHECK (레거시 ETF 채널, 한국 휴장 제외)
+<code>/esg events</code> 09:00 — ESG 시황 (중요 건만, SavvyESG 하루 최대 3건)
+<code>/esg accident</code> 10:20 — 중대재해 속보 (당일 발생 시에만)
 <i>스케줄 OFF(수동만):</i> <code>/summary_pre</code> · <code>/summary_kor_intra</code> · <code>/etf_kor15</code> · <code>/etf_sector</code> · <code>/etf_us_new</code> · <code>/esg</code> climate monitor/overview/aigov · ESG data briefing
 <code>/aibriefing</code> — 트렌딩 뉴스 요약
 <code>/data_briefing</code> — 직전 데이터·뉴스 기반 3문단 시황 (kor/us/esg)
@@ -487,7 +488,7 @@ def broadcast_messages_legacy(token: str, messages: list[str] | list[dict]) -> i
 
 
 def broadcast_messages_esg(token: str, messages: list[str] | list[dict]) -> int:
-    """SavvyESG schedules → TELEGRAM_CHAT_ID_ESG only, capped at 5 Telegram posts/day."""
+    """SavvyESG schedules → TELEGRAM_CHAT_ID_ESG only, capped at 3 Telegram posts/day."""
     payload = list(messages or [])
     if not payload:
         return 0
@@ -498,9 +499,9 @@ def broadcast_messages_esg(token: str, messages: list[str] | list[dict]) -> int:
 
     today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
     try:
-        max_n = max(1, int(os.environ.get("ESG_DAILY_TG_MAX", "5")))
+        max_n = max(1, int(os.environ.get("ESG_DAILY_TG_MAX", "3")))
     except ValueError:
-        max_n = 5
+        max_n = 3
     grant = claim_daily_quota(
         date_key="esg_tg_date",
         count_key="esg_tg_count",
@@ -2640,7 +2641,7 @@ def start_web_server():
                             "ETF_SECTOR_SCHEDULE_KST", "7:05"
                         ),
                         "etfcheck_kst": os.environ.get(
-                            "ETFCHECK_SCHEDULE_KST", "15:45"
+                            "ETFCHECK_SCHEDULE_KST", "16:20"
                         ),
                         "etf_kor15_kst": os.environ.get(
                             "ETF_KOR15_SCHEDULE_KST", "9:10"
@@ -2652,7 +2653,7 @@ def start_web_server():
                             "ESG_MONITOR_SCHEDULE_KST", "9:05"
                         ),
                         "esg_accident_kst": os.environ.get(
-                            "ESG_ACCIDENT_SCHEDULE_KST", "9:30"
+                            "ESG_ACCIDENT_SCHEDULE_KST", "10:20"
                         ),
                         "esg_overview_kst": os.environ.get(
                             "ESG_OVERVIEW_SCHEDULE_KST", "9:45"
@@ -2661,11 +2662,13 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
-                            "ON: summary@07:00, reddit@21:00, summary_kor@15:40 "
-                            "(compact Telegram), etfcheck@15:45, "
+                            "ON: summary@07:00 (compact Telegram), reddit@21:00 "
+                            "(compact Telegram), summary_kor@15:40 "
+                            "(compact Telegram), etfcheck@16:20, "
                             "summary_nxt@16:40 (web-only), "
-                            "esg events@09:00, esg accident@09:30, etfdb@16:05. "
-                            "Staggered 5m so heavy-work lock is sequential. "
+                            "esg events@09:00, esg accident@10:20, etfdb@18:20, "
+                            "kosdaq100@17:15, kosdaq_active@17:50. "
+                            "Staggered ~30–40m so heavy work does not overlap. "
                             "OFF default: summary_pre, kor_intra, etf_sector@07:05, "
                             "etf_us_new, etf_kor15@09:10, "
                             "esg overview, esg brief; SUMMARY_NXT_TELEGRAM_ENABLED=false. "

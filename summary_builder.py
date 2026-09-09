@@ -36,6 +36,41 @@ SUMMARY_UNIVERSES = ("etf", "sp")
 SUMMARY_NEWS_PER_TICKER = 2
 TELEGRAM_CHUNK_SIZE = 3800
 
+
+def us_telegram_compact_mode() -> bool:
+    """Default ON — slim Telegram pack; full detail stays on web/PDF/R2."""
+    return os.environ.get("SUMMARY_US_TELEGRAM_COMPACT", "true").lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
+def pack_telegram_html_parts(
+    parts: list[str],
+    *,
+    max_len: int = TELEGRAM_CHUNK_SIZE,
+) -> list[dict]:
+    """Merge HTML text parts into as few Telegram messages as possible."""
+    messages: list[dict] = []
+    current: list[str] = []
+    current_len = 0
+    for raw in parts:
+        part = str(raw or "").strip()
+        if not part:
+            continue
+        extra = len(part) + (2 if current else 0)
+        if current and current_len + extra > max_len:
+            messages.append({"text": "\n\n".join(current), "parse_mode": "HTML"})
+            current = [part]
+            current_len = len(part)
+            continue
+        current.append(part)
+        current_len += extra
+    if current:
+        messages.append({"text": "\n\n".join(current), "parse_mode": "HTML"})
+    return messages
+
 UNIVERSE_STYLE = {
     "etf": {"emoji": "📦", "label": "ETF", "color": "#4da3ff"},
     "sp": {"emoji": "🇺🇸", "label": "S&P 500", "color": "#3dd68c"},
@@ -516,7 +551,32 @@ def _format_ranking_block_telegram(title: str, top: list, *, universe_key: str) 
     return lines
 
 
+def _format_universe_telegram_compact(universe: dict, summary: dict) -> list[dict]:
+    """Boards + leader name only — no chart photos or per-ticker news."""
+    ukey = universe["key"]
+    style = UNIVERSE_STYLE.get(ukey, {"emoji": "📊"})
+    header = f"<b>{style['emoji']} {_esc(universe['name'])}</b>\n"
+    ranking_lines = [header, "<i>Last trading day return | latest vol / 21d avg</i>", ""]
+    for mode in ("surge", "dropvol"):
+        board = universe["boards"][mode]
+        ranking_lines.extend(
+            _format_ranking_block_telegram(
+                BOARD_TITLES[mode], board["top"], universe_key=ukey
+            )
+        )
+    leader = universe.get("leader_ticker")
+    if leader:
+        leader_label = leader
+        if ukey == "etf":
+            leader_label = _display_ticker_label(leader, "etf")
+        ranking_lines.extend(["", f"📈 Top leader: {_esc(leader_label)}"])
+    return [{"text": "\n".join(ranking_lines).rstrip(), "parse_mode": "HTML"}]
+
+
 def _format_universe_telegram(universe: dict, summary: dict) -> list[dict]:
+    if us_telegram_compact_mode():
+        return _format_universe_telegram_compact(universe, summary)
+
     ukey = universe["key"]
     style = UNIVERSE_STYLE.get(ukey, {"emoji": "📊"})
     header = f"<b>{style['emoji']} {_esc(universe['name'])}</b>\n"
@@ -627,14 +687,32 @@ def _format_crypto_telegram(summary: dict) -> list[dict]:
 
 
 def render_summary_telegram(summary: dict, public_url: str = "") -> list[dict]:
+    compact = us_telegram_compact_mode()
+    parts: list[str] = []
+    if compact:
+        parts.append(
+            "<b>🇺🇸 SavvyETF US Brief</b>\n"
+            f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
+            "요약 모드 · 보드 + 브리핑 · 차트·뉴스·히트맵·PDF는 웹 참고\n"
+            "<i>Not financial advice.</i>"
+        )
     messages: list[dict] = []
-
     for universe in summary["universes"]:
-        messages.extend(_format_universe_telegram(universe, summary))
+        packed = _format_universe_telegram(universe, summary)
+        if compact:
+            parts.extend(str(msg.get("text") or "") for msg in packed)
+        else:
+            messages.extend(packed)
 
-    messages.extend(_format_heatmap_telegram(summary))
-    messages.extend(_format_ai_telegram(summary))
+    if not compact:
+        messages.extend(_format_heatmap_telegram(summary))
 
+    ai_msgs = _format_ai_telegram(summary)
+    if compact:
+        parts.extend(str(msg.get("text") or "") for msg in ai_msgs)
+        return pack_telegram_html_parts(parts)
+
+    messages.extend(ai_msgs)
     return messages
 
 
@@ -870,17 +948,23 @@ def generate_and_save_summary(public_url: str = "") -> dict:
     summary["telegram_messages"] = render_summary_telegram(summary, public_url=public_url)
     web_url = public_url.strip() if public_url else resolve_summary_public_url()
     summary["telegram_messages"].append(format_summary_web_link_message(summary, web_url))
-    pdf_message = format_summary_pdf_message(summary, web_url)
-    if pdf_message:
-        summary["telegram_messages"].append(pdf_message)
-    elif summary.get("pdf_error"):
-        summary["telegram_messages"].append(
-            {"text": f"PDF export unavailable: {summary['pdf_error']}"}
-        )
-    if summary.get("html_error"):
-        summary["telegram_messages"].append(
-            {"text": f"Web page note: HTML fell back to a simple page ({summary['html_error']})"}
-        )
+    if not us_telegram_compact_mode():
+        pdf_message = format_summary_pdf_message(summary, web_url)
+        if pdf_message:
+            summary["telegram_messages"].append(pdf_message)
+        elif summary.get("pdf_error"):
+            summary["telegram_messages"].append(
+                {"text": f"PDF export unavailable: {summary['pdf_error']}"}
+            )
+        if summary.get("html_error"):
+            summary["telegram_messages"].append(
+                {
+                    "text": (
+                        "Web page note: HTML fell back to a simple page "
+                        f"({summary['html_error']})"
+                    )
+                }
+            )
 
     try:
         from web_publish import publish_brief

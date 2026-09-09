@@ -23,11 +23,11 @@ function kstHourMinute(): { hour: number; minute: number } {
   return { hour, minute };
 }
 
-/** After 15:50 KST prefer fresher cache so post-close PDFs surface quickly. */
+/** After 17:50 KST prefer fresher cache so post-close PDFs surface quickly. */
 function cacheTtls(): { freshMs: number; staleMs: number } {
   const { hour, minute } = kstHourMinute();
   const mins = hour * 60 + minute;
-  if (mins >= 15 * 60 + 50 && mins < 18 * 60) {
+  if (mins >= 17 * 60 + 50 && mins < 19 * 60) {
     return { freshMs: 60_000, staleMs: 180_000 };
   }
   return { freshMs: 180_000, staleMs: 600_000 };
@@ -37,12 +37,12 @@ async function buildPayload(refresh: boolean): Promise<KosdaqActivePayload> {
   if (!refresh) {
     const fromR2 = await loadCompareFromR2();
     if (fromR2?.ok && (fromR2.funds || []).some((f) => f.holdings?.length)) {
-      // If R2 as_of is older than today (KST) after 15:50, refresh live.
+      // If R2 as_of is older than today (KST) after 17:50, refresh live.
       const todayKst = new Date().toLocaleDateString("en-CA", {
         timeZone: "Asia/Seoul",
       });
       const { hour, minute } = kstHourMinute();
-      const afterClose = hour > 15 || (hour === 15 && minute >= 50);
+      const afterClose = hour > 17 || (hour === 17 && minute >= 50);
       if (!afterClose || !fromR2.as_of || fromR2.as_of >= todayKst) {
         return fromR2;
       }
@@ -69,7 +69,7 @@ async function buildPayload(refresh: boolean): Promise<KosdaqActivePayload> {
         ok: false,
         generated_at: new Date().toISOString(),
         as_of: null,
-        schedule_note: "매일 15:50 KST 장마감 후 스냅샷",
+        schedule_note: "매일 17:50 KST 장마감 후 스냅샷",
         disclaimer: "투자 권유가 아닙니다.",
         source_note: "",
         universe_count: 0,
@@ -109,7 +109,7 @@ export async function GET(req: Request) {
         ok: false,
         generated_at: new Date().toISOString(),
         as_of: null,
-        schedule_note: "매일 15:50 KST 장마감 후 스냅샷",
+        schedule_note: "매일 17:50 KST 장마감 후 스냅샷",
         disclaimer: "투자 권유가 아닙니다.",
         source_note: "",
         universe_count: 0,

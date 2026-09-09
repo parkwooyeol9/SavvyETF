@@ -1,4 +1,4 @@
-"""Daily KOSDAQ Active ETF holdings compare — default 15:55 KST (post close)."""
+"""Daily KOSDAQ Active ETF holdings compare — default 17:50 KST (post close)."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 15
-DEFAULT_MINUTE_KST = 55
+DEFAULT_HOUR_KST = 17
+DEFAULT_MINUTE_KST = 50
 DEFAULT_POLL_SECONDS = 60
 
 
 def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("KOSDAQ_ACTIVE_SCHEDULE_KST", "15:55").strip()
+    raw = os.environ.get("KOSDAQ_ACTIVE_SCHEDULE_KST", "17:50").strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -84,14 +84,14 @@ def start_kosdaq_active_scheduler() -> None:
 
     hour, minute = _schedule_time_kst()
     poll_seconds = _poll_seconds()
-    catchup_minutes = 180
+    catchup_minutes = 45
     try:
         catchup_minutes = max(
             30,
-            int(os.environ.get("KOSDAQ_ACTIVE_CATCHUP_MINUTES", "180")),
+            int(os.environ.get("KOSDAQ_ACTIVE_CATCHUP_MINUTES", "45")),
         )
     except ValueError:
-        catchup_minutes = 180
+        catchup_minutes = 45
 
     def loop() -> None:
         state = _load_state()
