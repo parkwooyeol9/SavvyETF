@@ -57,16 +57,18 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/cardnews/auth": { limit: 8, windowMs: 60_000 },
   "/api/research": { limit: 40, windowMs: 60_000 },
   "/api/research/auth": { limit: 8, windowMs: 60_000 },
+  "/api/research/presign": { limit: 40, windowMs: 60_000 },
+  "/api/research/complete": { limit: 40, windowMs: 60_000 },
 };
 
 const WRITE_PATH =
-  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/(cardnews|research)(?:\/auth)?$/;
+  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/(cardnews|research)(?:\/(?:auth|presign|complete))?$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
   const writeRule =
-    (method === "POST" || method === "DELETE") && WRITE_PATH.test(pathname)
+    (method === "POST" || method === "DELETE" || method === "PATCH") && WRITE_PATH.test(pathname)
       ? { limit: 8, windowMs: 60_000 }
       : null;
   const rule = writeRule || HEAVY_PATHS[pathname];
@@ -82,7 +84,7 @@ export async function middleware(request: NextRequest) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com https://*.googleusercontent.com https://*.supabase.co https://upload.wikimedia.org https://*.wikimedia.org https://*.wikipedia.org",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+      "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://*.r2.cloudflarestorage.com https://*.cloudflarestorage.com",
       "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co https://savvybookclub.vercel.app",
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com https://*.supabase.co",

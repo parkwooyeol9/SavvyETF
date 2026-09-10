@@ -1,4 +1,5 @@
 export const RESEARCH_CATEGORIES = [
+  "pending",
   "quant",
   "ai",
   "etf",
@@ -10,6 +11,7 @@ export const RESEARCH_CATEGORIES = [
 export type ResearchCategory = (typeof RESEARCH_CATEGORIES)[number];
 
 export const RESEARCH_CATEGORY_LABELS: Record<ResearchCategory, string> = {
+  pending: "미분류",
   quant: "퀀트",
   ai: "AI",
   etf: "ETF",
@@ -25,6 +27,14 @@ export const RESEARCH_CATEGORY_OPTIONS: Array<{
   id,
   label: RESEARCH_CATEGORY_LABELS[id],
 }));
+
+export const RESEARCH_CLASSIFY_OPTIONS = RESEARCH_CATEGORY_OPTIONS.filter(
+  (c) => c.id !== "pending",
+);
+
+/** Vercel proxy uploads stay under ~4.5MB; larger PDFs go direct to R2. */
+export const RESEARCH_PROXY_PDF_BYTES = 3_500_000;
+export const RESEARCH_MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 export const DEFAULT_RESEARCH_YEAR = "2026";
 

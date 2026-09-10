@@ -13,10 +13,13 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export type R2Config = {
   accountId: string;
@@ -172,11 +175,13 @@ export async function r2GetObjectBytes(
   }
 }
 
-export async function r2ListKeys(prefix: string): Promise<string[]> {
+export async function r2ListObjects(
+  prefix = "",
+): Promise<Array<{ key: string; size: number }>> {
   const cfg = getR2Config();
   if (!cfg) return [];
   const client = clientFor(cfg);
-  const keys: string[] = [];
+  const items: Array<{ key: string; size: number }> = [];
   let token: string | undefined;
   do {
     const res = await client.send(
@@ -187,11 +192,117 @@ export async function r2ListKeys(prefix: string): Promise<string[]> {
       }),
     );
     for (const obj of res.Contents || []) {
-      if (obj.Key) keys.push(obj.Key);
+      if (obj.Key) items.push({ key: obj.Key, size: obj.Size || 0 });
     }
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token);
-  return keys;
+  return items;
+}
+
+export async function r2HeadObject(
+  key: string,
+): Promise<{ size: number; contentType: string } | null> {
+  const cfg = getR2Config();
+  if (!cfg) return null;
+  const client = clientFor(cfg);
+  try {
+    const res = await client.send(
+      new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }),
+    );
+    return {
+      size: res.ContentLength || 0,
+      contentType: res.ContentType || "application/octet-stream",
+    };
+  } catch (exc) {
+    const name = exc instanceof Error ? exc.name : "";
+    if (name === "NoSuchKey" || name === "NotFound") return null;
+    const msg = exc instanceof Error ? exc.message : String(exc);
+    if (/NoSuchKey|NotFound|404/i.test(msg)) return null;
+    throw exc;
+  }
+}
+
+export async function r2GetObjectPrefix(
+  key: string,
+  bytes = 8,
+): Promise<Buffer | null> {
+  const cfg = getR2Config();
+  if (!cfg) return null;
+  const client = clientFor(cfg);
+  try {
+    const res = await client.send(
+      new GetObjectCommand({
+        Bucket: cfg.bucket,
+        Key: key,
+        Range: `bytes=0-${Math.max(0, bytes - 1)}`,
+      }),
+    );
+    if (!res.Body) return null;
+    return Buffer.from(await res.Body.transformToByteArray());
+  } catch (exc) {
+    const name = exc instanceof Error ? exc.name : "";
+    if (name === "NoSuchKey" || name === "NotFound") return null;
+    const msg = exc instanceof Error ? exc.message : String(exc);
+    if (/NoSuchKey|NotFound|404/i.test(msg)) return null;
+    throw exc;
+  }
+}
+
+export async function r2PresignPut(
+  key: string,
+  contentType: string,
+  expiresIn = 900,
+): Promise<string> {
+  const cfg = getR2Config();
+  if (!cfg) throw new Error("R2 is not configured");
+  const client = clientFor(cfg);
+  return getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: cfg.bucket,
+      Key: key,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+    }),
+    { expiresIn },
+  );
+}
+
+export async function ensureR2UploadCors(): Promise<void> {
+  const cfg = getR2Config();
+  if (!cfg) return;
+  const client = clientFor(cfg);
+  try {
+    await client.send(
+      new PutBucketCorsCommand({
+        Bucket: cfg.bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: [
+                "https://savvyetf.com",
+                "https://www.savvyetf.com",
+                "https://savvyetf.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:3001",
+              ],
+              AllowedMethods: ["GET", "PUT", "HEAD"],
+              AllowedHeaders: ["*"],
+              ExposeHeaders: ["ETag", "Location"],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      }),
+    );
+  } catch {
+    /* Token may be object-only; browser PUT then needs dashboard CORS. */
+  }
+}
+
+export async function r2ListKeys(prefix: string): Promise<string[]> {
+  const items = await r2ListObjects(prefix);
+  return items.map((item) => item.key);
 }
 
 export async function r2DeleteKeys(keys: string[]): Promise<number> {

@@ -5,6 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_RESEARCH_YEAR,
   RESEARCH_CATEGORY_OPTIONS,
+  RESEARCH_CLASSIFY_OPTIONS,
+  RESEARCH_MAX_PDF_BYTES,
+  RESEARCH_PROXY_PDF_BYTES,
   RESEARCH_YEAR_OPTIONS,
   composeResearchDate,
   formatResearchDate,
@@ -111,14 +114,13 @@ export default function ResearchTab() {
   const [category, setCategory] = useState<ResearchCategory | "all">("all");
   const [year, setYear] = useState<string>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
-  const [title, setTitle] = useState("");
-  const [uploadCategory, setUploadCategory] = useState<ResearchCategory>("quant");
   const [publishedYear, setPublishedYear] = useState(DEFAULT_RESEARCH_YEAR);
   const [publishedMonth, setPublishedMonth] = useState("");
   const [publishedDay, setPublishedDay] = useState("");
-  const [summary, setSummary] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [applyCategory, setApplyCategory] = useState<ResearchCategory>("quant");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -247,8 +249,79 @@ export default function ResearchTab() {
     }
     setError(null);
     setFiles(next);
-    if (!title.trim() && next.length === 1) {
-      setTitle(titleFromFile(next[0]!));
+  }
+
+  async function uploadOne(file: File, publishedAt: string) {
+    if (file.size > RESEARCH_MAX_PDF_BYTES) {
+      throw new Error(
+        `${file.name}은 25MB를 넘습니다. 용량을 줄이거나 나눠 올려 주세요.`,
+      );
+    }
+    const title = titleFromFile(file);
+    const headers = { Authorization: `Bearer ${secret}` };
+    if (file.size > RESEARCH_PROXY_PDF_BYTES) {
+      const presignRes = await fetch("/api/research/presign", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          published_at: publishedAt,
+          filename: file.name,
+          size: file.size,
+        }),
+      });
+      const slot = (await presignRes.json()) as {
+        ok?: boolean;
+        error?: string;
+        id?: string;
+        key?: string;
+        token?: string;
+        uploadUrl?: string;
+      };
+      if (!presignRes.ok || !slot.ok || !slot.uploadUrl) {
+        throw new Error(slot.error || `${file.name} 업로드 준비 실패`);
+      }
+      const put = await fetch(slot.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!put.ok) {
+        throw new Error(
+          `${file.name} 저장 실패 (${put.status}). R2 CORS를 확인해 주세요.`,
+        );
+      }
+      const done = await fetch("/api/research/complete", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: slot.id,
+          key: slot.key,
+          token: slot.token,
+          title,
+          published_at: publishedAt,
+          filename: file.name,
+        }),
+      });
+      const json = (await done.json()) as { ok?: boolean; error?: string };
+      if (!done.ok || !json.ok) {
+        throw new Error(json.error || `${file.name} 등록 실패`);
+      }
+      return;
+    }
+    const body = new FormData();
+    body.set("title", title);
+    body.set("category", "pending");
+    body.set("published_at", publishedAt);
+    body.set("file", file);
+    const res = await fetch("/api/research", {
+      method: "POST",
+      headers,
+      body,
+    });
+    const json = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `${file.name} 업로드 실패`);
     }
   }
 
@@ -276,29 +349,13 @@ export default function ResearchTab() {
     try {
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i]!;
-        setProgress(`${i + 1}/${files.length} 올리는 중…`);
-        const body = new FormData();
-        body.set(
-          "title",
-          (files.length === 1 ? title.trim() : "") || titleFromFile(file),
-        );
-        body.set("category", uploadCategory);
-        body.set("published_at", publishedAt);
-        body.set("summary", files.length === 1 ? summary.trim() : "");
-        body.set("file", file);
-        const res = await fetch("/api/research", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${secret}` },
-          body,
-        });
-        const json = (await res.json()) as { ok?: boolean; error?: string };
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || `${file.name} 업로드 실패`);
-        }
+        setProgress(`${i + 1}/${files.length} 올리는 중… ${file.name}`);
+        await uploadOne(file, publishedAt);
       }
-      setTitle("");
-      setSummary("");
       setFiles([]);
+      setCategory("pending");
+      setYear(publishedYear);
+      setSelected([]);
       if (inputRef.current) inputRef.current.value = "";
       await load();
     } catch (exc) {
@@ -331,6 +388,41 @@ export default function ResearchTab() {
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelected((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+    );
+  }
+
+  async function onClassify(ids: string[], nextCategory: ResearchCategory) {
+    if (!secret || !ids.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/research", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids, category: nextCategory }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "분류 실패");
+      }
+      setSelected((cur) => cur.filter((id) => !ids.includes(id)));
+      await load();
+    } catch (exc) {
+      setError(friendlyError(exc instanceof Error ? exc.message : "분류 실패"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pendingCount = items.filter((item) => item.category === "pending").length;
+  const visibleIds = filtered.map((item) => item.id);
+
   return (
     <div className="edu-tab research-tab">
       <section className="feature-block">
@@ -338,9 +430,8 @@ export default function ResearchTab() {
           <div>
             <h1 className="feature-title">리서치</h1>
             <p className="feature-lead">
-              과거에 작성한 리서치 페이퍼를 유형(퀀트·AI·ETF·ESG·크립토·지정학)과
-              발간 연도로 모아 둡니다. 월·일은 없어도 되고, 원하는 분류와 연도를
-              골라 찾아볼 수 있습니다.
+              발간 연도별로 PDF를 한꺼번에 올린 뒤, 아래에서 퀀트·AI·ETF·ESG·크립토·지정학으로
+              분류합니다. 월·일은 없어도 됩니다.
             </p>
           </div>
           {unlocked ? (
@@ -378,37 +469,10 @@ export default function ResearchTab() {
 
         {unlocked ? (
           <form className="research-upload" onSubmit={(e) => void onUpload(e)}>
-            <div className="research-upload-grid">
-              <label>
-                제목
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  maxLength={200}
-                  placeholder={
-                    files.length > 1
-                      ? "여러 장이면 파일명을 제목으로 씁니다"
-                      : "비우면 파일명을 제목으로 씁니다"
-                  }
-                />
-              </label>
-              <label>
-                유형
-                <select
-                  value={uploadCategory}
-                  onChange={(e) =>
-                    setUploadCategory(e.target.value as ResearchCategory)
-                  }
-                >
-                  {RESEARCH_CATEGORY_OPTIONS.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <p className="research-upload-step">
+              1. 연도를 고르고 PDF를 한꺼번에 올립니다. 유형은 올린 뒤에
+              붙입니다.
+            </p>
             <div className="research-upload-dates">
               <label>
                 발간 연도
@@ -457,20 +521,6 @@ export default function ResearchTab() {
                 </select>
               </label>
             </div>
-            <label>
-              요약 (선택)
-              <textarea
-                value={summary}
-                onChange={(e) => setSummary(e.target.value)}
-                rows={3}
-                maxLength={2000}
-                placeholder={
-                  files.length > 1
-                    ? "여러 장을 한 번에 올리면 요약은 비워 둡니다."
-                    : "한두 문장으로 내용을 소개합니다."
-                }
-              />
-            </label>
             <div
               className={`cardnews-drop ${dragging ? "dragging" : ""}`}
               onDragEnter={(e) => {
@@ -493,8 +543,8 @@ export default function ResearchTab() {
               }}
             >
               <p>
-                PDF를 여러 장 한 번에 올릴 수 있습니다. 기본 발간 연도는
-                2026년이고, 월·일은 생략해도 됩니다. 파일당 4MB 이하입니다.
+                {publishedYear}년 리포트를 여러 장 끌어다 놓으세요. 파일당
+                최대 25MB, 파일명은 제목으로 저장됩니다.
               </p>
               <input
                 ref={inputRef}
@@ -513,21 +563,31 @@ export default function ResearchTab() {
                   className="chip"
                   onClick={() => inputRef.current?.click()}
                 >
-                  PDF 선택
+                  PDF 여러 장 선택
                 </button>
                 <span className="meta-soft">
                   {files.length
-                    ? files.length === 1
-                      ? `${files[0]!.name} · ${formatSize(files[0]!.size)}`
-                      : `${files.length}개 파일 · ${formatSize(
-                          files.reduce((n, f) => n + f.size, 0),
-                        )}`
+                    ? `${files.length}개 · ${formatSize(
+                        files.reduce((n, f) => n + f.size, 0),
+                      )}`
                     : "선택된 파일 없음"}
                 </span>
               </div>
+              {files.length ? (
+                <ul className="research-file-list">
+                  {files.map((file) => (
+                    <li key={`${file.name}-${file.size}`}>
+                      {file.name}
+                      <span>{formatSize(file.size)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <button type="submit" className="community-submit" disabled={busy}>
-              {busy ? progress || "올리는 중…" : "리서치 업로드"}
+              {busy
+                ? progress || "올리는 중…"
+                : `${publishedYear}년으로 ${files.length || ""}편 올리기`.trim()}
             </button>
           </form>
         ) : null}
@@ -545,14 +605,18 @@ export default function ResearchTab() {
             >
               전체
             </button>
-            {RESEARCH_CATEGORY_OPTIONS.map((c) => (
+            {RESEARCH_CATEGORY_OPTIONS.filter(
+              (c) => c.id !== "pending" || pendingCount > 0 || unlocked,
+            ).map((c) => (
               <button
                 key={c.id}
                 type="button"
                 className={`chip ${category === c.id ? "active" : ""}`}
                 onClick={() => setCategory(c.id)}
               >
-                {c.label}
+                {c.id === "pending" && pendingCount
+                  ? `${c.label} ${pendingCount}`
+                  : c.label}
               </button>
             ))}
           </div>
@@ -600,6 +664,51 @@ export default function ResearchTab() {
           </div>
         </div>
 
+        {unlocked ? (
+          <div className="research-classify">
+            <p className="research-upload-step">
+              2. 같은 유형끼리 고른 뒤 유형을 붙입니다.
+            </p>
+            <div className="research-classify-row">
+              <button
+                type="button"
+                className="chip"
+                onClick={() => setSelected(visibleIds)}
+              >
+                이 목록 모두 선택
+              </button>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => setSelected([])}
+              >
+                선택 해제
+              </button>
+              <span className="meta-soft">{selected.length}편 선택</span>
+              <select
+                value={applyCategory}
+                onChange={(e) =>
+                  setApplyCategory(e.target.value as ResearchCategory)
+                }
+              >
+                {RESEARCH_CLASSIFY_OPTIONS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="community-submit"
+                disabled={busy || !selected.length}
+                onClick={() => void onClassify(selected, applyCategory)}
+              >
+                선택에 {RESEARCH_CATEGORY_OPTIONS.find((c) => c.id === applyCategory)?.label} 붙이기
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {loading ? <p className="empty">불러오는 중…</p> : null}
         {!loading && !filtered.length ? (
           <p className="empty">
@@ -613,9 +722,36 @@ export default function ResearchTab() {
           {filtered.map((item) => (
             <li key={item.id} className="research-item">
               <div className="research-item-meta">
-                <span className={`research-cat cat-${item.category}`}>
-                  {categoryLabel(item.category)}
-                </span>
+                {unlocked ? (
+                  <label className="research-check">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(item.id)}
+                      onChange={() => toggleSelected(item.id)}
+                    />
+                    선택
+                  </label>
+                ) : null}
+                {unlocked ? (
+                  <select
+                    className="research-inline-cat"
+                    value={item.category}
+                    disabled={busy}
+                    onChange={(e) =>
+                      void onClassify([item.id], e.target.value as ResearchCategory)
+                    }
+                  >
+                    {RESEARCH_CATEGORY_OPTIONS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className={`research-cat cat-${item.category}`}>
+                    {categoryLabel(item.category)}
+                  </span>
+                )}
                 <span>{formatDay(item.published_at)}</span>
                 {item.size ? <span>{formatSize(item.size)}</span> : null}
               </div>

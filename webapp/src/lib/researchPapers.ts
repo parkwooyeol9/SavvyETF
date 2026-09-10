@@ -1,12 +1,18 @@
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 
 import {
+  ensureR2UploadCors,
   r2Configured,
   r2DeleteKeys,
+  r2GetObjectPrefix,
   r2GetObjectText,
+  r2HeadObject,
+  r2ListObjects,
+  r2PresignPut,
   r2PutObject,
 } from "@/lib/r2";
 import {
+  RESEARCH_MAX_PDF_BYTES,
   isResearchCategory,
   isResearchDate,
   researchCategoryList,
@@ -19,6 +25,9 @@ export {
   RESEARCH_CATEGORIES,
   RESEARCH_CATEGORY_LABELS,
   RESEARCH_CATEGORY_OPTIONS,
+  RESEARCH_CLASSIFY_OPTIONS,
+  RESEARCH_MAX_PDF_BYTES,
+  RESEARCH_PROXY_PDF_BYTES,
   RESEARCH_YEAR_OPTIONS,
   composeResearchDate,
   formatResearchDate,
@@ -177,9 +186,9 @@ export async function addResearchPaper(input: {
   if (!title) {
     throw new Error("제목을 입력해 주세요.");
   }
-  if (!isResearchCategory(input.category)) {
-    throw new Error(`유형은 ${researchCategoryList()} 중 하나여야 합니다.`);
-  }
+  const category: ResearchCategory = isResearchCategory(input.category)
+    ? input.category
+    : "pending";
   const publishedAt = input.published_at.trim();
   if (!isResearchDate(publishedAt)) {
     throw new Error("발간 일자가 올바르지 않습니다.");
@@ -195,7 +204,7 @@ export async function addResearchPaper(input: {
   const item: ResearchPaper = {
     id,
     title,
-    category: input.category,
+    category,
     published_at: publishedAt,
     summary,
     filename,
@@ -208,6 +217,180 @@ export async function addResearchPaper(input: {
   store.items.unshift(item);
   await saveResearch(store);
   return item;
+}
+
+export function researchUploadToken(
+  id: string,
+  key: string,
+  publishedAt: string,
+): string {
+  return createHmac("sha256", researchAdminSecret())
+    .update(`${id}\n${key}\n${publishedAt}`)
+    .digest("hex");
+}
+
+function expectedKey(publishedAt: string, id: string): string {
+  return `${RESEARCH_FILE_PREFIX}${publishedAt}/${id}.pdf`;
+}
+
+export async function createResearchUpload(input: {
+  title: string;
+  published_at: string;
+  filename?: string;
+  size: number;
+}): Promise<{
+  id: string;
+  key: string;
+  token: string;
+  uploadUrl: string;
+  filename: string;
+}> {
+  if (!r2Configured()) {
+    throw new Error("저장소(R2)가 설정되지 않았습니다.");
+  }
+  if (!researchAdminSecret()) {
+    throw new Error("관리자 비밀번호가 아직 설정되지 않았습니다.");
+  }
+  const title = input.title.trim().slice(0, MAX_TITLE);
+  if (!title) {
+    throw new Error("제목을 입력해 주세요.");
+  }
+  const publishedAt = input.published_at.trim();
+  if (!isResearchDate(publishedAt)) {
+    throw new Error("발간 일자가 올바르지 않습니다.");
+  }
+  if (!input.size || input.size > RESEARCH_MAX_PDF_BYTES) {
+    throw new Error("파일이 너무 큽니다. 25MB 이하 PDF로 올려 주세요.");
+  }
+  const filename = sanitizeFilename(input.filename || `${title}.pdf`);
+  const id = randomUUID();
+  const key = expectedKey(publishedAt, id);
+  await ensureR2UploadCors();
+  const uploadUrl = await r2PresignPut(key, "application/pdf", 900);
+  return {
+    id,
+    key,
+    token: researchUploadToken(id, key, publishedAt),
+    uploadUrl,
+    filename,
+  };
+}
+
+export async function completeResearchUpload(input: {
+  id: string;
+  key: string;
+  token: string;
+  title: string;
+  published_at: string;
+  filename?: string;
+}): Promise<ResearchPaper> {
+  if (!r2Configured()) {
+    throw new Error("저장소(R2)가 설정되지 않았습니다.");
+  }
+  const id = input.id.trim();
+  const publishedAt = input.published_at.trim();
+  const key = input.key.trim();
+  const expected = expectedKey(publishedAt, id);
+  if (!id || key !== expected) {
+    throw new Error("업로드 정보가 올바르지 않습니다.");
+  }
+  const token = researchUploadToken(id, key, publishedAt);
+  if (!input.token || !secretsEqual(input.token, token)) {
+    throw new Error("업로드 토큰이 올바르지 않습니다.");
+  }
+  const store = await loadResearch();
+  const existing = store.items.find((row) => row.id === id);
+  if (existing) return existing;
+
+  const head = await r2HeadObject(key);
+  if (!head || head.size <= 0) {
+    throw new Error("파일이 저장소에 없습니다. 다시 올려 주세요.");
+  }
+  if (head.size > RESEARCH_MAX_PDF_BYTES) {
+    await r2DeleteKeys([key]);
+    throw new Error("파일이 너무 큽니다. 25MB 이하 PDF로 올려 주세요.");
+  }
+  const prefix = await r2GetObjectPrefix(key, 8);
+  if (!prefix || !sniffPdf(prefix)) {
+    await r2DeleteKeys([key]);
+    throw new Error("PDF 파일만 올릴 수 있습니다.");
+  }
+  const title = input.title.trim().slice(0, MAX_TITLE);
+  if (!title) {
+    throw new Error("제목을 입력해 주세요.");
+  }
+  const item: ResearchPaper = {
+    id,
+    title,
+    category: "pending",
+    published_at: publishedAt,
+    summary: "",
+    filename: sanitizeFilename(input.filename || `${title}.pdf`),
+    key,
+    contentType: "application/pdf",
+    size: head.size,
+    uploaded_at: new Date().toISOString(),
+  };
+  store.items.unshift(item);
+  await saveResearch(store);
+  return item;
+}
+
+export async function updateResearchCategories(
+  ids: string[],
+  category: string,
+): Promise<number> {
+  if (!r2Configured()) {
+    throw new Error("저장소(R2)가 설정되지 않았습니다.");
+  }
+  if (!isResearchCategory(category)) {
+    throw new Error(`유형은 ${researchCategoryList()} 중 하나여야 합니다.`);
+  }
+  const wanted = new Set(ids.filter(Boolean));
+  if (!wanted.size) {
+    throw new Error("분류할 리서치를 선택해 주세요.");
+  }
+  const store = await loadResearch();
+  let changed = 0;
+  store.items = store.items.map((item) => {
+    if (!wanted.has(item.id)) return item;
+    changed += 1;
+    return { ...item, category };
+  });
+  if (!changed) {
+    throw new Error("선택한 리서치를 찾을 수 없습니다.");
+  }
+  await saveResearch(store);
+  return changed;
+}
+
+export type ResearchStorageStats = {
+  bucket: string;
+  objects: number;
+  bytes: number;
+  by_prefix: Array<{ prefix: string; objects: number; bytes: number }>;
+};
+
+export async function researchStorageStats(): Promise<ResearchStorageStats> {
+  const { getR2Config } = await import("@/lib/r2");
+  const cfg = getR2Config();
+  const objects = await r2ListObjects("");
+  const groups = new Map<string, { objects: number; bytes: number }>();
+  for (const obj of objects) {
+    const prefix = obj.key.includes("/") ? obj.key.split("/")[0]! : "(root)";
+    const cur = groups.get(prefix) || { objects: 0, bytes: 0 };
+    cur.objects += 1;
+    cur.bytes += obj.size;
+    groups.set(prefix, cur);
+  }
+  return {
+    bucket: cfg?.bucket || "",
+    objects: objects.length,
+    bytes: objects.reduce((n, obj) => n + obj.size, 0),
+    by_prefix: [...groups.entries()]
+      .map(([prefix, row]) => ({ prefix, ...row }))
+      .sort((a, b) => b.bytes - a.bytes),
+  };
 }
 
 export async function deleteResearchPaper(id: string): Promise<void> {

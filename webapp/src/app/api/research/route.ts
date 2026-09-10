@@ -7,14 +7,17 @@ import {
   publicResearchPapers,
   researchAdminConfigured,
   researchAuthorized,
+  researchStorageStats,
+  updateResearchCategories,
 } from "@/lib/researchPapers";
+import { RESEARCH_PROXY_PDF_BYTES } from "@/lib/researchMeta";
 import { r2Configured } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const MAX_PDF_BYTES = 4_000_000;
+const MAX_PDF_BYTES = RESEARCH_PROXY_PDF_BYTES;
 
 function unauthorized() {
   return NextResponse.json(
@@ -23,7 +26,7 @@ function unauthorized() {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!r2Configured()) {
     return NextResponse.json({
       ok: true,
@@ -32,10 +35,16 @@ export async function GET() {
     });
   }
   const store = await loadResearch();
+  const { searchParams } = new URL(request.url);
+  const usage =
+    searchParams.get("usage") === "1" && researchAuthorized(request)
+      ? await researchStorageStats()
+      : undefined;
   return NextResponse.json({
     ok: true,
     updated_at: store.updated_at,
     items: publicResearchPapers(store.items),
+    usage,
   });
 }
 
@@ -76,7 +85,11 @@ export async function POST(request: Request) {
   }
   if (file.size > MAX_PDF_BYTES) {
     return NextResponse.json(
-      { ok: false, error: "파일이 너무 큽니다. 4MB 이하 PDF로 올려 주세요." },
+      {
+        ok: false,
+        error:
+          "파일이 커서 직접 업로드가 필요합니다. 관리자 화면에서 다시 올려 주세요.",
+      },
       { status: 413 },
     );
   }
@@ -84,7 +97,7 @@ export async function POST(request: Request) {
   try {
     const item = await addResearchPaper({
       title,
-      category,
+      category: category || "pending",
       published_at: publishedAt,
       summary,
       filename: file.name,
@@ -128,6 +141,42 @@ export async function DELETE(request: Request) {
   } catch (exc) {
     return NextResponse.json(
       { ok: false, error: exc instanceof Error ? exc.message : "delete failed" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (!r2Configured()) {
+    return NextResponse.json(
+      { ok: false, error: "저장소(R2)가 설정되지 않았습니다." },
+      { status: 503 },
+    );
+  }
+  if (!researchAdminConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: "관리자 비밀번호가 아직 설정되지 않았습니다." },
+      { status: 503 },
+    );
+  }
+  if (!researchAuthorized(request)) return unauthorized();
+
+  let body: { ids?: string[]; category?: string } = {};
+  try {
+    body = (await request.json()) as { ids?: string[]; category?: string };
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+  const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+  try {
+    const changed = await updateResearchCategories(
+      ids,
+      String(body.category || ""),
+    );
+    return NextResponse.json({ ok: true, changed });
+  } catch (exc) {
+    return NextResponse.json(
+      { ok: false, error: exc instanceof Error ? exc.message : "update failed" },
       { status: 400 },
     );
   }
