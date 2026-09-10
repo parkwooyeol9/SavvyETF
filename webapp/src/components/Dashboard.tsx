@@ -49,6 +49,11 @@ import UsMarketTab from "@/components/UsMarketTab";
 import UsMidtermTab from "@/components/UsMidtermTab";
 import PoliThemesTab from "@/components/PoliThemesTab";
 import ThemeEtfTab from "@/components/ThemeEtfTab";
+import {
+  AdminLoginControl,
+  AdminSessionProvider,
+  useAdminSession,
+} from "@/components/AdminSession";
 import { formatBriefWhen } from "@/lib/briefUtils";
 import {
   type AllBriefs,
@@ -61,10 +66,12 @@ import {
   TAB_SLOT_HIDDEN,
   TAB_SLOT_ORDER,
   emptyAllBriefs,
+  isAdminOnlyTab,
   isBriefTabId,
   isShellTabId,
   navPlacement,
   canonicalShellTab,
+  visibleShellTabs,
   type TabId,
 } from "@/lib/types";
 
@@ -129,20 +136,37 @@ export default function Dashboard({
 }: {
   initialTab?: ShellTabId;
 }) {
+  return (
+    <AdminSessionProvider>
+      <DashboardInner initialTab={initialTab} />
+    </AdminSessionProvider>
+  );
+}
+
+function DashboardInner({
+  initialTab = "main",
+}: {
+  initialTab?: ShellTabId;
+}) {
   const [tab, setTab] = useState<ShellTabId>(() => canonicalShellTab(initialTab));
   const [briefs, setBriefs] = useState<AllBriefs>(emptyAllBriefs());
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const { unlocked, ready } = useAdminSession();
 
   const { groupId, nestedId } = navPlacement(tab);
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
   const activeNested =
     activeGroup.nested?.find((item) => item.id === nestedId) || null;
+  const visibleGroupTabs = visibleShellTabs(activeGroup.tabs, unlocked);
+  const visibleNestedTabs = activeNested
+    ? visibleShellTabs(activeNested.tabs, unlocked)
+    : [];
   const showSubNav =
-    activeGroup.tabs.length + (activeGroup.nested?.length || 0) > 1;
-  const showTertiary = Boolean(activeNested && activeNested.tabs.length > 1);
+    visibleGroupTabs.length + (activeGroup.nested?.length || 0) > 1;
+  const showTertiary = Boolean(activeNested && visibleNestedTabs.length > 1);
 
   const load = useCallback(async () => {
     try {
@@ -168,6 +192,11 @@ export default function Dashboard({
     if (tab === "derivedu") setTab("derivatives");
     if (tab === "bookclubboard") setTab("bookclub");
   }, [tab]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (isAdminOnlyTab(tab) && !unlocked) setTab("ideas");
+  }, [tab, unlocked, ready]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -216,7 +245,10 @@ export default function Dashboard({
                   : raw === "bookclubboard"
                     ? "bookclub"
                     : raw;
-      if (next && isShellTabId(next)) setTab(next);
+      if (next && isShellTabId(next)) {
+        if (isAdminOnlyTab(next) && !unlocked) return;
+        setTab(next);
+      }
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
@@ -227,7 +259,7 @@ export default function Dashboard({
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("savvyetf-nav-tab", onNav);
     };
-  }, [load]);
+  }, [load, unlocked]);
 
   const briefTab = isBriefTabId(tab) ? tab : null;
   const current = briefTab ? briefs[briefTab] : null;
@@ -299,7 +331,8 @@ export default function Dashboard({
     const group = NAV_GROUPS.find((g) => g.id === nextGroup);
     if (!group) return;
     if (navPlacement(tab).groupId === nextGroup) return;
-    const first = group.tabs[0] || group.nested?.[0]?.tabs[0];
+    const first =
+      visibleShellTabs(group.tabs, unlocked)[0] || group.nested?.[0]?.tabs[0];
     if (first) setTab(first);
   }
 
@@ -317,12 +350,15 @@ export default function Dashboard({
           <span className="brand-dot" aria-hidden />
           SavvyETF
         </a>
-        <div className="meta-line">
-          <span
-            className={`status-dot ${error ? "err" : configured ? "ok" : ""}`}
-            aria-hidden
-          />
-          {metaText}
+        <div className="topbar-end">
+          <div className="meta-line">
+            <span
+              className={`status-dot ${error ? "err" : configured ? "ok" : ""}`}
+              aria-hidden
+            />
+            {metaText}
+          </div>
+          <AdminLoginControl />
         </div>
       </header>
 
@@ -344,7 +380,7 @@ export default function Dashboard({
           className={`tabs tabs-secondary ${showTertiary ? "has-tertiary" : ""}`}
           aria-label={`${activeGroup.label} 하위 탭`}
         >
-          {activeGroup.tabs.map((id) => (
+          {visibleGroupTabs.map((id) => (
             <button
               key={id}
               type="button"
@@ -372,7 +408,7 @@ export default function Dashboard({
           className="tabs tabs-tertiary"
           aria-label={`${activeNested.label} 세부 탭`}
         >
-          {activeNested.tabs.map((id) => (
+          {visibleNestedTabs.map((id) => (
             <button
               key={id}
               type="button"
@@ -402,7 +438,7 @@ export default function Dashboard({
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
       ) : tab === "aiport" ? (
-        <AiPortTab />
+        unlocked ? <AiPortTab /> : null
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (

@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     published_at?: string;
     filename?: string;
     size?: number;
+    chunked?: boolean;
   } = {};
   try {
     body = (await request.json()) as typeof body;
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
       published_at: String(body.published_at || ""),
       filename: String(body.filename || ""),
       size: Number(body.size || 0),
+      chunked: Boolean(body.chunked),
     });
     return NextResponse.json({
       ok: true,

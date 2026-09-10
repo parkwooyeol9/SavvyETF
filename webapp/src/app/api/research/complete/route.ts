@@ -9,6 +9,7 @@ import { r2Configured } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function unauthorized() {
   return NextResponse.json(
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     title?: string;
     published_at?: string;
     filename?: string;
+    parts?: number;
   } = {};
   try {
     body = (await request.json()) as typeof body;
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
       title: String(body.title || ""),
       published_at: String(body.published_at || ""),
       filename: String(body.filename || ""),
+      parts: Number(body.parts || 0),
     });
     return NextResponse.json({ ok: true, item });
   } catch (exc) {

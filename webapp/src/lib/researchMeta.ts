@@ -32,8 +32,9 @@ export const RESEARCH_CLASSIFY_OPTIONS = RESEARCH_CATEGORY_OPTIONS.filter(
   (c) => c.id !== "pending",
 );
 
-/** Vercel proxy uploads stay under ~4.5MB; larger PDFs go direct to R2. */
+/** Vercel request bodies stay under ~4.5MB; larger PDFs are sent in chunks. */
 export const RESEARCH_PROXY_PDF_BYTES = 3_500_000;
+export const RESEARCH_CHUNK_BYTES = 3_000_000;
 export const RESEARCH_MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 const DATE_TAIL_RE = /[_.\-\s]?(\d{8})$/;

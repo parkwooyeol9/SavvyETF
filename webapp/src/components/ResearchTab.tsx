@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+
 import {
   DEFAULT_RESEARCH_YEAR,
   RESEARCH_CATEGORY_OPTIONS,
   RESEARCH_CLASSIFY_OPTIONS,
+  RESEARCH_CHUNK_BYTES,
   RESEARCH_MAX_PDF_BYTES,
   RESEARCH_PROXY_PDF_BYTES,
   RESEARCH_YEAR_OPTIONS,
@@ -30,8 +33,6 @@ type ResearchItem = {
   size: number;
   uploaded_at: string;
 };
-
-const SECRET_KEY = "savvy_research_admin";
 
 const MONTHS = [
   { id: "", label: "월 생략" },
@@ -86,19 +87,6 @@ function sortFilesByDate(list: File[]): File[] {
   });
 }
 
-function loadSecret(): string {
-  if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem(SECRET_KEY) || "";
-}
-
-function saveSecret(secret: string) {
-  window.sessionStorage.setItem(SECRET_KEY, secret);
-}
-
-function clearSecret() {
-  window.sessionStorage.removeItem(SECRET_KEY);
-}
-
 function formatSize(bytes: number): string {
   if (!bytes) return "";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
@@ -118,13 +106,10 @@ function mediaUrl(item: ResearchItem, download = false): string {
 }
 
 export default function ResearchTab() {
+  const { secret, unlocked } = useAdminSession();
   const [items, setItems] = useState<ResearchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [secret, setSecret] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [open, setOpen] = useState<ResearchItem | null>(null);
@@ -164,21 +149,6 @@ export default function ResearchTab() {
 
   useEffect(() => {
     void load();
-    const stored = loadSecret();
-    if (!stored) return;
-    void (async () => {
-      const res = await fetch("/api/research/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: stored }),
-      });
-      if (res.ok) {
-        setSecret(stored);
-        setUnlocked(true);
-      } else {
-        clearSecret();
-      }
-    })();
   }, [load]);
 
   useEffect(() => {
@@ -224,39 +194,6 @@ export default function ResearchTab() {
     ];
   }, [publishedYear, publishedMonth]);
 
-  async function onUnlock(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/research/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: password }),
-      });
-      const json = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "비밀번호가 올바르지 않습니다.");
-      }
-      saveSecret(password);
-      setSecret(password);
-      setUnlocked(true);
-      setAuthOpen(false);
-      setPassword("");
-    } catch (exc) {
-      setError(friendlyError(exc instanceof Error ? exc.message : "인증 실패"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function onLock() {
-    clearSecret();
-    setSecret("");
-    setUnlocked(false);
-    setAuthOpen(false);
-  }
-
   function pickFiles(list: FileList | File[] | null) {
     const next = [...(list || [])].filter(
       (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name),
@@ -290,7 +227,7 @@ export default function ResearchTab() {
     }
   }
 
-  async function uploadViaR2(file: File, publishedAt: string, title: string) {
+  async function uploadViaChunks(file: File, publishedAt: string, title: string) {
     const headers = { Authorization: `Bearer ${secret}` };
     const presignRes = await fetch("/api/research/presign", {
       method: "POST",
@@ -300,6 +237,7 @@ export default function ResearchTab() {
         published_at: publishedAt,
         filename: file.name,
         size: file.size,
+        chunked: true,
       }),
     });
     const slot = (await presignRes.json()) as {
@@ -308,18 +246,48 @@ export default function ResearchTab() {
       id?: string;
       key?: string;
       token?: string;
-      uploadUrl?: string;
     };
-    if (!presignRes.ok || !slot.ok || !slot.uploadUrl) {
+    if (!presignRes.ok || !slot.ok || !slot.id || !slot.key || !slot.token) {
       throw new Error(slot.error || `${file.name} 업로드 준비 실패`);
     }
-    const put = await fetch(slot.uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "application/pdf" },
-      body: file,
-    });
-    if (!put.ok) {
-      throw new Error(`${file.name} 저장 실패 (${put.status})`);
+    const total = Math.max(1, Math.ceil(file.size / RESEARCH_CHUNK_BYTES));
+    for (let part = 0; part < total; part += 1) {
+      setProgress(`${title} · 조각 ${part + 1}/${total}`);
+      const start = part * RESEARCH_CHUNK_BYTES;
+      const blob = file.slice(
+        start,
+        Math.min(file.size, start + RESEARCH_CHUNK_BYTES),
+      );
+      let lastErr: Error | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const body = new FormData();
+          body.set("id", slot.id);
+          body.set("key", slot.key);
+          body.set("token", slot.token);
+          body.set("published_at", publishedAt);
+          body.set("filename", file.name);
+          body.set("part", String(part));
+          body.set("total", String(total));
+          body.set("file", new File([blob], "chunk.bin"));
+          const res = await fetch("/api/research/chunk", {
+            method: "POST",
+            headers,
+            body,
+          });
+          const json = (await res.json()) as { ok?: boolean; error?: string };
+          if (!res.ok || !json.ok) {
+            throw new Error(json.error || `${file.name} 조각 업로드 실패`);
+          }
+          lastErr = null;
+          break;
+        } catch (exc) {
+          lastErr = exc instanceof Error ? exc : new Error(String(exc));
+          if (attempt === 2) throw lastErr;
+          await new Promise((r) => window.setTimeout(r, 400 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw lastErr;
     }
     const done = await fetch("/api/research/complete", {
       method: "POST",
@@ -331,6 +299,7 @@ export default function ResearchTab() {
         title,
         published_at: publishedAt,
         filename: file.name,
+        parts: total,
       }),
     });
     const json = (await done.json()) as { ok?: boolean; error?: string };
@@ -347,34 +316,17 @@ export default function ResearchTab() {
     }
     const title = titleFromFile(file);
     const publishedAt = publishedAtForFile(file, fallbackDate);
-    let lastErr: Error | null = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (file.size <= RESEARCH_PROXY_PDF_BYTES) {
       try {
-        if (file.size <= RESEARCH_PROXY_PDF_BYTES) {
-          await uploadViaProxy(file, publishedAt, title);
-        } else {
-          await uploadViaR2(file, publishedAt, title);
-        }
+        await uploadViaProxy(file, publishedAt, title);
         return;
       } catch (exc) {
-        lastErr = exc instanceof Error ? exc : new Error(String(exc));
-        const network = /Failed to fetch|NetworkError|Load failed/i.test(
-          lastErr.message,
-        );
-        if (file.size <= RESEARCH_PROXY_PDF_BYTES && network && attempt === 0) {
-          await new Promise((r) => window.setTimeout(r, 400));
-          continue;
-        }
-        if (file.size > RESEARCH_PROXY_PDF_BYTES && network) {
-          throw new Error(
-            `${file.name} 직접 업로드가 막혔습니다. 파일이 3.5MB를 넘으면 브라우저가 R2로 바로 보내야 합니다.`,
-          );
-        }
-        if (!network || attempt === 2) throw lastErr;
-        await new Promise((r) => window.setTimeout(r, 500 * (attempt + 1)));
+        const msg = exc instanceof Error ? exc.message : String(exc);
+        const network = /Failed to fetch|NetworkError|Load failed/i.test(msg);
+        if (!network) throw exc instanceof Error ? exc : new Error(msg);
       }
     }
-    throw lastErr || new Error(`${file.name} 업로드 실패`);
+    await uploadViaChunks(file, publishedAt, title);
   }
 
   async function onUpload(e: React.FormEvent) {
@@ -400,6 +352,7 @@ export default function ResearchTab() {
     setBusy(true);
     setError(null);
     const failed: string[] = [];
+    const failedFiles: File[] = [];
     let ok = 0;
     try {
       for (let i = 0; i < queue.length; i += 1) {
@@ -409,6 +362,7 @@ export default function ResearchTab() {
           await uploadOne(file, publishedAt);
           ok += 1;
         } catch (exc) {
+          failedFiles.push(file);
           failed.push(
             `${titleFromFile(file)}: ${
               exc instanceof Error ? exc.message : "업로드 실패"
@@ -416,10 +370,10 @@ export default function ResearchTab() {
           );
         }
         if (i < queue.length - 1) {
-          await new Promise((r) => window.setTimeout(r, 250));
+          await new Promise((r) => window.setTimeout(r, 120));
         }
       }
-      setFiles([]);
+      setFiles(failedFiles);
       setCategory("pending");
       setYear("all");
       setSelected([]);
@@ -427,7 +381,7 @@ export default function ResearchTab() {
       await load();
       if (failed.length) {
         setError(
-          `${ok}편 업로드, ${failed.length}편 실패. ${failed.slice(0, 3).join(" · ")}`,
+          `${ok}편 업로드, ${failed.length}편 실패. 남은 파일을 다시 올려 주세요. ${failed.slice(0, 3).join(" · ")}`,
         );
       }
     } finally {
@@ -504,38 +458,7 @@ export default function ResearchTab() {
               분류합니다. 월·일은 없어도 됩니다.
             </p>
           </div>
-          {unlocked ? (
-            <button type="button" className="ghost-btn" onClick={onLock}>
-              관리 종료
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => setAuthOpen((v) => !v)}
-            >
-              {authOpen ? "닫기" : "관리자"}
-            </button>
-          )}
         </div>
-
-        {authOpen && !unlocked ? (
-          <form className="cardnews-auth" onSubmit={(e) => void onUnlock(e)}>
-            <label>
-              관리자 비밀번호
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            <button type="submit" className="community-submit" disabled={busy}>
-              {busy ? "확인 중…" : "잠금 해제"}
-            </button>
-          </form>
-        ) : null}
 
         {unlocked ? (
           <form className="research-upload" onSubmit={(e) => void onUpload(e)}>
@@ -613,9 +536,10 @@ export default function ResearchTab() {
               }}
             >
               <p>
-                리포트를 여러 장 끌어다 놓으세요. 파일명 끝의 8자리
-                날짜(예: _20260827)를 자동으로 인식합니다. 날짜가 없으면{" "}
-                {publishedYear}년을 씁니다. 파일당 최대 25MB.
+                리포트를 여러 장 끌어다 놓으세요. 용량이 달라도 한 번에 올릴 수
+                있습니다. 파일명 끝의 8자리 날짜(예: _20260827)를 자동으로
+                인식합니다. 날짜가 없으면 {publishedYear}년을 씁니다. 파일당
+                최대 25MB.
               </p>
               <input
                 ref={inputRef}

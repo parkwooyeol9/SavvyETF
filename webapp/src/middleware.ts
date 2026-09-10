@@ -55,16 +55,18 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/bookclub/posts": { limit: 20, windowMs: 60_000 },
   "/api/cardnews": { limit: 40, windowMs: 60_000 },
   "/api/cardnews/auth": { limit: 8, windowMs: 60_000 },
+  "/api/admin/auth": { limit: 8, windowMs: 60_000 },
   "/api/research": { limit: 40, windowMs: 60_000 },
   "/api/research/auth": { limit: 8, windowMs: 60_000 },
-  "/api/research/presign": { limit: 40, windowMs: 60_000 },
-  "/api/research/complete": { limit: 40, windowMs: 60_000 },
+  "/api/research/presign": { limit: 80, windowMs: 60_000 },
+  "/api/research/complete": { limit: 80, windowMs: 60_000 },
+  "/api/research/chunk": { limit: 200, windowMs: 60_000 },
 };
 
 const WRITE_PATH =
-  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/(cardnews|research)(?:\/(?:auth|presign|complete))?$/;
+  /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/(cardnews|research)(?:\/(?:auth|presign|complete|chunk))?$/;
 const RESEARCH_UPLOAD_PATH =
-  /^\/api\/research(?:\/(?:presign|complete))?$/;
+  /^\/api\/research(?:\/(?:presign|complete|chunk))?$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -73,7 +75,7 @@ export async function middleware(request: NextRequest) {
     (method === "POST" || method === "DELETE" || method === "PATCH") &&
     WRITE_PATH.test(pathname)
       ? RESEARCH_UPLOAD_PATH.test(pathname)
-        ? { limit: 80, windowMs: 60_000 }
+        ? { limit: 240, windowMs: 60_000 }
         : { limit: 8, windowMs: 60_000 }
       : null;
   const rule = writeRule || HEAVY_PATHS[pathname];

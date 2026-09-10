@@ -287,6 +287,20 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Tabs hidden from the public nav until the header admin session is unlocked. */
+export const ADMIN_ONLY_TABS: readonly ShellTabId[] = ["aiport"];
+
+export function isAdminOnlyTab(tab: ShellTabId): boolean {
+  return (ADMIN_ONLY_TABS as readonly string[]).includes(tab);
+}
+
+export function visibleShellTabs(
+  tabs: readonly ShellTabId[],
+  isAdmin: boolean,
+): ShellTabId[] {
+  return isAdmin ? [...tabs] : tabs.filter((id) => !isAdminOnlyTab(id));
+}
+
 export function findNavGroup(id: NavGroupId): NavGroup | undefined {
   for (const group of NAV_GROUPS) {
     if (group.id === id) return group;

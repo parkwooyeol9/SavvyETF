@@ -7,7 +7,11 @@ import {
   r2GetObjectText,
   r2PutObject,
 } from "@/lib/r2";
-import { bearerToken, secretsEqual } from "@/lib/secretsEqual";
+import {
+  siteAdminAuthorized,
+  siteAdminConfigured,
+  siteAdminSecretMatches,
+} from "@/lib/siteAdmin";
 
 export const CARDNEWS_INDEX_KEY = "cardnews/index.json";
 export const CARDNEWS_IMAGE_PREFIX = "cardnews/images/";
@@ -52,20 +56,15 @@ export function cardNewsAdminSecret(): string {
 }
 
 export function cardNewsAdminConfigured(): boolean {
-  return cardNewsAdminSecret().length > 0;
+  return siteAdminConfigured();
 }
 
 export function cardNewsAuthorized(request: Request): boolean {
-  const secret = cardNewsAdminSecret();
-  if (!secret) return false;
-  const token = bearerToken(request);
-  return Boolean(token && secretsEqual(token, secret));
+  return siteAdminAuthorized(request);
 }
 
 export function cardNewsSecretMatches(candidate: string): boolean {
-  const secret = cardNewsAdminSecret();
-  if (!secret || !candidate) return false;
-  return secretsEqual(candidate, secret);
+  return siteAdminSecretMatches(candidate);
 }
 
 export function isCardNewsDate(value: string): boolean {

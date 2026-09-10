@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+
 type CardItem = {
   id: string;
   date: string;
@@ -17,8 +19,6 @@ type DayGroup = {
   date: string;
   items: CardItem[];
 };
-
-const SECRET_KEY = "savvy_cardnews_admin";
 
 function kstToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -47,19 +47,6 @@ function formatDay(date: string): string {
     timeZone: "UTC",
   });
   return `${y}년 ${m}월 ${d}일 (${weekday})`;
-}
-
-function loadSecret(): string {
-  if (typeof window === "undefined") return "";
-  return window.sessionStorage.getItem(SECRET_KEY) || "";
-}
-
-function saveSecret(secret: string) {
-  window.sessionStorage.setItem(SECRET_KEY, secret);
-}
-
-function clearSecret() {
-  window.sessionStorage.removeItem(SECRET_KEY);
 }
 
 function mediaUrl(item: CardItem): string {
@@ -173,13 +160,10 @@ async function shareCards(items: CardItem[]): Promise<"shared" | "downloaded"> {
 }
 
 export default function CardNewsTab() {
+  const { secret, unlocked } = useAdminSession();
   const [days, setDays] = useState<DayGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [secret, setSecret] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [password, setPassword] = useState("");
   const [date, setDate] = useState(kstToday);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -211,21 +195,6 @@ export default function CardNewsTab() {
 
   useEffect(() => {
     void load();
-    const stored = loadSecret();
-    if (!stored) return;
-    void (async () => {
-      const res = await fetch("/api/cardnews/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: stored }),
-      });
-      if (res.ok) {
-        setSecret(stored);
-        setUnlocked(true);
-      } else {
-        clearSecret();
-      }
-    })();
   }, [load]);
 
   useEffect(() => {
@@ -241,39 +210,6 @@ export default function CardNewsTab() {
     () => days.reduce((n, day) => n + day.items.length, 0),
     [days],
   );
-
-  async function onUnlock(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/cardnews/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: password }),
-      });
-      const json = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "비밀번호가 올바르지 않습니다.");
-      }
-      saveSecret(password);
-      setSecret(password);
-      setUnlocked(true);
-      setAuthOpen(false);
-      setPassword("");
-    } catch (exc) {
-      setError(friendlyError(exc instanceof Error ? exc.message : "인증 실패"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function onLock() {
-    clearSecret();
-    setSecret("");
-    setUnlocked(false);
-    setAuthOpen(false);
-  }
 
   async function uploadFiles(files: FileList | File[]) {
     const list = [...files].filter((f) => f.type.startsWith("image/"));
@@ -360,38 +296,7 @@ export default function CardNewsTab() {
               한꺼번에 카카오톡·텔레그램으로 공유할 수 있습니다.
             </p>
           </div>
-          {unlocked ? (
-            <button type="button" className="ghost-btn" onClick={onLock}>
-              관리 종료
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => setAuthOpen((v) => !v)}
-            >
-              {authOpen ? "닫기" : "관리자"}
-            </button>
-          )}
         </div>
-
-        {authOpen && !unlocked ? (
-          <form className="cardnews-auth" onSubmit={(e) => void onUnlock(e)}>
-            <label>
-              관리자 비밀번호
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            <button type="submit" className="community-submit" disabled={busy}>
-              {busy ? "확인 중…" : "잠금 해제"}
-            </button>
-          </form>
-        ) : null}
 
         {unlocked ? (
           <div

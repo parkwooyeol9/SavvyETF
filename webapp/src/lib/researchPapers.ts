@@ -4,6 +4,7 @@ import {
   ensureR2UploadCors,
   r2Configured,
   r2DeleteKeys,
+  r2GetObjectBytes,
   r2GetObjectPrefix,
   r2GetObjectText,
   r2HeadObject,
@@ -12,7 +13,9 @@ import {
   r2PutObject,
 } from "@/lib/r2";
 import {
+  RESEARCH_CHUNK_BYTES,
   RESEARCH_MAX_PDF_BYTES,
+  RESEARCH_PROXY_PDF_BYTES,
   isResearchCategory,
   isResearchDate,
   researchCategoryList,
@@ -21,7 +24,12 @@ import {
   titleFromFilename,
   type ResearchCategory,
 } from "@/lib/researchMeta";
-import { bearerToken, secretsEqual } from "@/lib/secretsEqual";
+import { secretsEqual } from "@/lib/secretsEqual";
+import {
+  siteAdminAuthorized,
+  siteAdminConfigured,
+  siteAdminSecretMatches,
+} from "@/lib/siteAdmin";
 
 export {
   DEFAULT_RESEARCH_YEAR,
@@ -31,6 +39,7 @@ export {
   RESEARCH_CLASSIFY_OPTIONS,
   RESEARCH_MAX_PDF_BYTES,
   RESEARCH_PROXY_PDF_BYTES,
+  RESEARCH_CHUNK_BYTES,
   RESEARCH_YEAR_OPTIONS,
   composeResearchDate,
   dateFromFilename,
@@ -44,6 +53,7 @@ export {
 
 export const RESEARCH_INDEX_KEY = "research/index.json";
 export const RESEARCH_FILE_PREFIX = "research/files/";
+export const RESEARCH_TMP_PREFIX = "research/tmp/";
 
 const MAX_ITEMS = 2000;
 const MAX_TITLE = 200;
@@ -84,20 +94,15 @@ export function researchAdminSecret(): string {
 }
 
 export function researchAdminConfigured(): boolean {
-  return researchAdminSecret().length > 0;
+  return siteAdminConfigured();
 }
 
 export function researchAuthorized(request: Request): boolean {
-  const secret = researchAdminSecret();
-  if (!secret) return false;
-  const token = bearerToken(request);
-  return Boolean(token && secretsEqual(token, secret));
+  return siteAdminAuthorized(request);
 }
 
 export function researchSecretMatches(candidate: string): boolean {
-  const secret = researchAdminSecret();
-  if (!secret || !candidate) return false;
-  return secretsEqual(candidate, secret);
+  return siteAdminSecretMatches(candidate);
 }
 
 export function sniffPdf(buf: Buffer): boolean {
@@ -273,11 +278,12 @@ export async function createResearchUpload(input: {
   published_at: string;
   filename?: string;
   size: number;
+  chunked?: boolean;
 }): Promise<{
   id: string;
   key: string;
   token: string;
-  uploadUrl: string;
+  uploadUrl: string | null;
   filename: string;
 }> {
   if (!r2Configured()) {
@@ -305,8 +311,11 @@ export async function createResearchUpload(input: {
   const filename = sanitizeFilename(input.filename || `${title}.pdf`);
   const id = randomUUID();
   const key = expectedKey(publishedAt, id);
-  await ensureR2UploadCors();
-  const uploadUrl = await r2PresignPut(key, "application/pdf", 900);
+  let uploadUrl: string | null = null;
+  if (!input.chunked) {
+    await ensureR2UploadCors();
+    uploadUrl = await r2PresignPut(key, "application/pdf", 900);
+  }
   return {
     id,
     key,
@@ -316,17 +325,17 @@ export async function createResearchUpload(input: {
   };
 }
 
-export async function completeResearchUpload(input: {
+function researchPartKey(id: string, part: number): string {
+  return `${RESEARCH_TMP_PREFIX}${id}/${String(part).padStart(4, "0")}`;
+}
+
+function assertUploadSlot(input: {
   id: string;
   key: string;
   token: string;
-  title: string;
   published_at: string;
   filename?: string;
-}): Promise<ResearchPaper> {
-  if (!r2Configured()) {
-    throw new Error("저장소(R2)가 설정되지 않았습니다.");
-  }
+}): { id: string; key: string; publishedAt: string } {
   const id = input.id.trim();
   const publishedAt = resolvePublishedAt(
     input.filename || "",
@@ -341,11 +350,106 @@ export async function completeResearchUpload(input: {
   if (!input.token || !secretsEqual(input.token, token)) {
     throw new Error("업로드 토큰이 올바르지 않습니다.");
   }
+  return { id, key, publishedAt };
+}
+
+export async function putResearchChunk(input: {
+  id: string;
+  key: string;
+  token: string;
+  published_at: string;
+  filename?: string;
+  part: number;
+  total: number;
+  bytes: Buffer;
+}): Promise<void> {
+  if (!r2Configured()) {
+    throw new Error("저장소(R2)가 설정되지 않았습니다.");
+  }
+  const { id } = assertUploadSlot(input);
+  const part = Number(input.part);
+  const total = Number(input.total);
+  const maxParts = Math.ceil(RESEARCH_MAX_PDF_BYTES / RESEARCH_CHUNK_BYTES);
+  if (
+    !Number.isInteger(part) ||
+    !Number.isInteger(total) ||
+    part < 0 ||
+    total < 1 ||
+    part >= total ||
+    total > maxParts
+  ) {
+    throw new Error("업로드 조각 정보가 올바르지 않습니다.");
+  }
+  if (!input.bytes.length || input.bytes.length > RESEARCH_PROXY_PDF_BYTES) {
+    throw new Error("조각이 너무 큽니다. 다시 올려 주세요.");
+  }
+  await r2PutObject(
+    researchPartKey(id, part),
+    input.bytes,
+    "application/octet-stream",
+    "private, max-age=0",
+  );
+}
+
+async function assembleResearchChunks(
+  id: string,
+  total: number,
+  destKey: string,
+): Promise<number> {
+  const partKeys = Array.from({ length: total }, (_, i) => researchPartKey(id, i));
+  const parts: Buffer[] = [];
+  let size = 0;
+  try {
+    for (const partKey of partKeys) {
+      const obj = await r2GetObjectBytes(partKey);
+      if (!obj?.body.length) {
+        throw new Error("업로드 조각이 없습니다. 다시 올려 주세요.");
+      }
+      size += obj.body.length;
+      if (size > RESEARCH_MAX_PDF_BYTES) {
+        throw new Error("파일이 너무 큽니다. 25MB 이하 PDF로 올려 주세요.");
+      }
+      parts.push(Buffer.from(obj.body));
+    }
+    const combined = Buffer.concat(parts);
+    if (!sniffPdf(combined.subarray(0, 8))) {
+      throw new Error("PDF 파일만 올릴 수 있습니다.");
+    }
+    await r2PutObject(
+      destKey,
+      combined,
+      "application/pdf",
+      "public, max-age=31536000",
+    );
+    return combined.length;
+  } finally {
+    await r2DeleteKeys(partKeys);
+  }
+}
+
+export async function completeResearchUpload(input: {
+  id: string;
+  key: string;
+  token: string;
+  title: string;
+  published_at: string;
+  filename?: string;
+  parts?: number;
+}): Promise<ResearchPaper> {
+  if (!r2Configured()) {
+    throw new Error("저장소(R2)가 설정되지 않았습니다.");
+  }
+  const { id, key, publishedAt } = assertUploadSlot(input);
   const store = await loadResearch();
   const existing = store.items.find((row) => row.id === id);
   if (existing) return existing;
 
-  const head = await r2HeadObject(key);
+  let head = await r2HeadObject(key);
+  const parts = Number(input.parts || 0);
+  if ((!head || head.size <= 0) && Number.isInteger(parts) && parts > 0) {
+    await assembleResearchChunks(id, parts, key);
+    head = await r2HeadObject(key);
+  }
   if (!head || head.size <= 0) {
     throw new Error("파일이 저장소에 없습니다. 다시 올려 주세요.");
   }

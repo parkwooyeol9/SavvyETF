@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+
 import type { TradingIdea, TradingIdeasPayload } from "@/lib/tradingIdeas";
 
 function fmtPct(n?: number | null, digits = 1): string {
@@ -26,6 +28,7 @@ function WeightBar({ pct }: { pct: number }) {
 }
 
 export default function TradingIdeasTab() {
+  const { unlocked } = useAdminSession();
   const [data, setData] = useState<TradingIdeasPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,9 @@ export default function TradingIdeasTab() {
             <h2 className="kr-hero-title">AI Pick</h2>
             <p className="kr-hero-sub">
               그래프·NLP 시황과 시그널 레짐을 합쳐 매수/매도 후보와 목표 비중을 제안합니다.
-              AI포트에서 미국 슬리브 추종 성과를 추적할 수 있습니다.
+              {unlocked
+                ? " AI포트에서 미국 슬리브 추종 성과를 추적할 수 있습니다."
+                : ""}
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -73,17 +78,19 @@ export default function TradingIdeasTab() {
             >
               {loading ? "계산 중…" : "새로고침"}
             </button>
-            <button
-              type="button"
-              className="tab-btn"
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent("savvyetf-nav-tab", { detail: "aiport" }),
-                );
-              }}
-            >
-              AI포트에서 추종
-            </button>
+            {unlocked ? (
+              <button
+                type="button"
+                className="tab-btn"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("savvyetf-nav-tab", { detail: "aiport" }),
+                  );
+                }}
+              >
+                AI포트에서 추종
+              </button>
+            ) : null}
           </div>
         </div>
         <p className="meta-soft">
