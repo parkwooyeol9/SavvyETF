@@ -391,19 +391,34 @@ export default function ResearchTab() {
   }
 
   async function onDelete(id: string) {
-    if (!secret) return;
-    if (!window.confirm("이 리서치를 삭제할까요?")) return;
+    await onDeleteMany([id]);
+  }
+
+  async function onDeleteMany(ids: string[]) {
+    if (!secret || !ids.length) return;
+    const ok = window.confirm(
+      ids.length === 1
+        ? "이 리서치를 삭제할까요?"
+        : `선택한 ${ids.length}편을 삭제할까요? 삭제 후 다시 한꺼번에 올릴 수 있습니다.`,
+    );
+    if (!ok) return;
     setBusy(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/research?id=${encodeURIComponent(id)}`, {
+      const res = await fetch("/api/research", {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${secret}` },
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "삭제 실패");
       }
-      if (open?.id === id) setOpen(null);
+      if (open && ids.includes(open.id)) setOpen(null);
+      setSelected((cur) => cur.filter((id) => !ids.includes(id)));
       await load();
     } catch (exc) {
       setError(friendlyError(exc instanceof Error ? exc.message : "삭제 실패"));
@@ -454,8 +469,8 @@ export default function ResearchTab() {
           <div>
             <h1 className="feature-title">리서치</h1>
             <p className="feature-lead">
-              발간 연도별로 PDF를 한꺼번에 올린 뒤, 아래에서 퀀트·AI·ETF·ESG·크립토·지정학으로
-              분류합니다. 월·일은 없어도 됩니다.
+              PDF를 한꺼번에 올린 뒤, 아래에서 퀀트·AI·ETF·ESG·크립토·지정학으로
+              분류합니다. 업로드·삭제는 오른쪽 위 관리자 로그인 후에 열립니다.
             </p>
           </div>
         </div>
@@ -674,7 +689,8 @@ export default function ResearchTab() {
         {unlocked ? (
           <div className="research-classify">
             <p className="research-upload-step">
-              2. 같은 유형끼리 고른 뒤 유형을 붙입니다.
+              2. 같은 유형끼리 고르거나, 실패한 업로드를 골라 한꺼번에 지운 뒤
+              다시 올립니다.
             </p>
             <div className="research-classify-row">
               <button
@@ -711,6 +727,14 @@ export default function ResearchTab() {
                 onClick={() => void onClassify(selected, applyCategory)}
               >
                 선택에 {RESEARCH_CATEGORY_OPTIONS.find((c) => c.id === applyCategory)?.label} 붙이기
+              </button>
+              <button
+                type="button"
+                className="ghost-btn danger-btn"
+                disabled={busy || !selected.length}
+                onClick={() => void onDeleteMany(selected)}
+              >
+                선택 {selected.length || ""}편 삭제
               </button>
             </div>
           </div>

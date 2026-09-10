@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   addResearchPaper,
-  deleteResearchPaper,
+  deleteResearchPapers,
   loadResearch,
   publicResearchPapers,
   researchAdminConfigured,
@@ -129,16 +129,29 @@ export async function DELETE(request: Request) {
   if (!researchAuthorized(request)) return unauthorized();
 
   const { searchParams } = new URL(request.url);
-  const id = (searchParams.get("id") || "").trim();
-  if (!id) {
+  const ids: string[] = [];
+  const one = (searchParams.get("id") || "").trim();
+  if (one) ids.push(one);
+  const contentType = request.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = (await request.json()) as { ids?: string[]; id?: string };
+      if (Array.isArray(body.ids)) ids.push(...body.ids.map(String));
+      if (body.id) ids.push(String(body.id));
+    } catch {
+      /* query id only */
+    }
+  }
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) {
     return NextResponse.json(
       { ok: false, error: "삭제할 리서치가 없습니다." },
       { status: 400 },
     );
   }
   try {
-    await deleteResearchPaper(id);
-    return NextResponse.json({ ok: true });
+    const deleted = await deleteResearchPapers(unique);
+    return NextResponse.json({ ok: true, deleted });
   } catch (exc) {
     return NextResponse.json(
       { ok: false, error: exc instanceof Error ? exc.message : "delete failed" },

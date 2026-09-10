@@ -139,6 +139,13 @@ a {
   letter-spacing: 0.02em;
 }
 
+.admin-login-btn {
+  background: rgba(77, 163, 255, 0.18);
+  border-color: rgba(77, 163, 255, 0.5);
+  color: #e8eef5;
+  font-weight: 700;
+}
+
 .admin-login-on {
   flex-direction: row;
   align-items: center;

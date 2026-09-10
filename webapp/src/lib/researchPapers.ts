@@ -543,13 +543,24 @@ export async function researchStorageStats(): Promise<ResearchStorageStats> {
 }
 
 export async function deleteResearchPaper(id: string): Promise<void> {
+  await deleteResearchPapers([id]);
+}
+
+export async function deleteResearchPapers(ids: string[]): Promise<number> {
   if (!r2Configured()) {
     throw new Error("저장소(R2)가 설정되지 않았습니다.");
   }
+  const wanted = new Set(ids.map((id) => id.trim()).filter(Boolean));
+  if (!wanted.size) {
+    throw new Error("삭제할 리서치를 선택해 주세요.");
+  }
   const store = await loadResearch();
-  const item = store.items.find((row) => row.id === id);
-  if (!item) throw new Error("리서치를 찾을 수 없습니다.");
-  store.items = store.items.filter((row) => row.id !== id);
+  const removed = store.items.filter((row) => wanted.has(row.id));
+  if (!removed.length) {
+    throw new Error("선택한 리서치를 찾을 수 없습니다.");
+  }
+  store.items = store.items.filter((row) => !wanted.has(row.id));
   await saveResearch(store);
-  await r2DeleteKeys([item.key]);
+  await r2DeleteKeys(removed.map((item) => item.key));
+  return removed.length;
 }

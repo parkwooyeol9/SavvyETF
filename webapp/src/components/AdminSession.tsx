@@ -154,10 +154,10 @@ export function AdminLoginControl() {
       <div className="admin-login">
         <button
           type="button"
-          className="ghost-btn"
+          className="ghost-btn admin-login-btn"
           onClick={() => setOpen(true)}
         >
-          관리자
+          관리자 로그인
         </button>
       </div>
     );
