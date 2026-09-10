@@ -13,6 +13,7 @@ import {
   formatResearchDate,
   isResearchDate,
   researchYear,
+  titleFromFilename,
   type ResearchCategory,
 } from "@/lib/researchMeta";
 
@@ -47,6 +48,9 @@ function daysInMonth(year: string, month: string): number {
 }
 
 function friendlyError(msg: string): string {
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(msg)) {
+    return "연결이 끊겼습니다. 같은 파일을 다시 선택해 이어서 올려 주세요.";
+  }
   if (/R2 not configured/i.test(msg) || /저장소/.test(msg)) {
     return "리서치 저장소가 아직 연결되지 않았습니다. 배포 환경의 R2 설정을 확인해 주세요.";
   }
@@ -65,7 +69,7 @@ function categoryLabel(id: ResearchCategory): string {
 }
 
 function titleFromFile(file: File): string {
-  return file.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
+  return titleFromFilename(file.name);
 }
 
 function loadSecret(): string {
@@ -251,6 +255,76 @@ export default function ResearchTab() {
     setFiles(next);
   }
 
+  async function uploadViaProxy(file: File, publishedAt: string, title: string) {
+    const body = new FormData();
+    body.set("title", title);
+    body.set("category", "pending");
+    body.set("published_at", publishedAt);
+    body.set("filename", file.name);
+    body.set(
+      "file",
+      new File([file], "upload.pdf", { type: file.type || "application/pdf" }),
+    );
+    const res = await fetch("/api/research", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}` },
+      body,
+    });
+    const json = (await res.json()) as { ok?: boolean; error?: string };
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `${file.name} 업로드 실패`);
+    }
+  }
+
+  async function uploadViaR2(file: File, publishedAt: string, title: string) {
+    const headers = { Authorization: `Bearer ${secret}` };
+    const presignRes = await fetch("/api/research/presign", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        published_at: publishedAt,
+        filename: file.name,
+        size: file.size,
+      }),
+    });
+    const slot = (await presignRes.json()) as {
+      ok?: boolean;
+      error?: string;
+      id?: string;
+      key?: string;
+      token?: string;
+      uploadUrl?: string;
+    };
+    if (!presignRes.ok || !slot.ok || !slot.uploadUrl) {
+      throw new Error(slot.error || `${file.name} 업로드 준비 실패`);
+    }
+    const put = await fetch(slot.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf" },
+      body: file,
+    });
+    if (!put.ok) {
+      throw new Error(`${file.name} 저장 실패 (${put.status})`);
+    }
+    const done = await fetch("/api/research/complete", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: slot.id,
+        key: slot.key,
+        token: slot.token,
+        title,
+        published_at: publishedAt,
+        filename: file.name,
+      }),
+    });
+    const json = (await done.json()) as { ok?: boolean; error?: string };
+    if (!done.ok || !json.ok) {
+      throw new Error(json.error || `${file.name} 등록 실패`);
+    }
+  }
+
   async function uploadOne(file: File, publishedAt: string) {
     if (file.size > RESEARCH_MAX_PDF_BYTES) {
       throw new Error(
@@ -258,71 +332,34 @@ export default function ResearchTab() {
       );
     }
     const title = titleFromFile(file);
-    const headers = { Authorization: `Bearer ${secret}` };
-    if (file.size > RESEARCH_PROXY_PDF_BYTES) {
-      const presignRes = await fetch("/api/research/presign", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          published_at: publishedAt,
-          filename: file.name,
-          size: file.size,
-        }),
-      });
-      const slot = (await presignRes.json()) as {
-        ok?: boolean;
-        error?: string;
-        id?: string;
-        key?: string;
-        token?: string;
-        uploadUrl?: string;
-      };
-      if (!presignRes.ok || !slot.ok || !slot.uploadUrl) {
-        throw new Error(slot.error || `${file.name} 업로드 준비 실패`);
-      }
-      const put = await fetch(slot.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "application/pdf" },
-        body: file,
-      });
-      if (!put.ok) {
-        throw new Error(
-          `${file.name} 저장 실패 (${put.status}). R2 CORS를 확인해 주세요.`,
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        if (file.size <= RESEARCH_PROXY_PDF_BYTES) {
+          await uploadViaProxy(file, publishedAt, title);
+        } else {
+          await uploadViaR2(file, publishedAt, title);
+        }
+        return;
+      } catch (exc) {
+        lastErr = exc instanceof Error ? exc : new Error(String(exc));
+        const network = /Failed to fetch|NetworkError|Load failed/i.test(
+          lastErr.message,
         );
+        if (file.size <= RESEARCH_PROXY_PDF_BYTES && network && attempt === 0) {
+          await new Promise((r) => window.setTimeout(r, 400));
+          continue;
+        }
+        if (file.size > RESEARCH_PROXY_PDF_BYTES && network) {
+          throw new Error(
+            `${file.name} 직접 업로드가 막혔습니다. 파일이 3.5MB를 넘으면 브라우저가 R2로 바로 보내야 합니다.`,
+          );
+        }
+        if (!network || attempt === 2) throw lastErr;
+        await new Promise((r) => window.setTimeout(r, 500 * (attempt + 1)));
       }
-      const done = await fetch("/api/research/complete", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: slot.id,
-          key: slot.key,
-          token: slot.token,
-          title,
-          published_at: publishedAt,
-          filename: file.name,
-        }),
-      });
-      const json = (await done.json()) as { ok?: boolean; error?: string };
-      if (!done.ok || !json.ok) {
-        throw new Error(json.error || `${file.name} 등록 실패`);
-      }
-      return;
     }
-    const body = new FormData();
-    body.set("title", title);
-    body.set("category", "pending");
-    body.set("published_at", publishedAt);
-    body.set("file", file);
-    const res = await fetch("/api/research", {
-      method: "POST",
-      headers,
-      body,
-    });
-    const json = (await res.json()) as { ok?: boolean; error?: string };
-    if (!res.ok || !json.ok) {
-      throw new Error(json.error || `${file.name} 업로드 실패`);
-    }
+    throw lastErr || new Error(`${file.name} 업로드 실패`);
   }
 
   async function onUpload(e: React.FormEvent) {
@@ -344,13 +381,28 @@ export default function ResearchTab() {
       setError("발간 연도를 확인해 주세요. 월·일은 생략할 수 있습니다.");
       return;
     }
+    const queue = [...files];
     setBusy(true);
     setError(null);
+    const failed: string[] = [];
+    let ok = 0;
     try {
-      for (let i = 0; i < files.length; i += 1) {
-        const file = files[i]!;
-        setProgress(`${i + 1}/${files.length} 올리는 중… ${file.name}`);
-        await uploadOne(file, publishedAt);
+      for (let i = 0; i < queue.length; i += 1) {
+        const file = queue[i]!;
+        setProgress(`${i + 1}/${queue.length} 올리는 중… ${titleFromFile(file)}`);
+        try {
+          await uploadOne(file, publishedAt);
+          ok += 1;
+        } catch (exc) {
+          failed.push(
+            `${titleFromFile(file)}: ${
+              exc instanceof Error ? exc.message : "업로드 실패"
+            }`,
+          );
+        }
+        if (i < queue.length - 1) {
+          await new Promise((r) => window.setTimeout(r, 250));
+        }
       }
       setFiles([]);
       setCategory("pending");
@@ -358,8 +410,11 @@ export default function ResearchTab() {
       setSelected([]);
       if (inputRef.current) inputRef.current.value = "";
       await load();
-    } catch (exc) {
-      setError(friendlyError(exc instanceof Error ? exc.message : "업로드 실패"));
+      if (failed.length) {
+        setError(
+          `${ok}편 업로드, ${failed.length}편 실패. ${failed.slice(0, 3).join(" · ")}`,
+        );
+      }
     } finally {
       setBusy(false);
       setProgress(null);

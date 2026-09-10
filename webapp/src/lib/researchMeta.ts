@@ -36,6 +36,14 @@ export const RESEARCH_CLASSIFY_OPTIONS = RESEARCH_CATEGORY_OPTIONS.filter(
 export const RESEARCH_PROXY_PDF_BYTES = 3_500_000;
 export const RESEARCH_MAX_PDF_BYTES = 25 * 1024 * 1024;
 
+export function titleFromFilename(name: string): string {
+  const base = name.replace(/\\/g, "/").split("/").pop() || "paper";
+  const noExt = base.replace(/\.pdf$/i, "").trim();
+  const cut = noExt.indexOf(";");
+  const rest = (cut >= 0 ? noExt.slice(cut + 1) : noExt).trim();
+  return (rest || noExt).slice(0, 200);
+}
+
 export const DEFAULT_RESEARCH_YEAR = "2026";
 
 export const RESEARCH_YEAR_OPTIONS: string[] = Array.from(

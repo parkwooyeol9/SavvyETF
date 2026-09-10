@@ -59,6 +59,9 @@ function clientFor(cfg: R2Config): S3Client {
       accessKeyId: cfg.accessKeyId,
       secretAccessKey: cfg.secretAccessKey,
     },
+    // Browser presigned PUTs break if the SDK signs CRC32 checksum headers.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
   cachedKey = key;
   return cachedClient;

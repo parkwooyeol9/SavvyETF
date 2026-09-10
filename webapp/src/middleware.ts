@@ -63,13 +63,18 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
 
 const WRITE_PATH =
   /^\/api\/(community|bookclub)\/posts(?:\/[^/]+(?:\/comments)?)?$|^\/api\/(cardnews|research)(?:\/(?:auth|presign|complete))?$/;
+const RESEARCH_UPLOAD_PATH =
+  /^\/api\/research(?:\/(?:presign|complete))?$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
   const writeRule =
-    (method === "POST" || method === "DELETE" || method === "PATCH") && WRITE_PATH.test(pathname)
-      ? { limit: 8, windowMs: 60_000 }
+    (method === "POST" || method === "DELETE" || method === "PATCH") &&
+    WRITE_PATH.test(pathname)
+      ? RESEARCH_UPLOAD_PATH.test(pathname)
+        ? { limit: 80, windowMs: 60_000 }
+        : { limit: 8, windowMs: 60_000 }
       : null;
   const rule = writeRule || HEAVY_PATHS[pathname];
   const responseHeaders = new Headers();

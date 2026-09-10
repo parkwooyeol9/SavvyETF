@@ -16,6 +16,7 @@ import {
   isResearchCategory,
   isResearchDate,
   researchCategoryList,
+  titleFromFilename,
   type ResearchCategory,
 } from "@/lib/researchMeta";
 import { bearerToken, secretsEqual } from "@/lib/secretsEqual";
@@ -34,6 +35,7 @@ export {
   isResearchCategory,
   isResearchDate,
   researchYear,
+  titleFromFilename,
   type ResearchCategory,
 } from "@/lib/researchMeta";
 
@@ -182,7 +184,9 @@ export async function addResearchPaper(input: {
   if (!r2Configured()) {
     throw new Error("저장소(R2)가 설정되지 않았습니다.");
   }
-  const title = input.title.trim().slice(0, MAX_TITLE);
+  const title = titleFromFilename(input.filename || input.title)
+    .trim()
+    .slice(0, MAX_TITLE);
   if (!title) {
     throw new Error("제목을 입력해 주세요.");
   }
@@ -251,7 +255,9 @@ export async function createResearchUpload(input: {
   if (!researchAdminSecret()) {
     throw new Error("관리자 비밀번호가 아직 설정되지 않았습니다.");
   }
-  const title = input.title.trim().slice(0, MAX_TITLE);
+  const title = titleFromFilename(input.filename || input.title)
+    .trim()
+    .slice(0, MAX_TITLE);
   if (!title) {
     throw new Error("제목을 입력해 주세요.");
   }
@@ -315,7 +321,9 @@ export async function completeResearchUpload(input: {
     await r2DeleteKeys([key]);
     throw new Error("PDF 파일만 올릴 수 있습니다.");
   }
-  const title = input.title.trim().slice(0, MAX_TITLE);
+  const title = titleFromFilename(input.filename || input.title)
+    .trim()
+    .slice(0, MAX_TITLE);
   if (!title) {
     throw new Error("제목을 입력해 주세요.");
   }

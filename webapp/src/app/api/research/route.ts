@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   const category = String(form.get("category") || "").trim();
   const publishedAt = String(form.get("published_at") || "").trim();
   const summary = String(form.get("summary") || "").trim();
+  const originalName = String(form.get("filename") || "").trim();
   const file = form.get("file");
   if (!(file instanceof File) || file.size <= 0) {
     return NextResponse.json(
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
       category: category || "pending",
       published_at: publishedAt,
       summary,
-      filename: file.name,
+      filename: originalName || file.name,
       bytes,
     });
     return NextResponse.json({ ok: true, item });
