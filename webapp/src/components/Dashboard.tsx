@@ -8,6 +8,7 @@ import GreenMineralsTab from "@/components/GreenMineralsTab";
 import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
 import EducationTab from "@/components/EducationTab";
+import ResearchTab from "@/components/ResearchTab";
 import CardNewsTab from "@/components/CardNewsTab";
 import ChartTradeTab from "@/components/ChartTradeTab";
 import EventStudyTab from "@/components/EventStudyTab";
@@ -239,6 +240,7 @@ export default function Dashboard({
       tab === "simulate" ||
       tab === "usportfolio" ||
       tab === "education" ||
+      tab === "research" ||
       tab === "heatpick" ||
       tab === "cardnews" ||
       tab === "derivedu" ||
@@ -413,6 +415,8 @@ export default function Dashboard({
         <CardNewsTab />
       ) : tab === "education" ? (
         <EducationTab />
+      ) : tab === "research" ? (
+        <ResearchTab />
       ) : tab === "etfdb" ? (
         <EtfDbTab />
       ) : tab === "etfdbus" ? (

@@ -31,6 +31,7 @@ export type ShellTabId =
   | "round"
   | "heatpick"
   | "cardnews"
+  | "research"
   | "gamma"
   | "quant"
   | "ideas"
@@ -110,6 +111,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "round",
   "heatpick",
   "cardnews",
+  "research",
   "quant",
   "gurus",
   "eventstudy",
@@ -158,6 +160,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   simulate: "ETF 배분",
   usportfolio: "미국 주식",
   education: "ETF절세",
+  research: "리서치",
   heatpick: "모의투자",
   round: "모의투자",
   cardnews: "카드뉴스",
@@ -280,7 +283,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "learn",
     label: "교육",
-    tabs: ["cardnews", "bookclub", "heatpick", "education"],
+    tabs: ["cardnews", "bookclub", "heatpick", "education", "research"],
   },
 ];
 
@@ -306,7 +309,8 @@ export function navPlacement(tab: ShellTabId): {
     tab === "derivedu" ||
     tab === "round" ||
     tab === "heatpick" ||
-    tab === "cardnews"
+    tab === "cardnews" ||
+    tab === "research"
   ) {
     return { groupId: "learn", nestedId: null };
   }
@@ -392,6 +396,14 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
     v === "모의투자"
   ) {
     return "heatpick";
+  }
+  if (
+    v === "research" ||
+    v === "paper" ||
+    v === "papers" ||
+    v === "리서치"
+  ) {
+    return "research";
   }
   if (isShellTabId(v)) return canonicalShellTab(v);
   if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
