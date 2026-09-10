@@ -59,16 +59,23 @@ export function resolvePublishedAt(filename: string, fallback: string): string {
   return dateFromFilename(filename) || fallback.trim();
 }
 
+function stripShinhanHousePrefix(title: string): string {
+  const nfc = title.normalize("NFC");
+  if (!nfc.startsWith("신한투자증권_")) return nfc;
+  const parts = nfc.split("_");
+  if (parts.length >= 3) return parts.slice(2).join("_").trim();
+  return parts.slice(1).join("_").trim();
+}
+
 export function titleFromFilename(name: string): string {
   const noExt = basenameNoExt(name).normalize("NFC");
   const cut = noExt.indexOf(";");
   let rest = (cut >= 0 ? noExt.slice(cut + 1) : noExt).trim();
   rest = rest.replace(DATE_TAIL_RE, "").replace(/[_.\-\s]+$/g, "").trim();
-  rest = rest.replace(/^신한투자증권_+/u, "").trim();
-  const fallback = noExt
-    .replace(DATE_TAIL_RE, "")
-    .replace(/^신한투자증권_+/u, "")
-    .trim();
+  rest = stripShinhanHousePrefix(rest);
+  const fallback = stripShinhanHousePrefix(
+    noExt.replace(DATE_TAIL_RE, "").trim(),
+  );
   return (rest || fallback || noExt).slice(0, 200);
 }
 
