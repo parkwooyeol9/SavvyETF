@@ -36,12 +36,34 @@ export const RESEARCH_CLASSIFY_OPTIONS = RESEARCH_CATEGORY_OPTIONS.filter(
 export const RESEARCH_PROXY_PDF_BYTES = 3_500_000;
 export const RESEARCH_MAX_PDF_BYTES = 25 * 1024 * 1024;
 
-export function titleFromFilename(name: string): string {
+const DATE_TAIL_RE = /[_.\-\s]?(\d{8})$/;
+
+function basenameNoExt(name: string): string {
   const base = name.replace(/\\/g, "/").split("/").pop() || "paper";
-  const noExt = base.replace(/\.pdf$/i, "").trim();
+  return base.replace(/\.pdf$/i, "").trim();
+}
+
+export function compactYyyymmdd(raw: string): string | null {
+  if (!/^\d{8}$/.test(raw)) return null;
+  const iso = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  return isResearchDate(iso) ? iso : null;
+}
+
+export function dateFromFilename(name: string): string | null {
+  const match = basenameNoExt(name).match(DATE_TAIL_RE);
+  return match ? compactYyyymmdd(match[1]!) : null;
+}
+
+export function resolvePublishedAt(filename: string, fallback: string): string {
+  return dateFromFilename(filename) || fallback.trim();
+}
+
+export function titleFromFilename(name: string): string {
+  const noExt = basenameNoExt(name);
   const cut = noExt.indexOf(";");
-  const rest = (cut >= 0 ? noExt.slice(cut + 1) : noExt).trim();
-  return (rest || noExt).slice(0, 200);
+  let rest = (cut >= 0 ? noExt.slice(cut + 1) : noExt).trim();
+  rest = rest.replace(DATE_TAIL_RE, "").replace(/[_.\-\s]+$/g, "").trim();
+  return (rest || noExt.replace(DATE_TAIL_RE, "").trim() || noExt).slice(0, 200);
 }
 
 export const DEFAULT_RESEARCH_YEAR = "2026";

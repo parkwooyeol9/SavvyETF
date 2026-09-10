@@ -10,6 +10,7 @@ import {
   RESEARCH_PROXY_PDF_BYTES,
   RESEARCH_YEAR_OPTIONS,
   composeResearchDate,
+  dateFromFilename,
   formatResearchDate,
   isResearchDate,
   researchYear,
@@ -70,6 +71,19 @@ function categoryLabel(id: ResearchCategory): string {
 
 function titleFromFile(file: File): string {
   return titleFromFilename(file.name);
+}
+
+function publishedAtForFile(file: File, fallback: string): string {
+  return dateFromFilename(file.name) || fallback;
+}
+
+function sortFilesByDate(list: File[]): File[] {
+  return [...list].sort((a, b) => {
+    const da = dateFromFilename(a.name) || "";
+    const db = dateFromFilename(b.name) || "";
+    if (da !== db) return db.localeCompare(da);
+    return a.name.localeCompare(b.name, "ko");
+  });
 }
 
 function loadSecret(): string {
@@ -252,7 +266,7 @@ export default function ResearchTab() {
       return;
     }
     setError(null);
-    setFiles(next);
+    setFiles(sortFilesByDate(next));
   }
 
   async function uploadViaProxy(file: File, publishedAt: string, title: string) {
@@ -325,13 +339,14 @@ export default function ResearchTab() {
     }
   }
 
-  async function uploadOne(file: File, publishedAt: string) {
+  async function uploadOne(file: File, fallbackDate: string) {
     if (file.size > RESEARCH_MAX_PDF_BYTES) {
       throw new Error(
         `${file.name}은 25MB를 넘습니다. 용량을 줄이거나 나눠 올려 주세요.`,
       );
     }
     const title = titleFromFile(file);
+    const publishedAt = publishedAtForFile(file, fallbackDate);
     let lastErr: Error | null = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
@@ -406,7 +421,7 @@ export default function ResearchTab() {
       }
       setFiles([]);
       setCategory("pending");
-      setYear(publishedYear);
+      setYear("all");
       setSelected([]);
       if (inputRef.current) inputRef.current.value = "";
       await load();
@@ -525,12 +540,12 @@ export default function ResearchTab() {
         {unlocked ? (
           <form className="research-upload" onSubmit={(e) => void onUpload(e)}>
             <p className="research-upload-step">
-              1. 연도를 고르고 PDF를 한꺼번에 올립니다. 유형은 올린 뒤에
-              붙입니다.
+              1. PDF를 한꺼번에 올립니다. 파일명 끝 날짜(예: 20260107)를
+              읽어 발간일로 정렬하고, 유형은 올린 뒤에 붙입니다.
             </p>
             <div className="research-upload-dates">
               <label>
-                발간 연도
+                날짜 없을 때 연도
                 <select
                   value={publishedYear}
                   onChange={(e) => {
@@ -598,8 +613,9 @@ export default function ResearchTab() {
               }}
             >
               <p>
-                {publishedYear}년 리포트를 여러 장 끌어다 놓으세요. 파일당
-                최대 25MB, 파일명은 제목으로 저장됩니다.
+                리포트를 여러 장 끌어다 놓으세요. 파일명 끝의 8자리
+                날짜(예: _20260827)를 자동으로 인식합니다. 날짜가 없으면{" "}
+                {publishedYear}년을 씁니다. 파일당 최대 25MB.
               </p>
               <input
                 ref={inputRef}
@@ -630,19 +646,31 @@ export default function ResearchTab() {
               </div>
               {files.length ? (
                 <ul className="research-file-list">
-                  {files.map((file) => (
-                    <li key={`${file.name}-${file.size}`}>
-                      {file.name}
-                      <span>{formatSize(file.size)}</span>
-                    </li>
-                  ))}
+                  {files.map((file) => {
+                    const parsed = dateFromFilename(file.name);
+                    return (
+                      <li key={`${file.name}-${file.size}`}>
+                        <span>
+                          {titleFromFile(file)}
+                          <em className="research-file-date">
+                            {parsed
+                              ? formatResearchDate(parsed)
+                              : `날짜 없음 · ${publishedYear}년`}
+                          </em>
+                        </span>
+                        <span>{formatSize(file.size)}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : null}
             </div>
             <button type="submit" className="community-submit" disabled={busy}>
               {busy
                 ? progress || "올리는 중…"
-                : `${publishedYear}년으로 ${files.length || ""}편 올리기`.trim()}
+                : files.length
+                  ? `선택한 ${files.length}편 올리기`
+                  : "PDF를 선택한 뒤 올리기"}
             </button>
           </form>
         ) : null}

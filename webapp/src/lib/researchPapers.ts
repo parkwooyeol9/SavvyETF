@@ -16,6 +16,8 @@ import {
   isResearchCategory,
   isResearchDate,
   researchCategoryList,
+  dateFromFilename,
+  resolvePublishedAt,
   titleFromFilename,
   type ResearchCategory,
 } from "@/lib/researchMeta";
@@ -31,6 +33,7 @@ export {
   RESEARCH_PROXY_PDF_BYTES,
   RESEARCH_YEAR_OPTIONS,
   composeResearchDate,
+  dateFromFilename,
   formatResearchDate,
   isResearchCategory,
   isResearchDate,
@@ -147,7 +150,32 @@ function sortPapers(items: ResearchPaper[]): ResearchPaper[] {
 
 export async function loadResearch(): Promise<ResearchStore> {
   if (!r2Configured()) return emptyStore();
-  return parseStore(await r2GetObjectText(RESEARCH_INDEX_KEY));
+  const store = parseStore(await r2GetObjectText(RESEARCH_INDEX_KEY));
+  let dirty = false;
+  store.items = store.items.map((item) => {
+    const next = normalizePaper(item);
+    if (
+      next.title !== item.title ||
+      next.published_at !== item.published_at
+    ) {
+      dirty = true;
+    }
+    return next;
+  });
+  if (dirty) await saveResearch(store);
+  return store;
+}
+
+function normalizePaper(item: ResearchPaper): ResearchPaper {
+  const source = item.filename || item.title;
+  const title =
+    titleFromFilename(source).trim().slice(0, MAX_TITLE) || item.title;
+  const publishedAt =
+    dateFromFilename(item.filename) ||
+    dateFromFilename(item.title) ||
+    item.published_at;
+  if (title === item.title && publishedAt === item.published_at) return item;
+  return { ...item, title, published_at: publishedAt };
 }
 
 async function saveResearch(store: ResearchStore): Promise<void> {
@@ -193,7 +221,10 @@ export async function addResearchPaper(input: {
   const category: ResearchCategory = isResearchCategory(input.category)
     ? input.category
     : "pending";
-  const publishedAt = input.published_at.trim();
+  const publishedAt = resolvePublishedAt(
+    input.filename || "",
+    input.published_at,
+  );
   if (!isResearchDate(publishedAt)) {
     throw new Error("발간 일자가 올바르지 않습니다.");
   }
@@ -261,7 +292,10 @@ export async function createResearchUpload(input: {
   if (!title) {
     throw new Error("제목을 입력해 주세요.");
   }
-  const publishedAt = input.published_at.trim();
+  const publishedAt = resolvePublishedAt(
+    input.filename || "",
+    input.published_at,
+  );
   if (!isResearchDate(publishedAt)) {
     throw new Error("발간 일자가 올바르지 않습니다.");
   }
@@ -294,7 +328,10 @@ export async function completeResearchUpload(input: {
     throw new Error("저장소(R2)가 설정되지 않았습니다.");
   }
   const id = input.id.trim();
-  const publishedAt = input.published_at.trim();
+  const publishedAt = resolvePublishedAt(
+    input.filename || "",
+    input.published_at,
+  );
   const key = input.key.trim();
   const expected = expectedKey(publishedAt, id);
   if (!id || key !== expected) {

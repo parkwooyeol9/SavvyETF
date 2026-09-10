@@ -9553,6 +9553,19 @@ a.chip {
   padding: 0.2rem 0;
 }
 
+.research-file-list li > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.research-file-date {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .research-classify {
   margin: 0.4rem 0 0.85rem;
   padding: 0.85rem 0 0;
