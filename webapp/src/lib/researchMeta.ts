@@ -60,11 +60,16 @@ export function resolvePublishedAt(filename: string, fallback: string): string {
 }
 
 export function titleFromFilename(name: string): string {
-  const noExt = basenameNoExt(name);
+  const noExt = basenameNoExt(name).normalize("NFC");
   const cut = noExt.indexOf(";");
   let rest = (cut >= 0 ? noExt.slice(cut + 1) : noExt).trim();
   rest = rest.replace(DATE_TAIL_RE, "").replace(/[_.\-\s]+$/g, "").trim();
-  return (rest || noExt.replace(DATE_TAIL_RE, "").trim() || noExt).slice(0, 200);
+  rest = rest.replace(/^신한투자증권_+/u, "").trim();
+  const fallback = noExt
+    .replace(DATE_TAIL_RE, "")
+    .replace(/^신한투자증권_+/u, "")
+    .trim();
+  return (rest || fallback || noExt).slice(0, 200);
 }
 
 export const DEFAULT_RESEARCH_YEAR = "2026";

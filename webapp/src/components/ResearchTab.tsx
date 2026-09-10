@@ -468,10 +468,6 @@ export default function ResearchTab() {
         <div className="cardnews-head">
           <div>
             <h1 className="feature-title">리서치</h1>
-            <p className="feature-lead">
-              PDF를 한꺼번에 올린 뒤, 아래에서 퀀트·AI·ETF·ESG·크립토·지정학으로
-              분류합니다. 업로드·삭제는 오른쪽 위 관리자 로그인 후에 열립니다.
-            </p>
           </div>
         </div>
 
