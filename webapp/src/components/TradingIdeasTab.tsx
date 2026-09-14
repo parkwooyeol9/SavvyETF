@@ -78,6 +78,17 @@ export default function TradingIdeasTab() {
             >
               {loading ? "계산 중…" : "새로고침"}
             </button>
+            <button
+              type="button"
+              className="tab-btn"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("savvyetf-nav-tab", { detail: "weightopt" }),
+                );
+              }}
+            >
+              비중 최적화
+            </button>
             {unlocked ? (
               <button
                 type="button"

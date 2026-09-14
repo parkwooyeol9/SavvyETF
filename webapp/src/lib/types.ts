@@ -35,6 +35,7 @@ export type ShellTabId =
   | "gamma"
   | "quant"
   | "ideas"
+  | "weightopt"
   | "gurus"
   | "signals"
   | "eventstudy"
@@ -122,6 +123,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "usportfolio",
   "signals",
   "ideas",
+  "weightopt",
   "aiport",
   "nlp",
   "graph",
@@ -188,6 +190,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   gamma: "감마",
   quant: "기술적분석",
   ideas: "AI Pick",
+  weightopt: "비중 최적화",
   gurus: "월가 구루",
   signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
@@ -249,7 +252,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "ideas", "aiport"],
+    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport"],
     nested: [
       {
         id: "politics",

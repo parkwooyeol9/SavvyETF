@@ -37,6 +37,7 @@ import DerivativesTab from "@/components/DerivativesTab";
 import MarketGammaTab from "@/components/MarketGammaTab";
 import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
+import WeightOptimizeTab from "@/components/WeightOptimizeTab";
 import NlpPulseTab from "@/components/NlpPulseTab";
 import GraphTab from "@/components/GraphTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
@@ -292,6 +293,7 @@ function DashboardInner({
       tab === "gamma" ||
       tab === "quant" ||
       tab === "ideas" ||
+      tab === "weightopt" ||
       tab === "gurus" ||
       tab === "signals" ||
       tab === "eventstudy" ||
@@ -438,6 +440,8 @@ function DashboardInner({
         <NlpPulseTab />
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
+      ) : tab === "weightopt" ? (
+        <WeightOptimizeTab />
       ) : tab === "aiport" ? (
         unlocked ? <AiPortTab /> : null
       ) : tab === "corridor" ? (
