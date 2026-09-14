@@ -171,7 +171,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfweights: "편입비 모니터",
   etfholdings: "메인",
   kosdaqactive: "코스닥액티브 ETF",
-  countryetf: "국가ETF",
+  countryetf: "국가 ETF",
   geo: "지정학",
   infra: "인프라",
   aigov: "인프라",

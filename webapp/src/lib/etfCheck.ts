@@ -133,6 +133,7 @@ type EtfCheckPayload = {
   success?: boolean;
   message?: string;
   results?: unknown;
+  date?: unknown;
 };
 
 async function etfCheckGetJson(
@@ -313,3 +314,4 @@ export async function fetchGlobalEtfPdfDetail(
   );
   return out;
 }
+

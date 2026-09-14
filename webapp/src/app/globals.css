@@ -1331,6 +1331,7 @@ a.geo-choke-hl:hover {
   margin: 0.75rem 0 0.5rem;
 }
 
+.etf-supply-panel .panel-head,
 .etf-new-panel .panel-head {
   display: flex;
   justify-content: space-between;
@@ -1349,9 +1350,102 @@ a.geo-choke-hl:hover {
 }
 
 .etf-kor15-panel h2,
-.etf-new-panel h2 {
+.etf-new-panel h2,
+.etf-supply-panel h2 {
   margin: 0;
   font-size: 1.15rem;
+}
+
+.etf-supply-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.etf-supply-block h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.etf-supply-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.etf-supply-period {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+}
+
+.etf-supply-name {
+  margin-top: 0.12rem;
+  font-size: 0.82rem;
+}
+
+.etf-supply-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.etf-supply-rank.top1 {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
+}
+
+.etf-supply-rank.top2 {
+  background: rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+}
+
+.etf-supply-rank.top3 {
+  background: rgba(205, 127, 50, 0.22);
+  color: #d97706;
+}
+
+.etf-supply-val {
+  min-width: 6.5rem;
+}
+
+.etf-supply-val strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.etf-supply-bar {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  max-width: 100%;
+  border-radius: 2px;
+  background: color-mix(in srgb, #38bdf8 70%, #94a3b8);
+}
+
+.etf-supply-bar.down {
+  background: color-mix(in srgb, #f87171 70%, #94a3b8);
+}
+
+.etf-supply-table td code {
+  font-size: 0.75rem;
 }
 
 .etf-kor15-chart {
@@ -1434,7 +1528,8 @@ a.geo-choke-hl:hover {
 
 @media (max-width: 900px) {
   .etf-new-grid,
-  .etf-new-stats {
+  .etf-new-stats,
+  .etf-supply-grid {
     grid-template-columns: 1fr;
   }
 }

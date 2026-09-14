@@ -20,6 +20,7 @@ import EtfDbUsTab from "@/components/EtfDbUsTab";
 import EtfHoldingsTab from "@/components/EtfHoldingsTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
+import EtfSupplyPanel from "@/components/EtfSupplyPanel";
 import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
 import KosdaqActiveTab from "@/components/KosdaqActiveTab";
 import CountryEtfTab from "@/components/CountryEtfTab";
@@ -533,6 +534,7 @@ function DashboardInner({
         </EsgTabShell>
       ) : tab === "etf" ? (
         <>
+          <EtfSupplyPanel />
           <EtfNewTab />
           <EtfKor15Tab initialDelayMs={2000} />
         </>
