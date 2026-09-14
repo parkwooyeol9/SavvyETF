@@ -1,10 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import type { OptimizedSleeve, WeightOptimizePayload } from "@/lib/weightOptimize";
 
 const LAST_KEY = "savvyetf.weightopt.last";
+
+const tooltipStyle = {
+  background: "#141d2b",
+  border: "1px solid #2b3648",
+  borderRadius: 8,
+  color: "#e8eef5",
+};
 
 type LastSnap = { as_of: string; weights: Record<string, number> };
 
@@ -116,6 +133,26 @@ export default function WeightOptimizeTab() {
     }
     return { as_of: last.as_of, turnover: t / 2 };
   }, [last, data?.as_of, rows]);
+
+  const chartPack = useMemo(() => {
+    const series = data?.sim?.series || [];
+    if (!series.length) return { data: [] as Array<Record<string, string | number>>, domain: [95, 105] as [number, number] };
+    const mapped = series.map((p) => ({
+      t: p.date.slice(2),
+      최적화: p.opt,
+      "AI Pick": p.pick,
+      SPY: p.spy,
+    }));
+    let min = Infinity;
+    let max = -Infinity;
+    for (const d of mapped) {
+      min = Math.min(min, d.최적화, d["AI Pick"], d.SPY);
+      max = Math.max(max, d.최적화, d["AI Pick"], d.SPY);
+    }
+    if (!(max > min)) return { data: mapped, domain: [min - 1, max + 1] as [number, number] };
+    const pad = Math.max((max - min) * 0.06, 0.4);
+    return { data: mapped, domain: [min - pad, max + pad] as [number, number] };
+  }, [data?.sim?.series]);
 
   return (
     <div className="panel-stack trading-ideas wopt-page">
@@ -291,6 +328,119 @@ export default function WeightOptimizeTab() {
           </p>
         ) : null}
       </section>
+
+      {data?.ok && data.sim ? (
+        <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
+          <h3 className="geo-section-title">5년 배분 시뮬레이션</h3>
+          <p className="meta-soft">{data.sim.note || data.sim.error || "—"}</p>
+          {data.sim.ok ? (
+            <>
+              <div className="wopt-stats" style={{ marginTop: 10 }}>
+                <div>
+                  <em>최적화 누적</em>
+                  <strong className={tone(data.sim.opt_total_pct)}>
+                    {fmtPct(data.sim.opt_total_pct, 1, true)}
+                  </strong>
+                  <span>
+                    {data.sim.start} → {data.sim.end}
+                  </span>
+                </div>
+                <div>
+                  <em>AI Pick 누적</em>
+                  <strong className={tone(data.sim.pick_total_pct)}>
+                    {fmtPct(data.sim.pick_total_pct, 1, true)}
+                  </strong>
+                  <span>같은 종목 · 다른 비중</span>
+                </div>
+                <div>
+                  <em>SPY 누적</em>
+                  <strong className={tone(data.sim.spy_total_pct)}>
+                    {fmtPct(data.sim.spy_total_pct, 1, true)}
+                  </strong>
+                  <span>벤치마크</span>
+                </div>
+                <div>
+                  <em>최적화 MDD</em>
+                  <strong>{fmtPct(data.sim.opt_mdd_pct, 1)}</strong>
+                  <span>
+                    Pick {fmtPct(data.sim.pick_mdd_pct, 1)} · SPY{" "}
+                    {fmtPct(data.sim.spy_mdd_pct, 1)}
+                  </span>
+                </div>
+                <div>
+                  <em>시뮬 현금</em>
+                  <strong>{data.sim.cash_opt_pct.toFixed(0)}%</strong>
+                  <span>수익률 0 · Pick {data.sim.cash_pick_pct.toFixed(0)}%</span>
+                </div>
+              </div>
+              <p className="wopt-legend meta-soft" style={{ marginTop: 10 }}>
+                <span className="wopt-swatch opt" /> 최적화
+                <span className="wopt-swatch pick" /> AI Pick
+                <span className="wopt-swatch spy" /> SPY
+                <span>시작=100 · 리밸런스 없음</span>
+              </p>
+              <div className="kr-chart" style={{ height: 300, marginTop: 8 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={chartPack.data}
+                    margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
+                    <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={28} />
+                    <YAxis
+                      domain={chartPack.domain}
+                      allowDataOverflow
+                      tick={{ fill: "#8fa3b8", fontSize: 10 }}
+                      width={52}
+                      tickFormatter={(v: number) => v.toFixed(0)}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(v: number) => [`${Number(v).toFixed(1)}`, undefined]}
+                    />
+                    <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="최적화"
+                      stroke="#60a5fa"
+                      strokeWidth={2.2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="AI Pick"
+                      stroke="#94a3b8"
+                      strokeWidth={1.6}
+                      strokeDasharray="4 3"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="SPY"
+                      stroke="#64748b"
+                      strokeWidth={1.4}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              {data.sim.dropped.length ? (
+                <p className="meta-soft" style={{ marginTop: 8 }}>
+                  이력 부족(현금 처리):{" "}
+                  {data.sim.dropped.map((d) => `${d.symbol} ${d.reason}`).join(" · ")}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="empty" style={{ marginTop: 8 }}>
+              {data.sim.error || "시뮬레이션을 만들지 못했습니다."}
+            </p>
+          )}
+        </section>
+      ) : null}
 
       {risky.length ? (
         <section className="geo-section" style={{ marginTop: 16 }}>

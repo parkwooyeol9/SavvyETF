@@ -260,6 +260,14 @@ def pack_kor_summary_context(summary: dict, chart_notes_ko: dict | None = None) 
         f"news_source: {summary.get('news_source', 'naver')}",
         f"ticker_count: {summary.get('ticker_count', 0)}",
     ]
+    from summary_kor_builder import format_kr_index_headline, format_kr_index_lead
+
+    index_line = format_kr_index_headline(summary.get("index_snapshot"))
+    index_lead = format_kr_index_lead(summary.get("index_snapshot"))
+    if index_line:
+        extra_parts.insert(0, f"INDEX: {index_line}")
+    if index_lead:
+        extra_parts.insert(1 if index_line else 0, f"INDEX_LEAD: {index_lead}")
     if dart_lines:
         extra_parts.append("DART leaders:\n" + "\n".join(dart_lines))
 
@@ -330,7 +338,8 @@ EXTRA:
         "(selectivity / risk control — NOT a buy/sell order)."
         if market == "esg"
         else (
-            "Paragraph 1 = overall market tone from boards/flows. "
+            "Paragraph 1 MUST open with today's KOSPI and KOSDAQ daily percent change "
+            "from EXTRA (whether the market rose or fell), then overall tone from boards/flows. "
             "Paragraph 2 = key movers and news themes. "
             "Paragraph 3 = practical stance (selectivity / risk control — NOT a buy/sell order)."
         )
@@ -408,6 +417,13 @@ def _rule_based_brief(payload: dict[str, Any]) -> str:
         )
         return "\n\n".join([p1, p2, p3])
 
+    extra = (payload.get("extra_context") or "").strip()
+    index_lead = ""
+    for line in extra.splitlines():
+        if line.startswith("INDEX_LEAD:"):
+            index_lead = line.split(":", 1)[1].strip()
+            break
+
     mover_hint = ""
     for line in boards.splitlines():
         stripped = line.strip()
@@ -415,10 +431,11 @@ def _rule_based_brief(payload: dict[str, Any]) -> str:
             mover_hint = stripped
             break
 
-    p1 = (
+    p1_body = (
         f"{label} 기준으로 보면 거래대금이 실린 종목 중심의 차별화 장세가 이어지는 흐름입니다."
         + (f" 대표적으로 {mover_hint} 등이 보드 상단에 위치합니다." if mover_hint else "")
     )
+    p1 = f"{index_lead} {p1_body}" if index_lead else p1_body
     if themes:
         p2 = (
             "뉴스 측면에서는 "

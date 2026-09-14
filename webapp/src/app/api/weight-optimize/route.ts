@@ -5,6 +5,7 @@ import type { ChainPayload } from "@/lib/chainGraph";
 import type { MoneyFlowPayload } from "@/lib/moneyFlow";
 import type { NlpPulsePayload } from "@/lib/nlpPulse";
 import type { TradingSignalsPayload } from "@/lib/tradingSignals";
+import { simulateWeightOptBuyHold } from "@/lib/weightOptSim";
 import {
   buildWeightOptimize,
   WEIGHTOPT_DISCLAIMER,
@@ -54,6 +55,7 @@ function emptyPayload(error: string): WeightOptimizePayload {
     schedule_note: WEIGHTOPT_SCHEDULE_NOTE,
     sleeves: [],
     sells: [],
+    sim: null,
     error,
   };
 }
@@ -61,7 +63,7 @@ function emptyPayload(error: string): WeightOptimizePayload {
 export async function GET(req: Request) {
   try {
     const payload = await withServerCache(
-      "weight-optimize:v1",
+      "weight-optimize:v2",
       120_000,
       600_000,
       async () => {
@@ -74,12 +76,35 @@ export async function GET(req: Request) {
         if (!signals) {
           return emptyPayload("시그널을 불러오지 못했습니다.");
         }
-        return buildWeightOptimize({
+        const built = buildWeightOptimize({
           signals,
           nlp,
           chain,
           flow: flow?.ok ? flow : null,
         });
+        if (!built.ok) return built;
+        try {
+          built.sim = await simulateWeightOptBuyHold(built.sleeves);
+        } catch (exc) {
+          built.sim = {
+            ok: false,
+            start: null,
+            end: null,
+            note: "",
+            cash_opt_pct: 0,
+            cash_pick_pct: 0,
+            opt_total_pct: null,
+            pick_total_pct: null,
+            spy_total_pct: null,
+            opt_mdd_pct: null,
+            pick_mdd_pct: null,
+            spy_mdd_pct: null,
+            dropped: [],
+            series: [],
+            error: exc instanceof Error ? exc.message : String(exc),
+          };
+        }
+        return built;
       },
     );
     return NextResponse.json(payload, {

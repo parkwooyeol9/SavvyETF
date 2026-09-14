@@ -60,6 +60,114 @@ BOARD_TITLES_KO = {
     "dropvol": "▼ 하락+거래대금 급증",
 }
 
+KR_INDEX_SPECS = (
+    ("kospi", "^KS11", "코스피"),
+    ("kosdaq", "^KQ11", "코스닥"),
+)
+
+
+def _dir_word(change_pct: float) -> str:
+    if change_pct > 0.05:
+        return "상승"
+    if change_pct < -0.05:
+        return "하락"
+    return "보합"
+
+
+def _fmt_signed_pct(change_pct: float) -> str:
+    return f"{change_pct:+.2f}%"
+
+
+def _index_leg_text(row: dict) -> str:
+    return (
+        f"{row['label']} {row['close']:,.2f} ({_fmt_signed_pct(row['change_pct'])})"
+    )
+
+
+def format_kr_index_headline(snapshot: dict | None) -> str:
+    """One-line KOSPI / KOSDAQ close and daily %."""
+    if not snapshot:
+        return ""
+    parts = []
+    for key in ("kospi", "kosdaq"):
+        row = snapshot.get(key)
+        if isinstance(row, dict) and row.get("close") is not None:
+            parts.append(_index_leg_text(row))
+    return " · ".join(parts)
+
+
+def format_kr_index_lead(snapshot: dict | None) -> str:
+    """Opening sentence: whether the market rose or fell today."""
+    if not snapshot:
+        return ""
+    kospi = snapshot.get("kospi") if isinstance(snapshot.get("kospi"), dict) else None
+    kosdaq = snapshot.get("kosdaq") if isinstance(snapshot.get("kosdaq"), dict) else None
+    if not kospi or not kosdaq:
+        if kospi:
+            return (
+                f"오늘 {kospi['label']}는 {_dir_word(kospi['change_pct'])}"
+                f"({_fmt_signed_pct(kospi['change_pct'])}) 마감했습니다."
+            )
+        if kosdaq:
+            return (
+                f"오늘 {kosdaq['label']}은 {_dir_word(kosdaq['change_pct'])}"
+                f"({_fmt_signed_pct(kosdaq['change_pct'])}) 마감했습니다."
+            )
+        return ""
+    k_dir = _dir_word(kospi["change_pct"])
+    q_dir = _dir_word(kosdaq["change_pct"])
+    k_pct = _fmt_signed_pct(kospi["change_pct"])
+    q_pct = _fmt_signed_pct(kosdaq["change_pct"])
+    if k_dir == q_dir:
+        if k_dir == "보합":
+            return f"오늘 코스피({k_pct})와 코스닥({q_pct})은 보합 마감했습니다."
+        return (
+            f"오늘 코스피와 코스닥이 동반 {k_dir} 마감했습니다. "
+            f"코스피 {k_pct}, 코스닥 {q_pct}."
+        )
+    return (
+        f"오늘 코스피는 {k_dir}({k_pct}), 코스닥은 {q_dir}({q_pct}) 마감했습니다."
+    )
+
+
+def _fetch_one_index(yahoo: str, label: str) -> dict | None:
+    from yahoo_market import fetch_daily_candles
+
+    frame = fetch_daily_candles(yahoo, range_="10d")
+    if frame is None or getattr(frame, "empty", True) or len(frame) < 2:
+        return None
+    prev = float(frame["close"].iloc[-2])
+    last = float(frame["close"].iloc[-1])
+    if not (prev > 0 and last > 0):
+        return None
+    as_of = frame.index[-1]
+    try:
+        as_of_s = str(as_of.date())
+    except Exception:
+        as_of_s = str(as_of)[:10]
+    return {
+        "yahoo": yahoo,
+        "label": label,
+        "close": round(last, 2),
+        "prev_close": round(prev, 2),
+        "change_pct": round((last / prev - 1) * 100, 2),
+        "as_of": as_of_s,
+    }
+
+
+def fetch_kr_index_snapshot() -> dict:
+    """Daily KOSPI / KOSDAQ moves from Yahoo (^KS11, ^KQ11)."""
+    out: dict = {}
+    for key, yahoo, label in KR_INDEX_SPECS:
+        try:
+            row = _fetch_one_index(yahoo, label)
+        except Exception as exc:
+            print(f"KR index fetch failed ({yahoo}): {exc}")
+            row = None
+        if row:
+            out[key] = row
+    return out
+
 
 def caches_ready_kor() -> bool:
     return all(is_cache_ready(u) for u in SUMMARY_KOR_UNIVERSES)
@@ -181,6 +289,7 @@ def build_kor_market_summary(
             if intraday
             else "Yahoo daily cache"
         ),
+        "index_snapshot": fetch_kr_index_snapshot(),
     }
 
 
@@ -420,14 +529,7 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
             if not intraday
             else "요약 모드 · 장중 보드 + 브리핑 · 상세는 웹 참고"
         )
-        parts = [
-            (
-                f"<b>{title}</b>\n"
-                f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
-                f"{source_line}\n"
-                "<i>Not financial advice.</i>"
-            )
-        ]
+        parts = [_kor_telegram_header(title, summary, source_line)]
         for universe in summary.get("universes") or []:
             for msg in _format_universe_telegram(universe, summary):
                 parts.append(str(msg.get("text") or ""))
@@ -442,12 +544,7 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
     )
     messages: list[dict] = [
         {
-            "text": (
-                f"<b>{title}</b>\n"
-                f"<i>{_esc(summary.get('generated_at_display', ''))}</i>\n"
-                f"{source_line}\n"
-                "<i>Not financial advice.</i>"
-            ),
+            "text": _kor_telegram_header(title, summary, source_line),
             "parse_mode": "HTML",
         }
     ]
@@ -457,10 +554,35 @@ def render_summary_kor_telegram(summary: dict) -> list[dict]:
     return messages
 
 
+def _kor_telegram_header(title: str, summary: dict, source_line: str) -> str:
+    bits = [
+        f"<b>{title}</b>",
+        f"<i>{_esc(summary.get('generated_at_display', ''))}</i>",
+    ]
+    index_line = format_kr_index_headline(summary.get("index_snapshot"))
+    lead = format_kr_index_lead(summary.get("index_snapshot"))
+    if index_line:
+        bits.append(_esc(index_line))
+    if lead:
+        bits.append(_esc(lead))
+    bits.extend([source_line, "<i>Not financial advice.</i>"])
+    return "\n".join(bits)
+
+
+def _with_index_lead(body: str, summary: dict) -> str:
+    lead = format_kr_index_lead(summary.get("index_snapshot"))
+    if not lead:
+        return body
+    if lead in (body or ""):
+        return body
+    return f"{lead}\n\n{body}" if body else lead
+
+
 def _format_kor_data_briefing_telegram(summary: dict) -> list[dict]:
     ai = summary.get("ai_analysis") or {}
     brief_ko = format_brief_paragraphs(str(ai.get("market_brief_ko") or ""), blank_lines=2)
-    if not brief_ko:
+    body = _with_index_lead(brief_ko, summary)
+    if not body:
         return []
     source = ai.get("source", "ai")
     article_count = ai.get("article_count", 0)
@@ -468,20 +590,28 @@ def _format_kor_data_briefing_telegram(summary: dict) -> list[dict]:
     if ai.get("error") and source == "rules":
         header += "(Gemini unavailable — data fallback)\n"
     header += f"출처: {source} | 참고 뉴스 {article_count}건\n\n"
-    return [{"text": header + brief_ko}]
+    return [{"text": header + body}]
 
 
 def _render_kor_data_briefing_html(summary: dict) -> str:
     ai = summary.get("ai_analysis") or {}
     brief_ko = _strip_disclaimer(str(ai.get("market_brief_ko") or "").strip())
+    brief_ko = _with_index_lead(brief_ko, summary)
     if not brief_ko:
         return ""
     paras = brief_paragraphs_html(brief_ko, esc=html.escape)
     source = html.escape(str(ai.get("source") or ""))
     article_count = ai.get("article_count", 0)
+    headline = format_kr_index_headline(summary.get("index_snapshot"))
+    index_meta = (
+        f"<p class='meta'><strong>{html.escape(headline)}</strong></p>"
+        if headline
+        else ""
+    )
     return f"""
     <section class="appendix-section ai-brief">
       <h2>📝 데이터 브리핑 · 국내시황</h2>
+      {index_meta}
       <p class="meta">보드·차트 노트·네이버 뉴스 기반 · {article_count}건 참고 ({source})</p>
       {paras}
     </section>
@@ -635,6 +765,8 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
     )
     base_url = kor_url.rstrip("/").removesuffix(path_suffix)
     metric_meta = _price_metric_line(intraday=intraday)
+    index_line = format_kr_index_headline(summary.get("index_snapshot"))
+    index_lead = format_kr_index_lead(summary.get("index_snapshot"))
 
     sections_html: list[str] = []
     for index, universe in enumerate(summary.get("universes") or []):
@@ -711,6 +843,7 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
       border-radius: var(--radius, 14px); background: var(--panel, #141d2b);
     }}
     .summary-hero h1 {{ font-family: var(--serif, Georgia, serif); font-size: 1.75rem; margin: 0 0 0.5rem; }}
+    .index-lead {{ margin: 0 0 0.4rem; font-size: 1.05rem; color: var(--text, #e8eef5); }}
     .brand {{ display: flex; align-items: center; gap: 10px; font-weight: 700; margin-bottom: 1rem; }}
     .brand-dot {{ width: 9px; height: 9px; border-radius: 50%; background: var(--accent, #4da3ff); }}
     .pill-row {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 1rem; }}
@@ -769,6 +902,8 @@ def render_summary_kor_html(summary: dict, public_url: str = "") -> str:
     <div class="brand"><span class="brand-dot"></span> SavvyETF</div>
     <section class="summary-hero">
       <h1>{html.escape(title)}</h1>
+      {f'<p class="index-lead"><strong>{html.escape(index_line)}</strong></p>' if index_line else ""}
+      {f'<p class="index-lead">{html.escape(index_lead)}</p>' if index_lead else ""}
       <p class="meta">KOSPI 200 + KOSDAQ 100 · {summary.get('ticker_count', 0)} tickers · {"장중" if intraday else "종가"} · Naver News · DART</p>
       <p class="meta">Live: <a href="{html.escape(kor_url)}">{html.escape(kor_url)}</a>
          · <a href="{html.escape(pdf_url)}">PDF</a>
@@ -811,6 +946,7 @@ def save_summary_kor(summary: dict, html_content: str) -> None:
         "has_data_briefing": bool(
             ((summary.get("ai_analysis") or {}).get("market_brief_ko") or "").strip()
         ),
+        "index_snapshot": summary.get("index_snapshot") or {},
     }
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
@@ -885,7 +1021,7 @@ def generate_summary_kor(
     )
     summary["ai_analysis"] = {
         "chart_notes_ko": chart_notes,
-        "market_brief_ko": briefing.get("market_brief_ko") or "",
+        "market_brief_ko": _with_index_lead(briefing.get("market_brief_ko") or "", summary),
         "source": briefing.get("source") or "rules",
         "article_count": briefing.get("article_count") or 0,
         "briefing_market": briefing.get("market") or "kr",

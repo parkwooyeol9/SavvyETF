@@ -2,7 +2,8 @@ import json
 import os
 import threading
 import time
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,9 @@ from us_calendar import is_us_equity_trading_day
 KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 SCHEDULER_STATE_PATH = PROJECT_DIR / "data" / "scheduler_state.json"
+R2_SCHEDULER_SLOTS_KEY = "scheduler/slots.json"
+SLOT_INFLIGHT_TTL_SEC = 40 * 60
+_INSTANCE_ID = uuid.uuid4().hex[:8]
 DEFAULT_FIXED_TIMES = ((7, 0),)
 DEFAULT_POLL_SECONDS = 30
 DEFAULT_SUMMARY_PRE_HOUR = 21
@@ -120,7 +124,216 @@ def update_scheduler_state(**updates) -> dict:
         state = _load_state()
         state.update(updates)
         _save_state(state)
-        return dict(state)
+        snapshot = dict(state)
+    slot_updates = {
+        key: value
+        for key, value in updates.items()
+        if _is_slot_key(key) and isinstance(value, str) and value
+    }
+    if slot_updates:
+        _merge_r2_slots(slot_updates)
+    return snapshot
+
+
+def _is_slot_key(key: str) -> bool:
+    return key.startswith("last_") and key.endswith("_slot")
+
+
+def _load_r2_slots() -> tuple[dict | None, bool]:
+    """Return (slots, ok). ok=False means the read failed — do not overwrite R2."""
+    try:
+        from r2_data import get_json, r2_configured
+
+        if not r2_configured():
+            return {}, True
+        data = get_json(R2_SCHEDULER_SLOTS_KEY)
+        if data is None:
+            return {}, True
+        if not isinstance(data, dict):
+            print("R2 scheduler slots: expected object, ignoring")
+            return None, False
+        return data, True
+    except Exception as exc:
+        print(f"R2 scheduler slots read failed: {exc}")
+        return None, False
+
+
+def _save_r2_slots(slots: dict) -> bool:
+    try:
+        from r2_data import put_json, r2_configured
+
+        if not r2_configured():
+            return False
+        return bool(put_json(R2_SCHEDULER_SLOTS_KEY, slots))
+    except Exception as exc:
+        print(f"R2 scheduler slots write failed: {exc}")
+        return False
+
+
+def _merge_r2_slots(
+    updates: dict | None = None,
+    *,
+    delete_keys: list[str] | None = None,
+) -> bool:
+    remote, ok = _load_r2_slots()
+    if not ok or remote is None:
+        return False
+    if updates:
+        remote.update(updates)
+    for key in delete_keys or []:
+        remote.pop(key, None)
+    return _save_r2_slots(remote)
+
+
+def hydrate_durable_slot(state_key: str) -> str | None:
+    """Prefer R2 last-slot so Render redeploys do not re-fire catch-up."""
+    remote, ok = _load_r2_slots()
+    value = remote.get(state_key) if ok and remote else None
+    if isinstance(value, str) and value:
+        with _STATE_LOCK:
+            state = _load_state()
+            state[state_key] = value
+            _save_state(state)
+        return value
+    local = _load_state().get(state_key)
+    return local if isinstance(local, str) and local else None
+
+
+def hydrate_all_durable_slots() -> None:
+    """Copy last_*_slot keys from R2 into local state once at process start."""
+    remote, ok = _load_r2_slots()
+    if not ok or not remote:
+        return
+    slot_updates = {
+        key: value
+        for key, value in remote.items()
+        if _is_slot_key(key) and isinstance(value, str) and value
+    }
+    if not slot_updates:
+        return
+    with _STATE_LOCK:
+        state = _load_state()
+        state.update(slot_updates)
+        _save_state(state)
+    print(
+        "Hydrated durable scheduler slots from R2: "
+        + ", ".join(sorted(slot_updates))
+    )
+
+
+def _inflight_alive(record: object, slot: str) -> bool:
+    if not isinstance(record, dict) or record.get("slot") != slot:
+        return False
+    at_raw = str(record.get("at") or "")
+    try:
+        at = datetime.fromisoformat(at_raw)
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    age = (datetime.now(timezone.utc) - at.astimezone(timezone.utc)).total_seconds()
+    return 0 <= age < SLOT_INFLIGHT_TTL_SEC
+
+
+def claim_scheduler_slot(state_key: str, slot: str) -> str:
+    """Durable once-per-slot claim.
+
+    Returns:
+      acquired — this process should run the job
+      done — slot already completed (skip, remember locally)
+      busy — another process is running it (retry later, do not mark done)
+    """
+    inflight_key = f"{state_key}__inflight"
+    stamp = {
+        "slot": slot,
+        "owner": _INSTANCE_ID,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    with _STATE_LOCK:
+        local = _load_state()
+        if local.get(state_key) == slot:
+            return "done"
+        if _inflight_alive(local.get(inflight_key), slot):
+            return "busy"
+        local[inflight_key] = stamp
+        _save_state(local)
+
+    remote, ok = _load_r2_slots()
+    if not ok or remote is None:
+        print(f"Scheduler slot {state_key}={slot}: R2 unread, running on local claim only")
+        return "acquired"
+    if remote.get(state_key) == slot:
+        with _STATE_LOCK:
+            state = _load_state()
+            state[state_key] = slot
+            state.pop(inflight_key, None)
+            _save_state(state)
+        return "done"
+    remote_inflight = remote.get(inflight_key)
+    if (
+        _inflight_alive(remote_inflight, slot)
+        and isinstance(remote_inflight, dict)
+        and remote_inflight.get("owner") != _INSTANCE_ID
+    ):
+        with _STATE_LOCK:
+            state = _load_state()
+            local_inf = state.get(inflight_key)
+            if isinstance(local_inf, dict) and local_inf.get("owner") == _INSTANCE_ID:
+                state.pop(inflight_key, None)
+                _save_state(state)
+        return "busy"
+
+    wrote = _merge_r2_slots({inflight_key: stamp})
+    if not wrote:
+        return "acquired"
+
+    again, ok2 = _load_r2_slots()
+    if ok2 and again is not None and again.get(state_key) == slot:
+        with _STATE_LOCK:
+            state = _load_state()
+            state[state_key] = slot
+            state.pop(inflight_key, None)
+            _save_state(state)
+        return "done"
+    owner = ((again or {}).get(inflight_key) or {}).get("owner") if ok2 else None
+    if owner and owner != _INSTANCE_ID:
+        with _STATE_LOCK:
+            state = _load_state()
+            state.pop(inflight_key, None)
+            _save_state(state)
+        return "busy"
+    return "acquired"
+
+
+def complete_scheduler_slot(state_key: str, slot: str) -> None:
+    inflight_key = f"{state_key}__inflight"
+    with _STATE_LOCK:
+        state = _load_state()
+        state[state_key] = slot
+        state.pop(inflight_key, None)
+        _save_state(state)
+    _merge_r2_slots({state_key: slot}, delete_keys=[inflight_key])
+
+
+def release_scheduler_slot(state_key: str, slot: str) -> None:
+    """Drop inflight so catch-up can retry after a failed send."""
+    inflight_key = f"{state_key}__inflight"
+    with _STATE_LOCK:
+        state = _load_state()
+        inflight = state.get(inflight_key)
+        if isinstance(inflight, dict) and inflight.get("slot") == slot:
+            state.pop(inflight_key, None)
+            _save_state(state)
+    remote, ok = _load_r2_slots()
+    if not ok or remote is None:
+        return
+    inflight = remote.get(inflight_key)
+    if (
+        isinstance(inflight, dict)
+        and inflight.get("slot") == slot
+        and inflight.get("owner") in {_INSTANCE_ID, None}
+    ):
+        _merge_r2_slots(delete_keys=[inflight_key])
 
 
 def claim_daily_quota(

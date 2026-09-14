@@ -63,6 +63,39 @@ export type OptimizedSleeve = {
   rationale: string[];
 };
 
+export type WeightOptSimPoint = {
+  date: string;
+  opt: number;
+  pick: number;
+  spy: number;
+};
+
+export type WeightOptSimDropped = {
+  symbol: string;
+  reason: string;
+  opt_pct: number;
+  pick_pct: number;
+};
+
+/** Static buy-and-hold of today's sleeves. Start = 100. Cash return = 0. */
+export type WeightOptSim5y = {
+  ok: boolean;
+  start: string | null;
+  end: string | null;
+  note: string;
+  cash_opt_pct: number;
+  cash_pick_pct: number;
+  opt_total_pct: number | null;
+  pick_total_pct: number | null;
+  spy_total_pct: number | null;
+  opt_mdd_pct: number | null;
+  pick_mdd_pct: number | null;
+  spy_mdd_pct: number | null;
+  dropped: WeightOptSimDropped[];
+  series: WeightOptSimPoint[];
+  error?: string;
+};
+
 export type WeightOptimizePayload = {
   ok: boolean;
   generated_at: string;
@@ -84,6 +117,7 @@ export type WeightOptimizePayload = {
   schedule_note: string;
   sleeves: OptimizedSleeve[];
   sells: TradingIdea[];
+  sim: WeightOptSim5y | null;
   error?: string;
 };
 
@@ -370,6 +404,7 @@ function emptyPayload(error: string, comment = ""): WeightOptimizePayload {
     schedule_note: WEIGHTOPT_SCHEDULE_NOTE,
     sleeves: [],
     sells: [],
+    sim: null,
     error,
   };
 }
@@ -432,6 +467,7 @@ export function buildWeightOptimize(input: {
         },
       ],
       sells: ideas.sells,
+      sim: null,
     };
   }
 
@@ -556,5 +592,6 @@ export function buildWeightOptimize(input: {
     schedule_note: WEIGHTOPT_SCHEDULE_NOTE,
     sleeves,
     sells: ideas.sells,
+    sim: null,
   };
 }

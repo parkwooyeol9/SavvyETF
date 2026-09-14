@@ -457,6 +457,20 @@ def _render_universe_rankings_page(universe: dict, summary: dict) -> bytes:
         metric_line = f"{when}  ·  {metric_line}"
     draw.text((_MARGIN, y), metric_line[:110], font=_load_font(12), fill=MUTED)
     y += 22
+    if is_kor and ukey == "kospi":
+        try:
+            from summary_kor_builder import format_kr_index_headline, format_kr_index_lead
+
+            index_line = format_kr_index_headline(summary.get("index_snapshot"))
+            index_lead = format_kr_index_lead(summary.get("index_snapshot"))
+            if index_line:
+                draw.text((_MARGIN, y), index_line[:110], font=_load_font(13), fill=TEXT)
+                y += 18
+            if index_lead:
+                draw.text((_MARGIN, y), index_lead[:110], font=_load_font(12), fill=MUTED)
+                y += 20
+        except Exception:
+            pass
 
     leader_pack = (summary.get("leader_charts") or {}).get(ukey) or {}
     leader_png = (

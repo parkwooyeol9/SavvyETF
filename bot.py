@@ -3648,6 +3648,12 @@ if __name__ == "__main__":
     token = get_bot_token()
     mark_service_started()
     start_web_server()
+    try:
+        from summary_scheduler import hydrate_all_durable_slots
+
+        hydrate_all_durable_slots()
+    except Exception as exc:
+        print(f"Durable scheduler slot hydrate skipped: {exc}")
     if os.environ.get("BOT_DEFER_CACHE_WARMUP", "true").lower() not in {"0", "false", "no"}:
         threading.Thread(
             target=warmup_startup_caches,

@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 
 from scheduler_grace import past_startup_grace
 from scheduler_slots import due_slot_id
-from summary_scheduler import _load_state, update_scheduler_state
+from summary_scheduler import (
+    claim_scheduler_slot,
+    complete_scheduler_slot,
+    hydrate_durable_slot,
+    release_scheduler_slot,
+    update_scheduler_state,
+)
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_HOUR_KST = 15
@@ -101,14 +107,15 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
         catchup_minutes = 45
 
     def loop() -> None:
-        state = _load_state()
-        last_slot = state.get("last_summary_kor_slot")
+        last_slot = hydrate_durable_slot("last_summary_kor_slot")
         print(
             f"summary_kor scheduler active — weekdays at {hour:02d}:{minute:02d} KST "
-            f"({catchup_minutes}m catch-up window)"
+            f"({catchup_minutes}m catch-up; durable R2 slot so redeploy does not resend)"
         )
 
         while True:
+            slot = None
+            acquired = False
             try:
                 if not past_startup_grace():
                     time.sleep(poll_seconds)
@@ -124,20 +131,40 @@ def start_summary_kor_scheduler(token: str, broadcast_fn, public_url: str = "") 
                     window_minutes=catchup_minutes,
                 )
                 if slot:
-                    if _should_skip_kr_non_trading(now):
+                    status = claim_scheduler_slot("last_summary_kor_slot", slot)
+                    if status == "done":
+                        last_slot = slot
+                    elif status == "busy":
                         print(
-                            f"Scheduled summary_kor skipped ({slot}): "
-                            "weekend or KRX holiday"
+                            f"Scheduled summary_kor waiting ({slot}): "
+                            "another instance already claimed"
                         )
-                        last_slot = slot
-                        update_scheduler_state(last_summary_kor_slot=slot)
-                    elif run_scheduled_summary_kor(
-                        token, broadcast_fn, public_url=public_url
-                    ):
-                        last_slot = slot
-                        update_scheduler_state(last_summary_kor_slot=slot)
+                    else:
+                        acquired = True
+                        if _should_skip_kr_non_trading(now):
+                            print(
+                                f"Scheduled summary_kor skipped ({slot}): "
+                                "weekend or KRX holiday"
+                            )
+                            complete_scheduler_slot("last_summary_kor_slot", slot)
+                            last_slot = slot
+                            acquired = False
+                        elif run_scheduled_summary_kor(
+                            token, broadcast_fn, public_url=public_url
+                        ):
+                            complete_scheduler_slot("last_summary_kor_slot", slot)
+                            last_slot = slot
+                            acquired = False
+                        else:
+                            release_scheduler_slot("last_summary_kor_slot", slot)
+                            acquired = False
             except Exception as exc:
                 print(f"summary_kor scheduler loop error: {exc}")
+                if acquired and slot:
+                    try:
+                        release_scheduler_slot("last_summary_kor_slot", slot)
+                    except Exception:
+                        pass
 
             time.sleep(poll_seconds)
 

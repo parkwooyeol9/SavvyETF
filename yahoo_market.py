@@ -38,6 +38,15 @@ def _session() -> requests.Session:
     return session
 
 
+KR_INDEX_SYMBOLS = {"^KS11", "^KQ11", "^KS200"}
+
+
+def _session_tz(symbol: str) -> str:
+    if symbol.endswith((".KS", ".KQ")) or symbol in KR_INDEX_SYMBOLS:
+        return "Asia/Seoul"
+    return "America/New_York"
+
+
 def fetch_daily_candles(
     ticker: str,
     *,
@@ -45,7 +54,7 @@ def fetch_daily_candles(
     interval: str = DEFAULT_INTERVAL,
     timeout: float = 20,
 ) -> pd.DataFrame:
-    """Return daily close/volume indexed by US/Eastern session calendar date (naive midnight)."""
+    """Return daily close/volume indexed by listing-exchange calendar date (naive midnight)."""
     symbol = to_yahoo_symbol(ticker)
     try:
         response = _session().get(
@@ -78,8 +87,7 @@ def fetch_daily_candles(
 
     # Yahoo daily bars are session opens in UTC. Convert to the listing exchange
     # calendar date so as_of / session checks match the right trading day.
-    session_tz = "Asia/Seoul" if symbol.endswith((".KS", ".KQ")) else "America/New_York"
-    idx = pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(session_tz)
+    idx = pd.to_datetime(timestamps, unit="s", utc=True).tz_convert(_session_tz(symbol))
     frame = pd.DataFrame(
         {
             "close": pd.to_numeric(closes, errors="coerce"),
