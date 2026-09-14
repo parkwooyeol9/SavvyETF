@@ -57,134 +57,6 @@ KNOWN_CHATS_FILE = PROJECT_DIR / "data" / "known_chats.json"
 BLOCKED_CHATS_FILE = PROJECT_DIR / "data" / "blocked_chats.json"
 load_dotenv(ENV_FILE)
 
-STARTUP_TEXT = """SavvyETF Bot is online.
-
-What each command returns:
-
-/port AAPL MSFT GOOGL
-→ Portfolio backtest chart + technical chart per stock
-
-/coin BTC
-→ Crypto technical analysis chart
-
-/etf
-→ Top 3 price-up+volume surge & top 3 price-down+volume surge ETFs
-
-/etf_sector
-→ Sector rotation by last completed daily return + chart (XL* + themes vs SPY)
-
-/etf memb EEM
-→ US ETF current holdings Top10 chart + Excel (Yahoo; iShares full CU when available)
-
-/etf_us_new
-→ 미국 신규 상장 ETF (Nasdaq + Yahoo inception) + 구성 Top holdings
-
-/etf_holdings EEM 005930
-→ ETF 내 특정 종목 편입비 시계열 차트 + 표 + Excel (iShares/Naver)
-
-/etfcheck
-→ ETF CHECK 수급·거래대금·신규상장 (HTTP only, no browser)
-
-/etf_kor15
-→ 한국 노출 미국 ETF 15종 Top3·삼성전자/SK하이닉스 편입비 도표 (etfcheck)
-
-/etfdb
-→ 국내 ETF DB: 유형·국가·업종 분류, AUM 합, NAV×Δ설정좌수 수급 (/etfdb 웹)
-
-/sp   (or /nas)
-→ Same rankings for S&P 500 / NASDAQ 100
-
-/kospi  (or /kosdaq)
-→ Same rankings for KOSPI 200 / KOSDAQ 100
-
-/etf_pre  /sp_pre  /nas_pre
-→ Pre-market % vs previous close
-
-/heatmap sp
-→ Treemap of top names by market cap (color = daily return)
-
-/macro
-→ Macro risk monitor: chart, metrics, Finnhub/EDGAR, AI macro risk comment
-
-/news
-→ Headlines for the 6 tickers from your last /etf, /sp, or /nas result
-
-/news_naver
-→ Naver News headlines for last ranking (or /news_naver 삼성전자)
-
-/summary
-→ ETF + S&P 500 brief, heatmap, AI briefing (scheduled 07:00 KST)
-
-/summary_pre
-→ Premarket brief: /sp_pre only (ETF excluded); PDF + 21:50 KST schedule
-
-/summary_kor
-→ KOSPI 200 + KOSDAQ 100 brief (Yahoo .KS/.KQ) + Naver News + DART + PDF/web
-
-/summary_kor_intra
-→ Same as /summary_kor using Naver 1m vs previous close (manual; schedule off by default)
-
-/summary_nxt
-→ Nextrade brief: KRX vs NXT focus, TOP/movers, MTD (web schedule 16:40; Telegram off)
-
-/aibriefing
-→ Trending market news (5-10 articles) read + Korean AI brief (3-4 lines)
-
-/data_briefing [kor|us|esg]
-→ Gemini 3-paragraph briefing from latest boards/notes/news (etf later)
-
-/reddit
-→ WSB hot topics + Gemini KR + /financial for top 2 tickers (web + PDF)
-
-/adr TSM ASML ARM
-→ ADR listing impact analysis (charts + Excel) for underlying shares
-
-/idx
-→ MSCI ACWI/World/EM country top5 → major markets index/futures/FX returns
-
-/event [keyword]
-→ Event study (US/JP/KR/CN indices) + impact comment + PDF
-
-/seasonality TICKER
-→ Monthly return seasonality check (10y, default focus Jun–Sep) + chart
-
-/comp QQQ IVV QNDX
-→ ETF charts, metrics, AI pick, Excel workbook
-
-/financial AAPL
-→ S&P 500 fundamental analysis: PER, PBR, ROE, margins, EPS growth + charts
-
-/fin_estimate NVDA 삼성전자
-→ 미·한 컨센서스(2026–2028) + 2000년~분기 재무 Excel 업로드
-
-/nxt
-→ NXT 데이터 허브: live / 월누적 / dailyvol / daily / movers / stock / compare …
-→ 예: /nxt 2026-06 · /nxt dailyvol 2026-06 · /nxt help
-
-/dart 삼성전자
-→ 한국 상장사 DART 재무분석: 매출·이익·ROE·성장률 + 차트
-
-/esg 삼성전자
-→ DART ESG 허브 (실적·배당·소유·주주환원·중대재해 스크리닝)
-
-/dart etf memb 0167A0
-→ 국내 ETF 편입종목·구성비(Naver) + DART 펀드공시(리밸/변경) 파싱
-
-Auto schedule (KST, staggered so Render jobs do not overlap):
-  /summary 07:00 (compact Telegram)  → US channel
-  /reddit 21:00 (compact Telegram)  → US channel
-  /summary_kor 15:40 (compact Telegram)  → Korea channel
-  /summary_nxt 16:40 (web/R2 only, no Telegram)  → dashboard
-  /etfcheck 16:20 (KRX days)  → legacy ETF channel
-  /etfdb snapshot 18:20 (KRX days, no Telegram)  → web /etfdb
-  /esg events 09:00 daily     → SavvyESG (중요 건만, 하루 최대 3건)
-  /esg accident 10:20 (KRX)  → SavvyESG (당일 중대재해 속보만)
-  (opt-in off: summary_pre, etf_kor15, kor_intra, etf_sector, etf_us_new,
-   esg climate monitor/overview/aigov/brief)
-
-Type /help for the full command list.
-"""
-
 # Telegram sendMessage limit is 4096 chars — keep help split and concise.
 HELP_TEXT_SHORT = "알 수 없는 명령어입니다. 전체 안내는 /help 를 입력하세요."
 
@@ -660,7 +532,6 @@ def broadcast_messages(
     return delivered
 
 
-_greeted_this_session: set[int] = set()
 _last_ranking_by_chat: dict[int, dict] = {}
 # chat_id -> unix time when /event prompted for a keyword
 _pending_event_by_chat: dict[int, float] = {}
@@ -781,15 +652,6 @@ def fetch_pending_updates(token: str) -> tuple[list[dict], int | None]:
     return updates, last_update_id
 
 
-def chat_ids_from_updates(updates: list[dict]) -> set[int]:
-    chat_ids: set[int] = set()
-    for update in updates:
-        chat_id = extract_chat_id_from_update(update)
-        if chat_id is not None:
-            chat_ids.add(chat_id)
-    return chat_ids
-
-
 def process_my_chat_member(token: str, update: dict) -> None:
     member_update = update.get("my_chat_member")
     if not member_update:
@@ -805,6 +667,10 @@ def process_my_chat_member(token: str, update: dict) -> None:
         register_delivery_chat(chat_id)
         chat_type = chat.get("type", "unknown")
         print(f"Bot added to {chat_type} {chat_id}")
+        if chat_type == "channel" and chat_id in _all_pinned_chat_ids():
+            # Redeploy can replay my_chat_member; never re-welcome briefing channels.
+            print(f"Pinned briefing channel {chat_id}: skip welcome post")
+            return
         if chat_type == "channel":
             # Channels need Post Messages (admin). Pin ID in Render TELEGRAM_CHAT_ID
             # so schedules survive ephemeral disk resets.
@@ -843,6 +709,12 @@ def process_telegram_update(token: str, update: dict) -> None:
     chat_type = message["chat"].get("type", "private")
     command_text = normalize_command_text(message["text"])
     from_user = message.get("from") or {}
+    if from_user.get("is_bot") or chat_id in _all_pinned_chat_ids():
+        # Briefing channels are outbound-only. Ignore the bot's own posts too,
+        # or redeploy backlog / channel_post echo dumps /help into 국내시황.
+        return
+    if chat_type in {"channel", "group", "supergroup"} and not command_text.startswith("/"):
+        return
     user_id = from_user.get("id")
     try:
         user_id_int = int(user_id) if user_id is not None else None
@@ -867,8 +739,6 @@ def process_telegram_update(token: str, update: dict) -> None:
     # Persist only allowlisted / pinned chats for broadcast safety; public light
     # users can still run /help without being added to known_chats.
     register_delivery_chat(chat_id)
-    if chat_type != "channel":
-        maybe_send_deferred_startup_guide(token, chat_id)
 
     cooldown_msg = check_heavy_cooldown(chat_id, command_text)
     if cooldown_msg:
@@ -913,55 +783,27 @@ def _run_telegram_update(token: str, update: dict, chat_id: int | None) -> None:
 def enqueue_telegram_update(token: str, update: dict) -> None:
     """Poller calls this and returns to getUpdates immediately."""
     chat_id = extract_chat_id_from_update(update)
+    if (
+        chat_id is not None
+        and chat_id in _all_pinned_chat_ids()
+        and not update.get("my_chat_member")
+    ):
+        return
 
     with _chat_inflight_lock:
         if chat_id is not None:
             existing = _chat_inflight.get(chat_id)
             if existing is not None and not existing.done():
-                send_text(
-                    token,
-                    chat_id,
-                    "Still working on your previous command. Please wait a moment.",
-                )
+                if chat_id > 0:
+                    send_text(
+                        token,
+                        chat_id,
+                        "Still working on your previous command. Please wait a moment.",
+                    )
                 return
         future = _UPDATE_EXECUTOR.submit(_run_telegram_update, token, update, chat_id)
         if chat_id is not None:
             _chat_inflight[chat_id] = future
-
-
-def _is_private_chat_id(chat_id: int) -> bool:
-    """Telegram private (1:1 bot DM) ids are positive; channels/groups are negative."""
-    return chat_id > 0
-
-
-def _startup_guide_excluded_ids() -> set[int]:
-    """Briefing pins (Korea 국내시황, US, ESG, legacy) never get the command dump."""
-    return _all_pinned_chat_ids()
-
-
-def send_startup_guide_to_chat(token: str, chat_id: int) -> bool:
-    if not _is_private_chat_id(chat_id):
-        return False
-    if chat_id in _startup_guide_excluded_ids():
-        return False
-    if chat_id in _greeted_this_session:
-        return False
-    if not send_text(token, chat_id, STARTUP_TEXT):
-        return False
-    _greeted_this_session.add(chat_id)
-    save_known_chat(chat_id)
-    print(f"Startup guide sent to chat {chat_id}")
-    return True
-
-
-def maybe_send_deferred_startup_guide(token: str, chat_id: int) -> None:
-    # Channels already skip this caller; also guard groups / briefing pins.
-    if not _is_private_chat_id(chat_id):
-        return
-    if chat_id in _startup_guide_excluded_ids():
-        return
-    if chat_id not in _greeted_this_session:
-        send_startup_guide_to_chat(token, chat_id)
 
 
 def _ranking_loading_reply(universe: str) -> list[dict]:
@@ -3711,18 +3553,23 @@ def start_telegram_bot(token: str):
     )
 
     pending_updates, last_update_id = fetch_pending_updates(token)
-    for chat_id in chat_ids_from_updates(pending_updates):
-        register_delivery_chat(chat_id)
-    # Do not blast STARTUP_TEXT on redeploy. Korea (국내시황) / US / ESG
-    # briefing chats do not need the command dump; /help still covers DMs.
-    print(
-        "Startup command guide: skipped on boot "
-        "(not sent to 국내시황 or other briefing chats)."
-    )
-
-    # Never block the poll loop on command handlers — including backlog at boot.
+    replayed = 0
+    skipped = 0
     for update in pending_updates:
+        if update.get("my_chat_member"):
+            skipped += 1
+            continue
+        chat_id = extract_chat_id_from_update(update)
+        if chat_id is None or chat_id < 0 or chat_id in _all_pinned_chat_ids():
+            skipped += 1
+            continue
         enqueue_telegram_update(token, update)
+        replayed += 1
+    print(
+        f"Startup backlog: replayed {replayed} private updates, "
+        f"skipped {skipped} channel/group/member updates "
+        "(no command-list posts to 국내시황 or other briefing chats)."
+    )
 
     while True:
         try:
