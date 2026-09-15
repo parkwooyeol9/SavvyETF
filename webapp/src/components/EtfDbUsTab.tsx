@@ -436,7 +436,7 @@ export default function EtfDbUsTab() {
     <section className="panel etfdb-panel">
       <div className="etfdb-hero">
         <div>
-          <h2 className="kr-hero-title">ETF DB(US)</h2>
+          <h2 className="kr-hero-title">미국 상장 ETF</h2>
           <p className="kr-note">
             미국 주식형 ETF AUM 상위 약 1,000종. 주 지표는 거래대금(종가×거래량).
             유형·지역·섹터·테마로 분류하고, ETF 수급(NAV×Δ좌수)은 사이드에 유지합니다.

@@ -53,6 +53,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/poli-themes": { limit: 20, windowMs: 60_000 },
   "/api/midterm-study": { limit: 10, windowMs: 60_000 },
   "/api/theme-etf": { limit: 12, windowMs: 60_000 },
+  "/api/ai-etf": { limit: 12, windowMs: 60_000 },
   "/api/ingest": { limit: 60, windowMs: 60_000 },
   "/api/community/posts": { limit: 30, windowMs: 60_000 },
   "/api/bookclub/posts": { limit: 20, windowMs: 60_000 },

@@ -251,7 +251,7 @@ export default function EtfDbTab() {
     <section className="panel etfdb-panel">
       <div className="etfdb-hero">
         <div>
-          <h2 className="kr-hero-title">ETF DB</h2>
+          <h2 className="kr-hero-title">한국 상장 ETF</h2>
           <p className="kr-note">
             국내 상장 ETF · 유형/국가/GICS 업종(+바이오·헬스케어·배당·커버드콜·액티브) ·
             지수(네이버 기초지수 기준 코스피·코스닥 추종) · AUM 일별 시계열 · 수급(NAV×Δ설정좌수)

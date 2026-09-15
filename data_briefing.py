@@ -25,7 +25,7 @@ MAX_CONTEXT_CHARS = 18000
 MARKET_LABELS = {
     "kr": "국내시황",
     "us": "미국시황",
-    "etf": "ETF시황",
+    "etf": "ETF 시황",
     "esg": "ESG시황",
 }
 

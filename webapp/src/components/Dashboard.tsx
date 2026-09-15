@@ -15,8 +15,6 @@ import EventStudyTab from "@/components/EventStudyTab";
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgTabShell from "@/components/EsgTabShell";
 import EsgThemesTab from "@/components/EsgThemesTab";
-import EtfDbTab from "@/components/EtfDbTab";
-import EtfDbUsTab from "@/components/EtfDbUsTab";
 import EtfHoldingsTab from "@/components/EtfHoldingsTab";
 import EtfKor15Tab from "@/components/EtfKor15Tab";
 import EtfNewTab from "@/components/EtfNewTab";
@@ -52,6 +50,9 @@ import UsMidtermTab from "@/components/UsMidtermTab";
 import MidtermStudyTab from "@/components/MidtermStudyTab";
 import PoliThemesTab from "@/components/PoliThemesTab";
 import ThemeEtfTab from "@/components/ThemeEtfTab";
+import AiEtfTab from "@/components/AiEtfTab";
+import EtfDbTab from "@/components/EtfDbTab";
+import EtfDbUsTab from "@/components/EtfDbUsTab";
 import {
   AdminLoginControl,
   AdminSessionProvider,
@@ -301,6 +302,7 @@ function DashboardInner({
       tab === "moneyflow" ||
       tab === "etfdb" ||
       tab === "etfdbus" ||
+      tab === "aietf" ||
       tab === "leverage" ||
       tab === "etfweights" ||
       tab === "etfholdings" ||
@@ -477,6 +479,8 @@ function DashboardInner({
         <CountryEtfTab />
       ) : tab === "themeetf" ? (
         <ThemeEtfTab />
+      ) : tab === "aietf" ? (
+        <AiEtfTab />
       ) : tab === "leverage" ? (
         <LeverageEtfTab />
       ) : tab === "geo" ? (

@@ -76,7 +76,7 @@ const TELEGRAM_CHANNELS = [
   },
   {
     id: "etf",
-    title: "ETF시황",
+    title: "ETF 시황",
     handle: "@SavvyETF",
     href: "https://t.me/SavvyETF",
     accent: "etf",

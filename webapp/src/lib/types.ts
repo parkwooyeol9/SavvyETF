@@ -13,6 +13,7 @@ export type ShellTabId =
   | "greenmin"
   | "etfdb"
   | "etfdbus"
+  | "aietf"
   | "leverage"
   | "etfweights"
   | "etfholdings"
@@ -64,7 +65,8 @@ export type NavGroupId =
   | "fundmgr"
   | "weights"
   | "derivs"
-  | "learn";
+  | "learn"
+  | "db";
 
 export type BriefSection = {
   heading?: string;
@@ -135,6 +137,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "leverage",
   "etfdb",
   "etfdbus",
+  "aietf",
   "etfweights",
   "etfholdings",
   "kosdaqactive",
@@ -157,7 +160,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
 export const TAB_LABELS: Record<TabId, string> = {
   kr: "국내시황",
   us: "미국시황",
-  etf: "ETF시황",
+  etf: "ETF 시황",
   esg: "ESG시황",
 };
 
@@ -171,8 +174,8 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   round: "모의투자",
   cardnews: "카드뉴스",
   derivedu: "파생상품",
-  etfdb: "ETF DB",
-  etfdbus: "ETF DB(US)",
+  etfdb: "한국 상장 ETF",
+  etfdbus: "미국 상장 ETF",
   leverage: "레버리지 ETF",
   etfweights: "편입비 모니터",
   etfholdings: "메인",
@@ -209,6 +212,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   midtermstudy: "이벤트 스터디",
   polithemes: "정치테마상품",
   themeetf: "테마 ETF",
+  aietf: "AI ETF",
   bookclub: "북클럽",
   bookclubboard: "Contact",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
@@ -240,18 +244,17 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "etf",
     label: "ETF",
-    tabs: [
-      "etf",
-      "etfdb",
-      "etfdbus",
-      "countryetf",
-      "themeetf",
-    ],
+    tabs: ["etf", "countryetf", "themeetf", "aietf"],
     nested: [
       {
         id: "weights",
         label: "편입비",
         tabs: ["etfholdings", "etfweights", "kosdaqactive"],
+      },
+      {
+        id: "db",
+        label: "DB",
+        tabs: ["etfdb", "etfdbus"],
       },
     ],
   },
@@ -324,6 +327,7 @@ export function navPlacement(tab: ShellTabId): {
   nestedId: NavGroupId | null;
 } {
   if (tab === "kosdaq100") return { groupId: "etf", nestedId: "weights" };
+  if (tab === "etfdb" || tab === "etfdbus") return { groupId: "etf", nestedId: "db" };
   if (tab === "aigov" || tab === "aiinfra") {
     return { groupId: "portfolio", nestedId: "esg" };
   }
@@ -431,6 +435,9 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   }
   if (isShellTabId(v)) return canonicalShellTab(v);
   if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
+  if (v === "aietf" || v === "ai-etf" || v === "ai_etf") return "aietf";
+  if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
+  if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
   return null;
 }
 
