@@ -17,18 +17,25 @@ import {
 } from "recharts";
 
 import {
+  DEFAULT_GROUPING,
   DEFAULT_SCENARIO,
+  GROUPING_META,
   HORIZON_META,
   MARKET_SPECS,
   MIDTERM_ELECTIONS,
-  SCENARIO_META,
   SECTOR_SPECS,
+  electionMatches,
   emptyMidtermStudyPayload,
   eventHorizon,
+  incumbentLabel,
   netDemSeats,
   pickHorizon,
+  scenarioForElection,
+  scenarioMeta,
+  scenariosForGrouping,
   seatsLabel,
   signedSeats,
+  type GroupingId,
   type HorizonDay,
   type MidtermElection,
   type MidtermStudyPayload,
@@ -47,6 +54,8 @@ const MARKET_COLOR: Record<string, string> = {
   nasdaq: "#c084fc",
   dow: "#fbbf24",
 };
+
+const OVERLAY_N_MAX = 6;
 
 function fmtRebased(n?: number | null, digits = 1): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -74,9 +83,68 @@ function controlBadge(house: "D" | "R", senate: "D" | "R"): string {
   return `하원 ${house === "D" ? "민주" : "공화"} · 상원 ${senate === "D" ? "민주" : "공화"}`;
 }
 
+function countLabel(n: number): string {
+  return `${n}회`;
+}
+
+function MarketChartTooltip({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean;
+  label?: number | string;
+  payload?: Array<{ dataKey?: string | number; value?: number; name?: string }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const rows = payload.filter((p) => !String(p.dataKey ?? "").startsWith("_ov_"));
+  if (!rows.length) return null;
+  return (
+    <div style={{ ...tooltipStyle, padding: "0.55rem 0.7rem" }}>
+      <div style={{ marginBottom: 6, color: "#94a3b8", fontSize: 12 }}>거래일 {label}</div>
+      {rows.map((p) => (
+        <div
+          key={String(p.dataKey)}
+          style={{ display: "flex", gap: 12, justifyContent: "space-between", fontSize: 13 }}
+        >
+          <span>{MARKET_SPECS.find((m) => m.id === p.dataKey)?.label || p.name}</span>
+          <strong>{fmtRebased(p.value, 2)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SampleNote({ scenario, n }: { scenario: ScenarioId; n: number }) {
+  if (n === 0 && scenario === "inc_house") {
+    return (
+      <p className="eventstudy-stale">
+        1950–2022 중간선거에서 여당이 하원만 지키고 상원만 진 사례는 없습니다.
+      </p>
+    );
+  }
+  if (scenario === "inc_senate") {
+    return (
+      <p className="eventstudy-stale">
+        기본값입니다. 표본은 1982·2010·2018·2022 네 해입니다. 1982는 선거 전부터 하원이 야당이었고,
+        민주 하원·공화 상원만 모으면 n=2라 더 얇습니다. 평균을 패턴으로 단정하지 마세요.
+      </p>
+    );
+  }
+  if (n > 0 && n < 5 && scenario !== "all") {
+    return (
+      <p className="eventstudy-stale">
+        이 분할은 표본이 {countLabel(n)}뿐입니다. 평균을 패턴으로 단정하지 마세요.
+      </p>
+    );
+  }
+  return null;
+}
+
 export default function MidtermStudyTab() {
   const [data, setData] = useState<MidtermStudyPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [grouping, setGrouping] = useState<GroupingId>(DEFAULT_GROUPING);
   const [scenario, setScenario] = useState<ScenarioId>(DEFAULT_SCENARIO);
   const [horizon, setHorizon] = useState<HorizonDay>(90);
 
@@ -97,8 +165,10 @@ export default function MidtermStudyTab() {
     void load();
   }, [load]);
 
+  const pills = scenariosForGrouping(grouping);
   const sc = data?.scenarios[scenario];
-  const scenarioMeta = SCENARIO_META.find((s) => s.id === scenario);
+  const meta = scenarioMeta(scenario);
+  const showOverlay = Boolean(sc && sc.n > 0 && sc.n <= OVERLAY_N_MAX && scenario !== "all");
 
   const chartRows = useMemo(() => {
     if (!sc) return [];
@@ -112,8 +182,18 @@ export default function MidtermStudyTab() {
         byT.set(p.t, row);
       }
     }
+    if (showOverlay) {
+      for (const ov of sc.spx_overlay || []) {
+        const key = `_ov_${ov.year}`;
+        for (const p of ov.path) {
+          const row = byT.get(p.t) || { t: p.t };
+          row[key] = p.v;
+          byT.set(p.t, row);
+        }
+      }
+    }
     return [...byT.values()].sort((a, b) => Number(a.t) - Number(b.t));
-  }, [sc]);
+  }, [sc, showOverlay]);
 
   const marketAssets = useMemo(
     () => (sc?.assets || []).filter((a) => a.kind === "market"),
@@ -140,7 +220,15 @@ export default function MidtermStudyTab() {
   }, [sectorAssets, horizon]);
 
   const catalog = data?.elections?.length ? data.elections : MIDTERM_ELECTIONS;
-  const inScenario = catalog.filter((e) => e.scenario === scenario);
+  const inScenario = catalog.filter((e) => electionMatches(e, scenario));
+
+  function applyGrouping(next: GroupingId) {
+    setGrouping(next);
+    const allowed = new Set(scenariosForGrouping(next).map((s) => s.id));
+    if (!allowed.has(scenario)) {
+      setScenario(next === "incumbent" ? DEFAULT_SCENARIO : "all");
+    }
+  }
 
   return (
     <div className="geo-tab macro-tab eventstudy-tab midterm-study-tab">
@@ -150,8 +238,8 @@ export default function MidtermStudyTab() {
             <h2 className="panel-title">중간선거 이벤트 스터디</h2>
             <p className="macro-subhead">
               1950년 트루먼 중간선거부터, 선거 당일 이후 첫 거래일을 100으로 두고 S&amp;P 500 ·
-              나스닥 · 다우와 장기 업종 지수를 시나리오별로 평균합니다. 기본값은 하원 민주 · 상원
-              공화(1982, 2018).
+              나스닥 · 다우와 장기 업종 지수를 시나리오별로 평균합니다. 기본값은 여당이 하원을 잃고
+              상원을 유지한 경우(1982, 2010, 2018, 2022)입니다.
             </p>
           </div>
           <button type="button" className="eventstudy-example-btn" onClick={() => void load()}>
@@ -159,8 +247,24 @@ export default function MidtermStudyTab() {
           </button>
         </div>
 
+        <div className="midterm-study-grouping" role="tablist" aria-label="시나리오 분류">
+          {GROUPING_META.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              role="tab"
+              aria-selected={grouping === g.id}
+              className={`midterm-study-group ${grouping === g.id ? "active" : ""}`}
+              onClick={() => applyGrouping(g.id)}
+            >
+              {g.label}
+              <em>{g.sub}</em>
+            </button>
+          ))}
+        </div>
+
         <div className="eventstudy-cat-row midterm-study-scenarios">
-          {SCENARIO_META.map((s) => (
+          {pills.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -170,22 +274,12 @@ export default function MidtermStudyTab() {
               {s.label}
               <em>
                 {s.sub}
-                {data ? ` · n=${data.scenarios[s.id]?.n ?? 0}` : ""}
+                {data ? ` · ${countLabel(data.scenarios[s.id]?.n ?? 0)}` : ""}
               </em>
             </button>
           ))}
         </div>
-        {scenario === "d_r" ? (
-          <p className="eventstudy-stale">
-            이 분할 시나리오는 표본이 1982년(레이건)과 2018년(트럼프) 두 번뿐입니다. 평균을 패턴으로
-            단정하지 마세요.
-          </p>
-        ) : null}
-        {scenario === "r_d" ? (
-          <p className="eventstudy-stale">
-            하원 공화 · 상원 민주 표본은 2010년과 2022년 두 해입니다.
-          </p>
-        ) : null}
+        <SampleNote scenario={scenario} n={sc?.n ?? 0} />
       </section>
 
       {loading && !data ? <p className="empty">과거 중간선거 경로를 맞추는 중…</p> : null}
@@ -198,8 +292,9 @@ export default function MidtermStudyTab() {
               <div>
                 <h3 className="panel-title">지수 경로 (t=0 → 100)</h3>
                 <p className="macro-subhead">
-                  {scenarioMeta?.label} · {sc.n}개 중간선거 평균. 가로축은 거래일(선거 세션=0),
+                  {meta?.label} · {countLabel(sc.n)} 중간선거 평균. 가로축은 거래일(선거 세션=0),
                   세로축은 리베이스 지수입니다.
+                  {showOverlay ? " 옅은 선은 각 해의 S&P 500입니다." : ""}
                 </p>
               </div>
             </div>
@@ -220,17 +315,27 @@ export default function MidtermStudyTab() {
                     />
                     <ReferenceLine y={100} stroke="#64748b" strokeDasharray="4 4" />
                     <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      labelFormatter={(label) => `거래일 ${label}`}
-                      formatter={(value: number, name: string) => [
-                        fmtRebased(value, 2),
-                        MARKET_SPECS.find((m) => m.id === name)?.label || name,
-                      ]}
-                    />
+                    <Tooltip content={<MarketChartTooltip />} />
                     <Legend
                       formatter={(value) => MARKET_SPECS.find((m) => m.id === value)?.label || value}
                     />
+                    {showOverlay
+                      ? (sc.spx_overlay || []).map((ov) => (
+                          <Line
+                            key={`ov-${ov.year}`}
+                            type="monotone"
+                            dataKey={`_ov_${ov.year}`}
+                            name={`_ov_${ov.year}`}
+                            stroke={MARKET_COLOR.spx}
+                            strokeOpacity={0.28}
+                            strokeWidth={1}
+                            dot={false}
+                            legendType="none"
+                            isAnimationActive={false}
+                            connectNulls
+                          />
+                        ))
+                      : null}
                     {MARKET_SPECS.map((spec) => {
                       const asset = sc.assets.find((a) => a.id === spec.id);
                       if (!asset || asset.n === 0) return null;
@@ -419,7 +524,8 @@ export default function MidtermStudyTab() {
               <div>
                 <h3 className="panel-title">이 시나리오에 들어간 선거</h3>
                 <p className="macro-subhead">
-                  각 해의 S&amp;P 500 / 나스닥을 같은 100 기준으로 풀어 놓은 값입니다.
+                  각 해의 S&amp;P 500 / 나스닥을 같은 100 기준으로 풀어 놓은 값입니다. 행을 누르면
+                  그 해가 속한 분할로 이동합니다.
                 </p>
               </div>
             </div>
@@ -429,6 +535,7 @@ export default function MidtermStudyTab() {
                   <tr>
                     <th>선거</th>
                     <th>대통령</th>
+                    <th>여당 결과</th>
                     <th>S&amp;P +3m</th>
                     <th>S&amp;P +1y</th>
                     <th>나스닥 +3m</th>
@@ -437,13 +544,19 @@ export default function MidtermStudyTab() {
                 </thead>
                 <tbody>
                   {(sc.elections || []).map((ev) => {
-                    const meta = catalog.find((e) => e.date === ev.date);
+                    const row = catalog.find((e) => e.date === ev.date);
                     const spx3 = eventHorizon(ev, "spx", 90);
                     const spx12 = eventHorizon(ev, "spx", 365);
                     const nq3 = eventHorizon(ev, "nasdaq", 90);
                     const nq12 = eventHorizon(ev, "nasdaq", 365);
                     return (
-                      <tr key={ev.date}>
+                      <tr
+                        key={ev.date}
+                        className="midterm-study-pick"
+                        onClick={() => {
+                          if (row) setScenario(scenarioForElection(row, grouping));
+                        }}
+                      >
                         <td>
                           <span className="eventstudy-asset-name">{ev.date}</span>
                           {ev.t0_date && ev.t0_date !== ev.date ? (
@@ -451,8 +564,9 @@ export default function MidtermStudyTab() {
                           ) : null}
                         </td>
                         <td>
-                          {meta ? `${meta.president_ko} (${meta.president_party})` : "—"}
+                          {row ? `${row.president_ko} (${row.president_party})` : "—"}
                         </td>
+                        <td>{row ? incumbentLabel(row) : "—"}</td>
                         <td className={retClass(spx3?.return_pct)}>{fmtPct(spx3?.return_pct)}</td>
                         <td className={retClass(spx12?.return_pct)}>{fmtPct(spx12?.return_pct)}</td>
                         <td className={retClass(nq3?.return_pct)}>{fmtPct(nq3?.return_pct)}</td>
@@ -473,7 +587,7 @@ export default function MidtermStudyTab() {
             <h3 className="panel-title">1950년대부터 의회 구성</h3>
             <p className="macro-subhead">
               트루먼부터 바이든까지 중간선거 결과. 의석 수는 다음 의회(1월 개원) 기준이고, 무소속은
-              기타로 묶었습니다. 지금 고른 시나리오 행이 강조됩니다.
+              기타로 묶었습니다. 행을 누르면 그 해가 속한 분할을 고릅니다.
             </p>
           </div>
         </div>
@@ -491,7 +605,13 @@ export default function MidtermStudyTab() {
             </thead>
             <tbody>
               {catalog.map((row) => (
-                <RosterRow key={row.id} row={row} active={row.scenario === scenario} />
+                <RosterRow
+                  key={row.id}
+                  row={row}
+                  active={electionMatches(row, scenario)}
+                  grouping={grouping}
+                  onPick={() => setScenario(scenarioForElection(row, grouping))}
+                />
               ))}
             </tbody>
           </table>
@@ -500,7 +620,9 @@ export default function MidtermStudyTab() {
           <p className="meta-soft midterm-footnote">
             현재 시나리오 해당 연도: {inScenario.map((e) => e.id).join(", ")}
           </p>
-        ) : null}
+        ) : (
+          <p className="meta-soft midterm-footnote">이 분할에 해당하는 중간선거가 없습니다.</p>
+        )}
       </section>
 
       {data?.coverage?.length ? (
@@ -511,11 +633,21 @@ export default function MidtermStudyTab() {
   );
 }
 
-function RosterRow({ row, active }: { row: MidtermElection; active: boolean }) {
+function RosterRow({
+  row,
+  active,
+  grouping,
+  onPick,
+}: {
+  row: MidtermElection;
+  active: boolean;
+  grouping: GroupingId;
+  onPick: () => void;
+}) {
   const houseNet = netDemSeats(row.house_before, row.house_after);
   const senateNet = netDemSeats(row.senate_before, row.senate_after);
   return (
-    <tr className={active ? "focus" : undefined}>
+    <tr className={active ? "focus" : undefined} onClick={onPick}>
       <td>
         <span className="eventstudy-asset-name">{row.id}</span>
         <span className="eventstudy-asset-note">{row.date.slice(5)}</span>
@@ -543,8 +675,17 @@ function RosterRow({ row, active }: { row: MidtermElection; active: boolean }) {
         </span>
       </td>
       <td>
-        <span className="eventstudy-asset-name">{controlBadge(row.house_control, row.senate_control)}</span>
-        <span className="eventstudy-asset-note">{row.note}</span>
+        <span className="eventstudy-asset-name">
+          {grouping === "incumbent"
+            ? incumbentLabel(row)
+            : controlBadge(row.house_control, row.senate_control)}
+        </span>
+        <span className="eventstudy-asset-note">
+          {grouping === "incumbent"
+            ? controlBadge(row.house_control, row.senate_control)
+            : incumbentLabel(row)}
+          {row.note ? ` · ${row.note}` : ""}
+        </span>
       </td>
     </tr>
   );

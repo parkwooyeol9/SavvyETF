@@ -39,7 +39,6 @@ import QuantTab from "@/components/QuantTab";
 import TradingIdeasTab from "@/components/TradingIdeasTab";
 import WeightOptimizeTab from "@/components/WeightOptimizeTab";
 import NlpPulseTab from "@/components/NlpPulseTab";
-import NlpHistoryTab from "@/components/NlpHistoryTab";
 import GraphTab from "@/components/GraphTab";
 import WallStreetGurusTab from "@/components/WallStreetGurusTab";
 import TradingSignalsTab from "@/components/TradingSignalsTab";
@@ -440,10 +439,8 @@ function DashboardInner({
         <TradingSignalsTab />
       ) : tab === "graph" ? (
         <GraphTab />
-      ) : tab === "nlp" ? (
+      ) : tab === "nlp" || tab === "nlphistory" ? (
         <NlpPulseTab />
-      ) : tab === "nlphistory" ? (
-        <NlpHistoryTab />
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
       ) : tab === "weightopt" ? (

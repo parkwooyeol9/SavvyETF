@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import NlpHistoryPanel from "@/components/NlpHistoryPanel";
 import NlpPriceChart from "@/components/NlpPriceChart";
+import {
+  emptyNlpHistoryIndex,
+  emptyNlpHistorySeries,
+  nlpHistoryTone,
+  type NlpHistoryIndex,
+  type NlpHistoryName,
+  type NlpHistorySeries,
+} from "@/lib/nlpHistory";
 import type {
   NlpHeadline,
   NlpMarketPulse,
@@ -105,6 +114,10 @@ export default function NlpPulseTab() {
   const [loading, setLoading] = useState(true);
   const [market, setMarket] = useState<"kospi200" | "sp500">("kospi200");
   const [picked, setPicked] = useState<string | null>(null);
+  const [histIndex, setHistIndex] = useState<NlpHistoryIndex | null>(null);
+  const [histSeries, setHistSeries] = useState<NlpHistorySeries | null>(null);
+  const [histDate, setHistDate] = useState<string | null>(null);
+  const [loadingHist, setLoadingHist] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,10 +136,34 @@ export default function NlpPulseTab() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/nlp-history", { cache: "no-store" });
+        const json = (await res.json()) as NlpHistoryIndex;
+        if (!cancelled) setHistIndex(json);
+      } catch (exc) {
+        if (!cancelled) {
+          setHistIndex(emptyNlpHistoryIndex(exc instanceof Error ? exc.message : "로드 실패"));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const names = useMemo(() => {
     const all = [...(data?.kospi.names || []), ...(data?.spx.names || [])];
     return all.filter((n) => n.market === market);
   }, [data, market]);
+
+  const extraHistory = useMemo(() => {
+    if (market !== "kospi200") return [] as NlpHistoryName[];
+    const pulseIds = new Set(names.map((n) => n.id));
+    return (histIndex?.names || []).filter((n) => !pulseIds.has(n.code));
+  }, [histIndex, market, names]);
 
   const events = useMemo(() => {
     let rows = data?.events || [];
@@ -150,14 +187,50 @@ export default function NlpPulseTab() {
   }, [data, market, picked]);
 
   const pickedCard = names.find((n) => n.id === picked);
+  const pickedHistoryMeta = (histIndex?.names || []).find((n) => n.code === picked);
+  const historyCode = /^\d{6}$/.test(picked || "") ? picked : null;
+  const chartTicker = pickedCard?.ticker || pickedHistoryMeta?.yahoo || histSeries?.yahoo;
+  const chartName = pickedCard?.name || pickedHistoryMeta?.name || histSeries?.name;
   const friendly = names.filter((n) => n.verdict === "friendly").slice(0, 8);
   const cautious = names.filter((n) => n.verdict === "cautious").slice(0, 8);
 
   useEffect(() => {
-    if (!names.length) return;
-    if (picked && names.some((n) => n.id === picked)) return;
-    setPicked(names[0]!.id);
-  }, [names, picked]);
+    const okPulse = Boolean(picked && names.some((n) => n.id === picked));
+    const okHist = Boolean(picked && extraHistory.some((n) => n.code === picked));
+    if (okPulse || okHist) return;
+    setPicked(names[0]?.id || extraHistory[0]?.code || null);
+  }, [names, extraHistory, picked]);
+
+  useEffect(() => {
+    if (!historyCode) {
+      setHistSeries(null);
+      setHistDate(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingHist(true);
+    setHistDate(null);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/nlp-history?code=${encodeURIComponent(historyCode)}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as NlpHistorySeries;
+        if (!cancelled) setHistSeries(json);
+      } catch (exc) {
+        if (!cancelled) {
+          setHistSeries(
+            emptyNlpHistorySeries(historyCode, exc instanceof Error ? exc.message : "로드 실패"),
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingHist(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [historyCode]);
 
   return (
     <div className="geo-tab nlp-tab">
@@ -166,8 +239,8 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              국내·해외 대표주의 뉴스 텍스트, DART·SEC 이벤트 공시, 실적·컨콜을 보고
-              종목 결론과 라이브 캔들 차트를 한 화면에서 봅니다.
+              국내·해외 대표주의 오늘 뉴스·공시·컨콜과, 코스피·코스닥 시총 상위 종목의 1년 제목
+              점수를 한 화면에서 봅니다. 종목을 고르면 캔들과 1년 투심 차트가 같이 열립니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -208,8 +281,11 @@ export default function NlpPulseTab() {
 
       <section className="geo-section">
         <h3 className="geo-section-title">종목 투심 맵</h3>
-        <p className="macro-subhead">종목을 누르면 결론·차트·뉴스가 그 기업만 보여 줍니다.</p>
-        {!names.length ? (
+        <p className="macro-subhead">
+          종목을 누르면 결론·차트·뉴스가 그 기업만 보여 줍니다. 국내 화면에는 1년 아카이브가 있는
+          코스닥 상위 종목도 같이 나옵니다.
+        </p>
+        {!names.length && !extraHistory.length ? (
           <p className="empty">{loading ? "뉴스 수집 중…" : "표시할 종목이 없습니다."}</p>
         ) : (
           <div className="nlp-chip-grid">
@@ -220,6 +296,23 @@ export default function NlpPulseTab() {
                 active={picked === card.id}
                 onPick={(id) => setPicked(id)}
               />
+            ))}
+            {extraHistory.map((card) => (
+              <button
+                key={card.code}
+                type="button"
+                className={`nlp-chip ${picked === card.code ? "active" : ""} ${
+                  card.last_score != null ? `nlp-${nlpHistoryTone(card.last_score)}` : ""
+                }`}
+                onClick={() => setPicked(card.code)}
+                title="1년 뉴스 아카이브"
+              >
+                <span>{card.name}</span>
+                {card.last_score != null ? (
+                  <strong className={toneClass(card.last_score)}>{fmtScore(card.last_score)}</strong>
+                ) : null}
+                <em>1년</em>
+              </button>
             ))}
           </div>
         )}
@@ -249,8 +342,17 @@ export default function NlpPulseTab() {
         ) : null}
       </section>
 
-      {pickedCard ? (
-        <NlpPriceChart key={pickedCard.ticker} ticker={pickedCard.ticker} name={pickedCard.name} />
+      {chartTicker ? (
+        <NlpPriceChart key={chartTicker} ticker={chartTicker} name={chartName || chartTicker} />
+      ) : null}
+
+      {historyCode ? (
+        <NlpHistoryPanel
+          series={histSeries}
+          loading={loadingHist}
+          selectedDate={histDate}
+          onSelectDate={setHistDate}
+        />
       ) : null}
 
       <div className="nlp-verdict-board">

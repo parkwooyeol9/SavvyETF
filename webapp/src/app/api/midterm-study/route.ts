@@ -159,7 +159,7 @@ async function buildPayload() {
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "midterm-study:v2",
+      "midterm-study:v3",
       24 * 3_600_000,
       48 * 3_600_000,
       buildPayload,

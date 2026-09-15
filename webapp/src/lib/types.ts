@@ -202,7 +202,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   moneyflow: "Money Flow",
   aiport: "AI포트",
   nlp: "NLP",
-  nlphistory: "뉴스 투심",
+  nlphistory: "NLP",
   graph: "그래프",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
@@ -258,7 +258,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "nlphistory", "ideas", "weightopt", "aiport"],
+    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport"],
     nested: [
       {
         id: "politics",
@@ -391,6 +391,7 @@ export function isShellTabId(value: string): value is ShellTabId {
 }
 
 export function canonicalShellTab(id: ShellTabId): ShellTabId {
+  if (id === "nlphistory") return "nlp";
   if (id === "kosdaq100") return "kosdaqactive";
   if (id === "aigov" || id === "aiinfra") return "infra";
   if (id === "round") return "heatpick";

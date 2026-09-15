@@ -6,7 +6,10 @@
  */
 
 export type ChamberParty = "D" | "R";
-export type ScenarioId = "d_d" | "d_r" | "r_d" | "r_r";
+export type GroupingId = "incumbent" | "party";
+export type PartyScenarioId = "d_d" | "d_r" | "r_d" | "r_r";
+export type IncumbentScenarioId = "inc_both" | "inc_senate" | "inc_house" | "inc_neither";
+export type ScenarioId = "all" | PartyScenarioId | IncumbentScenarioId;
 
 export type PricePoint = { date: string; close: number };
 
@@ -36,7 +39,8 @@ export const MIN_ALIGN_POINTS = 5;
 /** If the first available bar is farther than this, the series does not cover the election. */
 export const MAX_T0_GAP_DAYS = 7;
 
-export const DEFAULT_SCENARIO: ScenarioId = "d_r";
+export const DEFAULT_GROUPING: GroupingId = "incumbent";
+export const DEFAULT_SCENARIO: ScenarioId = "inc_senate";
 
 export type ChamberSeats = { d: number; r: number; other?: number };
 
@@ -89,6 +93,8 @@ export type ElectionSnapshot = {
   assets: EventAssetSnapshot[];
 };
 
+export type OverlayPath = { year: string; path: PathPoint[] };
+
 export type ScenarioAssetResult = {
   id: string;
   label: string;
@@ -103,12 +109,14 @@ export type ScenarioResult = {
   n: number;
   elections: ElectionSnapshot[];
   assets: ScenarioAssetResult[];
+  spx_overlay: OverlayPath[];
 };
 
 export type MidtermStudyPayload = {
   ok: boolean;
   error?: string;
   generated_at?: string;
+  default_grouping: GroupingId;
   default_scenario: ScenarioId;
   coverage: string[];
   note: string;
@@ -118,18 +126,90 @@ export type MidtermStudyPayload = {
   sectors: AssetSpec[];
 };
 
-export const SCENARIO_META: Array<{
+export type ScenarioMeta = {
   id: ScenarioId;
-  house: ChamberParty;
-  senate: ChamberParty;
   label: string;
   sub: string;
-}> = [
-  { id: "d_d", house: "D", senate: "D", label: "하원 민주 · 상원 민주", sub: "민주 통일" },
-  { id: "d_r", house: "D", senate: "R", label: "하원 민주 · 상원 공화", sub: "분할 (기본)" },
-  { id: "r_d", house: "R", senate: "D", label: "하원 공화 · 상원 민주", sub: "분할" },
-  { id: "r_r", house: "R", senate: "R", label: "하원 공화 · 상원 공화", sub: "공화 통일" },
+};
+
+export const GROUPING_META: Array<{ id: GroupingId; label: string; sub: string }> = [
+  { id: "incumbent", label: "여당 · 야당", sub: "대통령 정당 기준" },
+  { id: "party", label: "민주 · 공화", sub: "당명 기준" },
 ];
+
+export const ALL_SCENARIO: ScenarioMeta = {
+  id: "all",
+  label: "전체 평균",
+  sub: "1950–2022 전부",
+};
+
+export const INCUMBENT_SCENARIOS: ScenarioMeta[] = [
+  { id: "inc_both", label: "여당 양원 유지", sub: "하원·상원 모두 여당" },
+  { id: "inc_senate", label: "여당 하원 패 · 상원 유지", sub: "기본 · 2026형 분할" },
+  { id: "inc_house", label: "여당 하원 유지 · 상원 패", sub: "이 표본에서는 사례 없음" },
+  { id: "inc_neither", label: "여당 양원 패", sub: "야당이 양원 장악" },
+];
+
+export const PARTY_SCENARIOS: ScenarioMeta[] = [
+  { id: "d_d", label: "하원 민주 · 상원 민주", sub: "민주 통일" },
+  { id: "d_r", label: "하원 민주 · 상원 공화", sub: "분할" },
+  { id: "r_d", label: "하원 공화 · 상원 민주", sub: "분할" },
+  { id: "r_r", label: "하원 공화 · 상원 공화", sub: "공화 통일" },
+];
+
+export const SCENARIO_META: ScenarioMeta[] = [
+  ALL_SCENARIO,
+  ...INCUMBENT_SCENARIOS,
+  ...PARTY_SCENARIOS,
+];
+
+export const ALL_SCENARIO_IDS: ScenarioId[] = SCENARIO_META.map((s) => s.id);
+
+export function scenariosForGrouping(grouping: GroupingId): ScenarioMeta[] {
+  return [ALL_SCENARIO, ...(grouping === "incumbent" ? INCUMBENT_SCENARIOS : PARTY_SCENARIOS)];
+}
+
+export function partyScenarioId(house: ChamberParty, senate: ChamberParty): PartyScenarioId {
+  return `${house.toLowerCase()}_${senate.toLowerCase()}` as PartyScenarioId;
+}
+
+/** After-election chamber control vs the sitting president's party. */
+export function incumbentScenarioId(
+  president: ChamberParty,
+  house: ChamberParty,
+  senate: ChamberParty,
+): IncumbentScenarioId {
+  const houseInc = house === president;
+  const senateInc = senate === president;
+  if (houseInc && senateInc) return "inc_both";
+  if (!houseInc && senateInc) return "inc_senate";
+  if (houseInc && !senateInc) return "inc_house";
+  return "inc_neither";
+}
+
+export function electionMatches(e: MidtermElection, scenario: ScenarioId): boolean {
+  if (scenario === "all") return true;
+  if (scenario.startsWith("inc_")) {
+    return incumbentScenarioId(e.president_party, e.house_control, e.senate_control) === scenario;
+  }
+  return e.scenario === scenario;
+}
+
+export function scenarioForElection(e: MidtermElection, grouping: GroupingId): ScenarioId {
+  if (grouping === "incumbent") {
+    return incumbentScenarioId(e.president_party, e.house_control, e.senate_control);
+  }
+  return partyScenarioId(e.house_control, e.senate_control);
+}
+
+export function incumbentLabel(e: MidtermElection): string {
+  const id = incumbentScenarioId(e.president_party, e.house_control, e.senate_control);
+  return INCUMBENT_SCENARIOS.find((s) => s.id === id)?.label ?? id;
+}
+
+export function scenarioMeta(id: ScenarioId): ScenarioMeta | undefined {
+  return SCENARIO_META.find((s) => s.id === id);
+}
 
 export const MARKET_SPECS: AssetSpec[] = [
   { id: "spx", label: "S&P 500", kind: "market", symbol: "^GSPC", start: "1950-01-03" },
@@ -323,7 +403,7 @@ export const MIDTERM_ELECTIONS: MidtermElection[] = [
     house_control: "D",
     senate_control: "R",
     scenario: "d_r",
-    note: "더블딥 불황. 하원 민주, 상원 공화 — 2026 기본 시나리오와 같은 분할.",
+    note: "더블딥 불황. 여당이 하원을 잃고(선거 전부터 하원은 민주) 상원은 유지.",
   },
   {
     id: "1986",
@@ -467,7 +547,7 @@ export const MIDTERM_ELECTIONS: MidtermElection[] = [
     house_control: "D",
     senate_control: "R",
     scenario: "d_r",
-    note: "블루 웨이브. 하원 민주 탈환, 상원 공화 유지 — 기본 시나리오.",
+    note: "블루 웨이브. 여당이 하원을 잃고 상원은 유지.",
   },
   {
     id: "2022",
@@ -489,10 +569,10 @@ export const MIDTERM_ELECTIONS: MidtermElection[] = [
 
 export const MIDTERM_STUDY_NOTE =
   "중간선거 당일(화) 이후 첫 거래일 종가를 100으로 두고 이후 경로를 평균합니다. " +
-  "업종은 GICS/섹터 ETF가 1990년대 이후에야 생기므로, 1926년부터 있는 Ken French 12산업 " +
-  "가치가중 포트폴리오를 대용합니다. 당대 대표 종목으로 메우지 않은 이유는 상장폐지·합병 " +
-  "생존자 편향 때문입니다. 나스닥은 1971-02, 다우는 Yahoo 기준으로 1992부터만 있습니다. " +
-  "기본값(하원 민주·상원 공화)은 1982·2018 두 해뿐입니다.";
+  "기본 분류는 민주/공화 당명이 아니라 당시 대통령(여당) 대비 상·하원 결과입니다. " +
+  "기본값 ‘여당 하원 패 · 상원 유지’는 1982·2010·2018·2022입니다(1982는 선거 전부터 하원이 야당). " +
+  "업종은 GICS/섹터 ETF가 1990년대 이후에야 생기므로 Ken French 12산업 가치가중 포트폴리오를 대용합니다. " +
+  "나스닥은 1971-02, 다우는 Yahoo 기준으로 1992부터만 있습니다.";
 
 export function scenarioLabel(id: ScenarioId): string {
   return SCENARIO_META.find((s) => s.id === id)?.label ?? id;
@@ -654,7 +734,7 @@ export function buildScenario(
   specs: AssetSpec[],
   seriesMap: Record<string, PricePoint[]>,
 ): ScenarioResult {
-  const rows = elections.filter((e) => e.scenario === scenario);
+  const rows = elections.filter((e) => electionMatches(e, scenario));
   const eventSnaps = rows.map((e) => snapshotForEvent(specs, seriesMap, e.date));
   const assets: ScenarioAssetResult[] = specs.map((spec) => {
     const paths: AlignedPoint[][] = [];
@@ -671,11 +751,17 @@ export function buildScenario(
       horizons: averageHorizons(paths),
     };
   });
+  const spx_overlay: OverlayPath[] = [];
+  for (const e of rows) {
+    const aligned = alignSeriesToEvent(seriesMap.spx || [], e.date);
+    if (aligned) spx_overlay.push({ year: e.id, path: clipPath(aligned) });
+  }
   return {
     id: scenario,
     n: rows.length,
     elections: eventSnaps,
     assets,
+    spx_overlay,
   };
 }
 
@@ -741,6 +827,7 @@ export function buildMidtermStudyPayload(
   return {
     ok: true,
     generated_at: new Date().toISOString(),
+    default_grouping: DEFAULT_GROUPING,
     default_scenario: DEFAULT_SCENARIO,
     coverage,
     note: MIDTERM_STUDY_NOTE,
@@ -754,11 +841,12 @@ export function buildMidtermStudyPayload(
 export function emptyMidtermStudyPayload(error: string): MidtermStudyPayload {
   const scenarios = {} as Record<ScenarioId, ScenarioResult>;
   for (const meta of SCENARIO_META) {
-    scenarios[meta.id] = { id: meta.id, n: 0, elections: [], assets: [] };
+    scenarios[meta.id] = { id: meta.id, n: 0, elections: [], assets: [], spx_overlay: [] };
   }
   return {
     ok: false,
     error,
+    default_grouping: DEFAULT_GROUPING,
     default_scenario: DEFAULT_SCENARIO,
     coverage: [],
     note: MIDTERM_STUDY_NOTE,

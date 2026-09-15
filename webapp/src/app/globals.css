@@ -7310,8 +7310,41 @@ button.country-etf-card {
   font-size: 0.78rem;
 }
 
-.midterm-study-tab .midterm-study-scenarios {
+.midterm-study-grouping {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
   margin-top: 0.85rem;
+}
+
+.midterm-study-group {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--line, #2b3648);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.25;
+}
+
+.midterm-study-group.active {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.midterm-study-group em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.midterm-study-tab .midterm-study-scenarios {
+  margin-top: 0.65rem;
 }
 
 .midterm-study-tab .midterm-study-scenarios .eventstudy-cat {
@@ -7335,6 +7368,14 @@ button.country-etf-card {
 
 .midterm-study-roster {
   min-width: 52rem;
+}
+
+.midterm-study-roster tbody tr {
+  cursor: pointer;
+}
+
+.midterm-study-roster tbody tr:hover {
+  background: rgba(148, 163, 184, 0.08);
 }
 
 .midterm-study-roster td,
@@ -7374,6 +7415,14 @@ button.country-etf-card {
   font-size: 0.68rem;
   color: var(--muted);
   font-weight: 500;
+}
+
+.midterm-study-tab .midterm-study-pick {
+  cursor: pointer;
+}
+
+.midterm-study-tab .midterm-study-pick:hover {
+  background: rgba(148, 163, 184, 0.08);
 }
 
 .midterm-policy-grid {
