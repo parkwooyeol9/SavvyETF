@@ -61,25 +61,24 @@ function parseIndex(raw: unknown): NlpHistoryIndex | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const namesIn = Array.isArray(row.names) ? row.names : [];
-  const names: NlpHistoryName[] = namesIn
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const n = item as Record<string, unknown>;
-      const code = String(n.code || "").trim();
-      const name = String(n.name || "").trim();
-      if (!code || !name) return null;
-      return {
-        code,
-        name,
-        market: asMarket(n.market),
-        yahoo: String(n.yahoo || `${code}.KS`),
-        n_days: typeof n.n_days === "number" ? n.n_days : undefined,
-        n_headlines: typeof n.n_headlines === "number" ? n.n_headlines : undefined,
-        last_score: typeof n.last_score === "number" ? n.last_score : n.last_score === null ? null : undefined,
-        last_date: typeof n.last_date === "string" ? n.last_date : undefined,
-      };
-    })
-    .filter((n): n is NlpHistoryName => n != null);
+  const names: NlpHistoryName[] = [];
+  for (const item of namesIn) {
+    if (!item || typeof item !== "object") continue;
+    const n = item as Record<string, unknown>;
+    const code = String(n.code || "").trim();
+    const name = String(n.name || "").trim();
+    if (!code || !name) continue;
+    names.push({
+      code,
+      name,
+      market: asMarket(n.market),
+      yahoo: String(n.yahoo || `${code}.KS`),
+      n_days: typeof n.n_days === "number" ? n.n_days : undefined,
+      n_headlines: typeof n.n_headlines === "number" ? n.n_headlines : undefined,
+      last_score: typeof n.last_score === "number" ? n.last_score : null,
+      last_date: typeof n.last_date === "string" ? n.last_date : null,
+    });
+  }
   if (!names.length) return null;
   return {
     ok: true,
