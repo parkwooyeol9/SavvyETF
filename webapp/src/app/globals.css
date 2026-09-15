@@ -7929,6 +7929,33 @@ button.country-etf-card {
   margin-top: 0.65rem;
 }
 
+.nlp-chip-grid-dense {
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 0.2rem;
+  gap: 0.35rem;
+}
+
+.nlp-map-search {
+  display: block;
+  width: min(320px, 100%);
+  margin-top: 0.65rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.nlp-corr-badge {
+  margin: 0.35rem 0 0;
+  color: #fbbf24;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .nlp-chip {
   display: inline-flex;
   align-items: center;
@@ -8117,7 +8144,7 @@ button.country-etf-card {
 }
 
 .nlp-hist-wrap {
-  height: 280px;
+  height: 320px;
 }
 
 .nlp-hist-head .geo-section-title span {

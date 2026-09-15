@@ -1,26 +1,38 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
   CartesianGrid,
   ComposedChart,
+  Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
+import type { NlpChartPayload } from "@/lib/nlpChart";
 import {
+  mergeScoreAndPrice,
+  nlpCorrLabel,
   nlpHistoryTone,
-  type NlpHistoryDay,
+  nlpPearson,
   type NlpHistorySeries,
+  type NlpOverlayRow,
 } from "@/lib/nlpHistory";
 
 function fmtScore(n: number): string {
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(0)}`;
+}
+
+function fmtPrice(n: number, currency: "KRW" | "USD"): string {
+  if (currency === "KRW") {
+    return n >= 1000 ? n.toLocaleString("ko-KR", { maximumFractionDigits: 0 }) : n.toFixed(2);
+  }
+  return n >= 100 ? n.toFixed(2) : n.toFixed(n >= 10 ? 2 : 3);
 }
 
 function toneClass(score: number): string {
@@ -30,11 +42,7 @@ function toneClass(score: number): string {
   return "flat";
 }
 
-function dayLabel(date: string): string {
-  return date.slice(5).replace("-", ".");
-}
-
-type ChartRow = NlpHistoryDay & { label: string };
+type ChartRow = NlpOverlayRow;
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -42,6 +50,29 @@ const tooltipStyle = {
   borderRadius: 8,
   color: "#e8eef5",
 };
+
+function OverlayTooltip({
+  active,
+  payload,
+  currency,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: ChartRow }>;
+  currency: "KRW" | "USD";
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]!.payload;
+  return (
+    <div className="deriv-tt">
+      <strong>{row.date}</strong>
+      {row.close != null ? (
+        <div>종가 {currency === "KRW" ? "₩" : "$"}{fmtPrice(row.close, currency)}</div>
+      ) : null}
+      {row.score != null ? <div>뉴스 점수 {fmtScore(row.score)}</div> : null}
+      {row.news && row.n != null ? <div>기사 {row.n}건</div> : <div className="meta-soft">뉴스 없는 날 · 직전 점수 유지</div>}
+    </div>
+  );
+}
 
 export default function NlpHistoryPanel({
   series,
@@ -54,9 +85,50 @@ export default function NlpHistoryPanel({
   selectedDate: string | null;
   onSelectDate: (date: string) => void;
 }) {
+  const [price, setPrice] = useState<NlpChartPayload | null>(null);
+  const [loadingPx, setLoadingPx] = useState(false);
+  const yahoo = series?.yahoo;
+
+  useEffect(() => {
+    if (!yahoo) {
+      setPrice(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingPx(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/nlp-chart?symbol=${encodeURIComponent(yahoo)}&range=1y`,
+          { cache: "no-store" },
+        );
+        const json = (await res.json()) as NlpChartPayload;
+        if (!cancelled) setPrice(json);
+      } catch {
+        if (!cancelled) setPrice(null);
+      } finally {
+        if (!cancelled) setLoadingPx(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [yahoo]);
+
   const chartRows: ChartRow[] = useMemo(() => {
-    return (series?.days || []).map((d) => ({ ...d, label: dayLabel(d.date) }));
-  }, [series]);
+    return mergeScoreAndPrice(series?.days || [], price?.bars || []);
+  }, [series, price]);
+
+  const corr = useMemo(() => nlpPearson(chartRows), [chartRows]);
+  const currency = price?.currency || (yahoo?.includes(".KS") || yahoo?.includes(".KQ") ? "KRW" : "USD");
+  const pxDomain = useMemo<[number, number]>(() => {
+    const closes = chartRows.map((r) => r.close).filter((n): n is number => n != null);
+    if (!closes.length) return [0, 1];
+    let lo = Math.min(...closes);
+    let hi = Math.max(...closes);
+    const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.01 || 1;
+    return [lo - pad, hi + pad];
+  }, [chartRows]);
 
   const selectedDay = useMemo(() => {
     if (!series?.days.length) return null;
@@ -66,12 +138,18 @@ export default function NlpHistoryPanel({
 
   if (!series && !loading) return null;
 
+  const hasPrice = chartRows.some((r) => r.close != null);
+  const corrText =
+    corr == null
+      ? nlpCorrLabel(null)
+      : `r ${corr >= 0 ? "+" : ""}${corr.toFixed(2)} · ${nlpCorrLabel(corr)}`;
+
   return (
     <>
       <section className="geo-section">
         <div className="nlp-hist-head">
           <h3 className="geo-section-title">
-            {series?.name || "종목"} 1년 뉴스 점수
+            {series?.name || "종목"} 뉴스 점수 · 주가
             {series?.last_score != null ? (
               <span className={toneClass(series.last_score)}> {fmtScore(series.last_score)}</span>
             ) : null}
@@ -80,9 +158,16 @@ export default function NlpHistoryPanel({
             {loading
               ? "1년 뉴스 시계열을 불러오는 중…"
               : series
-                ? `${series.n_days}일 · 기사 ${series.n_headlines}건 · 점 = 그날 제목 평균, 막대 = 기사 수. 점을 누르면 그날 기사가 열립니다.`
+                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수(우축) · 노란선 종가(좌축). 점을 누르면 그날 기사가 열립니다.`
                 : "이 종목의 1년 아카이브가 없습니다."}
           </p>
+          {hasPrice ? (
+            <p className="nlp-corr-badge">
+              {loadingPx ? "주가 정렬 중…" : corrText}
+            </p>
+          ) : loadingPx ? (
+            <p className="nlp-corr-badge">주가를 겹치는 중…</p>
+          ) : null}
         </div>
         {!chartRows.length ? (
           <p className="empty">{loading ? "수집 중…" : series?.error || "저장된 뉴스가 없습니다."}</p>
@@ -99,33 +184,73 @@ export default function NlpHistoryPanel({
               >
                 <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: "#93a4c3", fontSize: 10 }} minTickGap={24} />
+                {hasPrice ? (
+                  <YAxis
+                    yAxisId="px"
+                    orientation="left"
+                    domain={pxDomain}
+                    width={58}
+                    tick={{ fill: "#fbbf24", fontSize: 10 }}
+                    tickFormatter={(v) => fmtPrice(Number(v), currency)}
+                  />
+                ) : null}
                 <YAxis
                   yAxisId="score"
+                  orientation="right"
                   domain={[-100, 100]}
-                  tick={{ fill: "#93a4c3", fontSize: 10 }}
+                  tick={{ fill: "#4da3ff", fontSize: 10 }}
                   width={36}
                 />
-                <YAxis yAxisId="n" orientation="right" hide domain={[0, "auto"]} />
                 <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value, name) => {
-                    const n = typeof value === "number" ? value : Number(value);
-                    if (name === "score") return [fmtScore(n), "점수"];
-                    return [n, "기사 수"];
-                  }}
-                  labelFormatter={(_, pts) => {
-                    const row = pts?.[0]?.payload as ChartRow | undefined;
-                    return row?.date || "";
-                  }}
+                  content={(props) => (
+                    <OverlayTooltip
+                      active={props.active}
+                      payload={props.payload as Array<{ payload: ChartRow }>}
+                      currency={currency}
+                    />
+                  )}
                 />
-                <Bar yAxisId="n" dataKey="n" fill="rgba(77,163,255,0.28)" maxBarSize={8} />
+                <Legend
+                  wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }}
+                  formatter={(value) => (value === "close" ? "종가" : "뉴스 점수")}
+                />
+                <ReferenceLine yAxisId="score" y={0} stroke="rgba(148,163,184,0.28)" />
+                {hasPrice ? (
+                  <Line
+                    yAxisId="px"
+                    type="monotone"
+                    dataKey="close"
+                    name="close"
+                    stroke="#fbbf24"
+                    strokeWidth={1.8}
+                    dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                ) : null}
                 <Line
                   yAxisId="score"
                   type="monotone"
                   dataKey="score"
+                  name="score"
                   stroke="#4da3ff"
                   strokeWidth={1.8}
-                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                  dot={(props: { cx?: number; cy?: number; payload?: ChartRow }) => {
+                    if (!props.payload?.news || props.cx == null || props.cy == null) {
+                      return <g key={props.payload?.date || "empty"} />;
+                    }
+                    return (
+                      <circle
+                        key={props.payload.date}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={selectedDay && props.payload.date === selectedDay.date ? 4 : 2.2}
+                        fill="#4da3ff"
+                      />
+                    );
+                  }}
                   activeDot={{ r: 5 }}
                 />
               </ComposedChart>
@@ -144,7 +269,7 @@ export default function NlpHistoryPanel({
             </span>
           ) : null}
         </h3>
-        <p className="macro-subhead">위 점수 차트에서 날짜를 고르면 제목이 바뀝니다.</p>
+        <p className="macro-subhead">위 차트에서 날짜를 고르면 제목이 바뀝니다. 파란 점은 뉴스가 있던 날입니다.</p>
         {!selectedDay?.headlines.length ? (
           <p className="empty">{loading ? "불러오는 중…" : "이 날짜에 저장된 기사가 없습니다."}</p>
         ) : (

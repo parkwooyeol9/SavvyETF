@@ -5,12 +5,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import NlpHistoryPanel from "@/components/NlpHistoryPanel";
 import NlpPriceChart from "@/components/NlpPriceChart";
 import {
+  NLP_KOSDAQ100,
+  NLP_KOSPI_SEED,
   emptyNlpHistoryIndex,
   emptyNlpHistorySeries,
+  mergeHistoryNames,
   nlpHistoryTone,
   type NlpHistoryIndex,
   type NlpHistoryName,
   type NlpHistorySeries,
+  type NlpMapView,
 } from "@/lib/nlpHistory";
 import type {
   NlpHeadline,
@@ -35,6 +39,31 @@ function toneClass(tone: NlpTone | number): string {
   if (tone === "bull") return "up";
   if (tone === "bear") return "down";
   return "flat";
+}
+
+function historyPulse(label: string, names: NlpHistoryName[]): NlpMarketPulse {
+  const scores = names.map((n) => n.last_score).filter((s): s is number => typeof s === "number");
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const bull = scores.filter((s) => s >= 12).length;
+  const bear = scores.filter((s) => s <= -12).length;
+  const tone: NlpTone = avg >= 12 ? "bull" : avg <= -12 ? "bear" : "flat";
+  const verdict = avg >= 18 ? "friendly" : avg <= -18 ? "cautious" : "neutral";
+  return {
+    market: "kospi200",
+    label,
+    score: avg,
+    tone,
+    verdict,
+    verdict_ko: verdict === "friendly" ? "우호" : verdict === "cautious" ? "경계" : "중립",
+    comment: scores.length
+      ? `1년 아카이브 ${scores.length}종목 최근 점수 평균입니다. 수집 ${names.filter((n) => (n.n_days || 0) > 0).length}/${names.length}.`
+      : "이 유니버스의 1년 뉴스 점수가 아직 없습니다.",
+    news_n: names.reduce((s, n) => s + (n.n_headlines || 0), 0),
+    event_n: 0,
+    bull_n: bull,
+    bear_n: bear,
+    names: [],
+  };
 }
 
 function Gauge({ pulse }: { pulse: NlpMarketPulse }) {
@@ -112,7 +141,8 @@ function HeadlineList({
 export default function NlpPulseTab() {
   const [data, setData] = useState<NlpPulsePayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [market, setMarket] = useState<"kospi200" | "sp500">("kospi200");
+  const [market, setMarket] = useState<NlpMapView>("kosdaq100");
+  const [mapQuery, setMapQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [histIndex, setHistIndex] = useState<NlpHistoryIndex | null>(null);
   const [histSeries, setHistSeries] = useState<NlpHistorySeries | null>(null);
@@ -154,52 +184,97 @@ export default function NlpPulseTab() {
     };
   }, []);
 
-  const names = useMemo(() => {
-    const all = [...(data?.kospi.names || []), ...(data?.spx.names || [])];
-    return all.filter((n) => n.market === market);
+  const pulseNames = useMemo(() => {
+    if (market === "sp500") return data?.spx.names || [];
+    if (market === "kospi200") return data?.kospi.names || [];
+    return [] as NlpNameCard[];
   }, [data, market]);
 
-  const extraHistory = useMemo(() => {
-    if (market !== "kospi200") return [] as NlpHistoryName[];
-    const pulseIds = new Set(names.map((n) => n.id));
-    return (histIndex?.names || []).filter((n) => !pulseIds.has(n.code));
-  }, [histIndex, market, names]);
+  const mapNames = useMemo(() => {
+    const indexed = histIndex?.names || [];
+    if (market === "kosdaq100") {
+      return mergeHistoryNames(
+        NLP_KOSDAQ100,
+        indexed.filter((n) => n.market === "kosdaq"),
+      );
+    }
+    if (market === "kospi200") {
+      const pulseAsHist: NlpHistoryName[] = (data?.kospi.names || [])
+        .filter((n) => /^\d{6}$/.test(n.id))
+        .map((n) => ({
+          code: n.id,
+          name: n.name,
+          market: "kospi" as const,
+          yahoo: n.ticker,
+          last_score: n.score,
+        }));
+      return mergeHistoryNames(
+        [...NLP_KOSPI_SEED, ...pulseAsHist],
+        indexed.filter((n) => n.market === "kospi"),
+      );
+    }
+    return [] as NlpHistoryName[];
+  }, [data, histIndex, market]);
+
+  const visibleMap = useMemo(() => {
+    const q = mapQuery.trim().toLowerCase();
+    const rows = q
+      ? mapNames.filter(
+          (n) => n.name.toLowerCase().includes(q) || n.code.includes(q),
+        )
+      : mapNames;
+    return [...rows].sort((a, b) => {
+      const as = a.last_score;
+      const bs = b.last_score;
+      if (as == null && bs == null) return a.name.localeCompare(b.name, "ko");
+      if (as == null) return 1;
+      if (bs == null) return -1;
+      return bs - as;
+    });
+  }, [mapNames, mapQuery]);
+
+  const pulseMarket = market === "sp500" ? "sp500" : "kospi200";
 
   const events = useMemo(() => {
     let rows = data?.events || [];
-    rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === pulseMarket);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
-  }, [data, market, picked]);
+  }, [data, pulseMarket, picked]);
 
   const calls = useMemo(() => {
     let rows = data?.calls || [];
-    rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === pulseMarket);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
-  }, [data, market, picked]);
+  }, [data, pulseMarket, picked]);
 
   const feed = useMemo(() => {
     let rows = data?.feed || [];
-    rows = rows.filter((r) => r.market === market);
+    rows = rows.filter((r) => r.market === pulseMarket);
     if (picked) rows = rows.filter((r) => r.name_id === picked);
     return rows;
-  }, [data, market, picked]);
+  }, [data, pulseMarket, picked]);
 
-  const pickedCard = names.find((n) => n.id === picked);
-  const pickedHistoryMeta = (histIndex?.names || []).find((n) => n.code === picked);
+  const pickedCard = pulseNames.find((n) => n.id === picked);
+  const pickedHistoryMeta = mapNames.find((n) => n.code === picked) || (histIndex?.names || []).find((n) => n.code === picked);
   const historyCode = /^\d{6}$/.test(picked || "") ? picked : null;
   const chartTicker = pickedCard?.ticker || pickedHistoryMeta?.yahoo || histSeries?.yahoo;
   const chartName = pickedCard?.name || pickedHistoryMeta?.name || histSeries?.name;
-  const friendly = names.filter((n) => n.verdict === "friendly").slice(0, 8);
-  const cautious = names.filter((n) => n.verdict === "cautious").slice(0, 8);
+  const readyN = mapNames.filter((n) => (n.n_days || 0) > 0 || n.last_score != null).length;
+  const friendlyPulse = market === "sp500" ? pulseNames.filter((n) => n.verdict === "friendly").slice(0, 8) : [];
+  const cautiousPulse = market === "sp500" ? pulseNames.filter((n) => n.verdict === "cautious").slice(0, 8) : [];
+  const friendlyHist = market === "sp500" ? [] : mapNames.filter((n) => (n.last_score ?? 0) >= 12).slice(0, 8);
+  const cautiousHist = market === "sp500" ? [] : mapNames.filter((n) => (n.last_score ?? 0) <= -12).slice(0, 8);
+  const hasFriendly = market === "sp500" ? friendlyPulse.length > 0 : friendlyHist.length > 0;
+  const hasCautious = market === "sp500" ? cautiousPulse.length > 0 : cautiousHist.length > 0;
 
   useEffect(() => {
-    const okPulse = Boolean(picked && names.some((n) => n.id === picked));
-    const okHist = Boolean(picked && extraHistory.some((n) => n.code === picked));
+    const okPulse = Boolean(picked && pulseNames.some((n) => n.id === picked));
+    const okHist = Boolean(picked && mapNames.some((n) => n.code === picked));
     if (okPulse || okHist) return;
-    setPicked(names[0]?.id || extraHistory[0]?.code || null);
-  }, [names, extraHistory, picked]);
+    setPicked(mapNames[0]?.code || pulseNames[0]?.id || null);
+  }, [mapNames, pulseNames, picked]);
 
   useEffect(() => {
     if (!historyCode) {
@@ -239,8 +314,8 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              국내·해외 대표주의 오늘 뉴스·공시·컨콜과, 코스피·코스닥 시총 상위 종목의 1년 제목
-              점수를 한 화면에서 봅니다. 종목을 고르면 캔들과 1년 투심 차트가 같이 열립니다.
+              코스닥 100과 코스피 200을 나눠 보고, 종목을 고르면 1년 뉴스 점수와 주가를 겹쳐
+              상관을 비교합니다. 지금은 코스닥 100 아카이브를 먼저 채웁니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -253,7 +328,8 @@ export default function NlpPulseTab() {
         <div className="nlp-filters">
           {(
             [
-              ["kospi200", "국내 기업"],
+              ["kosdaq100", "코스닥 100"],
+              ["kospi200", "코스피 200"],
               ["sp500", "해외 기업"],
             ] as const
           ).map(([id, label]) => (
@@ -264,6 +340,7 @@ export default function NlpPulseTab() {
               onClick={() => {
                 setMarket(id);
                 setPicked(null);
+                setMapQuery("");
               }}
             >
               {label}
@@ -271,33 +348,56 @@ export default function NlpPulseTab() {
           ))}
         </div>
 
-        {data?.ok ? (
+        {market === "kosdaq100" ? (
+          <div className="nlp-gauge-row">
+            <Gauge pulse={historyPulse("코스닥 100 투심", mapNames)} />
+          </div>
+        ) : data?.ok ? (
           <div className="nlp-gauge-row">
             <Gauge pulse={market === "kospi200" ? data.kospi : data.spx} />
           </div>
         ) : null}
-        {data?.error ? <p className="meta-soft">{data.error}</p> : null}
+        {data?.error && market !== "kosdaq100" ? <p className="meta-soft">{data.error}</p> : null}
       </section>
 
       <section className="geo-section">
         <h3 className="geo-section-title">종목 투심 맵</h3>
         <p className="macro-subhead">
-          종목을 누르면 결론·차트·뉴스가 그 기업만 보여 줍니다. 국내 화면에는 1년 아카이브가 있는
-          코스닥 상위 종목도 같이 나옵니다.
+          {market === "kosdaq100"
+            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 종목을 누르면 점수·주가 겹침 차트가 열립니다.`
+            : market === "kospi200"
+              ? "코스피 200은 코스닥 100을 검토한 뒤 100개씩 늘립니다. 지금은 대표주·이미 수집된 종목만 보여 줍니다."
+              : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
-        {!names.length && !extraHistory.length ? (
-          <p className="empty">{loading ? "뉴스 수집 중…" : "표시할 종목이 없습니다."}</p>
+        {market !== "sp500" ? (
+          <input
+            className="nlp-map-search"
+            value={mapQuery}
+            onChange={(e) => setMapQuery(e.target.value)}
+            placeholder="종목명·코드 검색"
+            aria-label="종목 검색"
+          />
+        ) : null}
+        {market === "sp500" ? (
+          !pulseNames.length ? (
+            <p className="empty">{loading ? "뉴스 수집 중…" : "표시할 종목이 없습니다."}</p>
+          ) : (
+            <div className="nlp-chip-grid">
+              {pulseNames.map((card) => (
+                <NameChip
+                  key={card.id}
+                  card={card}
+                  active={picked === card.id}
+                  onPick={(id) => setPicked(id)}
+                />
+              ))}
+            </div>
+          )
+        ) : !visibleMap.length ? (
+          <p className="empty">{histIndex ? "검색 결과가 없습니다." : "유니버스를 불러오는 중…"}</p>
         ) : (
-          <div className="nlp-chip-grid">
-            {names.map((card) => (
-              <NameChip
-                key={card.id}
-                card={card}
-                active={picked === card.id}
-                onPick={(id) => setPicked(id)}
-              />
-            ))}
-            {extraHistory.map((card) => (
+          <div className="nlp-chip-grid nlp-chip-grid-dense">
+            {visibleMap.map((card) => (
               <button
                 key={card.code}
                 type="button"
@@ -305,13 +405,14 @@ export default function NlpPulseTab() {
                   card.last_score != null ? `nlp-${nlpHistoryTone(card.last_score)}` : ""
                 }`}
                 onClick={() => setPicked(card.code)}
-                title="1년 뉴스 아카이브"
+                title={card.last_date ? `${card.last_date} 점수` : "1년 뉴스 대기"}
               >
                 <span>{card.name}</span>
                 {card.last_score != null ? (
                   <strong className={toneClass(card.last_score)}>{fmtScore(card.last_score)}</strong>
-                ) : null}
-                <em>1년</em>
+                ) : (
+                  <em>대기</em>
+                )}
               </button>
             ))}
           </div>
@@ -339,12 +440,27 @@ export default function NlpPulseTab() {
               ) : null}
             </p>
           </article>
+        ) : pickedHistoryMeta ? (
+          <article className="nlp-verdict">
+            <header>
+              <strong>{pickedHistoryMeta.name}</strong>
+              {pickedHistoryMeta.last_score != null ? (
+                <span className={toneClass(pickedHistoryMeta.last_score)}>
+                  {fmtScore(pickedHistoryMeta.last_score)}
+                </span>
+              ) : (
+                <span className="meta-soft">수집 대기</span>
+              )}
+            </header>
+            <p className="nlp-picked">
+              {pickedHistoryMeta.n_days
+                ? `1년 뉴스 ${pickedHistoryMeta.n_days}일 · 기사 ${pickedHistoryMeta.n_headlines || 0}건`
+                : "이 종목의 1년 뉴스 아카이브를 수집하는 중입니다."}
+              {pickedHistoryMeta.last_date ? ` · 마지막 ${pickedHistoryMeta.last_date}` : ""}
+            </p>
+          </article>
         ) : null}
       </section>
-
-      {chartTicker ? (
-        <NlpPriceChart key={chartTicker} ticker={chartTicker} name={chartName || chartTicker} />
-      ) : null}
 
       {historyCode ? (
         <NlpHistoryPanel
@@ -355,14 +471,18 @@ export default function NlpPulseTab() {
         />
       ) : null}
 
+      {chartTicker ? (
+        <NlpPriceChart key={chartTicker} ticker={chartTicker} name={chartName || chartTicker} />
+      ) : null}
+
       <div className="nlp-verdict-board">
         <section className="geo-section nlp-verdict-col nlp-friendly">
           <h3 className="geo-section-title">우호적으로 본 종목</h3>
-          {!friendly.length ? (
+          {!hasFriendly ? (
             <p className="empty">뚜렷한 우호 기울기 종목이 없습니다.</p>
           ) : (
             <ul className="nlp-verdict-list">
-              {friendly.map((card) => (
+              {friendlyPulse.map((card) => (
                 <li key={card.id}>
                   <button type="button" onClick={() => setPicked(card.id)}>
                     <strong>{card.name}</strong>
@@ -371,16 +491,24 @@ export default function NlpPulseTab() {
                   <p>{card.comment}</p>
                 </li>
               ))}
+              {friendlyHist.map((card) => (
+                <li key={card.code}>
+                  <button type="button" onClick={() => setPicked(card.code)}>
+                    <strong>{card.name}</strong>
+                    <span className="up">{fmtScore(card.last_score || 0)}</span>
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </section>
         <section className="geo-section nlp-verdict-col nlp-cautious">
           <h3 className="geo-section-title">경계로 본 종목</h3>
-          {!cautious.length ? (
+          {!hasCautious ? (
             <p className="empty">뚜렷한 경계 기울기 종목이 없습니다.</p>
           ) : (
             <ul className="nlp-verdict-list">
-              {cautious.map((card) => (
+              {cautiousPulse.map((card) => (
                 <li key={card.id}>
                   <button type="button" onClick={() => setPicked(card.id)}>
                     <strong>{card.name}</strong>
@@ -389,11 +517,20 @@ export default function NlpPulseTab() {
                   <p>{card.comment}</p>
                 </li>
               ))}
+              {cautiousHist.map((card) => (
+                <li key={card.code}>
+                  <button type="button" onClick={() => setPicked(card.code)}>
+                    <strong>{card.name}</strong>
+                    <span className="down">{fmtScore(card.last_score || 0)}</span>
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </section>
       </div>
 
+      {market === "kosdaq100" ? null : (
       <div className="nlp-three">
         <section className="geo-section">
           <h3 className="geo-section-title">극성 뉴스</h3>
@@ -408,13 +545,23 @@ export default function NlpPulseTab() {
           <HeadlineList rows={calls} empty="예정·관련 컨콜 신호가 없습니다." />
         </section>
       </div>
+      )}
 
       <section className="geo-section">
         <h3 className="geo-section-title">방법론</h3>
         <ul className="ideas-summary">
-          {(data?.methodology || []).map((m) => (
-            <li key={m}>{m}</li>
-          ))}
+          {market === "kosdaq100"
+            ? [
+                "유니버스: 코스닥 100 구성종목. 코스피 200은 이후 100개씩 추가",
+                "뉴스: Google News RSS 1년 + 네이버 일자 검색 '{종목} 주가'",
+                "차트: 파란선은 그날 제목 점수, 노란선은 종가. r는 뉴스가 있던 날의 점수·종가 상관",
+                "점수: 호재−악재 키워드 순점수 (−100~+100)",
+              ].map((m) => (
+                <li key={m}>{m}</li>
+              ))
+            : (data?.methodology || []).map((m) => (
+                <li key={m}>{m}</li>
+              ))}
         </ul>
       </section>
 

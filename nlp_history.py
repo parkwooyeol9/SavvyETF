@@ -30,6 +30,9 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 PROJECT_DIR = Path(__file__).resolve().parent
 UNIVERSE_PATH = PROJECT_DIR / "data" / "universes" / "nlp_history.json"
+KOSDAQ100_PATH = PROJECT_DIR / "data" / "universes" / "kosdaq100.json"
+KOSPI200_PATH = PROJECT_DIR / "data" / "universes" / "kospi200.json"
+WEBAPP_UNIVERSE = PROJECT_DIR / "webapp" / "src" / "data" / "nlpHistoryUniverse.json"
 LOCAL_DIR = PROJECT_DIR / "data" / "nlp_history"
 R2_PREFIX = "nlp_history"
 KST = ZoneInfo("Asia/Seoul")
@@ -253,6 +256,78 @@ def _is_preferred(name: str) -> bool:
     return bool(_PREF_RE.search((name or "").strip()))
 
 
+def load_constituents(path: Path, market: str) -> list[dict[str, str]]:
+    suffix = ".KS" if market == "kospi" else ".KQ"
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    rows = payload.get("constituents") or payload.get("names") or []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("code") or "").strip()
+        name = str(row.get("name") or "").strip()
+        if len(code) != 6 or not code.isdigit() or not name or code in seen:
+            continue
+        seen.add(code)
+        out.append(
+            {
+                "code": code,
+                "name": name,
+                "market": market,
+                "yahoo": str(row.get("yahoo") or f"{code}{suffix}"),
+            }
+        )
+    return out
+
+
+def _normalize_spec(row: dict[str, Any]) -> dict[str, str] | None:
+    code = str(row.get("code") or "").strip()
+    name = str(row.get("name") or "").strip()
+    if len(code) != 6 or not code.isdigit() or not name:
+        return None
+    market = str(row.get("market") or "kospi").strip().lower()
+    if market in {"kosdaq", "kq"}:
+        market = "kosdaq"
+        suffix = ".KQ"
+    else:
+        market = "kospi"
+        suffix = ".KS"
+    return {
+        "code": code,
+        "name": name,
+        "market": market,
+        "yahoo": str(row.get("yahoo") or f"{code}{suffix}"),
+    }
+
+
+def load_local_payloads() -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    if not LOCAL_DIR.exists():
+        return out
+    for path in LOCAL_DIR.glob("*.json"):
+        if path.name == "index.json":
+            continue
+        data = _read_json(path)
+        if data and data.get("code"):
+            out[str(data["code"])] = data
+    return out
+
+
+def specs_from_payloads(payloads: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for row in payloads.values():
+        spec = _normalize_spec(row)
+        if spec:
+            out.append(spec)
+    return out
+
+
 def fetch_market_leaders(market: str, top_n: int = TOP_N) -> list[dict[str, str]]:
     key = "KOSPI" if market == "kospi" else "KOSDAQ"
     suffix = ".KS" if market == "kospi" else ".KQ"
@@ -288,46 +363,57 @@ def fetch_market_leaders(market: str, top_n: int = TOP_N) -> list[dict[str, str]
     return out
 
 
-def resolve_universe(*, refresh: bool = True) -> list[dict[str, str]]:
+def resolve_universe(
+    *,
+    refresh: bool = True,
+    market: str = "all",
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, str]]:
+    market = (market or "all").strip().lower()
     names: list[dict[str, str]] = []
-    if refresh:
-        names = fetch_market_leaders("kospi") + fetch_market_leaders("kosdaq")
-    if len(names) < TOP_N * 2:
-        if UNIVERSE_PATH.exists():
-            try:
-                payload = json.loads(UNIVERSE_PATH.read_text(encoding="utf-8"))
-                stored = payload.get("names") if isinstance(payload, dict) else payload
-                if isinstance(stored, list) and stored:
-                    names = [
-                        {
-                            "code": str(r["code"]),
-                            "name": str(r["name"]),
-                            "market": str(r.get("market") or "kospi"),
-                            "yahoo": str(r.get("yahoo") or f"{r['code']}.KS"),
-                        }
-                        for r in stored
-                        if r.get("code") and r.get("name")
-                    ]
-            except Exception:
-                names = []
+    if market == "kosdaq":
+        names = load_constituents(KOSDAQ100_PATH, "kosdaq")
+    elif market == "kospi":
+        names = load_constituents(KOSPI200_PATH, "kospi")
+    else:
+        if refresh:
+            names = fetch_market_leaders("kospi") + fetch_market_leaders("kosdaq")
         if len(names) < TOP_N * 2:
-            names = [dict(row) for row in SEED_NAMES]
+            if UNIVERSE_PATH.exists():
+                try:
+                    payload = json.loads(UNIVERSE_PATH.read_text(encoding="utf-8"))
+                    stored = payload.get("names") if isinstance(payload, dict) else payload
+                    if isinstance(stored, list) and stored:
+                        names = [spec for spec in (_normalize_spec(r) for r in stored) if spec]
+                except Exception:
+                    names = []
+            if len(names) < TOP_N * 2:
+                names = [dict(row) for row in SEED_NAMES]
+    if offset:
+        names = names[max(0, offset) :]
+    if limit is not None:
+        names = names[: max(0, limit)]
     return names
 
 
-def save_universe(names: list[dict[str, str]]) -> None:
+def save_universe(names: list[dict[str, str]], *, source: str | None = None) -> None:
     UNIVERSE_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "universe": "nlp_history",
         "as_of": datetime.now(KST).date().isoformat(),
-        "source": "Naver m.stock marketValue KOSPI/KOSDAQ top 10 (preferred skipped)",
+        "source": source
+        or "KOSDAQ 100 constituents + archived KOSPI names (KOSPI 200 to follow in batches)",
         "count": len(names),
         "names": names,
     }
-    UNIVERSE_PATH.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    UNIVERSE_PATH.write_text(text, encoding="utf-8")
+    try:
+        WEBAPP_UNIVERSE.parent.mkdir(parents=True, exist_ok=True)
+        WEBAPP_UNIVERSE.write_text(text, encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _local_path(code: str) -> Path:
@@ -365,11 +451,13 @@ def crawl_name_headlines(
     end: date,
     *,
     max_pages: int = MAX_PAGES_PER_DAY,
+    stride: int = 1,
 ) -> list[dict[str, Any]]:
     query = news_query_for(spec["name"])
     collected: list[dict[str, Any]] = []
     seen: set[str] = set()
     day = start
+    step = max(1, stride)
     while day <= end:
         rows = fetch_naver_news_on_day(query, day, max_pages=max_pages, korean_only=True)
         for row in rows:
@@ -390,7 +478,7 @@ def crawl_name_headlines(
             collected.append(item)
         if (day - start).days % 50 == 0:
             print(f"    {spec['code']} {spec['name']} {day} headlines={len(collected)}", flush=True)
-        day += timedelta(days=1)
+        day += timedelta(days=step)
     return collected
 
 
@@ -524,7 +612,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
         "lookback_days": LOOKBACK_DAYS,
         "max_headlines_per_day": MAX_HEADLINES_PER_DAY,
         "methodology": [
-            "유니버스: 네이버 시가총액 코스피 상위 10 + 코스닥 상위 10 (우선주 제외)",
+            "유니버스: 코스닥 100 구성종목 우선, 코스피 200은 이후 100개씩 추가",
             "뉴스: Google News RSS when:1y + 네이버 데스크톱 일자 검색 '{종목} 주가'",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100)",
             "일자 점수: 그날 제목의 단순 평균. 하루 최대 8건 보관",
@@ -565,10 +653,11 @@ def backfill_one(
     end: date,
     *,
     google_only: bool = False,
+    naver_stride: int = 1,
 ) -> dict[str, Any]:
     headlines = crawl_google_rss(spec)
     if not google_only:
-        headlines.extend(crawl_name_headlines(spec, start, end))
+        headlines.extend(crawl_name_headlines(spec, start, end, stride=naver_stride))
     days = aggregate_days(headlines)
     existing = _load_existing(spec["code"])
     if existing and isinstance(existing.get("days"), list):
@@ -578,40 +667,89 @@ def backfill_one(
     return payload
 
 
-def run_backfill(*, workers: int | None = None, google_only: bool = False) -> dict[str, Any]:
+def _merge_specs(*groups: list[dict[str, str]]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for group in groups:
+        for spec in group:
+            code = spec.get("code")
+            if not code or code in seen:
+                continue
+            seen.add(code)
+            out.append(spec)
+    return out
+
+
+def run_backfill(
+    *,
+    workers: int | None = None,
+    google_only: bool = False,
+    market: str = "all",
+    skip_existing: bool = False,
+    min_days: int = 20,
+    naver_stride: int | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict[str, Any]:
     end = datetime.now(KST).date()
     start = end - timedelta(days=LOOKBACK_DAYS)
-    names = resolve_universe(refresh=True)
-    save_universe(names)
+    names = resolve_universe(refresh=market == "all", market=market, limit=limit, offset=offset)
+    existing_payloads = load_local_payloads()
+    archived = specs_from_payloads(existing_payloads)
+    save_universe(_merge_specs(names, archived))
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-    n_workers = max(1, min(workers or (8 if google_only else 3), len(names) or 1))
-    payloads: list[dict[str, Any]] = []
+    stride = naver_stride if naver_stride is not None else (1 if len(names) <= 25 else 7)
+    todo = names
+    skipped: list[dict[str, Any]] = []
+    if skip_existing:
+        keep: list[dict[str, str]] = []
+        for spec in names:
+            prev = existing_payloads.get(spec["code"])
+            if prev and int(prev.get("n_days") or 0) >= min_days:
+                skipped.append(prev)
+                continue
+            keep.append(spec)
+        todo = keep
+    n_workers = max(1, min(workers or (8 if google_only else 3), len(todo) or 1))
+    payloads: list[dict[str, Any]] = list(skipped)
     print(
-        f"nlp history backfill {len(names)} names {start} → {end} "
-        f"workers={n_workers} google_only={google_only}",
+        f"nlp history backfill {len(todo)} names (skip {len(skipped)}) {start} → {end} "
+        f"workers={n_workers} google_only={google_only} stride={stride} market={market}",
         flush=True,
     )
-    with ThreadPoolExecutor(max_workers=n_workers) as pool:
-        futs = {
-            pool.submit(backfill_one, spec, start, end, google_only=google_only): spec
-            for spec in names
-        }
-        for fut in as_completed(futs):
-            spec = futs[fut]
-            try:
-                payload = fut.result()
-            except Exception as exc:
-                print(f"  FAIL {spec['code']} {spec['name']}: {exc}", flush=True)
-                payload = build_name_payload(spec, [])
-                save_payload(payload)
-            payloads.append(payload)
-            print(
-                f"  {payload['code']} {payload['name']}: "
-                f"{payload['n_days']} days / {payload['n_headlines']} headlines",
-                flush=True,
-            )
-    payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
-    index = build_index(payloads)
+    if todo:
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futs = {
+                pool.submit(
+                    backfill_one,
+                    spec,
+                    start,
+                    end,
+                    google_only=google_only,
+                    naver_stride=stride,
+                ): spec
+                for spec in todo
+            }
+            for fut in as_completed(futs):
+                spec = futs[fut]
+                try:
+                    payload = fut.result()
+                except Exception as exc:
+                    print(f"  FAIL {spec['code']} {spec['name']}: {exc}", flush=True)
+                    payload = build_name_payload(spec, [])
+                    save_payload(payload)
+                payloads.append(payload)
+                print(
+                    f"  {payload['code']} {payload['name']}: "
+                    f"{payload['n_days']} days / {payload['n_headlines']} headlines",
+                    flush=True,
+                )
+    by_code = {str(row.get("code")): row for row in existing_payloads.values()}
+    for row in payloads:
+        by_code[str(row.get("code"))] = row
+    merged = list(by_code.values())
+    merged.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
+    index = build_index(merged)
     save_index(index)
     print(f"wrote {LOCAL_DIR} index names={len(index['names'])}", flush=True)
     return index
@@ -619,22 +757,28 @@ def run_backfill(*, workers: int | None = None, google_only: bool = False) -> di
 
 def run_today_append() -> dict[str, Any]:
     today = datetime.now(KST).date()
-    names = resolve_universe(refresh=False)
+    existing = load_local_payloads()
+    names = specs_from_payloads(existing)
     if not names:
-        names = resolve_universe(refresh=True)
-        save_universe(names)
+        names = resolve_universe(refresh=False, market="kosdaq")
+        if names:
+            save_universe(names)
     payloads: list[dict[str, Any]] = []
     for spec in names:
         headlines = crawl_google_rss(spec) + crawl_name_headlines(spec, today, today, max_pages=2)
         new_days = aggregate_days(headlines)
-        existing = _load_existing(spec["code"]) or build_name_payload(spec, [])
-        merged = merge_days(existing.get("days") or [], new_days)
+        prev = existing.get(spec["code"]) or build_name_payload(spec, [])
+        merged = merge_days(prev.get("days") or [], new_days)
         payload = build_name_payload(spec, merged)
         save_payload(payload)
         payloads.append(payload)
         print(f"  today {spec['code']} {spec['name']}: +{len(headlines)} raw → {payload['n_days']} days")
-    payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
-    index = build_index(payloads)
+    by_code = {str(row.get("code")): row for row in existing.values()}
+    for row in payloads:
+        by_code[str(row.get("code"))] = row
+    merged_all = list(by_code.values())
+    merged_all.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
+    index = build_index(merged_all)
     save_index(index)
     return index
 
@@ -683,11 +827,26 @@ def main() -> None:
     parser.add_argument("--today", action="store_true")
     parser.add_argument("--google-only", action="store_true")
     parser.add_argument("--workers", type=int, default=3)
+    parser.add_argument("--market", choices=["all", "kosdaq", "kospi"], default="all")
+    parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument("--min-days", type=int, default=20)
+    parser.add_argument("--naver-stride", type=int, default=None)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--offset", type=int, default=0)
     args = parser.parse_args()
     if args.today and not args.backfill:
         run_today_append()
         return
-    run_backfill(workers=args.workers, google_only=args.google_only)
+    run_backfill(
+        workers=args.workers,
+        google_only=args.google_only,
+        market=args.market,
+        skip_existing=args.skip_existing,
+        min_days=args.min_days,
+        naver_stride=args.naver_stride,
+        limit=args.limit,
+        offset=args.offset,
+    )
 
 
 if __name__ == "__main__":

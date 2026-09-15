@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import {
   NLP_HISTORY_R2_PREFIX,
-  NLP_HISTORY_SEED,
   emptyNlpHistoryIndex,
   emptyNlpHistorySeries,
   type NlpHistoryDay,
@@ -41,16 +40,47 @@ async function readLocalJson(file: string): Promise<unknown | null> {
   return null;
 }
 
-async function readStore(file: string): Promise<unknown | null> {
-  if (r2Configured()) {
-    try {
-      const text = await r2GetObjectText(`${NLP_HISTORY_R2_PREFIX}/${file}`);
-      if (text) return JSON.parse(text) as unknown;
-    } catch {
-      /* fall through */
-    }
+async function readR2Json(file: string): Promise<unknown | null> {
+  if (!r2Configured()) return null;
+  try {
+    const text = await r2GetObjectText(`${NLP_HISTORY_R2_PREFIX}/${file}`);
+    if (text) return JSON.parse(text) as unknown;
+  } catch {
+    /* fall through */
   }
-  return readLocalJson(file);
+  return null;
+}
+
+function richerName(a: NlpHistoryName, b: NlpHistoryName): NlpHistoryName {
+  const ad = a.n_days || 0;
+  const bd = b.n_days || 0;
+  if (bd !== ad) return bd > ad ? b : a;
+  return (b.n_headlines || 0) > (a.n_headlines || 0) ? b : a;
+}
+
+function mergeIndexes(a: NlpHistoryIndex | null, b: NlpHistoryIndex | null): NlpHistoryIndex | null {
+  if (!a) return b;
+  if (!b) return a;
+  const byCode = new Map<string, NlpHistoryName>();
+  for (const row of [...a.names, ...b.names]) {
+    const prev = byCode.get(row.code);
+    byCode.set(row.code, prev ? richerName(prev, row) : row);
+  }
+  const newer = (a.generated_at || "") >= (b.generated_at || "") ? a : b;
+  return {
+    ...newer,
+    ok: true,
+    names: [...byCode.values()],
+  };
+}
+
+function richerSeries(a: NlpHistorySeries | null, b: NlpHistorySeries | null): NlpHistorySeries | null {
+  if (!a) return b;
+  if (!b) return a;
+  if ((b.n_days || 0) !== (a.n_days || 0)) {
+    return (b.n_days || 0) > (a.n_days || 0) ? b : a;
+  }
+  return (b.n_headlines || 0) > (a.n_headlines || 0) ? b : a;
 }
 
 function asMarket(v: unknown): NlpHistoryMarket {
@@ -144,18 +174,20 @@ function parseSeries(raw: unknown, fallbackCode: string): NlpHistorySeries | nul
 }
 
 async function loadIndex(): Promise<NlpHistoryIndex> {
-  const parsed = parseIndex(await readStore("index.json"));
-  if (parsed) return parsed;
-  return {
-    ...emptyNlpHistoryIndex("1년 뉴스 아카이브가 아직 없습니다. 백필을 실행하세요."),
-    names: NLP_HISTORY_SEED,
-    ok: false,
-  };
+  const merged = mergeIndexes(
+    parseIndex(await readR2Json("index.json")),
+    parseIndex(await readLocalJson("index.json")),
+  );
+  if (merged) return merged;
+  return emptyNlpHistoryIndex("1년 뉴스 아카이브가 아직 없습니다. 백필을 실행하세요.");
 }
 
 async function loadSeries(code: string): Promise<NlpHistorySeries> {
-  const parsed = parseSeries(await readStore(`${code}.json`), code);
-  if (parsed) return parsed;
+  const merged = richerSeries(
+    parseSeries(await readR2Json(`${code}.json`), code),
+    parseSeries(await readLocalJson(`${code}.json`), code),
+  );
+  if (merged) return merged;
   return emptyNlpHistorySeries(code, "해당 종목의 뉴스 시계열이 없습니다.");
 }
 
@@ -163,7 +195,7 @@ export async function GET(req: NextRequest) {
   const code = (req.nextUrl.searchParams.get("code") || "").trim();
   try {
     if (!code) {
-      const payload = await withServerCache("nlp-history:index:v1", 120_000, 600_000, loadIndex);
+      const payload = await withServerCache("nlp-history:index:v3", 120_000, 600_000, loadIndex);
       return NextResponse.json(payload, {
         headers: { "Cache-Control": cdnCacheHeader("yahoo") },
       });
@@ -172,7 +204,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(emptyNlpHistorySeries(code, "종목코드가 올바르지 않습니다."), { status: 400 });
     }
     const payload = await withServerCache(
-      `nlp-history:code:${code}:v1`,
+      `nlp-history:code:${code}:v2`,
       120_000,
       600_000,
       () => loadSeries(code),

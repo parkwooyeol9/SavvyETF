@@ -1,28 +1,662 @@
 {
   "universe": "nlp_history",
   "as_of": "2026-09-15",
-  "source": "Naver m.stock marketValue KOSPI/KOSDAQ top 10 (preferred skipped)",
-  "count": 20,
+  "source": "KOSDAQ 100 constituents + archived KOSPI names (KOSPI 200 to follow in batches)",
+  "count": 109,
   "names": [
-    {"code": "005930", "name": "삼성전자", "market": "kospi", "yahoo": "005930.KS"},
-    {"code": "000660", "name": "SK하이닉스", "market": "kospi", "yahoo": "000660.KS"},
-    {"code": "402340", "name": "SK스퀘어", "market": "kospi", "yahoo": "402340.KS"},
-    {"code": "009150", "name": "삼성전기", "market": "kospi", "yahoo": "009150.KS"},
-    {"code": "373220", "name": "LG에너지솔루션", "market": "kospi", "yahoo": "373220.KS"},
-    {"code": "005380", "name": "현대차", "market": "kospi", "yahoo": "005380.KS"},
-    {"code": "207940", "name": "삼성바이오로직스", "market": "kospi", "yahoo": "207940.KS"},
-    {"code": "105560", "name": "KB금융", "market": "kospi", "yahoo": "105560.KS"},
-    {"code": "032830", "name": "삼성생명", "market": "kospi", "yahoo": "032830.KS"},
-    {"code": "028260", "name": "삼성물산", "market": "kospi", "yahoo": "028260.KS"},
-    {"code": "196170", "name": "알테오젠", "market": "kosdaq", "yahoo": "196170.KQ"},
-    {"code": "086520", "name": "에코프로", "market": "kosdaq", "yahoo": "086520.KQ"},
-    {"code": "247540", "name": "에코프로비엠", "market": "kosdaq", "yahoo": "247540.KQ"},
-    {"code": "036930", "name": "주성엔지니어링", "market": "kosdaq", "yahoo": "036930.KQ"},
-    {"code": "277810", "name": "레인보우로보틱스", "market": "kosdaq", "yahoo": "277810.KQ"},
-    {"code": "039030", "name": "이오테크닉스", "market": "kosdaq", "yahoo": "039030.KQ"},
-    {"code": "240810", "name": "원익IPS", "market": "kosdaq", "yahoo": "240810.KQ"},
-    {"code": "058470", "name": "리노공업", "market": "kosdaq", "yahoo": "058470.KQ"},
-    {"code": "222800", "name": "심텍", "market": "kosdaq", "yahoo": "222800.KQ"},
-    {"code": "108490", "name": "로보티즈", "market": "kosdaq", "yahoo": "108490.KQ"}
+    {
+      "code": "000250",
+      "name": "삼천당제약",
+      "market": "kosdaq",
+      "yahoo": "000250.KQ"
+    },
+    {
+      "code": "005290",
+      "name": "동진쎄미켐",
+      "market": "kosdaq",
+      "yahoo": "005290.KQ"
+    },
+    {
+      "code": "007390",
+      "name": "네이처셀",
+      "market": "kosdaq",
+      "yahoo": "007390.KQ"
+    },
+    {
+      "code": "028300",
+      "name": "HLB",
+      "market": "kosdaq",
+      "yahoo": "028300.KQ"
+    },
+    {
+      "code": "030530",
+      "name": "원익홀딩스",
+      "market": "kosdaq",
+      "yahoo": "030530.KQ"
+    },
+    {
+      "code": "319660",
+      "name": "피에스케이",
+      "market": "kosdaq",
+      "yahoo": "319660.KQ"
+    },
+    {
+      "code": "035760",
+      "name": "CJ ENM",
+      "market": "kosdaq",
+      "yahoo": "035760.KQ"
+    },
+    {
+      "code": "036930",
+      "name": "주성엔지니어링",
+      "market": "kosdaq",
+      "yahoo": "036930.KQ"
+    },
+    {
+      "code": "039030",
+      "name": "이오테크닉스",
+      "market": "kosdaq",
+      "yahoo": "039030.KQ"
+    },
+    {
+      "code": "039200",
+      "name": "오스코텍",
+      "market": "kosdaq",
+      "yahoo": "039200.KQ"
+    },
+    {
+      "code": "041510",
+      "name": "에스엠",
+      "market": "kosdaq",
+      "yahoo": "041510.KQ"
+    },
+    {
+      "code": "043260",
+      "name": "성호전자",
+      "market": "kosdaq",
+      "yahoo": "043260.KQ"
+    },
+    {
+      "code": "058470",
+      "name": "리노공업",
+      "market": "kosdaq",
+      "yahoo": "058470.KQ"
+    },
+    {
+      "code": "058610",
+      "name": "에스피지",
+      "market": "kosdaq",
+      "yahoo": "058610.KQ"
+    },
+    {
+      "code": "060370",
+      "name": "LS마린솔루션",
+      "market": "kosdaq",
+      "yahoo": "060370.KQ"
+    },
+    {
+      "code": "064760",
+      "name": "티씨케이",
+      "market": "kosdaq",
+      "yahoo": "064760.KQ"
+    },
+    {
+      "code": "065350",
+      "name": "신성델타테크",
+      "market": "kosdaq",
+      "yahoo": "065350.KQ"
+    },
+    {
+      "code": "067310",
+      "name": "하나마이크론",
+      "market": "kosdaq",
+      "yahoo": "067310.KQ"
+    },
+    {
+      "code": "068760",
+      "name": "셀트리온제약",
+      "market": "kosdaq",
+      "yahoo": "068760.KQ"
+    },
+    {
+      "code": "078600",
+      "name": "대주전자재료",
+      "market": "kosdaq",
+      "yahoo": "078600.KQ"
+    },
+    {
+      "code": "080220",
+      "name": "제주반도체",
+      "market": "kosdaq",
+      "yahoo": "080220.KQ"
+    },
+    {
+      "code": "082270",
+      "name": "젬백스",
+      "market": "kosdaq",
+      "yahoo": "082270.KQ"
+    },
+    {
+      "code": "083650",
+      "name": "비에이치아이",
+      "market": "kosdaq",
+      "yahoo": "083650.KQ"
+    },
+    {
+      "code": "084370",
+      "name": "유진테크",
+      "market": "kosdaq",
+      "yahoo": "084370.KQ"
+    },
+    {
+      "code": "085660",
+      "name": "차바이오텍",
+      "market": "kosdaq",
+      "yahoo": "085660.KQ"
+    },
+    {
+      "code": "086520",
+      "name": "에코프로",
+      "market": "kosdaq",
+      "yahoo": "086520.KQ"
+    },
+    {
+      "code": "087010",
+      "name": "펩트론",
+      "market": "kosdaq",
+      "yahoo": "087010.KQ"
+    },
+    {
+      "code": "089030",
+      "name": "테크윙",
+      "market": "kosdaq",
+      "yahoo": "089030.KQ"
+    },
+    {
+      "code": "090710",
+      "name": "휴림로봇",
+      "market": "kosdaq",
+      "yahoo": "090710.KQ"
+    },
+    {
+      "code": "095340",
+      "name": "ISC",
+      "market": "kosdaq",
+      "yahoo": "095340.KQ"
+    },
+    {
+      "code": "095610",
+      "name": "테스",
+      "market": "kosdaq",
+      "yahoo": "095610.KQ"
+    },
+    {
+      "code": "096530",
+      "name": "씨젠",
+      "market": "kosdaq",
+      "yahoo": "096530.KQ"
+    },
+    {
+      "code": "098460",
+      "name": "고영",
+      "market": "kosdaq",
+      "yahoo": "098460.KQ"
+    },
+    {
+      "code": "099320",
+      "name": "쎄트렉아이",
+      "market": "kosdaq",
+      "yahoo": "099320.KQ"
+    },
+    {
+      "code": "101490",
+      "name": "에스앤에스텍",
+      "market": "kosdaq",
+      "yahoo": "101490.KQ"
+    },
+    {
+      "code": "115180",
+      "name": "큐리언트",
+      "market": "kosdaq",
+      "yahoo": "115180.KQ"
+    },
+    {
+      "code": "122870",
+      "name": "와이지엔터테인먼트",
+      "market": "kosdaq",
+      "yahoo": "122870.KQ"
+    },
+    {
+      "code": "131970",
+      "name": "두산테스나",
+      "market": "kosdaq",
+      "yahoo": "131970.KQ"
+    },
+    {
+      "code": "137400",
+      "name": "피엔티",
+      "market": "kosdaq",
+      "yahoo": "137400.KQ"
+    },
+    {
+      "code": "140410",
+      "name": "메지온",
+      "market": "kosdaq",
+      "yahoo": "140410.KQ"
+    },
+    {
+      "code": "140860",
+      "name": "파크시스템스",
+      "market": "kosdaq",
+      "yahoo": "140860.KQ"
+    },
+    {
+      "code": "141080",
+      "name": "리가켐바이오",
+      "market": "kosdaq",
+      "yahoo": "141080.KQ"
+    },
+    {
+      "code": "145020",
+      "name": "휴젤",
+      "market": "kosdaq",
+      "yahoo": "145020.KQ"
+    },
+    {
+      "code": "196170",
+      "name": "알테오젠",
+      "market": "kosdaq",
+      "yahoo": "196170.KQ"
+    },
+    {
+      "code": "213420",
+      "name": "덕산네오룩스",
+      "market": "kosdaq",
+      "yahoo": "213420.KQ"
+    },
+    {
+      "code": "214150",
+      "name": "클래시스",
+      "market": "kosdaq",
+      "yahoo": "214150.KQ"
+    },
+    {
+      "code": "214370",
+      "name": "케어젠",
+      "market": "kosdaq",
+      "yahoo": "214370.KQ"
+    },
+    {
+      "code": "214450",
+      "name": "파마리서치",
+      "market": "kosdaq",
+      "yahoo": "214450.KQ"
+    },
+    {
+      "code": "218410",
+      "name": "RFHIC",
+      "market": "kosdaq",
+      "yahoo": "218410.KQ"
+    },
+    {
+      "code": "222800",
+      "name": "심텍",
+      "market": "kosdaq",
+      "yahoo": "222800.KQ"
+    },
+    {
+      "code": "232140",
+      "name": "와이씨",
+      "market": "kosdaq",
+      "yahoo": "232140.KQ"
+    },
+    {
+      "code": "240810",
+      "name": "원익IPS",
+      "market": "kosdaq",
+      "yahoo": "240810.KQ"
+    },
+    {
+      "code": "237690",
+      "name": "에스티팜",
+      "market": "kosdaq",
+      "yahoo": "237690.KQ"
+    },
+    {
+      "code": "032820",
+      "name": "우리기술",
+      "market": "kosdaq",
+      "yahoo": "032820.KQ"
+    },
+    {
+      "code": "178320",
+      "name": "서진시스템",
+      "market": "kosdaq",
+      "yahoo": "178320.KQ"
+    },
+    {
+      "code": "183300",
+      "name": "코미코",
+      "market": "kosdaq",
+      "yahoo": "183300.KQ"
+    },
+    {
+      "code": "161580",
+      "name": "필옵틱스",
+      "market": "kosdaq",
+      "yahoo": "161580.KQ"
+    },
+    {
+      "code": "003380",
+      "name": "하림지주",
+      "market": "kosdaq",
+      "yahoo": "003380.KQ"
+    },
+    {
+      "code": "263750",
+      "name": "펄어비스",
+      "market": "kosdaq",
+      "yahoo": "263750.KQ"
+    },
+    {
+      "code": "174900",
+      "name": "앱클론",
+      "market": "kosdaq",
+      "yahoo": "174900.KQ"
+    },
+    {
+      "code": "253450",
+      "name": "스튜디오드래곤",
+      "market": "kosdaq",
+      "yahoo": "253450.KQ"
+    },
+    {
+      "code": "281740",
+      "name": "레이크머티리얼즈",
+      "market": "kosdaq",
+      "yahoo": "281740.KQ"
+    },
+    {
+      "code": "166090",
+      "name": "하나머티리얼즈",
+      "market": "kosdaq",
+      "yahoo": "166090.KQ"
+    },
+    {
+      "code": "226950",
+      "name": "올릭스",
+      "market": "kosdaq",
+      "yahoo": "226950.KQ"
+    },
+    {
+      "code": "108490",
+      "name": "로보티즈",
+      "market": "kosdaq",
+      "yahoo": "108490.KQ"
+    },
+    {
+      "code": "247540",
+      "name": "에코프로비엠",
+      "market": "kosdaq",
+      "yahoo": "247540.KQ"
+    },
+    {
+      "code": "319400",
+      "name": "현대무벡스",
+      "market": "kosdaq",
+      "yahoo": "319400.KQ"
+    },
+    {
+      "code": "290650",
+      "name": "엘앤씨바이오",
+      "market": "kosdaq",
+      "yahoo": "290650.KQ"
+    },
+    {
+      "code": "298380",
+      "name": "에이비엘바이오",
+      "market": "kosdaq",
+      "yahoo": "298380.KQ"
+    },
+    {
+      "code": "323280",
+      "name": "태성",
+      "market": "kosdaq",
+      "yahoo": "323280.KQ"
+    },
+    {
+      "code": "204270",
+      "name": "제이앤티씨",
+      "market": "kosdaq",
+      "yahoo": "204270.KQ"
+    },
+    {
+      "code": "357780",
+      "name": "솔브레인",
+      "market": "kosdaq",
+      "yahoo": "357780.KQ"
+    },
+    {
+      "code": "293490",
+      "name": "카카오게임즈",
+      "market": "kosdaq",
+      "yahoo": "293490.KQ"
+    },
+    {
+      "code": "277810",
+      "name": "레인보우로보틱스",
+      "market": "kosdaq",
+      "yahoo": "277810.KQ"
+    },
+    {
+      "code": "347700",
+      "name": "스피어",
+      "market": "kosdaq",
+      "yahoo": "347700.KQ"
+    },
+    {
+      "code": "195940",
+      "name": "HK이노엔",
+      "market": "kosdaq",
+      "yahoo": "195940.KQ"
+    },
+    {
+      "code": "257720",
+      "name": "실리콘투",
+      "market": "kosdaq",
+      "yahoo": "257720.KQ"
+    },
+    {
+      "code": "348370",
+      "name": "엔켐",
+      "market": "kosdaq",
+      "yahoo": "348370.KQ"
+    },
+    {
+      "code": "388720",
+      "name": "유일로보틱스",
+      "market": "kosdaq",
+      "yahoo": "388720.KQ"
+    },
+    {
+      "code": "310210",
+      "name": "보로노이",
+      "market": "kosdaq",
+      "yahoo": "310210.KQ"
+    },
+    {
+      "code": "403870",
+      "name": "HPSP",
+      "market": "kosdaq",
+      "yahoo": "403870.KQ"
+    },
+    {
+      "code": "328130",
+      "name": "루닛",
+      "market": "kosdaq",
+      "yahoo": "328130.KQ"
+    },
+    {
+      "code": "397030",
+      "name": "에이프릴바이오",
+      "market": "kosdaq",
+      "yahoo": "397030.KQ"
+    },
+    {
+      "code": "389470",
+      "name": "인벤티지랩",
+      "market": "kosdaq",
+      "yahoo": "389470.KQ"
+    },
+    {
+      "code": "358570",
+      "name": "지아이이노베이션",
+      "market": "kosdaq",
+      "yahoo": "358570.KQ"
+    },
+    {
+      "code": "440110",
+      "name": "파두",
+      "market": "kosdaq",
+      "yahoo": "440110.KQ"
+    },
+    {
+      "code": "445680",
+      "name": "큐리옥스바이오시스템즈",
+      "market": "kosdaq",
+      "yahoo": "445680.KQ"
+    },
+    {
+      "code": "437730",
+      "name": "삼현",
+      "market": "kosdaq",
+      "yahoo": "437730.KQ"
+    },
+    {
+      "code": "347850",
+      "name": "디앤디파마텍",
+      "market": "kosdaq",
+      "yahoo": "347850.KQ"
+    },
+    {
+      "code": "160190",
+      "name": "하이젠알앤엠",
+      "market": "kosdaq",
+      "yahoo": "160190.KQ"
+    },
+    {
+      "code": "466100",
+      "name": "클로봇",
+      "market": "kosdaq",
+      "yahoo": "466100.KQ"
+    },
+    {
+      "code": "475830",
+      "name": "오름테라퓨틱",
+      "market": "kosdaq",
+      "yahoo": "475830.KQ"
+    },
+    {
+      "code": "376900",
+      "name": "로킷헬스케어",
+      "market": "kosdaq",
+      "yahoo": "376900.KQ"
+    },
+    {
+      "code": "468530",
+      "name": "프로티나",
+      "market": "kosdaq",
+      "yahoo": "468530.KQ"
+    },
+    {
+      "code": "456160",
+      "name": "지투지바이오",
+      "market": "kosdaq",
+      "yahoo": "456160.KQ"
+    },
+    {
+      "code": "388210",
+      "name": "씨엠티엑스",
+      "market": "kosdaq",
+      "yahoo": "388210.KQ"
+    },
+    {
+      "code": "035900",
+      "name": "JYP Ent.",
+      "market": "kosdaq",
+      "yahoo": "035900.KQ"
+    },
+    {
+      "code": "056190",
+      "name": "SFA",
+      "market": "kosdaq",
+      "yahoo": "056190.KQ"
+    },
+    {
+      "code": "458870",
+      "name": "씨어스",
+      "market": "kosdaq",
+      "yahoo": "458870.KQ"
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "market": "kospi",
+      "yahoo": "005930.KS"
+    },
+    {
+      "code": "402340",
+      "name": "SK스퀘어",
+      "market": "kospi",
+      "yahoo": "402340.KS"
+    },
+    {
+      "code": "105560",
+      "name": "KB금융",
+      "market": "kospi",
+      "yahoo": "105560.KS"
+    },
+    {
+      "code": "000660",
+      "name": "SK하이닉스",
+      "market": "kospi",
+      "yahoo": "000660.KS"
+    },
+    {
+      "code": "028260",
+      "name": "삼성물산",
+      "market": "kospi",
+      "yahoo": "028260.KS"
+    },
+    {
+      "code": "005380",
+      "name": "현대차",
+      "market": "kospi",
+      "yahoo": "005380.KS"
+    },
+    {
+      "code": "373220",
+      "name": "LG에너지솔루션",
+      "market": "kospi",
+      "yahoo": "373220.KS"
+    },
+    {
+      "code": "207940",
+      "name": "삼성바이오로직스",
+      "market": "kospi",
+      "yahoo": "207940.KS"
+    },
+    {
+      "code": "009150",
+      "name": "삼성전기",
+      "market": "kospi",
+      "yahoo": "009150.KS"
+    },
+    {
+      "code": "032830",
+      "name": "삼성생명",
+      "market": "kospi",
+      "yahoo": "032830.KS"
+    }
   ]
 }

@@ -10,7 +10,7 @@ import {
   type NlpChartBar,
   type NlpChartPayload,
 } from "@/lib/nlpChart";
-import { NLP_HISTORY_SEED } from "@/lib/nlpHistory";
+import { NLP_HISTORY_SEED, NLP_KOSDAQ100, nlpNameByCode } from "@/lib/nlpHistory";
 import { NLP_UNIVERSE } from "@/lib/nlpPulse";
 
 export const runtime = "nodejs";
@@ -31,8 +31,28 @@ const ALLOWED = new Map(
       const keys = [n.code.toUpperCase(), n.yahoo.toUpperCase(), toYahooChartSymbol(n.yahoo)];
       return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
     }),
+    ...NLP_KOSDAQ100.flatMap((n) => {
+      const keys = [n.code.toUpperCase(), n.yahoo.toUpperCase(), toYahooChartSymbol(n.yahoo)];
+      return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
+    }),
   ],
 );
+
+function resolveChartSpec(symbol: string): { ticker: string; name: string } | null {
+  const raw = symbol.trim();
+  const key = raw.toUpperCase();
+  const hit = ALLOWED.get(key) || ALLOWED.get(toYahooChartSymbol(raw));
+  if (hit) return hit;
+  if (/^\d{6}\.(KS|KQ)$/i.test(raw)) {
+    const named = nlpNameByCode(raw.slice(0, 6));
+    return { ticker: toYahooChartSymbol(raw), name: named?.name || raw.slice(0, 6) };
+  }
+  if (/^\d{6}$/.test(raw)) {
+    const named = nlpNameByCode(raw);
+    if (named) return { ticker: named.yahoo, name: named.name };
+  }
+  return null;
+}
 
 type YahooChart = {
   chart?: {
@@ -100,7 +120,7 @@ function emptyPayload(
 }
 
 async function fetchChart(symbol: string, range: ReturnType<typeof parseNlpChartRange>): Promise<NlpChartPayload> {
-  const spec = ALLOWED.get(symbol.toUpperCase()) || ALLOWED.get(toYahooChartSymbol(symbol));
+  const spec = resolveChartSpec(symbol);
   if (!spec) {
     return emptyPayload(symbol, range, "유니버스 외 종목입니다");
   }
