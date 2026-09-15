@@ -2,57 +2,59 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import InfraTab from "@/components/InfraTab";
-import EsgRegTab from "@/components/EsgRegTab";
-import GreenMineralsTab from "@/components/GreenMineralsTab";
-import BookClubTab from "@/components/BookClubTab";
 import MainTab from "@/components/MainTab";
-import EducationTab from "@/components/EducationTab";
-import ResearchTab from "@/components/ResearchTab";
-import CardNewsTab from "@/components/CardNewsTab";
-import ChartTradeTab from "@/components/ChartTradeTab";
-import EventStudyTab from "@/components/EventStudyTab";
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgTabShell from "@/components/EsgTabShell";
-import EsgThemesTab from "@/components/EsgThemesTab";
-import EtfHoldingsTab from "@/components/EtfHoldingsTab";
-import EtfKor15Tab from "@/components/EtfKor15Tab";
-import EtfNewTab from "@/components/EtfNewTab";
-import EtfSupplyPanel from "@/components/EtfSupplyPanel";
-import EtfWeightMonitorTab from "@/components/EtfWeightMonitorTab";
-import KosdaqActiveTab from "@/components/KosdaqActiveTab";
-import CountryEtfTab from "@/components/CountryEtfTab";
-import GeoTab from "@/components/GeoTab";
-import KrMarketTab from "@/components/KrMarketTab";
-import LeverageEtfTab from "@/components/LeverageEtfTab";
-import MacroTab from "@/components/MacroTab";
-import YenCarryTab from "@/components/YenCarryTab";
-import CftcTab from "@/components/CftcTab";
-import PreciousMetalsTab from "@/components/PreciousMetalsTab";
-import CryptoAssetsTab from "@/components/CryptoAssetsTab";
-import VolatilityMonitorTab from "@/components/VolatilityMonitorTab";
-import DerivativesTab from "@/components/DerivativesTab";
-import MarketGammaTab from "@/components/MarketGammaTab";
-import QuantTab from "@/components/QuantTab";
-import TradingIdeasTab from "@/components/TradingIdeasTab";
-import WeightOptimizeTab from "@/components/WeightOptimizeTab";
-import NlpPulseTab from "@/components/NlpPulseTab";
-import GraphTab from "@/components/GraphTab";
-import WallStreetGurusTab from "@/components/WallStreetGurusTab";
-import TradingSignalsTab from "@/components/TradingSignalsTab";
-import MoneyFlowTab from "@/components/MoneyFlowTab";
-import SimulateTab from "@/components/SimulateTab";
-import UsPortfolioTab from "@/components/UsPortfolioTab";
-import AiPortTab from "@/components/AiPortTab";
-import CorridorTab from "@/components/CorridorTab";
-import UsMarketTab from "@/components/UsMarketTab";
-import UsMidtermTab from "@/components/UsMidtermTab";
-import MidtermStudyTab from "@/components/MidtermStudyTab";
-import PoliThemesTab from "@/components/PoliThemesTab";
-import ThemeEtfTab from "@/components/ThemeEtfTab";
-import AiEtfTab from "@/components/AiEtfTab";
-import EtfDbTab from "@/components/EtfDbTab";
-import EtfDbUsTab from "@/components/EtfDbUsTab";
+import {
+  InfraTab,
+  EsgRegTab,
+  GreenMineralsTab,
+  BookClubTab,
+  EducationTab,
+  ResearchTab,
+  CardNewsTab,
+  ChartTradeTab,
+  EventStudyTab,
+  EsgThemesTab,
+  EtfHoldingsTab,
+  EtfKor15Tab,
+  EtfNewTab,
+  EtfSupplyPanel,
+  EtfWeightMonitorTab,
+  KosdaqActiveTab,
+  CountryEtfTab,
+  GeoTab,
+  KrMarketTab,
+  LeverageEtfTab,
+  MacroTab,
+  YenCarryTab,
+  CftcTab,
+  PreciousMetalsTab,
+  CryptoAssetsTab,
+  VolatilityMonitorTab,
+  DerivativesTab,
+  MarketGammaTab,
+  QuantTab,
+  TradingIdeasTab,
+  WeightOptimizeTab,
+  NlpPulseTab,
+  GraphTab,
+  WallStreetGurusTab,
+  TradingSignalsTab,
+  MoneyFlowTab,
+  SimulateTab,
+  UsPortfolioTab,
+  AiPortTab,
+  CorridorTab,
+  UsMarketTab,
+  UsMidtermTab,
+  MidtermStudyTab,
+  PoliThemesTab,
+  ThemeEtfTab,
+  AiEtfTab,
+  EtfDbTab,
+  EtfDbUsTab,
+} from "@/components/lazyTabs";
 import {
   AdminLoginControl,
   AdminSessionProvider,
@@ -75,6 +77,7 @@ import {
   isShellTabId,
   navPlacement,
   canonicalShellTab,
+  parseShellTab,
   visibleShellTabs,
   type TabId,
 } from "@/lib/types";
@@ -205,14 +208,27 @@ function DashboardInner({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const path = window.location.pathname;
-    if (tab === "heatpick" && path !== "/play") {
-      window.history.replaceState(null, "", "/play");
+    if (tab === "heatpick") {
+      if (path !== "/play") window.history.replaceState(null, "", "/play");
       return;
     }
-    if (tab !== "heatpick" && path === "/play") {
-      window.history.replaceState(null, "", "/");
-    }
+    const next = tab === "main" ? "/" : `/?tab=${encodeURIComponent(tab)}`;
+    const current = `${path}${window.location.search}`;
+    if (current !== next) window.history.replaceState(null, "", next);
   }, [tab]);
+
+  useEffect(() => {
+    const onPop = () => {
+      if (window.location.pathname === "/play") {
+        setTab("heatpick");
+        return;
+      }
+      const next = parseShellTab(new URLSearchParams(window.location.search).get("tab")) || "main";
+      setTab(canonicalShellTab(next));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -549,7 +565,7 @@ function DashboardInner({
         <>
           <EtfSupplyPanel />
           <EtfNewTab />
-          <EtfKor15Tab initialDelayMs={2000} />
+          <EtfKor15Tab />
         </>
       ) : briefTab ? (
         <section className="panel">

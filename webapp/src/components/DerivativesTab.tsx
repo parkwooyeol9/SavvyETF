@@ -428,9 +428,7 @@ export default function DerivativesTab() {
   const load = useCallback(async (nextRange: DerivRange) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/derivatives?range=${nextRange}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/derivatives?range=${nextRange}`);
       const json = (await res.json()) as DerivPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

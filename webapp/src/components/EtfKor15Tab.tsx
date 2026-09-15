@@ -41,6 +41,8 @@ type ApiPayload = {
   ok_count?: number;
   rows?: Kor15Row[];
   notes?: string[];
+  stale?: boolean;
+  warning?: string;
 };
 
 type ChartMode = "weight" | "value";
@@ -166,6 +168,9 @@ export default function EtfKor15Tab({
         <p className="empty">{data?.error || (loading ? "불러오는 중…" : "데이터 없음")}</p>
       ) : (
         <>
+          {data.stale || data.warning ? (
+            <p className="kr-note">{data.warning || "직전 스냅샷 표시 중"}</p>
+          ) : null}
           <div className="etf-kor15-chart">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

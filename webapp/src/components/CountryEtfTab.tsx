@@ -98,7 +98,6 @@ export default function CountryEtfTab() {
                 `/api/country-etf?ticker=${encodeURIComponent(ticker)}${
                   refresh ? "&refresh=1" : ""
                 }`,
-                { cache: "no-store" },
               );
               const json = (await res.json()) as CountryEtfPayload;
               return json.funds?.[0] || {

@@ -186,7 +186,7 @@ export default function EtfSupplyPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/etf-supply", { cache: "no-store" });
+      const res = await fetch("/api/etf-supply");
       const json = (await res.json()) as EtfSupplyPayload;
       setData(json);
     } catch (exc) {

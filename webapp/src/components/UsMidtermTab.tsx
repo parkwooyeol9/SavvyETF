@@ -217,7 +217,7 @@ export default function UsMidtermTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/us-midterm", { cache: "no-store" });
+      const res = await fetch("/api/us-midterm");
       const json = (await res.json()) as MidtermPayload;
       if (!res.ok || json.ok === false) {
         throw new Error(json.error || `HTTP ${res.status}`);

@@ -37,7 +37,7 @@ export default function TradingIdeasTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/trading-ideas", { cache: "no-store" });
+      const res = await fetch("/api/trading-ideas");
       const json = (await res.json()) as TradingIdeasPayload;
       setData(json);
       if (!json.ok) setError(json.error || "아이디어 로드 실패");

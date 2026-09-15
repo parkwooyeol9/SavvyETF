@@ -97,9 +97,7 @@ export default function MoneyFlowTab() {
     async (p: MoneyFlowPeriod, silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const res = await fetch(`/api/money-flow?period=${p}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/money-flow?period=${p}`);
         const json = (await res.json()) as MoneyFlowPayload;
         if (!res.ok || !json.ok) {
           throw new Error(json.error || `HTTP ${res.status}`);

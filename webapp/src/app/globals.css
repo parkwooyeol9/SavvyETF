@@ -189,6 +189,33 @@ a {
   padding-bottom: 0.55rem;
 }
 
+.main-jumps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .tabs-primary,
+  .tabs-secondary,
+  .tabs-tertiary {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs-primary::-webkit-scrollbar,
+  .tabs-secondary::-webkit-scrollbar,
+  .tabs-tertiary::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex: 0 0 auto;
+  }
+}
+
 .tab-btn {
   appearance: none;
   border: 1px solid transparent;

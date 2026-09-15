@@ -4,19 +4,22 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
- * Keep only high-traffic / latency-sensitive paths warm.
- * Heavy panels (geo, heatmap, green-minerals) stay on-demand to cut Fast Origin Transfer.
- * Schedule: vercel.json every 10 minutes (was every 2).
+ * Prefetch high-traffic panels so the first 100 visitors hit memory/CDN/R2
+ * instead of Yahoo / the Render bot.
  */
 const WARM_PATHS = [
-  "/api/kr-market",
-  "/api/etf-kor15",
-  "/api/etf-new",
   "/api/briefs",
-  "/api/ai-gov",
+  "/api/heatmap?universe=etf&top_n=30",
+  "/api/why-etf",
+  "/api/etf-kor15",
+  "/api/etf-new?kr=10&us=10",
+  "/api/kr-market",
+  "/api/etf-db-us",
+  "/api/ai-etf",
+  "/api/nlp-pulse",
 ] as const;
 
 function secretsEqual(a: string, b: string): boolean {
@@ -52,20 +55,20 @@ export async function GET(request: Request) {
   }
 
   const base = origin();
-  const results: Array<{ path: string; status: number; ms: number }> = [];
-
-  for (const path of WARM_PATHS) {
-    const started = Date.now();
-    try {
-      const res = await fetch(`${base}${path}`, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(55_000),
-      });
-      results.push({ path, status: res.status, ms: Date.now() - started });
-    } catch {
-      results.push({ path, status: 0, ms: Date.now() - started });
-    }
-  }
+  const results = await Promise.all(
+    WARM_PATHS.map(async (path) => {
+      const started = Date.now();
+      try {
+        const res = await fetch(`${base}${path}`, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(55_000),
+        });
+        return { path, status: res.status, ms: Date.now() - started };
+      } catch {
+        return { path, status: 0, ms: Date.now() - started };
+      }
+    }),
+  );
 
   const failed = results.filter((r) => r.status < 200 || r.status >= 300).length;
   return NextResponse.json({
@@ -75,4 +78,3 @@ export async function GET(request: Request) {
     results,
   });
 }
-

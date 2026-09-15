@@ -70,7 +70,7 @@ export default function EtfMarketStructurePanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/etf-market-structure", { cache: "no-store" });
+      const res = await fetch("/api/etf-market-structure");
       const json = (await res.json()) as EtfMarketStructurePayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

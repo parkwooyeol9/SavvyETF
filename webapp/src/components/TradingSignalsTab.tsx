@@ -140,7 +140,7 @@ export default function TradingSignalsTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/trading-signals", { cache: "no-store" });
+      const res = await fetch("/api/trading-signals");
       const json = (await res.json()) as TradingSignalsPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

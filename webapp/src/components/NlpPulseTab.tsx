@@ -152,7 +152,7 @@ export default function NlpPulseTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/nlp-pulse", { cache: "no-store" });
+      const res = await fetch("/api/nlp-pulse");
       const json = (await res.json()) as NlpPulsePayload;
       setData(json);
     } catch (exc) {
@@ -170,7 +170,7 @@ export default function NlpPulseTab() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/nlp-history", { cache: "no-store" });
+        const res = await fetch("/api/nlp-history");
         const json = (await res.json()) as NlpHistoryIndex;
         if (!cancelled) setHistIndex(json);
       } catch (exc) {
@@ -278,9 +278,7 @@ export default function NlpPulseTab() {
     setHistDate(null);
     void (async () => {
       try {
-        const res = await fetch(`/api/nlp-history?code=${encodeURIComponent(historyCode)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/nlp-history?code=${encodeURIComponent(historyCode)}`);
         const json = (await res.json()) as NlpHistorySeries;
         if (!cancelled) setHistSeries(json);
       } catch (exc) {

@@ -114,9 +114,7 @@ export default function MarketGammaTab() {
     setLoading(true);
     setData((prev) => (prev?.market?.id === id ? prev : null));
     try {
-      const res = await fetch(`/api/market-gamma?market=${id}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/market-gamma?market=${id}`);
       const json = (await res.json()) as GammaPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

@@ -72,8 +72,8 @@ export default function GraphTab() {
     setLoading(true);
     try {
       const [chainRes, nlpRes] = await Promise.all([
-        fetch("/api/chain", { cache: "no-store" }),
-        fetch("/api/nlp-pulse", { cache: "no-store" }),
+        fetch("/api/chain"),
+        fetch("/api/nlp-pulse"),
       ]);
       setData((await chainRes.json()) as ChainPayload);
       setNlp((await nlpRes.json()) as NlpPulsePayload);

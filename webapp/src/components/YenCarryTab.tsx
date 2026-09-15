@@ -176,9 +176,7 @@ export default function YenCarryTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/yen-carry?range=${encodeURIComponent(r)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/yen-carry?range=${encodeURIComponent(r)}`);
       const json = (await res.json()) as YenCarryPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

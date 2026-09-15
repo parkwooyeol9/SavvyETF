@@ -123,7 +123,18 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   });
   responseHeaders.forEach((value, key) => res.headers.set(key, value));
-  res = await updateSession(request, res);
+  const skipAuthRefresh =
+    method === "GET" &&
+    pathname.startsWith("/api/") &&
+    !pathname.startsWith("/api/admin") &&
+    !pathname.startsWith("/api/community") &&
+    !pathname.startsWith("/api/bookclub") &&
+    !pathname.startsWith("/api/research") &&
+    !pathname.startsWith("/api/cardnews") &&
+    !pathname.startsWith("/api/ingest");
+  if (!skipAuthRefresh) {
+    res = await updateSession(request, res);
+  }
   return res;
 }
 

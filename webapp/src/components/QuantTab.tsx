@@ -89,7 +89,7 @@ export default function QuantTab() {
   const load = useCallback(async (next: QuantRange) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/quant?range=${next}`, { cache: "no-store" });
+      const res = await fetch(`/api/quant?range=${next}`);
       const json = (await res.json()) as QuantPayload;
       setData(json);
     } catch (exc) {
@@ -121,7 +121,6 @@ export default function QuantTab() {
       try {
         const res = await fetch(
           `/api/quant?range=${nextRange}&ticker=${encodeURIComponent(parsed)}`,
-          { cache: "no-store" },
         );
         const json = (await res.json()) as QuantPayload;
         const hit = json.snapshots[0];

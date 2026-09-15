@@ -245,7 +245,7 @@ export default function ThemeEtfTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/theme-etf", { cache: "no-store" });
+      const res = await fetch("/api/theme-etf");
       const json = (await res.json()) as ThemePayload;
       if (!res.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);

@@ -110,7 +110,6 @@ export default function Kosdaq100Tab({ embedded = false }: { embedded?: boolean 
     try {
       const res = await fetch(
         refresh ? "/api/kosdaq100?refresh=1" : "/api/kosdaq100",
-        { cache: "no-store" },
       );
       const json = (await res.json()) as Kosdaq100Payload;
       if (!json.ok) setError(json.error || "불러오기 실패");

@@ -97,7 +97,7 @@ export default function AiEtfTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/ai-etf", { cache: "no-store" });
+      const res = await fetch("/api/ai-etf");
       const json = (await res.json()) as AiEtfPayload;
       setData(json);
     } catch (exc) {

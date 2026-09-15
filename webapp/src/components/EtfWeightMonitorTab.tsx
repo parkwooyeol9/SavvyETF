@@ -145,7 +145,7 @@ export default function EtfWeightMonitorTab() {
 
   const loadUniverse = useCallback(async () => {
     try {
-      const res = await fetch("/api/etf-weights?universe=1", { cache: "no-store" });
+      const res = await fetch("/api/etf-weights?universe=1");
       const json = (await res.json()) as Payload;
       const list = json.universe?.tickers || [];
       if (list.length) setUniverse(list);
@@ -160,9 +160,7 @@ export default function EtfWeightMonitorTab() {
     setDaySnap(null);
     setPrevSnap(null);
     try {
-      const res = await fetch(`/api/etf-weights?ticker=${encodeURIComponent(sym)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/etf-weights?ticker=${encodeURIComponent(sym)}`);
       const json = (await res.json()) as Payload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);
@@ -200,7 +198,7 @@ export default function EtfWeightMonitorTab() {
         );
       }
       const responses = await Promise.all(
-        urls.map((u) => fetch(u, { cache: "no-store" }).then((r) => r.json() as Promise<Payload>)),
+        urls.map((u) => fetch(u).then((r) => r.json() as Promise<Payload>)),
       );
       const cur = responses[0];
       const prev = responses[1];
@@ -235,7 +233,6 @@ export default function EtfWeightMonitorTab() {
           try {
             const res = await fetch(
               `/api/etf-weights?ticker=${encodeURIComponent(ticker)}&as_of=${encodeURIComponent(prevDay)}`,
-              { cache: "no-store" },
             );
             const json = (await res.json()) as Payload;
             setPrevSnap(json?.ok ? json : null);

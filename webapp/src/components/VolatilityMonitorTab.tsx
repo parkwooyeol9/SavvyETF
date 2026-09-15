@@ -86,7 +86,6 @@ export default function VolatilityMonitorTab() {
     try {
       const res = await fetch(
         `/api/volatility-monitor?range=${encodeURIComponent(r)}`,
-        { cache: "no-store" },
       );
       const json = (await res.json()) as VolMonitorPayload;
       if (!res.ok || !json.ok) {

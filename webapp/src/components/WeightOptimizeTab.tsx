@@ -101,7 +101,7 @@ export default function WeightOptimizeTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/weight-optimize", { cache: "no-store" });
+      const res = await fetch("/api/weight-optimize");
       const json = (await res.json()) as WeightOptimizePayload;
       setData(json);
       if (!json.ok) setError(json.error || "최적화 실패");

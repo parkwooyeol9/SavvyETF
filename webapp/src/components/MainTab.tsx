@@ -145,7 +145,7 @@ export default function MainTab() {
     (async () => {
       setWhyLoading(true);
       try {
-        const res = await fetch("/api/why-etf", { cache: "no-store" });
+        const res = await fetch("/api/why-etf");
         const data = (await res.json()) as WhyPayload;
         if (!cancelled) setWhy(data);
       } catch (exc) {
@@ -172,6 +172,28 @@ export default function MainTab() {
 
   return (
     <div className="main-tab">
+      <nav className="main-jumps" aria-label="바로가기">
+        {(
+          [
+            ["kr", "국내시황"],
+            ["etf", "ETF 시황"],
+            ["nlp", "NLP"],
+            ["aietf", "AI ETF"],
+            ["etfholdings", "편입비"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className="chip"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("savvyetf-nav-tab", { detail: id }))
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       <section className="feature-block heatmap-block">
         <aside className="heatmap-qr" aria-label="홈페이지 QR">
           <img

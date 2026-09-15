@@ -124,7 +124,6 @@ export default function NlpPriceChart({
     try {
       const res = await fetch(
         `/api/nlp-chart?symbol=${encodeURIComponent(nextTicker)}&range=${nextRange}`,
-        { cache: "no-store" },
       );
       const json = (await res.json()) as NlpChartPayload;
       setData(json);

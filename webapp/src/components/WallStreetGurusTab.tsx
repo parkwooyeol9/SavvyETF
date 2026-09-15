@@ -92,7 +92,7 @@ export default function WallStreetGurusTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/wall-street-gurus", { cache: "no-store" });
+      const res = await fetch("/api/wall-street-gurus");
       const json = (await res.json()) as WallStreetGurusPayload;
       setData(json);
       if (!json.ok) setError(json.error || "구루 브리핑 로드 실패");

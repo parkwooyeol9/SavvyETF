@@ -100,7 +100,6 @@ export default function NlpHistoryPanel({
       try {
         const res = await fetch(
           `/api/nlp-chart?symbol=${encodeURIComponent(yahoo)}&range=1y`,
-          { cache: "no-store" },
         );
         const json = (await res.json()) as NlpChartPayload;
         if (!cancelled) setPrice(json);

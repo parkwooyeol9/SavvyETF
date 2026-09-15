@@ -37,6 +37,7 @@ export function jsonWithCdnCache<T>(
     status,
     headers: {
       "Cache-Control": cdnCacheHeader(tier),
+      "CDN-Cache-Control": cdnCacheHeader(tier),
       ...extraHeaders,
     },
   });

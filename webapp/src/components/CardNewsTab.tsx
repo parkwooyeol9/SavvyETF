@@ -71,7 +71,7 @@ function downloadFile(file: File) {
 }
 
 async function fetchCardBlob(item: CardItem): Promise<Blob> {
-  const res = await fetch(mediaUrl(item), { cache: "no-store" });
+  const res = await fetch(mediaUrl(item));
   if (!res.ok) throw new Error("이미지를 가져오지 못했습니다.");
   return res.blob();
 }
@@ -175,7 +175,7 @@ export default function CardNewsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/cardnews", { cache: "no-store" });
+      const res = await fetch("/api/cardnews");
       const json = (await res.json()) as {
         ok: boolean;
         days?: DayGroup[];

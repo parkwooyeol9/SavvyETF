@@ -518,38 +518,45 @@ export async function loadPrevUsSnapshot(): Promise<PrevSnap | null> {
   }
 }
 
+export async function loadLatestUsPayload(): Promise<EtfDbUsPayload | null> {
+  if (!r2Configured()) return null;
+  try {
+    const text = await r2GetObjectText(ETF_DB_US_LATEST_KEY);
+    if (!text) return null;
+    const data = JSON.parse(text) as Partial<EtfDbUsPayload>;
+    if (!Array.isArray(data.rows) || !data.rows.length || !data.aggregates) return null;
+    return {
+      ok: true,
+      generated_at: data.generated_at || new Date().toISOString(),
+      generated_at_display: data.generated_at_display || "",
+      source: data.source || "r2 snapshot",
+      count: data.count ?? data.rows.length,
+      total_aum_mn: data.total_aum_mn ?? 0,
+      total_turnover_mn: data.total_turnover_mn ?? 0,
+      prev_as_of: data.prev_as_of ?? null,
+      as_of: data.as_of ?? null,
+      equity_only: data.equity_only,
+      aggregates: data.aggregates,
+      aum_history: data.aum_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      nav_history: data.nav_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      turnover_history: data.turnover_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      turnover_daily_history: data.turnover_daily_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      flow_history: data.flow_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      flow_daily_history: data.flow_daily_history || { type: { dates: [], series: {} }, region: { dates: [], series: {} }, sector: { dates: [], series: {} }, theme: { dates: [], series: {} } },
+      ticker_series: data.ticker_series || {},
+      history_note: data.history_note || "",
+      rows: data.rows,
+      note: data.note || "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> {
   if (!r2Configured() || !payload.ok) return;
   const asOf = payload.as_of || new Date().toISOString().slice(0, 10);
-  const body = JSON.stringify({
-    as_of: asOf,
-    generated_at: payload.generated_at,
-    rows: payload.rows.map((r) => ({
-      symbol: r.symbol,
-      name: r.name,
-      type: r.type,
-      region: r.region,
-      sector: r.sector,
-      theme: r.theme,
-      nav: r.nav,
-      units: r.units,
-      aum_mn: r.aum_mn,
-      volume: r.volume,
-      turnover_mn: r.turnover_mn,
-      flow_mn: r.flow_mn,
-      price: r.price,
-      change_rate: r.change_rate,
-    })),
-    aggregates: payload.aggregates,
-    aum_history: payload.aum_history,
-    nav_history: payload.nav_history,
-    turnover_history: payload.turnover_history,
-    turnover_daily_history: payload.turnover_daily_history,
-    flow_history: payload.flow_history,
-    flow_daily_history: payload.flow_daily_history,
-    ticker_series: payload.ticker_series,
-    history_note: payload.history_note,
-  });
+  const body = JSON.stringify(payload);
   const buf = Buffer.from(body, "utf8");
   try {
     await r2PutObject(

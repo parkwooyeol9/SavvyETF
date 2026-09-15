@@ -144,7 +144,7 @@ export default function UsMarketTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/us-market", { cache: "no-store" });
+      const res = await fetch("/api/us-market");
       const json = (await res.json()) as UsMarketPayload;
       if (!json.ok) setError(json.error || "불러오기 실패");
       else setError(null);

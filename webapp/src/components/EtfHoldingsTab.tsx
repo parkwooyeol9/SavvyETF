@@ -91,7 +91,6 @@ async function fetchFund(
   const qs = new URLSearchParams({ ticker, limit: "120" });
   if (market) qs.set("market", market);
   const res = await fetch(`/api/etf-holdings?${qs}`, {
-    cache: "no-store",
     signal,
   });
   return (await res.json()) as ApiPayload;
@@ -326,7 +325,6 @@ export default function EtfHoldingsTab() {
       try {
         const res = await fetch(
           `/api/etf-holdings?suggest=1&q=${encodeURIComponent(q)}`,
-          { cache: "no-store" },
         );
         const json = (await res.json()) as ApiPayload;
         setSuggestions(json.suggestions || []);

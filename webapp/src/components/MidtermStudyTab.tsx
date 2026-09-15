@@ -151,7 +151,7 @@ export default function MidtermStudyTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/midterm-study", { cache: "no-store" });
+      const res = await fetch("/api/midterm-study");
       const json = (await res.json()) as MidtermStudyPayload;
       setData(json);
     } catch (exc) {

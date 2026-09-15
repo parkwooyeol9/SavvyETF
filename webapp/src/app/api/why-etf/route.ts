@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-
+import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
 import { simulateAllocation } from "@/lib/simulate";
 
 export const dynamic = "force-dynamic";
@@ -31,41 +30,45 @@ const PRESETS = [
   },
 ];
 
-export async function GET() {
+async function buildWhyEtf() {
   const end = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 365 * 5 * 86_400_000).toISOString().slice(0, 10);
+  const presets = await Promise.all(
+    PRESETS.map(async (preset) => {
+      const simulation = await simulateAllocation({
+        tickers: preset.tickers,
+        weights: preset.weights,
+        start_date: start,
+        end_date: end,
+        initial_capital: 10_000,
+        benchmark: preset.benchmark,
+      });
+      return { ...preset, simulation };
+    }),
+  );
+  return {
+    ok: true as const,
+    start_date: start,
+    end_date: end,
+    narrative: NARRATIVE,
+    presets,
+  };
+}
 
+export async function GET() {
   try {
-    const presets = await Promise.all(
-      PRESETS.map(async (preset) => {
-        const simulation = await simulateAllocation({
-          tickers: preset.tickers,
-          weights: preset.weights,
-          start_date: start,
-          end_date: end,
-          initial_capital: 10_000,
-          benchmark: preset.benchmark,
-        });
-        return { ...preset, simulation };
-      }),
-    );
-
-    return NextResponse.json({
-      ok: true,
-      start_date: start,
-      end_date: end,
-      narrative: NARRATIVE,
-      presets,
-    });
+    const payload = await withServerCache("why-etf:v1", 600_000, 1_200_000, buildWhyEtf);
+    return jsonWithCdnCache(payload, "yahoo");
   } catch (exc) {
-    return NextResponse.json(
+    return jsonWithCdnCache(
       {
         ok: false,
         error: exc instanceof Error ? exc.message : "Failed to build insights",
         narrative: NARRATIVE,
         presets: [],
       },
-      { status: 500 },
+      "yahoo",
+      500,
     );
   }
 }

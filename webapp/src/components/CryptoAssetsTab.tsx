@@ -896,7 +896,6 @@ export default function CryptoAssetsTab() {
         const res = await fetch(
           `/api/crypto-assets?bar=${encodeURIComponent(nextBar)}` +
             `&coin=${encodeURIComponent(nextCoin)}`,
-          { cache: "no-store" },
         );
         const json = (await res.json()) as CryptoAssetsPayload;
         if (!res.ok || !json.ok) {

@@ -446,7 +446,7 @@ export default function ChartTradeTab() {
 
   const loadRanks = useCallback(async () => {
     try {
-      const res = await fetch("/api/chart-trade/rank", { cache: "no-store" });
+      const res = await fetch("/api/chart-trade/rank");
       const json = (await res.json()) as RankPayload;
       if (!res.ok || !json.ok) return;
       setRankToday(json.today || []);

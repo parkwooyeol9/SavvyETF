@@ -70,7 +70,7 @@ export default function AiPortTab() {
   }, []);
 
   const fetchIdeas = useCallback(async () => {
-    const res = await fetch("/api/trading-ideas", { cache: "no-store" });
+    const res = await fetch("/api/trading-ideas");
     return (await res.json()) as TradingIdeasPayload;
   }, []);
 

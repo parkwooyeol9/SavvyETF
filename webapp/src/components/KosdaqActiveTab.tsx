@@ -254,7 +254,6 @@ export default function KosdaqActiveTab() {
     try {
       const res = await fetch(
         refresh ? "/api/kosdaq-active?refresh=1" : "/api/kosdaq-active",
-        { cache: "no-store" },
       );
       const json = (await res.json()) as KosdaqActivePayload;
       if (!json.ok) {

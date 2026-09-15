@@ -155,9 +155,7 @@ export default function PoliThemesTab() {
   const load = useCallback(async (nextRange: PoliRange) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/poli-themes?range=${nextRange}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/poli-themes?range=${nextRange}`);
       const json = (await res.json()) as PoliThemesPayload;
       if (!res.ok || json.ok === false) {
         throw new Error(json.error || `HTTP ${res.status}`);
