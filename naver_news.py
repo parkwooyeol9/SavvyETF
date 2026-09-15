@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from html import unescape
 from urllib.parse import quote
 
@@ -22,9 +25,21 @@ REQUEST_HEADERS = {
     "Referer": "https://m.naver.com/",
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
 }
-_TIME_RE = re.compile(r"(\d+\s*(?:분|시간|일)\s*전|\d{4}\.\d{2}\.\d{2}\.?)")
+DESKTOP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://search.naver.com/search.naver?where=news",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+_TIME_RE = re.compile(r"(\d+\s*(?:분|시간|일|주)\s*전|\d{4}\.\d{2}\.\d{2}\.?)")
 _HANGUL_RE = re.compile(r"[\uac00-\ud7a3]")
-_NOISE = {"Keep에 저장", "Keep에 바로가기", "네이버뉴스"}
+_NOISE = {"Keep에 저장", "Keep에 바로가기", "네이버뉴스", "새 창 열림"}
+_RATE_LOCK = threading.Lock()
+_LAST_REQUEST = 0.0
+_MIN_INTERVAL = 0.12
 _ENGLISH_SOURCES = {
     "korea times",
     "korea herald",
@@ -78,29 +93,123 @@ def _search_query_for_ticker(ticker: str, universe: str | None = None) -> str:
     return raw
 
 
-def fetch_naver_news(
-    query: str,
-    limit: int = DEFAULT_HEADLINES_PER_TICKER,
-    *,
-    korean_only: bool = True,
-) -> list[dict[str, str]]:
-    """Crawl Naver mobile news search for ``query`` and return headline dicts."""
-    query = (query or "").strip()
-    if not query or limit <= 0:
-        return []
+def _throttle() -> None:
+    global _LAST_REQUEST
+    with _RATE_LOCK:
+        now = time.monotonic()
+        wait = _MIN_INTERVAL - (now - _LAST_REQUEST)
+        if wait > 0:
+            time.sleep(wait)
+        _LAST_REQUEST = time.monotonic()
 
-    url = (
-        "https://m.search.naver.com/search.naver"
-        f"?where=m_news&query={quote(query)}&sm=mtb_jum&sort=0"
-    )
+
+def _parse_desktop_news_list(
+    content: bytes,
+    *,
+    limit: int,
+    korean_only: bool,
+    seen_titles: set[str] | None = None,
+) -> list[dict[str, str]]:
     try:
-        response = requests.get(url, headers=REQUEST_HEADERS, timeout=20)
-        response.raise_for_status()
+        doc = lhtml.fromstring(content)
     except Exception:
         return []
+    lists = doc.xpath('//*[contains(@class,"fds-news-item-list-tab")]')
+    if not lists:
+        return []
+    headlines: list[dict[str, str]] = []
+    seen = seen_titles if seen_titles is not None else set()
+    for child in lists[0]:
+        heads = child.xpath('.//*[contains(@class,"sds-comps-text-type-headline1")]')
+        title = _clean_text("".join(heads[0].itertext())) if heads else ""
+        title = title.replace("새 창 열림", "").strip()
+        if len(title) < 8:
+            continue
+        src_nodes = child.xpath('.//*[contains(@class,"sds-comps-profile-info-title-text")]')
+        source = _clean_text(src_nodes[0].text_content()) if src_nodes else ""
+        source = source.replace("새 창 열림", "").strip() or "Naver News"
+        if title in seen:
+            continue
+        if korean_only and not _looks_korean_headline(title, source):
+            continue
+        link = ""
+        for anchor in child.xpath(".//a[@href]"):
+            href = (anchor.get("href") or "").strip()
+            if not href.startswith("http"):
+                continue
+            if "keep.naver.com" in href or "search.naver.com" in href:
+                continue
+            cand = _clean_text(anchor.text_content()).replace("새 창 열림", "").strip()
+            if len(cand) < 8:
+                continue
+            link = href
+            break
+        seen.add(title)
+        item = {"title": title, "source": source, "date": "N/A"}
+        if link:
+            item["url"] = link
+        headlines.append(item)
+        if len(headlines) >= limit:
+            break
+    return headlines
 
+
+def fetch_naver_news_on_day(
+    query: str,
+    day: date,
+    *,
+    max_pages: int = 2,
+    korean_only: bool = True,
+) -> list[dict[str, str]]:
+    """Desktop date-filtered search for a single calendar day."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    ds = f"{day:%Y}.{day:%m}.{day:%d}"
+    compact = f"{day:%Y%m%d}"
+    nso = f"so:dd,p:from{compact}to{compact}"
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    start = 1
+    for _ in range(max(1, int(max_pages))):
+        url = (
+            "https://search.naver.com/search.naver"
+            f"?where=news&query={quote(query)}&sm=tab_pge&sort=1"
+            f"&photo=0&field=0&pd=3&ds={ds}&de={ds}"
+            f"&nso={quote(nso, safe=':,')}&start={start}"
+        )
+        page: list[dict[str, str]] = []
+        try:
+            _throttle()
+            response = requests.get(url, headers=DESKTOP_HEADERS, timeout=15)
+            if response.status_code != 200:
+                break
+            page = _parse_desktop_news_list(
+                response.content,
+                limit=40,
+                korean_only=korean_only,
+                seen_titles=seen,
+            )
+        except Exception:
+            break
+        if not page:
+            break
+        out.extend(page)
+        if len(page) < 8:
+            break
+        start += 10
+    return out
+
+
+def _parse_news_list(
+    content: bytes,
+    *,
+    limit: int,
+    korean_only: bool,
+    seen_titles: set[str] | None = None,
+) -> list[dict[str, str]]:
     try:
-        doc = lhtml.fromstring(response.content)
+        doc = lhtml.fromstring(content)
     except Exception:
         return []
 
@@ -109,7 +218,7 @@ def fetch_naver_news(
         return []
 
     headlines: list[dict[str, str]] = []
-    seen_titles: set[str] = set()
+    seen = seen_titles if seen_titles is not None else set()
 
     for child in lists[0]:
         texts = [_clean_text(t) for t in child.itertext() if _clean_text(t)]
@@ -133,7 +242,6 @@ def fetch_naver_news(
                 continue
             if candidate in _NOISE or candidate == source:
                 continue
-            # Prefer the first substantial link as the title (snippet links come after).
             title = candidate
             link = href
             break
@@ -142,11 +250,11 @@ def fetch_naver_news(
             title = texts[title_start]
 
         title = _clean_text(title)
-        if len(title) < 8 or title in seen_titles:
+        if len(title) < 8 or title in seen:
             continue
         if korean_only and not _looks_korean_headline(title, source):
             continue
-        seen_titles.add(title)
+        seen.add(title)
 
         item = {
             "title": title,
@@ -160,6 +268,87 @@ def fetch_naver_news(
             break
 
     return headlines
+
+
+def fetch_naver_news_page(
+    query: str,
+    *,
+    limit: int = 40,
+    korean_only: bool = True,
+    sort: int = 0,
+    nso: str | None = None,
+    start: int = 1,
+    seen_titles: set[str] | None = None,
+) -> list[dict[str, str]]:
+    """One Naver mobile news search page. ``sort=1`` is date order."""
+    query = (query or "").strip()
+    if not query or limit <= 0:
+        return []
+    parts = [
+        "https://m.search.naver.com/search.naver",
+        f"?where=m_news&query={quote(query)}&sm=mtb_jum&sort={int(sort)}",
+        f"&start={max(1, int(start))}",
+    ]
+    if nso:
+        parts.append(f"&nso={quote(nso, safe=':,')}")
+    url = "".join(parts)
+    try:
+        response = requests.get(url, headers=REQUEST_HEADERS, timeout=20)
+        response.raise_for_status()
+    except Exception:
+        return []
+    return _parse_news_list(
+        response.content,
+        limit=limit,
+        korean_only=korean_only,
+        seen_titles=seen_titles,
+    )
+
+
+def fetch_naver_news(
+    query: str,
+    limit: int = DEFAULT_HEADLINES_PER_TICKER,
+    *,
+    korean_only: bool = True,
+) -> list[dict[str, str]]:
+    """Crawl Naver mobile news search for ``query`` and return headline dicts."""
+    return fetch_naver_news_page(
+        query, limit=limit, korean_only=korean_only, sort=0, start=1
+    )
+
+
+def fetch_naver_news_range(
+    query: str,
+    start_day: str,
+    end_day: str,
+    *,
+    max_pages: int = 10,
+    korean_only: bool = True,
+) -> list[dict[str, str]]:
+    """Date-filtered news (YYYY-MM-DD inclusive), newest first."""
+    ds = (start_day or "").replace("-", "")[:8]
+    de = (end_day or "").replace("-", "")[:8]
+    if len(ds) != 8 or len(de) != 8:
+        return []
+    nso = f"so:dd,p:from{ds}to{de}"
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    start = 1
+    for _ in range(max(1, int(max_pages))):
+        page = fetch_naver_news_page(
+            query,
+            limit=40,
+            korean_only=korean_only,
+            sort=1,
+            nso=nso,
+            start=start,
+            seen_titles=seen,
+        )
+        if not page:
+            break
+        out.extend(page)
+        start += 10
+    return out
 
 
 def fetch_naver_news_for_tickers(

@@ -41,6 +41,7 @@ export type ShellTabId =
   | "eventstudy"
   | "aiport"
   | "nlp"
+  | "nlphistory"
   | "graph"
   | "corridor"
   | "usmidterm"
@@ -126,6 +127,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "weightopt",
   "aiport",
   "nlp",
+  "nlphistory",
   "graph",
   "corridor",
   "etf",
@@ -198,6 +200,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   moneyflow: "Money Flow",
   aiport: "AI포트",
   nlp: "NLP",
+  nlphistory: "뉴스 투심",
   graph: "그래프",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
@@ -252,7 +255,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport"],
+    tabs: ["graph", "nlp", "nlphistory", "ideas", "weightopt", "aiport"],
     nested: [
       {
         id: "politics",

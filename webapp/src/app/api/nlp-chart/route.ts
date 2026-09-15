@@ -10,6 +10,7 @@ import {
   type NlpChartBar,
   type NlpChartPayload,
 } from "@/lib/nlpChart";
+import { NLP_HISTORY_SEED } from "@/lib/nlpHistory";
 import { NLP_UNIVERSE } from "@/lib/nlpPulse";
 
 export const runtime = "nodejs";
@@ -20,11 +21,17 @@ const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
 const ALLOWED = new Map(
-  NLP_UNIVERSE.flatMap((n) => {
-    const keys = [n.id.toUpperCase(), n.ticker.toUpperCase(), toYahooChartSymbol(n.ticker)];
-    if (n.stock_code) keys.push(n.stock_code);
-    return keys.map((k) => [k, n] as const);
-  }),
+  [
+    ...NLP_UNIVERSE.flatMap((n) => {
+      const keys = [n.id.toUpperCase(), n.ticker.toUpperCase(), toYahooChartSymbol(n.ticker)];
+      if (n.stock_code) keys.push(n.stock_code);
+      return keys.map((k) => [k, { ticker: n.ticker, name: n.name }] as const);
+    }),
+    ...NLP_HISTORY_SEED.flatMap((n) => {
+      const keys = [n.code.toUpperCase(), n.yahoo.toUpperCase(), toYahooChartSymbol(n.yahoo)];
+      return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
+    }),
+  ],
 );
 
 type YahooChart = {
@@ -161,7 +168,7 @@ async function fetchChart(symbol: string, range: ReturnType<typeof parseNlpChart
   const change_pct =
     sessionPrev != null && sessionPrev !== 0 ? ((price / sessionPrev - 1) * 100) : null;
   const range_pct = first ? ((price / first - 1) * 100) : null;
-  const kr = spec.market === "kospi200";
+  const kr = spec.ticker.includes(".KS") || spec.ticker.includes(".KQ");
   return {
     ok: true,
     symbol: spec.ticker,

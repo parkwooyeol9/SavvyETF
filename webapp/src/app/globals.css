@@ -8001,6 +8001,14 @@ button.country-etf-card {
   font-size: 0.72rem;
 }
 
+.nlp-hist-wrap {
+  height: 280px;
+}
+
+.nlp-hist-head .geo-section-title span {
+  font-weight: 600;
+}
+
 .nlp-kind {
   text-transform: uppercase;
   letter-spacing: 0.04em;
