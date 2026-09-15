@@ -10,7 +10,7 @@ import {
   type NlpChartBar,
   type NlpChartPayload,
 } from "@/lib/nlpChart";
-import { NLP_HISTORY_SEED, NLP_KOSDAQ100, nlpNameByCode } from "@/lib/nlpHistory";
+import { NLP_HISTORY_SEED, NLP_KOSDAQ100, NLP_KOSPI200, nlpNameByCode } from "@/lib/nlpHistory";
 import { NLP_UNIVERSE } from "@/lib/nlpPulse";
 
 export const runtime = "nodejs";
@@ -32,6 +32,10 @@ const ALLOWED = new Map(
       return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
     }),
     ...NLP_KOSDAQ100.flatMap((n) => {
+      const keys = [n.code.toUpperCase(), n.yahoo.toUpperCase(), toYahooChartSymbol(n.yahoo)];
+      return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
+    }),
+    ...NLP_KOSPI200.flatMap((n) => {
       const keys = [n.code.toUpperCase(), n.yahoo.toUpperCase(), toYahooChartSymbol(n.yahoo)];
       return keys.map((k) => [k, { ticker: n.yahoo, name: n.name }] as const);
     }),

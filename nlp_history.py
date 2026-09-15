@@ -403,7 +403,7 @@ def save_universe(names: list[dict[str, str]], *, source: str | None = None) -> 
         "universe": "nlp_history",
         "as_of": datetime.now(KST).date().isoformat(),
         "source": source
-        or "KOSDAQ 100 constituents + archived KOSPI names (KOSPI 200 to follow in batches)",
+        or "KOSDAQ 100 + KOSPI 200 constituents",
         "count": len(names),
         "names": names,
     }
@@ -612,7 +612,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
         "lookback_days": LOOKBACK_DAYS,
         "max_headlines_per_day": MAX_HEADLINES_PER_DAY,
         "methodology": [
-            "유니버스: 코스닥 100 구성종목 우선, 코스피 200은 이후 100개씩 추가",
+            "유니버스: 코스닥 100 + 코스피 200 구성종목",
             "뉴스: Google News RSS when:1y + 네이버 데스크톱 일자 검색 '{종목} 주가'",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100)",
             "일자 점수: 그날 제목의 단순 평균. 하루 최대 8건 보관",

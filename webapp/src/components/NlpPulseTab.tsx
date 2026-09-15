@@ -6,7 +6,7 @@ import NlpHistoryPanel from "@/components/NlpHistoryPanel";
 import NlpPriceChart from "@/components/NlpPriceChart";
 import {
   NLP_KOSDAQ100,
-  NLP_KOSPI_SEED,
+  NLP_KOSPI200,
   emptyNlpHistoryIndex,
   emptyNlpHistorySeries,
   mergeHistoryNames,
@@ -199,17 +199,8 @@ export default function NlpPulseTab() {
       );
     }
     if (market === "kospi200") {
-      const pulseAsHist: NlpHistoryName[] = (data?.kospi.names || [])
-        .filter((n) => /^\d{6}$/.test(n.id))
-        .map((n) => ({
-          code: n.id,
-          name: n.name,
-          market: "kospi" as const,
-          yahoo: n.ticker,
-          last_score: n.score,
-        }));
       return mergeHistoryNames(
-        [...NLP_KOSPI_SEED, ...pulseAsHist],
+        NLP_KOSPI200,
         indexed.filter((n) => n.market === "kospi"),
       );
     }
@@ -315,7 +306,7 @@ export default function NlpPulseTab() {
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
               코스닥 100과 코스피 200을 나눠 보고, 종목을 고르면 1년 뉴스 점수와 주가를 겹쳐
-              상관을 비교합니다. 지금은 코스닥 100 아카이브를 먼저 채웁니다.
+              상관을 비교합니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -348,16 +339,21 @@ export default function NlpPulseTab() {
           ))}
         </div>
 
-        {market === "kosdaq100" ? (
+        {market !== "sp500" ? (
           <div className="nlp-gauge-row">
-            <Gauge pulse={historyPulse("코스닥 100 투심", mapNames)} />
+            <Gauge
+              pulse={historyPulse(
+                market === "kosdaq100" ? "코스닥 100 투심" : "코스피 200 투심",
+                mapNames,
+              )}
+            />
           </div>
         ) : data?.ok ? (
           <div className="nlp-gauge-row">
-            <Gauge pulse={market === "kospi200" ? data.kospi : data.spx} />
+            <Gauge pulse={data.spx} />
           </div>
         ) : null}
-        {data?.error && market !== "kosdaq100" ? <p className="meta-soft">{data.error}</p> : null}
+        {data?.error && market === "sp500" ? <p className="meta-soft">{data.error}</p> : null}
       </section>
 
       <section className="geo-section">
@@ -366,7 +362,7 @@ export default function NlpPulseTab() {
           {market === "kosdaq100"
             ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 종목을 누르면 점수·주가 겹침 차트가 열립니다.`
             : market === "kospi200"
-              ? "코스피 200은 코스닥 100을 검토한 뒤 100개씩 늘립니다. 지금은 대표주·이미 수집된 종목만 보여 줍니다."
+              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 종목을 누르면 점수·주가 겹침 차트가 열립니다.`
               : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
         {market !== "sp500" ? (
@@ -530,7 +526,7 @@ export default function NlpPulseTab() {
         </section>
       </div>
 
-      {market === "kosdaq100" ? null : (
+      {market === "sp500" ? (
       <div className="nlp-three">
         <section className="geo-section">
           <h3 className="geo-section-title">극성 뉴스</h3>
@@ -550,9 +546,9 @@ export default function NlpPulseTab() {
       <section className="geo-section">
         <h3 className="geo-section-title">방법론</h3>
         <ul className="ideas-summary">
-          {market === "kosdaq100"
+          {market !== "sp500"
             ? [
-                "유니버스: 코스닥 100 구성종목. 코스피 200은 이후 100개씩 추가",
+                "유니버스: 코스닥 100 · 코스피 200 구성종목",
                 "뉴스: Google News RSS 1년 + 네이버 일자 검색 '{종목} 주가'",
                 "차트: 파란선은 그날 제목 점수, 노란선은 종가. r는 뉴스가 있던 날의 점수·종가 상관",
                 "점수: 호재−악재 키워드 순점수 (−100~+100)",

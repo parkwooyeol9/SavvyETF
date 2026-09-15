@@ -1,4 +1,5 @@
 import kosdaqUniverse from "@/data/kosdaq100Universe.json";
+import kospiUniverse from "@/data/kospi200Universe.json";
 import seed from "@/data/nlpHistoryUniverse.json";
 
 export type NlpHistoryMarket = "kospi" | "kosdaq";
@@ -72,7 +73,7 @@ export const NLP_HISTORY_SEED: NlpHistoryName[] = (seed.names as NlpHistoryName[
 export const NLP_KOSDAQ100: NlpHistoryName[] = (
   (kosdaqUniverse as { constituents?: RawConstituent[] }).constituents || []
 )
-  .filter((row) => row.code && row.name)
+  .filter((row) => row.code && row.name && /^\d{6}$/.test(String(row.code)))
   .map((row) => ({
     code: String(row.code),
     name: String(row.name),
@@ -80,7 +81,20 @@ export const NLP_KOSDAQ100: NlpHistoryName[] = (
     yahoo: String(row.yahoo || `${row.code}.KQ`),
   }));
 
-export const NLP_KOSPI_SEED: NlpHistoryName[] = NLP_HISTORY_SEED.filter((n) => n.market === "kospi");
+export const NLP_KOSPI200: NlpHistoryName[] = (
+  (kospiUniverse as { constituents?: RawConstituent[] }).constituents || []
+)
+  .filter((row) => row.code && row.name && /^\d{6}$/.test(String(row.code)))
+  .map((row) => ({
+    code: String(row.code),
+    name: String(row.name),
+    market: "kospi" as const,
+    yahoo: String(row.yahoo || `${row.code}.KS`),
+  }));
+
+export const NLP_KOSPI_SEED: NlpHistoryName[] = NLP_KOSPI200.length
+  ? NLP_KOSPI200
+  : NLP_HISTORY_SEED.filter((n) => n.market === "kospi");
 
 export type NlpOverlayRow = {
   date: string;
@@ -97,13 +111,14 @@ export function emptyNlpHistoryIndex(error?: string): NlpHistoryIndex {
     lookback_days: 365,
     max_headlines_per_day: 8,
     methodology: [],
-    names: [...NLP_KOSPI_SEED, ...NLP_KOSDAQ100],
+    names: [...NLP_KOSPI200, ...NLP_KOSDAQ100],
     error,
   };
 }
 
 export function nlpNameByCode(code: string): NlpHistoryName | undefined {
   return (
+    NLP_KOSPI200.find((n) => n.code === code) ||
     NLP_KOSDAQ100.find((n) => n.code === code) ||
     NLP_HISTORY_SEED.find((n) => n.code === code)
   );
