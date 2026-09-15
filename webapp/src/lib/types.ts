@@ -45,6 +45,7 @@ export type ShellTabId =
   | "graph"
   | "corridor"
   | "usmidterm"
+  | "midtermstudy"
   | "polithemes"
   | "themeetf"
   | "bookclub"
@@ -146,6 +147,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "esgreg",
   "greenmin",
   "usmidterm",
+  "midtermstudy",
   "polithemes",
   "themeetf",
   "bookclub",
@@ -204,6 +206,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   graph: "그래프",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
+  midtermstudy: "이벤트 스터디",
   polithemes: "정치테마상품",
   themeetf: "테마 ETF",
   bookclub: "북클럽",
@@ -260,7 +263,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "politics",
         label: "정치분석",
-        tabs: ["usmidterm", "polithemes"],
+        tabs: ["usmidterm", "midtermstudy", "polithemes"],
       },
       {
         id: "commodity",

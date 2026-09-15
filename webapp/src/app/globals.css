@@ -7310,6 +7310,72 @@ button.country-etf-card {
   font-size: 0.78rem;
 }
 
+.midterm-study-tab .midterm-study-scenarios {
+  margin-top: 0.85rem;
+}
+
+.midterm-study-tab .midterm-study-scenarios .eventstudy-cat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  line-height: 1.25;
+}
+
+.midterm-study-tab .midterm-study-scenarios .eventstudy-cat em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.midterm-study-roster-wrap {
+  overflow-x: auto;
+}
+
+.midterm-study-roster {
+  min-width: 52rem;
+}
+
+.midterm-study-roster td,
+.midterm-study-roster th {
+  white-space: normal;
+  vertical-align: top;
+}
+
+.midterm-study-party {
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+}
+
+.midterm-study-party.d {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.midterm-study-party.r {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.midterm-study-table-wrap {
+  overflow-x: auto;
+}
+
+.midterm-study-tab .eventstudy-heat {
+  min-width: 40rem;
+}
+
+.midterm-study-tab .eventstudy-snap-line small {
+  margin-left: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .midterm-policy-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

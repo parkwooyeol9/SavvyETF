@@ -50,6 +50,7 @@ import AiPortTab from "@/components/AiPortTab";
 import CorridorTab from "@/components/CorridorTab";
 import UsMarketTab from "@/components/UsMarketTab";
 import UsMidtermTab from "@/components/UsMidtermTab";
+import MidtermStudyTab from "@/components/MidtermStudyTab";
 import PoliThemesTab from "@/components/PoliThemesTab";
 import ThemeEtfTab from "@/components/ThemeEtfTab";
 import {
@@ -313,6 +314,7 @@ function DashboardInner({
       tab === "graph" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
+      tab === "midtermstudy" ||
       tab === "polithemes" ||
       tab === "themeetf" ||
       tab === "bookclub" ||
@@ -452,6 +454,8 @@ function DashboardInner({
         <CorridorTab />
       ) : tab === "usmidterm" ? (
         <UsMidtermTab />
+      ) : tab === "midtermstudy" ? (
+        <MidtermStudyTab />
       ) : tab === "polithemes" ? (
         <PoliThemesTab />
       ) : tab === "heatpick" ? (
