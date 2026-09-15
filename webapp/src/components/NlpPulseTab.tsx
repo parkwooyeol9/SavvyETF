@@ -541,7 +541,7 @@ export default function NlpPulseTab() {
           <HeadlineList rows={calls} empty="예정·관련 컨콜 신호가 없습니다." />
         </section>
       </div>
-      )}
+      ) : null}
 
       <section className="geo-section">
         <h3 className="geo-section-title">방법론</h3>
