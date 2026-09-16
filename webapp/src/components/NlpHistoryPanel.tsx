@@ -18,6 +18,7 @@ import {
   mergeScoreAndPrice,
   nlpCorrLabel,
   nlpHistoryTone,
+  nlpOverlayChartRange,
   nlpPearsonStats,
   type NlpHistorySeries,
   type NlpOverlayRow,
@@ -93,6 +94,7 @@ export default function NlpHistoryPanel({
   const [dartByDay, setDartByDay] = useState<Map<string, string[]>>(new Map());
   const [dartEvents, setDartEvents] = useState<Array<{ date: string; title: string; url?: string | null }>>([]);
   const yahoo = series?.yahoo;
+  const priceRange = nlpOverlayChartRange(series?.days || []);
 
   useEffect(() => {
     if (!yahoo) {
@@ -104,7 +106,7 @@ export default function NlpHistoryPanel({
     void (async () => {
       try {
         const res = await fetch(
-          `/api/nlp-chart?symbol=${encodeURIComponent(yahoo)}&range=1y`,
+          `/api/nlp-chart?symbol=${encodeURIComponent(yahoo)}&range=${priceRange}`,
         );
         const json = (await res.json()) as NlpChartPayload;
         if (!cancelled) setPrice(json);
@@ -117,7 +119,7 @@ export default function NlpHistoryPanel({
     return () => {
       cancelled = true;
     };
-  }, [yahoo]);
+  }, [yahoo, priceRange]);
 
   useEffect(() => {
     const code = series?.code;
@@ -202,10 +204,10 @@ export default function NlpHistoryPanel({
           </h3>
           <p className="macro-subhead">
             {loading
-              ? "1년 뉴스 시계열을 불러오는 중…"
+              ? "뉴스 시계열을 불러오는 중…"
               : series
                 ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART 이벤트. 제목 점수는 최근 7일 가중 평균입니다. 점을 누르면 그날 기사가 열립니다.`
-                : "이 종목의 1년 아카이브가 없습니다."}
+                : "이 종목의 뉴스 아카이브가 없습니다."}
           </p>
           {hasPrice ? (
             <p className="nlp-corr-badge">

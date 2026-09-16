@@ -63,7 +63,7 @@ function historyPulse(label: string, names: NlpHistoryName[]): NlpMarketPulse {
       ? `최근 7일 점수 평균입니다. 수집 ${mapScores.length}/${names.length}.`
       : fallback.length
         ? "최근 7일 뉴스가 없어 마지막 뉴스일 점수를 참고합니다."
-        : "이 유니버스의 1년 뉴스 점수가 아직 없습니다.",
+        : "이 유니버스의 뉴스 점수가 아직 없습니다.",
     news_n: names.reduce((s, n) => s + (n.recent_n || 0), 0),
     event_n: 0,
     bull_n: bull,
@@ -327,7 +327,7 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              코스닥 100과 코스피 200을 나눠 보고, 종목을 고르면 1년 뉴스 점수와 주가를 겹쳐
+              코스닥 100과 코스피 200을 나눠 보고, 종목을 고르면 쌓인 뉴스 점수와 주가를 겹쳐
               상관을 비교합니다.
             </p>
           </div>
@@ -382,9 +382,9 @@ export default function NlpPulseTab() {
         <h3 className="geo-section-title">종목 투심 맵</h3>
         <p className="macro-subhead">
           {market === "kosdaq100"
-            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
+            ? `코스닥 100 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
             : market === "kospi200"
-              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
+              ? `코스피 200 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
               : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
         {market !== "sp500" ? (
@@ -432,7 +432,7 @@ export default function NlpPulseTab() {
                     ? stale
                       ? `${card.last_date || "이전"} 마지막 뉴스 점수 · 최근 7일 기사 없음`
                       : `최근 7일 점수 · 7일 ${card.recent_n ?? 0}건${card.last_date ? ` · 마지막 ${card.last_date}` : ""}`
-                    : "1년 뉴스 대기"
+                    : "뉴스 대기"
                 }
               >
                 <span>{card.name}</span>
@@ -488,8 +488,8 @@ export default function NlpPulseTab() {
             </header>
             <p className="nlp-picked">
               {pickedHistoryMeta.n_days
-                ? `1년 뉴스 ${pickedHistoryMeta.n_days}일 · 기사 ${pickedHistoryMeta.n_headlines || 0}건`
-                : "이 종목의 1년 뉴스 아카이브를 수집하는 중입니다."}
+                ? `뉴스 ${pickedHistoryMeta.n_days}일 · 기사 ${pickedHistoryMeta.n_headlines || 0}건`
+                : "이 종목의 뉴스 아카이브를 수집하는 중입니다."}
               {typeof pickedHistoryMeta.recent_n === "number"
                 ? ` · 최근 7일 ${pickedHistoryMeta.recent_n}건`
                 : ""}
@@ -595,7 +595,7 @@ export default function NlpPulseTab() {
           {market !== "sp500"
             ? [
                 "유니버스: 코스닥 100 · 코스피 200 구성종목",
-                "뉴스: Google News RSS 1년 + 네이버 일자 검색 '{종목} 주가'. 최근 7일은 시총 상위 30종 최대 12건, 나머지 최대 8건",
+                "뉴스: 네이버 일자 검색 '{종목} 주가'. 매일 당일을 쌓고, 시계열은 지우지 않음. 최근 7일은 시총 상위 30종 최대 12건, 나머지 최대 8건",
                 "차트: 파란선은 그날 제목 점수, 노란선은 종가, 분홍 점은 DART 이벤트. r는 뉴스가 있던 날의 점수·종가 상관",
                 "점수: 호재−악재 키워드 순점수 (−100~+100). 증시 종합기사·방향어는 제외",
               ].map((m) => (

@@ -191,7 +191,7 @@ async function loadIndex(): Promise<NlpHistoryIndex> {
     parseIndex(await readLocalJson("index.json")),
   );
   if (merged) return merged;
-  return emptyNlpHistoryIndex("1년 뉴스 아카이브가 아직 없습니다. 백필을 실행하세요.");
+  return emptyNlpHistoryIndex("뉴스 아카이브가 아직 없습니다. 백필을 실행하세요.");
 }
 
 async function loadSeries(code: string): Promise<NlpHistorySeries> {

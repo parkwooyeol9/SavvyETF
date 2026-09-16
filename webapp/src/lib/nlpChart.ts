@@ -1,6 +1,6 @@
 /** NLP live price chart — Yahoo OHLC + volume for a universe ticker. */
 
-export type NlpChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y";
+export type NlpChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y" | "max";
 
 export type NlpChartBar = {
   date: string;
@@ -49,6 +49,7 @@ export const NLP_CHART_QUERY: Record<
   "6mo": { range: "6mo", interval: "1d", maxBars: 100 },
   "1y": { range: "1y", interval: "1d", maxBars: 160 },
   "5y": { range: "5y", interval: "1wk", maxBars: 160 },
+  max: { range: "max", interval: "1d", maxBars: 8000 },
 };
 
 export function parseNlpChartRange(value: string | null | undefined): NlpChartRange {
@@ -59,7 +60,8 @@ export function parseNlpChartRange(value: string | null | undefined): NlpChartRa
     value === "3mo" ||
     value === "6mo" ||
     value === "1y" ||
-    value === "5y"
+    value === "5y" ||
+    value === "max"
   ) {
     return value;
   }
@@ -74,6 +76,8 @@ export function nlpChartIntervalLabel(range: NlpChartRange): string {
       return "15분봉";
     case "5y":
       return "주봉";
+    case "max":
+      return "일봉";
     default:
       return "일봉";
   }

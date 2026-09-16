@@ -228,6 +228,14 @@ export function mergeScoreAndPrice(
 
 export const NLP_RECENT_DAYS = 7;
 
+export function nlpOverlayChartRange(days: Array<{ date: string }>, now = Date.now()): "1y" | "max" {
+  const first = days[0]?.date;
+  if (!first) return "1y";
+  const t = Date.parse(`${first}T00:00:00+09:00`);
+  if (!Number.isFinite(t)) return "1y";
+  return now - t > 400 * 86_400_000 ? "max" : "1y";
+}
+
 export function nlpKstTodayIso(now = Date.now()): string {
   return new Date(now).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 }

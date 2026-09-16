@@ -37,7 +37,7 @@ LOCAL_DIR = PROJECT_DIR / "data" / "nlp_history"
 R2_PREFIX = "nlp_history"
 KST = ZoneInfo("Asia/Seoul")
 
-LOOKBACK_DAYS = 365
+LOOKBACK_DAYS = 365  # initial backfill window only; daily append never drops older days
 RECENT_DAYS = 7
 KEEP_FULL_HEADLINES_DAYS = 30
 COMPACT_HEADLINE_CAP = 2
@@ -671,14 +671,16 @@ def recent_score_from_days(days: list[dict[str, Any]], today: date | None = None
 
 
 def trim_and_compact_days(days: list[dict[str, Any]], today: date | None = None) -> list[dict[str, Any]]:
+    """Keep the full score history. Older days only shrink stored titles, not scores or n."""
     today = today or datetime.now(KST).date()
-    keep_from = (today - timedelta(days=LOOKBACK_DAYS - 1)).isoformat()
     full_from = (today - timedelta(days=KEEP_FULL_HEADLINES_DAYS - 1)).isoformat()
     out: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for row in days:
         day = str(row.get("date") or "")
-        if not day or day < keep_from:
+        if not day or day in seen:
             continue
+        seen.add(day)
         item = dict(row)
         if day < full_from:
             headlines = list(item.get("headlines") or [])
@@ -746,7 +748,8 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
             "유니버스: 코스닥 100 + 코스피 200 구성종목",
             "뉴스: 네이버 데스크톱 일자 검색 '{종목} 주가'. 일일 수집은 당일(상위 30종은 빈 날만 최근 7일)",
             f"최근 {RECENT_DAYS}일: 시총 상위 {TOP_KOSPI_DENSE}+{TOP_KOSDAQ_DENSE}종은 하루 최대 {MAX_HEADLINES_TOP}건, 나머지는 {MAX_HEADLINES_PER_DAY}건",
-            f"{LOOKBACK_DAYS}일 이전은 삭제. {KEEP_FULL_HEADLINES_DAYS}일 이전 제목은 극성 {COMPACT_HEADLINE_CAP}건만 보관",
+            f"시계열은 삭제하지 않고 쌓음. 초기 백필 {LOOKBACK_DAYS}일, 이후 매일 당일을 추가",
+            f"{KEEP_FULL_HEADLINES_DAYS}일 이전 제목은 극성 {COMPACT_HEADLINE_CAP}건만 보관(점수·건수는 유지)",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100). 증시 종합기사는 제외",
             "일자 점수: 그날 제목의 단순 평균",
             f"맵 점수: 최근 {RECENT_DAYS}일 기사 건수 가중 평균. 7일 뉴스가 없으면 흐리게 표시",
