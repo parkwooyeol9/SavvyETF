@@ -41,6 +41,11 @@ import {
   type MidtermStudyPayload,
   type ScenarioId,
 } from "@/lib/midtermStudy";
+import {
+  groupingForScenario,
+  parseGroupingId,
+  parseScenarioId,
+} from "@/lib/midtermTape";
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -147,6 +152,23 @@ export default function MidtermStudyTab() {
   const [grouping, setGrouping] = useState<GroupingId>(DEFAULT_GROUPING);
   const [scenario, setScenario] = useState<ScenarioId>(DEFAULT_SCENARIO);
   const [horizon, setHorizon] = useState<HorizonDay>(90);
+  const [urlReady, setUrlReady] = useState(false);
+
+  function applyUrlParams(params: URLSearchParams) {
+    const sc = parseScenarioId(params.get("scenario"));
+    const g = parseGroupingId(params.get("grouping"));
+    if (sc) {
+      setScenario(sc);
+      if (g) {
+        const allowed = scenariosForGrouping(g).some((s) => s.id === sc);
+        setGrouping(allowed ? g : groupingForScenario(sc));
+      } else {
+        setGrouping(groupingForScenario(sc));
+      }
+    } else if (g) {
+      setGrouping(g);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,6 +186,31 @@ export default function MidtermStudyTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    applyUrlParams(new URLSearchParams(window.location.search));
+    setUrlReady(true);
+    const onPop = () => applyUrlParams(new URLSearchParams(window.location.search));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    if (!urlReady) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") !== "midtermstudy") return;
+    let dirty = false;
+    if (params.get("scenario") !== scenario) {
+      params.set("scenario", scenario);
+      dirty = true;
+    }
+    if (params.get("grouping") !== grouping) {
+      params.set("grouping", grouping);
+      dirty = true;
+    }
+    if (!dirty) return;
+    window.history.replaceState(null, "", `/?${params.toString()}`);
+  }, [scenario, grouping, urlReady]);
 
   const pills = scenariosForGrouping(grouping);
   const sc = data?.scenarios[scenario];

@@ -1,21 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
+import MidtermTapeCard from "@/components/MidtermTapeCard";
+import PartisanHoldingsPeek from "@/components/PartisanHoldingsPeek";
+import { buildSpreadSeries } from "@/lib/midtermTape";
 import {
   POLI_RANGES,
   type PoliEtfQuote,
   type PoliPipelineFund,
   type PoliRange,
+  type PoliSpreadPoint,
   type PoliThemesPayload,
 } from "@/lib/poliThemes";
 
@@ -146,6 +154,82 @@ function partyLabel(party: PoliPipelineFund["party"]): string {
   return "양당";
 }
 
+function SpreadChart({
+  nancKruz,
+  demzMaga,
+}: {
+  nancKruz: PoliSpreadPoint[];
+  demzMaga: PoliSpreadPoint[];
+}) {
+  const data = useMemo(() => {
+    const byDate = new Map<
+      string,
+      { date: string; label: string; nanc_kruz?: number; demz_maga?: number }
+    >();
+    for (const p of nancKruz) {
+      byDate.set(p.date, { date: p.date, label: p.label, nanc_kruz: p.value });
+    }
+    for (const p of demzMaga) {
+      const row = byDate.get(p.date) || { date: p.date, label: p.label };
+      row.demz_maga = p.value;
+      byDate.set(p.date, row);
+    }
+    return [...byDate.values()];
+  }, [nancKruz, demzMaga]);
+
+  if (data.length < 2) return null;
+
+  return (
+    <div className="poli-spread-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid stroke="#2b3648" strokeDasharray="3 3" vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#8b97a8", fontSize: 10 }}
+            tickLine={false}
+            axisLine={false}
+            minTickGap={28}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            domain={["auto", "auto"]}
+            width={42}
+            tick={{ fill: "#8b97a8", fontSize: 10 }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${Number(v).toFixed(1)}`}
+          />
+          <ReferenceLine y={0} stroke="#4b5563" strokeDasharray="4 4" />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            formatter={(v: number, name: string) => [fmtPct(Number(v)), name]}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, color: "#8b97a8" }} />
+          <Line
+            type="monotone"
+            dataKey="nanc_kruz"
+            name="NANC−KRUZ"
+            stroke="#7eb6ff"
+            strokeWidth={1.7}
+            dot={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="demz_maga"
+            name="DEMZ−MAGA"
+            stroke="#f19797"
+            strokeWidth={1.7}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export default function PoliThemesTab() {
   const [range, setRange] = useState<PoliRange>("3mo");
   const [data, setData] = useState<PoliThemesPayload | null>(null);
@@ -171,8 +255,7 @@ export default function PoliThemesTab() {
 
   useEffect(() => {
     void load(range);
-    const ms = range === "1d" || range === "5d" ? 60_000 : 120_000;
-    const id = window.setInterval(() => void load(range), ms);
+    const id = window.setInterval(() => void load(range), 300_000);
     return () => window.clearInterval(id);
   }, [load, range]);
 
@@ -181,6 +264,22 @@ export default function PoliThemesTab() {
   const listedPipeline = (data?.pipeline || []).filter((p) => p.listed);
   const pendingPipeline = (data?.pipeline || []).filter((p) => !p.listed);
   const rangeLabel = POLI_RANGES.find((r) => r.id === range)?.label || range;
+  const fallbackSpreads = useMemo(() => {
+    if (!data) return { nanc_kruz: [], demz_maga: [] };
+    if (data.spread_series?.nanc_kruz?.length || data.spread_series?.demz_maga?.length) {
+      return data.spread_series;
+    }
+    const nanc = data.baskets.find((b) => b.id === "nanc");
+    const kruz = data.baskets.find((b) => b.id === "kruz");
+    const demz = data.baskets.find((b) => b.id === "demz");
+    const maga = data.baskets.find((b) => b.id === "maga");
+    return buildSpreadSeries({
+      nanc: nanc?.series,
+      kruz: kruz?.series,
+      demz: demz?.series,
+      maga: maga?.series,
+    });
+  }, [data]);
 
   return (
     <div className="poli-tab">
@@ -207,6 +306,8 @@ export default function PoliThemesTab() {
           </div>
         </div>
 
+        <MidtermTapeCard poli={data} hidePoliLink waitForPoli />
+
         {loading && !data ? <p className="empty">시세 불러오는 중…</p> : null}
         {error ? <p className="empty warn">{error}</p> : null}
         {data?.warnings?.map((w) => (
@@ -218,8 +319,7 @@ export default function PoliThemesTab() {
         {data ? (
           <>
             <p className="macro-schedule">
-              {data.interval_label} · {rangeLabel} · 1일·5일은 1분마다, 그 외 2분마다
-              갱신
+              {data.interval_label} · {rangeLabel} · 5분마다 갱신
             </p>
             <div className="poli-spread-grid">
               <article>
@@ -250,6 +350,10 @@ export default function PoliThemesTab() {
                 <em>벤치마크</em>
               </article>
             </div>
+            <SpreadChart nancKruz={fallbackSpreads.nanc_kruz} demzMaga={fallbackSpreads.demz_maga} />
+            <p className="meta-soft">
+              스프레드는 기간 초를 0으로 맞춘 상대수익률 차이입니다. 위쪽은 민주 바스켓 우위.
+            </p>
           </>
         ) : null}
       </section>
@@ -280,6 +384,8 @@ export default function PoliThemesTab() {
           </div>
         </section>
       ) : null}
+
+      <PartisanHoldingsPeek />
 
       {data ? (
         <section className="geo-section">

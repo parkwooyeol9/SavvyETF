@@ -97,6 +97,12 @@ export type PoliPipelineFund = {
   change_1d_pct: number | null;
 };
 
+export type PoliSpreadPoint = {
+  date: string;
+  label: string;
+  value: number;
+};
+
 export type PoliThemesPayload = {
   ok: boolean;
   generated_at: string;
@@ -106,6 +112,10 @@ export type PoliThemesPayload = {
   spy_change_range_pct: number | null;
   nanc_kruz_spread: number | null;
   demz_maga_spread: number | null;
+  spread_series: {
+    nanc_kruz: PoliSpreadPoint[];
+    demz_maga: PoliSpreadPoint[];
+  };
   baskets: PoliEtfQuote[];
   sectors_d: PoliEtfQuote[];
   sectors_r: PoliEtfQuote[];

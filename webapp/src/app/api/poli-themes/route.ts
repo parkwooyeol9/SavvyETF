@@ -1,4 +1,5 @@
 import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
+import { buildSpreadSeries } from "@/lib/midtermTape";
 import {
   POLI_BASKET_SPECS,
   POLI_PIPELINE_SPECS,
@@ -215,6 +216,12 @@ async function buildPayload(range: PoliRange): Promise<PoliThemesPayload> {
     spy_change_range_pct: spy.change_range_pct,
     nanc_kruz_spread: spread(nanc?.change_range_pct, kruz?.change_range_pct),
     demz_maga_spread: spread(demz?.change_range_pct, maga?.change_range_pct),
+    spread_series: buildSpreadSeries({
+      nanc: nanc?.series,
+      kruz: kruz?.series,
+      demz: demz?.series,
+      maga: maga?.series,
+    }),
     baskets,
     sectors_d: sectors.filter((s) => s.party === "D"),
     sectors_r: sectors.filter((s) => s.party === "R"),
@@ -233,6 +240,7 @@ function emptyPayload(range: PoliRange, error?: string): PoliThemesPayload {
     spy_change_range_pct: null,
     nanc_kruz_spread: null,
     demz_maga_spread: null,
+    spread_series: { nanc_kruz: [], demz_maga: [] },
     baskets: [],
     sectors_d: [],
     sectors_r: [],
@@ -251,8 +259,8 @@ export async function GET(request: Request) {
   const range = parsePoliRange(new URL(request.url).searchParams.get("range"));
   try {
     const payload = await withServerCache(
-      `poli-themes-v2-${range}`,
-      range === "1d" || range === "5d" ? 60_000 : 180_000,
+      `poli-themes-v3-${range}`,
+      range === "1d" || range === "5d" ? 180_000 : 300_000,
       600_000,
       () => buildPayload(range),
     );

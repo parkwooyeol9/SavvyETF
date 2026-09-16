@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
+import MidtermTapeCard from "@/components/MidtermTapeCard";
 import {
   MIDTERM_ELECTION_LABEL,
   MIDTERM_SCHEDULE_NOTE,
@@ -298,6 +299,8 @@ export default function UsMidtermTab() {
             {w}
           </p>
         ))}
+
+        <MidtermTapeCard midterm={data} waitForMidterm />
 
         {data ? (
           <>

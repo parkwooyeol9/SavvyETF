@@ -27,6 +27,8 @@ const MEDIUM_PATHS = [
   "/api/nlp-pulse",
   "/api/etf-kor15",
   "/api/etf-new?kr=10&us=10",
+  "/api/us-midterm",
+  "/api/poli-themes?range=3mo",
 ] as const;
 
 const HOURLY_PATHS = ["/api/why-etf"] as const;

@@ -212,7 +212,17 @@ function DashboardInner({
       if (path !== "/play") window.history.replaceState(null, "", "/play");
       return;
     }
-    const next = tab === "main" ? "/" : `/?tab=${encodeURIComponent(tab)}`;
+    const prev = new URLSearchParams(window.location.search);
+    const nextParams = new URLSearchParams();
+    if (tab !== "main") nextParams.set("tab", tab);
+    if (tab === "midtermstudy") {
+      const sc = prev.get("scenario");
+      const g = prev.get("grouping");
+      if (sc) nextParams.set("scenario", sc);
+      if (g) nextParams.set("grouping", g);
+    }
+    const qs = nextParams.toString();
+    const next = qs ? `/?${qs}` : "/";
     const current = `${path}${window.location.search}`;
     if (current !== next) window.history.replaceState(null, "", next);
   }, [tab]);
@@ -244,12 +254,15 @@ function DashboardInner({
       if (document.visibilityState === "visible") void load();
     };
     const onNav = (e: Event) => {
-      const detail = (e as CustomEvent<ShellTabId | { tab?: string }>).detail;
+      const detail = (
+        e as CustomEvent<ShellTabId | { tab?: string; scenario?: string; grouping?: string }>
+      ).detail;
+      const extra = typeof detail === "object" && detail ? detail : null;
       const raw =
         typeof detail === "string"
           ? detail
-          : detail && typeof detail === "object"
-            ? detail.tab
+          : extra
+            ? extra.tab
             : undefined;
       const next =
         raw === "ripple" || raw === "chain"
@@ -267,6 +280,13 @@ function DashboardInner({
                     : raw;
       if (next && isShellTabId(next)) {
         if (isAdminOnlyTab(next) && !unlocked) return;
+        if (next === "midtermstudy" && extra && (extra.scenario || extra.grouping)) {
+          const params = new URLSearchParams();
+          params.set("tab", "midtermstudy");
+          if (extra.scenario) params.set("scenario", extra.scenario);
+          if (extra.grouping) params.set("grouping", extra.grouping);
+          window.history.replaceState(null, "", `/?${params.toString()}`);
+        }
         setTab(next);
       }
     };
