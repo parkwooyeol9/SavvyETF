@@ -17,6 +17,7 @@ import {
 
 import MidtermTapeCard from "@/components/MidtermTapeCard";
 import PartisanHoldingsPeek from "@/components/PartisanHoldingsPeek";
+import GopWhyCard from "@/components/GopWhyCard";
 import { buildSpreadSeries } from "@/lib/midtermTape";
 import {
   POLI_RANGES,
@@ -209,7 +210,7 @@ function SpreadChart({
           <Line
             type="monotone"
             dataKey="nanc_kruz"
-            name="NANC−KRUZ"
+            name="NANC−GOP"
             stroke="#7eb6ff"
             strokeWidth={1.7}
             dot={false}
@@ -270,12 +271,12 @@ export default function PoliThemesTab() {
       return data.spread_series;
     }
     const nanc = data.baskets.find((b) => b.id === "nanc");
-    const kruz = data.baskets.find((b) => b.id === "kruz");
+    const gop = data.baskets.find((b) => b.id === "gop") || data.baskets.find((b) => b.id === "kruz");
     const demz = data.baskets.find((b) => b.id === "demz");
     const maga = data.baskets.find((b) => b.id === "maga");
     return buildSpreadSeries({
       nanc: nanc?.series,
-      kruz: kruz?.series,
+      gop: gop?.series,
       demz: demz?.series,
       maga: maga?.series,
     });
@@ -323,7 +324,7 @@ export default function PoliThemesTab() {
             </p>
             <div className="poli-spread-grid">
               <article>
-                <span>NANC − KRUZ {rangeLabel}</span>
+                <span>NANC − GOP {rangeLabel}</span>
                 <strong
                   className={retClass(data.nanc_kruz_spread)}
                   data-party={(data.nanc_kruz_spread ?? 0) >= 0 ? "d" : "r"}
@@ -358,11 +359,13 @@ export default function PoliThemesTab() {
         ) : null}
       </section>
 
+      <GopWhyCard range={range} rangeLabel={rangeLabel} />
+
       {data?.baskets?.length ? (
         <section className="geo-section">
           <h3 className="geo-section-title">정당 바스켓 ETF</h3>
           <p className="meta-soft">
-            의원 STOCK Act 공시 복제(NANC·KRUZ)와 기업 PAC 기부 지수(DEMZ·MAGA).
+            의원 STOCK Act 공시 복제(NANC·GOP, 구 KRUZ)와 기업 PAC 기부 지수(DEMZ·MAGA).
           </p>
           <div className="poli-party-cols">
             <div>

@@ -320,7 +320,7 @@ export default function ThemeEtfTab() {
             <p className="feature-lead">
               미국 부티크 운용사 중 Corgi처럼 재미있는 슬라이스·인컴·2x를 찍어내는
               하우스를 모았습니다. 블랙록·밴가드 같은 대형 패시브는 빼 두었습니다.
-              정치 바스켓(NANC·KRUZ)은 정치테마상품 탭을 보세요.
+              정치 바스켓(NANC·GOP)은 정치테마상품 탭을 보세요.
             </p>
           </div>
         </div>

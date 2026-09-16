@@ -79,6 +79,15 @@ const KR_TTL_MS = 10 * 60_000;
 const KR_CODE = /^[0-9A-Z]{6}$/;
 const US_TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
+/** Old tickers that still appear in documents / UI. */
+const US_ETF_ALIASES: Record<string, string> = {
+  KRUZ: "GOP",
+};
+
+const US_ETF_PRIOR_TICKER: Record<string, string> = {
+  GOP: "KRUZ",
+};
+
 function looksLikeKrCode(ticker: string): boolean {
   return KR_CODE.test(ticker) && /[0-9]/.test(ticker);
 }
@@ -528,7 +537,9 @@ async function lookupUsInner(
   limit: number,
 ): Promise<EtfHoldingsLookupPayload> {
   const mast = await fetchGlobalEtfMastBySymbol();
-  const mastRow = mast.get(ticker);
+  const mastRow =
+    mast.get(ticker) ||
+    (US_ETF_PRIOR_TICKER[ticker] ? mast.get(US_ETF_PRIOR_TICKER[ticker]!) : undefined);
   if (!mastRow) {
     return {
       ok: false,
@@ -638,7 +649,7 @@ export async function lookupEtfHoldings(
     };
   }
 
-  const ticker = query.toUpperCase();
+  const ticker = US_ETF_ALIASES[query.toUpperCase()] || query.toUpperCase();
   const usHit = us.find((row) => row.symbol.toUpperCase() === ticker);
   const likelyUs = looksLikeUsTicker(ticker) && !looksLikeKrCode(ticker);
   const kr =

@@ -13,7 +13,7 @@ import { PARTISAN_HOLDING_FUNDS } from "@/lib/midtermTape";
 
 const HOLDINGS_LIMIT = 40;
 const SHOW_TOP = 6;
-const HOLDINGS_CACHE_KEY = "savvyetf:partisan-holdings:v1";
+const HOLDINGS_CACHE_KEY = "savvyetf:partisan-holdings:v2";
 const HOLDINGS_TTL_MS = 10 * 60_000;
 
 function loadCachedSnaps(): Record<string, FundSnapshot> | null {
@@ -187,20 +187,20 @@ export default function PartisanHoldingsPeek() {
   }, []);
 
   const nanc = snaps.NANC;
-  const kruz = snaps.KRUZ;
+  const gop = snaps.GOP;
   const demz = snaps.DEMZ;
   const maga = snaps.MAGA;
-  const stockOverlap = useMemo(() => (nanc && kruz ? pairOverlap(nanc, kruz) : null), [nanc, kruz]);
+  const stockOverlap = useMemo(() => (nanc && gop ? pairOverlap(nanc, gop) : null), [nanc, gop]);
   const pacOverlap = useMemo(() => (demz && maga ? pairOverlap(demz, maga) : null), [demz, maga]);
-  const stockShared = useMemo(() => sharedNames(nanc, kruz), [nanc, kruz]);
+  const stockShared = useMemo(() => sharedNames(nanc, gop), [nanc, gop]);
   const pacShared = useMemo(() => sharedNames(demz, maga), [demz, maga]);
 
   return (
     <section className="geo-section poli-hold-peek">
       <h3 className="geo-section-title">정당 바스켓 편입비</h3>
       <p className="meta-soft">
-        NANC·KRUZ는 STOCK Act 공시 복제, DEMZ·MAGA는 PAC 기부 지수. 겹치는 대형주가 있으면 스프레드가
-        정당 베팅이 아니라 공통 팩터일 수 있습니다.
+        NANC·GOP(구 KRUZ)는 STOCK Act 공시 복제, DEMZ·MAGA는 PAC 기부 지수. 겹치는 대형주가 있으면
+        스프레드가 정당 베팅이 아니라 공통 팩터일 수 있습니다.
       </p>
       {loading ? <p className="empty">편입비 불러오는 중…</p> : null}
       {error ? <p className="empty warn">{error}</p> : null}
@@ -212,7 +212,7 @@ export default function PartisanHoldingsPeek() {
       <div className="poli-hold-overlap">
         {stockOverlap ? (
           <article>
-            <span>NANC ∩ KRUZ</span>
+            <span>NANC ∩ GOP</span>
             <strong>겹침 {stockOverlap.overlapPct.toFixed(1)}%</strong>
             <em>
               공통 {stockOverlap.commonN}종

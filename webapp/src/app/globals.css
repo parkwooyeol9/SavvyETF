@@ -8024,6 +8024,121 @@ button.country-etf-card {
   font-size: 1.05rem;
 }
 
+.gop-why-headline {
+  margin: 0.55rem 0 0.4rem;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.gop-why-headline[data-mode="name"] {
+  color: #fbbf24;
+}
+
+.gop-why-headline[data-mode="sector"] {
+  color: #f19797;
+}
+
+.gop-why-bullets {
+  margin: 0.2rem 0 0.7rem;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  color: #c9d4e2;
+}
+
+.gop-why-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.gop-why-grid > article {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(8, 14, 24, 0.4);
+}
+
+.gop-why-grid h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+}
+
+.gop-why-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.gop-why-table th,
+.gop-why-table td {
+  padding: 0.32rem 0.25rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(43, 54, 72, 0.7);
+  vertical-align: top;
+}
+
+.gop-why-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.gop-why-table td:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.gop-why-table th:nth-child(n + 3) {
+  text-align: right;
+}
+
+.gop-why-table code {
+  display: block;
+  font-size: 0.78rem;
+}
+
+.gop-why-table td span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.gop-why-sectors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gop-why-sectors li {
+  margin: 0 0 0.55rem;
+}
+
+.gop-why-sectors div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+}
+
+.gop-why-sectors em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.gop-why-sectors i {
+  display: block;
+  height: 4px;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: #f19797;
+}
+
+.gop-why-sectors i[data-sign="down"] {
+  background: #7eb6ff;
+}
+
 .poli-party-cols {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8210,7 +8325,8 @@ button.country-etf-card {
   .poli-party-cols,
   .poli-hold-grid,
   .poli-hold-overlap,
-  .midterm-tape-metrics {
+  .midterm-tape-metrics,
+  .gop-why-grid {
     grid-template-columns: 1fr;
   }
 }

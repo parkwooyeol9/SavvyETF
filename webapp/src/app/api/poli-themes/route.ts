@@ -138,7 +138,11 @@ async function quoteSpec(
   spyRange: number | null,
   range: PoliRange,
 ): Promise<PoliEtfQuote> {
-  const chart = await fetchChart(spec.symbol, range);
+  let chart = await fetchChart(spec.symbol, range);
+  if (chart.error && spec.symbol === "GOP") {
+    const fallback = await fetchChart("KRUZ", range);
+    if (!fallback.error) chart = fallback;
+  }
   const vs =
     chart.change_range_pct != null && spyRange != null
       ? Math.round((chart.change_range_pct - spyRange) * 100) / 100
@@ -203,7 +207,7 @@ async function buildPayload(range: PoliRange): Promise<PoliThemesPayload> {
   });
 
   const nanc = baskets.find((b) => b.id === "nanc");
-  const kruz = baskets.find((b) => b.id === "kruz");
+  const gop = baskets.find((b) => b.id === "gop") || baskets.find((b) => b.id === "kruz");
   const demz = baskets.find((b) => b.id === "demz");
   const maga = baskets.find((b) => b.id === "maga");
 
@@ -214,11 +218,11 @@ async function buildPayload(range: PoliRange): Promise<PoliThemesPayload> {
     range,
     interval_label: poliIntervalLabel(range),
     spy_change_range_pct: spy.change_range_pct,
-    nanc_kruz_spread: spread(nanc?.change_range_pct, kruz?.change_range_pct),
+    nanc_kruz_spread: spread(nanc?.change_range_pct, gop?.change_range_pct),
     demz_maga_spread: spread(demz?.change_range_pct, maga?.change_range_pct),
     spread_series: buildSpreadSeries({
       nanc: nanc?.series,
-      kruz: kruz?.series,
+      gop: gop?.series,
       demz: demz?.series,
       maga: maga?.series,
     }),
@@ -259,7 +263,7 @@ export async function GET(request: Request) {
   const range = parsePoliRange(new URL(request.url).searchParams.get("range"));
   try {
     const payload = await withServerCache(
-      `poli-themes-v3-${range}`,
+      `poli-themes-v4-${range}`,
       range === "1d" || range === "5d" ? 180_000 : 300_000,
       600_000,
       () => buildPayload(range),

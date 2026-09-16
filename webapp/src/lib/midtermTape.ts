@@ -37,7 +37,7 @@ export type TapeSpreadSeries = {
 };
 
 export type PartisanHoldingFund = {
-  symbol: "NANC" | "KRUZ" | "DEMZ" | "MAGA";
+  symbol: "NANC" | "GOP" | "DEMZ" | "MAGA";
   name_ko: string;
   party: "D" | "R";
   pair: "stock-act" | "pac";
@@ -45,7 +45,7 @@ export type PartisanHoldingFund = {
 
 export const PARTISAN_HOLDING_FUNDS: PartisanHoldingFund[] = [
   { symbol: "NANC", name_ko: "민주 의원 매매", party: "D", pair: "stock-act" },
-  { symbol: "KRUZ", name_ko: "공화 의원 매매", party: "R", pair: "stock-act" },
+  { symbol: "GOP", name_ko: "공화 의원 매매 (구 KRUZ)", party: "R", pair: "stock-act" },
   { symbol: "DEMZ", name_ko: "민주 PAC 대형주", party: "D", pair: "pac" },
   { symbol: "MAGA", name_ko: "공화 America First", party: "R", pair: "pac" },
 ];
@@ -185,12 +185,13 @@ export function relativeSpreadSeries(
 
 export function buildSpreadSeries(args: {
   nanc?: PoliQuotePoint[] | null;
+  gop?: PoliQuotePoint[] | null;
   kruz?: PoliQuotePoint[] | null;
   demz?: PoliQuotePoint[] | null;
   maga?: PoliQuotePoint[] | null;
 }): TapeSpreadSeries {
   return {
-    nanc_kruz: relativeSpreadSeries(args.nanc, args.kruz),
+    nanc_kruz: relativeSpreadSeries(args.nanc, args.gop || args.kruz),
     demz_maga: relativeSpreadSeries(args.demz, args.maga),
   };
 }
@@ -247,7 +248,7 @@ export function buildMidtermTape(input: TapeInputs): MidtermTape {
   const yearBit = years.length ? ` (${years.join("·")})` : "";
   const headline = `${powerBit} 공화 대통령 기준으로는 스터디의 「${meta?.label ?? scenario}」${yearBit}.`;
 
-  const nancLine = `NANC−KRUZ ${rangeLabel} ${fmtSpread(input.nanc_kruz_spread)}${
+  const nancLine = `NANC−GOP ${rangeLabel} ${fmtSpread(input.nanc_kruz_spread)}${
     nancLean === "flat" ? " · 방향 없음" : nancLean === "D" ? " · 민주 의원 바스켓 우위" : " · 공화 의원 바스켓 우위"
   }`;
   const demzLine = `DEMZ−MAGA ${rangeLabel} ${fmtSpread(input.demz_maga_spread)}${

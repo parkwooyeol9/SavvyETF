@@ -141,7 +141,7 @@ export const POLI_BASKET_SPECS: PoliEtfSpec[] = [
   {
     id: "nanc",
     symbol: "NANC",
-    name: "Unusual Whales Subversive Democratic Trading ETF",
+    name: "Subversive Congressional Democrats Trading ETF",
     name_ko: "민주당 의원 매매 추종",
     party: "D",
     group: "basket",
@@ -163,16 +163,17 @@ export const POLI_BASKET_SPECS: PoliEtfSpec[] = [
     expense: "0.45%",
   },
   {
-    id: "kruz",
-    symbol: "KRUZ",
-    name: "Unusual Whales Subversive Republican Trading ETF",
+    id: "gop",
+    symbol: "GOP",
+    name: "Subversive Congressional Republicans Trading ETF",
     name_ko: "공화당 의원 매매 추종",
     party: "R",
     group: "basket",
     theme: "의회 공시",
-    thesis: "STOCK Act 공시 기준, 현역 공화 의원·가족이 매수한 상장주를 액티브로 복제.",
+    thesis:
+      "STOCK Act 공시 기준, 현역 공화 의원·가족이 매수한 상장주를 액티브로 복제. 2025.3.21 티커 KRUZ→GOP.",
     issuer: "Subversive / Unusual Whales",
-    expense: "0.75%",
+    expense: "0.73%",
   },
   {
     id: "maga",
@@ -392,7 +393,7 @@ export const POLI_PIPELINE_SPECS: Array<
     status_ko: "SEC 심사 지연",
     filed: "2026-02",
     target_launch: "2026-05-05 (예정 무산)",
-    note: "KRUZ·XLE 등과 같은 방향 베팅이 될 수 있으나 구조는 주식 바스켓이 아님.",
+    note: "GOP·XLE 등과 같은 방향 베팅이 될 수 있으나 구조는 주식 바스켓이 아님.",
   },
   {
     id: "bluh",
