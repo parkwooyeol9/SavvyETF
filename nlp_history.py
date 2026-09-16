@@ -618,11 +618,33 @@ def merge_days(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dic
     return [by[k] for k in sorted(by)]
 
 
+def recent_window_start(today: date | None = None) -> str:
+    today = today or datetime.now(KST).date()
+    return (today - timedelta(days=RECENT_DAYS - 1)).isoformat()
+
+
+def recent_score_from_days(days: list[dict[str, Any]], today: date | None = None) -> float | None:
+    start = recent_window_start(today)
+    weight = 0
+    total = 0.0
+    for day in days:
+        if str(day.get("date") or "") < start:
+            continue
+        score = day.get("score")
+        if score is None:
+            continue
+        n = int(day.get("n") or 0)
+        w = n if n > 0 else 1
+        total += float(score) * w
+        weight += w
+    return None if weight <= 0 else total / weight
+
+
 def build_name_payload(spec: dict[str, str], days: list[dict[str, Any]]) -> dict[str, Any]:
     n_headlines = sum(int(d.get("n") or 0) for d in days)
     last = days[-1] if days else None
     today = datetime.now(KST).date()
-    recent_from = (today - timedelta(days=RECENT_DAYS - 1)).isoformat()
+    recent_from = recent_window_start(today)
     recent_days = [d for d in days if str(d.get("date") or "") >= recent_from]
     recent_n = sum(int(d.get("n") or 0) for d in recent_days)
     return {
@@ -638,6 +660,7 @@ def build_name_payload(spec: dict[str, str], days: list[dict[str, Any]]) -> dict
         "last_date": None if last is None else last.get("date"),
         "last_n": None if last is None else int(last.get("n") or 0),
         "recent_n": recent_n,
+        "recent_score": recent_score_from_days(days, today),
         "days": days,
     }
 
@@ -657,6 +680,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
                 "last_date": row.get("last_date"),
                 "last_n": row.get("last_n") or 0,
                 "recent_n": row.get("recent_n") or 0,
+                "recent_score": row.get("recent_score"),
             }
         )
     return {
@@ -670,6 +694,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
             f"최근 {RECENT_DAYS}일: 시총 상위 {TOP_KOSPI_DENSE}+{TOP_KOSDAQ_DENSE}종은 하루 최대 {MAX_HEADLINES_TOP}건, 나머지는 {MAX_HEADLINES_PER_DAY}건",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100). 증시 종합기사는 제외",
             "일자 점수: 그날 제목의 단순 평균",
+            f"맵 점수: 최근 {RECENT_DAYS}일 기사 건수 가중 평균. 7일 뉴스가 없으면 흐리게 표시",
         ],
         "names": names,
     }

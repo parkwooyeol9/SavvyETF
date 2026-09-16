@@ -16,6 +16,7 @@ export type NlpHistoryName = {
   last_date?: string | null;
   last_n?: number;
   recent_n?: number;
+  recent_score?: number | null;
 };
 
 export type NlpHistoryHeadline = {
@@ -57,6 +58,9 @@ export type NlpHistorySeries = {
   n_headlines: number;
   last_score?: number | null;
   last_date?: string | null;
+  last_n?: number;
+  recent_n?: number;
+  recent_score?: number | null;
   days: NlpHistoryDay[];
   error?: string;
 };
@@ -163,6 +167,7 @@ export function mergeHistoryNames(
             last_date: hit.last_date,
             last_n: hit.last_n,
             recent_n: hit.recent_n,
+            recent_score: hit.recent_score,
           }
         : row,
     );
@@ -221,7 +226,53 @@ export function mergeScoreAndPrice(
   return out;
 }
 
-export function nlpPearson(rows: NlpOverlayRow[]): number | null {
+export const NLP_RECENT_DAYS = 7;
+
+export function nlpKstTodayIso(now = Date.now()): string {
+  return new Date(now).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+export function nlpRecentFromIso(now = Date.now()): string {
+  const today = nlpKstTodayIso(now);
+  const [y, m, d] = today.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) - (NLP_RECENT_DAYS - 1)));
+  return dt.toISOString().slice(0, 10);
+}
+
+export function nlpRecentScoreFromDays(
+  days: Array<{ date: string; score: number; n?: number }>,
+  now = Date.now(),
+): number | null {
+  const from = nlpRecentFromIso(now);
+  let w = 0;
+  let s = 0;
+  for (const day of days) {
+    if (!day.date || day.date < from || !Number.isFinite(day.score)) continue;
+    const n = day.n && day.n > 0 ? day.n : 1;
+    s += day.score * n;
+    w += n;
+  }
+  return w ? s / w : null;
+}
+
+export function nlpScoreIsStale(name: Pick<NlpHistoryName, "last_date" | "recent_n" | "recent_score">): boolean {
+  if (typeof name.recent_score === "number" && Number.isFinite(name.recent_score)) return false;
+  if ((name.recent_n || 0) > 0) return false;
+  const last = name.last_date;
+  if (!last) return true;
+  return last < nlpRecentFromIso();
+}
+
+export function nlpMapScore(name: NlpHistoryName): number | null {
+  if (typeof name.recent_score === "number" && Number.isFinite(name.recent_score)) {
+    return name.recent_score;
+  }
+  if (typeof name.last_score !== "number" || !Number.isFinite(name.last_score)) return null;
+  if (nlpScoreIsStale(name)) return null;
+  return name.last_score;
+}
+
+export function nlpPearsonStats(rows: NlpOverlayRow[]): { r: number | null; n: number } {
   const xs: number[] = [];
   const ys: number[] = [];
   for (const row of rows) {
@@ -232,7 +283,7 @@ export function nlpPearson(rows: NlpOverlayRow[]): number | null {
     ys.push(row.close);
   }
   const n = xs.length;
-  if (n < 12) return null;
+  if (n < 12) return { r: null, n };
   const mx = xs.reduce((s, v) => s + v, 0) / n;
   const my = ys.reduce((s, v) => s + v, 0) / n;
   let num = 0;
@@ -246,8 +297,12 @@ export function nlpPearson(rows: NlpOverlayRow[]): number | null {
     dy += b * b;
   }
   const den = Math.sqrt(dx * dy);
-  if (!den) return null;
-  return num / den;
+  if (!den) return { r: null, n };
+  return { r: num / den, n };
+}
+
+export function nlpPearson(rows: NlpOverlayRow[]): number | null {
+  return nlpPearsonStats(rows).r;
 }
 
 export function nlpCorrLabel(r: number | null): string {

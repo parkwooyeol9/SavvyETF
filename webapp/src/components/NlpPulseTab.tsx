@@ -11,6 +11,8 @@ import {
   emptyNlpHistorySeries,
   mergeHistoryNames,
   nlpHistoryTone,
+  nlpMapScore,
+  nlpScoreIsStale,
   type NlpHistoryIndex,
   type NlpHistoryName,
   type NlpHistorySeries,
@@ -42,7 +44,9 @@ function toneClass(tone: NlpTone | number): string {
 }
 
 function historyPulse(label: string, names: NlpHistoryName[]): NlpMarketPulse {
-  const scores = names.map((n) => n.last_score).filter((s): s is number => typeof s === "number");
+  const mapScores = names.map((n) => nlpMapScore(n)).filter((s): s is number => typeof s === "number");
+  const fallback = names.map((n) => n.last_score).filter((s): s is number => typeof s === "number");
+  const scores = mapScores.length ? mapScores : fallback;
   const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
   const bull = scores.filter((s) => s >= 12).length;
   const bear = scores.filter((s) => s <= -12).length;
@@ -55,10 +59,12 @@ function historyPulse(label: string, names: NlpHistoryName[]): NlpMarketPulse {
     tone,
     verdict,
     verdict_ko: verdict === "friendly" ? "우호" : verdict === "cautious" ? "경계" : "중립",
-    comment: scores.length
-      ? `1년 아카이브 ${scores.length}종목 최근 점수 평균입니다. 수집 ${names.filter((n) => (n.n_days || 0) > 0).length}/${names.length}.`
-      : "이 유니버스의 1년 뉴스 점수가 아직 없습니다.",
-    news_n: names.reduce((s, n) => s + (n.n_headlines || 0), 0),
+    comment: mapScores.length
+      ? `최근 7일 점수 평균입니다. 수집 ${mapScores.length}/${names.length}.`
+      : fallback.length
+        ? "최근 7일 뉴스가 없어 마지막 뉴스일 점수를 참고합니다."
+        : "이 유니버스의 1년 뉴스 점수가 아직 없습니다.",
+    news_n: names.reduce((s, n) => s + (n.recent_n || 0), 0),
     event_n: 0,
     bull_n: bull,
     bear_n: bear,
@@ -216,9 +222,14 @@ export default function NlpPulseTab() {
         )
       : mapNames;
     return [...rows].sort((a, b) => {
-      const as = a.last_score;
-      const bs = b.last_score;
-      if (as == null && bs == null) return a.name.localeCompare(b.name, "ko");
+      const as = nlpMapScore(a);
+      const bs = nlpMapScore(b);
+      const aStale = as == null && typeof a.last_score === "number";
+      const bStale = bs == null && typeof b.last_score === "number";
+      if (as == null && bs == null) {
+        if (aStale !== bStale) return aStale ? 1 : -1;
+        return a.name.localeCompare(b.name, "ko");
+      }
       if (as == null) return 1;
       if (bs == null) return -1;
       return bs - as;
@@ -253,11 +264,23 @@ export default function NlpPulseTab() {
   const historyCode = /^\d{6}$/.test(picked || "") ? picked : null;
   const chartTicker = pickedCard?.ticker || pickedHistoryMeta?.yahoo || histSeries?.yahoo;
   const chartName = pickedCard?.name || pickedHistoryMeta?.name || histSeries?.name;
-  const readyN = mapNames.filter((n) => (n.n_days || 0) > 0 || n.last_score != null).length;
+  const readyN = mapNames.filter((n) => nlpMapScore(n) != null || (n.n_days || 0) > 0 || n.last_score != null).length;
   const friendlyPulse = market === "sp500" ? pulseNames.filter((n) => n.verdict === "friendly").slice(0, 8) : [];
   const cautiousPulse = market === "sp500" ? pulseNames.filter((n) => n.verdict === "cautious").slice(0, 8) : [];
-  const friendlyHist = market === "sp500" ? [] : mapNames.filter((n) => (n.last_score ?? 0) >= 12).slice(0, 8);
-  const cautiousHist = market === "sp500" ? [] : mapNames.filter((n) => (n.last_score ?? 0) <= -12).slice(0, 8);
+  const friendlyHist =
+    market === "sp500"
+      ? []
+      : [...mapNames]
+          .filter((n) => (nlpMapScore(n) ?? 0) >= 12)
+          .sort((a, b) => (nlpMapScore(b) ?? 0) - (nlpMapScore(a) ?? 0))
+          .slice(0, 8);
+  const cautiousHist =
+    market === "sp500"
+      ? []
+      : [...mapNames]
+          .filter((n) => (nlpMapScore(n) ?? 0) <= -12)
+          .sort((a, b) => (nlpMapScore(a) ?? 0) - (nlpMapScore(b) ?? 0))
+          .slice(0, 8);
   const hasFriendly = market === "sp500" ? friendlyPulse.length > 0 : friendlyHist.length > 0;
   const hasCautious = market === "sp500" ? cautiousPulse.length > 0 : cautiousHist.length > 0;
 
@@ -359,9 +382,9 @@ export default function NlpPulseTab() {
         <h3 className="geo-section-title">종목 투심 맵</h3>
         <p className="macro-subhead">
           {market === "kosdaq100"
-            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩의 숫자는 점수, 건수는 마지막 뉴스 날 기사 수입니다.`
+            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
             : market === "kospi200"
-              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩의 숫자는 점수, 건수는 마지막 뉴스 날 기사 수입니다.`
+              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
               : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
         {market !== "sp500" ? (
@@ -392,33 +415,40 @@ export default function NlpPulseTab() {
           <p className="empty">{histIndex ? "검색 결과가 없습니다." : "유니버스를 불러오는 중…"}</p>
         ) : (
           <div className="nlp-chip-grid nlp-chip-grid-dense">
-            {visibleMap.map((card) => (
+            {visibleMap.map((card) => {
+              const mapScore = nlpMapScore(card);
+              const stale = nlpScoreIsStale(card);
+              const displayScore = mapScore ?? (typeof card.last_score === "number" ? card.last_score : null);
+              return (
               <button
                 key={card.code}
                 type="button"
                 className={`nlp-chip ${picked === card.code ? "active" : ""} ${
-                  card.last_score != null ? `nlp-${nlpHistoryTone(card.last_score)}` : ""
-                }`}
+                  displayScore != null ? `nlp-${nlpHistoryTone(displayScore)}` : ""
+                } ${stale && displayScore != null ? "nlp-stale" : ""}`}
                 onClick={() => setPicked(card.code)}
                 title={
-                  card.last_date
-                    ? `${card.last_date} 점수 · 그날 ${card.last_n ?? "?"}건 · 7일 ${card.recent_n ?? 0}건`
+                  displayScore != null
+                    ? stale
+                      ? `${card.last_date || "이전"} 마지막 뉴스 점수 · 최근 7일 기사 없음`
+                      : `최근 7일 점수 · 7일 ${card.recent_n ?? 0}건${card.last_date ? ` · 마지막 ${card.last_date}` : ""}`
                     : "1년 뉴스 대기"
                 }
               >
                 <span>{card.name}</span>
-                {card.last_score != null ? (
-                  <strong className={toneClass(card.last_score)}>{fmtScore(card.last_score)}</strong>
+                {displayScore != null ? (
+                  <strong className={toneClass(displayScore)}>{fmtScore(displayScore)}</strong>
                 ) : (
                   <em>대기</em>
                 )}
-                {typeof card.last_n === "number" || typeof card.recent_n === "number" ? (
+                {typeof card.recent_n === "number" || typeof card.last_n === "number" ? (
                   <em className="nlp-chip-n">
-                    {typeof card.last_n === "number" ? `${card.last_n}건` : `7일 ${card.recent_n}건`}
+                    {typeof card.recent_n === "number" ? `7일 ${card.recent_n}건` : `${card.last_n}건`}
                   </em>
                 ) : null}
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
         {pickedCard ? (
@@ -448,9 +478,9 @@ export default function NlpPulseTab() {
           <article className="nlp-verdict">
             <header>
               <strong>{pickedHistoryMeta.name}</strong>
-              {pickedHistoryMeta.last_score != null ? (
-                <span className={toneClass(pickedHistoryMeta.last_score)}>
-                  {fmtScore(pickedHistoryMeta.last_score)}
+              {nlpMapScore(pickedHistoryMeta) != null || pickedHistoryMeta.last_score != null ? (
+                <span className={toneClass(nlpMapScore(pickedHistoryMeta) ?? pickedHistoryMeta.last_score ?? 0)}>
+                  {fmtScore(nlpMapScore(pickedHistoryMeta) ?? pickedHistoryMeta.last_score ?? 0)}
                 </span>
               ) : (
                 <span className="meta-soft">수집 대기</span>
@@ -460,13 +490,15 @@ export default function NlpPulseTab() {
               {pickedHistoryMeta.n_days
                 ? `1년 뉴스 ${pickedHistoryMeta.n_days}일 · 기사 ${pickedHistoryMeta.n_headlines || 0}건`
                 : "이 종목의 1년 뉴스 아카이브를 수집하는 중입니다."}
-              {typeof pickedHistoryMeta.last_n === "number"
-                ? ` · 마지막 날 ${pickedHistoryMeta.last_n}건`
-                : ""}
               {typeof pickedHistoryMeta.recent_n === "number"
                 ? ` · 최근 7일 ${pickedHistoryMeta.recent_n}건`
                 : ""}
-              {pickedHistoryMeta.last_date ? ` · ${pickedHistoryMeta.last_date}` : ""}
+              {nlpScoreIsStale(pickedHistoryMeta)
+                ? " · 최근 7일 뉴스 없음"
+                : nlpMapScore(pickedHistoryMeta) != null
+                  ? " · 최근 7일 점수"
+                  : ""}
+              {pickedHistoryMeta.last_date ? ` · 마지막 ${pickedHistoryMeta.last_date}` : ""}
             </p>
           </article>
         ) : null}
@@ -481,7 +513,7 @@ export default function NlpPulseTab() {
         />
       ) : null}
 
-      {chartTicker ? (
+      {chartTicker && (!historyCode || (!loadingHist && !(histSeries?.days?.length))) ? (
         <NlpPriceChart key={chartTicker} ticker={chartTicker} name={chartName || chartTicker} />
       ) : null}
 
@@ -505,7 +537,7 @@ export default function NlpPulseTab() {
                 <li key={card.code}>
                   <button type="button" onClick={() => setPicked(card.code)}>
                     <strong>{card.name}</strong>
-                    <span className="up">{fmtScore(card.last_score || 0)}</span>
+                    <span className="up">{fmtScore(nlpMapScore(card) || 0)}</span>
                   </button>
                 </li>
               ))}
@@ -531,7 +563,7 @@ export default function NlpPulseTab() {
                 <li key={card.code}>
                   <button type="button" onClick={() => setPicked(card.code)}>
                     <strong>{card.name}</strong>
-                    <span className="down">{fmtScore(card.last_score || 0)}</span>
+                    <span className="down">{fmtScore(nlpMapScore(card) || 0)}</span>
                   </button>
                 </li>
               ))}

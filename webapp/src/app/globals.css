@@ -8025,6 +8025,14 @@ button.country-etf-card {
   background: rgba(77, 163, 255, 0.12);
 }
 
+.nlp-chip.nlp-stale {
+  opacity: 0.48;
+}
+
+.nlp-chip.nlp-stale strong {
+  color: var(--muted);
+}
+
 .nlp-gauge-comment {
   margin: 0.45rem 0 0;
   color: var(--text);

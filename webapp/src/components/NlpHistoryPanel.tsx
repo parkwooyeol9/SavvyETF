@@ -18,7 +18,7 @@ import {
   mergeScoreAndPrice,
   nlpCorrLabel,
   nlpHistoryTone,
-  nlpPearson,
+  nlpPearsonStats,
   type NlpHistorySeries,
   type NlpOverlayRow,
 } from "@/lib/nlpHistory";
@@ -164,7 +164,7 @@ export default function NlpHistoryPanel({
     return mergeScoreAndPrice(series?.days || [], price?.bars || [], dartByDay);
   }, [series, price, dartByDay]);
 
-  const corr = useMemo(() => nlpPearson(chartRows), [chartRows]);
+  const corr = useMemo(() => nlpPearsonStats(chartRows), [chartRows]);
   const currency = price?.currency || (yahoo?.includes(".KS") || yahoo?.includes(".KQ") ? "KRW" : "USD");
   const pxDomain = useMemo<[number, number]>(() => {
     const closes = chartRows.map((r) => r.close).filter((n): n is number => n != null);
@@ -184,10 +184,11 @@ export default function NlpHistoryPanel({
   if (!series && !loading) return null;
 
   const hasPrice = chartRows.some((r) => r.close != null);
+  const displayScore = series?.recent_score ?? series?.last_score ?? null;
   const corrText =
-    corr == null
-      ? nlpCorrLabel(null)
-      : `r ${corr >= 0 ? "+" : ""}${corr.toFixed(2)} · ${nlpCorrLabel(corr)}`;
+    corr.r == null
+      ? `표본 ${corr.n}일 · ${nlpCorrLabel(null)}`
+      : `r ${corr.r >= 0 ? "+" : ""}${corr.r.toFixed(2)} (n=${corr.n}) · ${nlpCorrLabel(corr.r)}`;
 
   return (
     <>
@@ -195,15 +196,15 @@ export default function NlpHistoryPanel({
         <div className="nlp-hist-head">
           <h3 className="geo-section-title">
             {series?.name || "종목"} 뉴스 점수 · 주가
-            {series?.last_score != null ? (
-              <span className={toneClass(series.last_score)}> {fmtScore(series.last_score)}</span>
+            {displayScore != null ? (
+              <span className={toneClass(displayScore)}> {fmtScore(displayScore)}</span>
             ) : null}
           </h3>
           <p className="macro-subhead">
             {loading
               ? "1년 뉴스 시계열을 불러오는 중…"
               : series
-                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART 이벤트. 점을 누르면 그날 기사가 열립니다.`
+                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART 이벤트. 제목 점수는 최근 7일 가중 평균입니다. 점을 누르면 그날 기사가 열립니다.`
                 : "이 종목의 1년 아카이브가 없습니다."}
           </p>
           {hasPrice ? (

@@ -7,6 +7,8 @@ import {
   NLP_HISTORY_R2_PREFIX,
   emptyNlpHistoryIndex,
   emptyNlpHistorySeries,
+  nlpRecentFromIso,
+  nlpRecentScoreFromDays,
   type NlpHistoryDay,
   type NlpHistoryIndex,
   type NlpHistoryMarket,
@@ -109,6 +111,7 @@ function parseIndex(raw: unknown): NlpHistoryIndex | null {
       last_date: typeof n.last_date === "string" ? n.last_date : null,
       last_n: typeof n.last_n === "number" ? n.last_n : undefined,
       recent_n: typeof n.recent_n === "number" ? n.recent_n : undefined,
+      recent_score: typeof n.recent_score === "number" ? n.recent_score : null,
     });
   }
   if (!names.length) return null;
@@ -171,6 +174,13 @@ function parseSeries(raw: unknown, fallbackCode: string): NlpHistorySeries | nul
     n_headlines: typeof row.n_headlines === "number" ? row.n_headlines : days.reduce((s, d) => s + d.n, 0),
     last_score: typeof row.last_score === "number" ? row.last_score : null,
     last_date: typeof row.last_date === "string" ? row.last_date : null,
+    last_n: typeof row.last_n === "number" ? row.last_n : days.length ? days[days.length - 1]!.n : undefined,
+    recent_n:
+      typeof row.recent_n === "number"
+        ? row.recent_n
+        : days.filter((d) => d.date >= nlpRecentFromIso()).reduce((s, d) => s + d.n, 0),
+    recent_score:
+      typeof row.recent_score === "number" ? row.recent_score : nlpRecentScoreFromDays(days),
     days,
   };
 }
