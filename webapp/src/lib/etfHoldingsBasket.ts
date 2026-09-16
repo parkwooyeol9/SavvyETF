@@ -172,11 +172,14 @@ function sanitizeSet(row: Partial<CompareSet>, idx: number): CompareSet | null {
     ? row.items
         .filter((it): it is BasketItem => Boolean(it && typeof it.ticker === "string" && it.market))
         .slice(0, MAX_HOLDINGS_BASKET)
-        .map((it) => ({
-          ticker: String(it.ticker).trim().toUpperCase(),
-          market: it.market === "US" ? "US" : "KR",
-          name: String(it.name || it.ticker).trim(),
-        }))
+        .map((it) => {
+          const market: EtfHoldingsMarket = it.market === "US" ? "US" : "KR";
+          return {
+            ticker: String(it.ticker).trim().toUpperCase(),
+            market,
+            name: String(it.name || it.ticker).trim(),
+          };
+        })
     : [];
   return { id, name, items };
 }
