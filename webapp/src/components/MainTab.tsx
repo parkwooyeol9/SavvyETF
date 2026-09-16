@@ -178,7 +178,8 @@ export default function MainTab() {
             ["kr", "국내시황"],
             ["etf", "ETF 시황"],
             ["nlp", "NLP"],
-            ["aietf", "AI ETF"],
+            ["cardnews", "카드뉴스"],
+            ["eventstudy", "이벤트 스터디"],
             ["etfholdings", "편입비"],
           ] as const
         ).map(([id, label]) => (
