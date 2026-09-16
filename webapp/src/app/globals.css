@@ -5265,6 +5265,24 @@ button.community-post-title {
   flex-wrap: wrap;
 }
 
+.eventstudy-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.eventstudy-example-btn.primary {
+  border-style: solid;
+  border-color: #60a5fa;
+  color: #dbeafe;
+}
+
+.eventstudy-example-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .eventstudy-split {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr);

@@ -153,6 +153,8 @@ export default function MidtermStudyTab() {
   const [scenario, setScenario] = useState<ScenarioId>(DEFAULT_SCENARIO);
   const [horizon, setHorizon] = useState<HorizonDay>(90);
   const [urlReady, setUrlReady] = useState(false);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const [excelError, setExcelError] = useState<string | null>(null);
 
   function applyUrlParams(params: URLSearchParams) {
     const sc = parseScenarioId(params.get("scenario"));
@@ -277,6 +279,36 @@ export default function MidtermStudyTab() {
     }
   }
 
+  async function downloadExcel() {
+    if (excelBusy || !data?.ok) return;
+    setExcelBusy(true);
+    setExcelError(null);
+    try {
+      const res = await fetch(
+        `/api/midterm-study/excel?scenario=${encodeURIComponent(scenario)}&grouping=${encodeURIComponent(grouping)}`,
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error || `엑셀 생성 실패 (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const cd = res.headers.get("Content-Disposition");
+      const match = cd?.match(/filename="?([^"]+)"?/);
+      a.href = url;
+      a.download = match?.[1] || "savvyetf-midterm-study.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (exc) {
+      setExcelError(exc instanceof Error ? exc.message : "엑셀 다운로드 실패");
+    } finally {
+      setExcelBusy(false);
+    }
+  }
+
   return (
     <div className="geo-tab macro-tab eventstudy-tab midterm-study-tab">
       <section className="panel">
@@ -289,10 +321,21 @@ export default function MidtermStudyTab() {
               상원을 유지한 경우(1982, 2010, 2018, 2022)입니다.
             </p>
           </div>
-          <button type="button" className="eventstudy-example-btn" onClick={() => void load()}>
-            다시 계산
-          </button>
+          <div className="eventstudy-hero-actions">
+            <button type="button" className="eventstudy-example-btn" onClick={() => void load()}>
+              다시 계산
+            </button>
+            <button
+              type="button"
+              className="eventstudy-example-btn primary"
+              onClick={() => void downloadExcel()}
+              disabled={excelBusy || !data?.ok}
+            >
+              {excelBusy ? "엑셀 만드는 중…" : "엑셀 다운로드"}
+            </button>
+          </div>
         </div>
+        {excelError ? <p className="empty err">{excelError}</p> : null}
 
         <div className="midterm-study-grouping" role="tablist" aria-label="시나리오 분류">
           {GROUPING_META.map((g) => (
