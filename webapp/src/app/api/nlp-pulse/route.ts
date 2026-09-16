@@ -591,9 +591,9 @@ async function buildPayload(): Promise<NlpPulsePayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("nlp-pulse:v3", 180_000, 600_000, buildPayload);
+    const payload = await withServerCache("nlp-pulse:v3", 1_080_000, 2_400_000, buildPayload);
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": cdnCacheHeader("yahoo") },
+      headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
     });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);

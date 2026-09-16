@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const FRESH_MS = 12 * 60_000;
+const FRESH_MS = 25 * 60_000;
 const STALE_MS = 24 * 60 * 60_000;
 
 type EtfNewPayload = {
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
   const cacheKey = `etf-new:v2:${qs.toString()}`;
 
   try {
-    const data = await withServerCache(cacheKey, 110_000, 300_000, () => loadEtfNew(qs));
+    const data = await withServerCache(cacheKey, 1_080_000, 600_000, () => loadEtfNew(qs));
     return NextResponse.json(data, {
       status: data.ok ? 200 : 503,
       headers: { "Cache-Control": cdnCacheHeader("etfNew") },

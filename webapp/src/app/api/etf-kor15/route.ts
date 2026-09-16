@@ -52,7 +52,7 @@ async function loadKor15(): Promise<EtfKor15Payload> {
 
 export async function GET() {
   try {
-    const data = await withServerCache("etf-kor15:v2", 280_000, 600_000, loadKor15);
+    const data = await withServerCache("etf-kor15:v2", 1_080_000, 600_000, loadKor15);
     return NextResponse.json(data, {
       status: data.ok ? 200 : 503,
       headers: { "Cache-Control": cdnCacheHeader("etfSlow") },

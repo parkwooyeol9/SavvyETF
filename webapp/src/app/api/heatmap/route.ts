@@ -17,8 +17,8 @@ export async function GET(request: Request) {
 
   const payload = await withServerCache(
     cacheKey,
-    110_000,
-    300_000,
+    1_080_000,
+    2_700_000,
     async () => {
       if (prefer !== "render") {
         const local = await buildLocalHeatmap(universe, topN);
@@ -49,6 +49,6 @@ export async function GET(request: Request) {
 
   return NextResponse.json(payload, {
     status: payload.ok ? 200 : 502,
-    headers: { "Cache-Control": cdnCacheHeader("yahoo") },
+    headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
   });
 }

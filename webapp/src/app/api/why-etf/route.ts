@@ -57,8 +57,8 @@ async function buildWhyEtf() {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("why-etf:v1", 600_000, 1_200_000, buildWhyEtf);
-    return jsonWithCdnCache(payload, "yahoo");
+    const payload = await withServerCache("why-etf:v1", 3_300_000, 7_200_000, buildWhyEtf);
+    return jsonWithCdnCache(payload, "yahooSlow");
   } catch (exc) {
     return jsonWithCdnCache(
       {
@@ -67,7 +67,7 @@ export async function GET() {
         narrative: NARRATIVE,
         presets: [],
       },
-      "yahoo",
+      "yahooSlow",
       500,
     );
   }

@@ -96,6 +96,8 @@ export type EtfDbUsPayload = {
   flow_daily_history: Record<EtfDbUsDimension, EtfDbUsHistory>;
   /** Per-ticker ~1y series for charts */
   ticker_series: Record<string, EtfDbUsTickerSeries>;
+  /** Symbols that have chart series when ticker_series is omitted from the list payload */
+  series_symbols?: string[];
   history_note: string;
   rows: EtfDbUsRow[];
   note: string;
@@ -551,6 +553,50 @@ export async function loadLatestUsPayload(): Promise<EtfDbUsPayload | null> {
   } catch {
     return null;
   }
+}
+
+export function filterUsDbPayload(
+  payload: EtfDbUsPayload,
+  opts: { equityOnly: boolean; watchOnly: boolean },
+): EtfDbUsPayload {
+  let rows = payload.rows;
+  if (opts.equityOnly && !payload.equity_only) rows = rows.filter(isEquityUsEtf);
+  if (opts.watchOnly) rows = rows.filter((r) => r.watch);
+  const sameRows =
+    rows.length === payload.rows.length &&
+    !!payload.equity_only === opts.equityOnly &&
+    !opts.watchOnly;
+  if (sameRows) {
+    return { ...payload, equity_only: opts.equityOnly };
+  }
+  const keep = new Set(rows.map((r) => r.symbol));
+  const ticker_series = Object.fromEntries(
+    Object.entries(payload.ticker_series || {}).filter(([sym]) => keep.has(sym)),
+  );
+  return {
+    ...payload,
+    equity_only: opts.equityOnly,
+    count: rows.length,
+    rows,
+    aggregates: {
+      type: aggregateUsRows(rows, "type"),
+      region: aggregateUsRows(rows, "region"),
+      sector: aggregateUsRows(rows, "sector"),
+      theme: aggregateUsRows(rows, "theme"),
+    },
+    ticker_series,
+    total_aum_mn: rows.reduce((s, r) => s + (r.aum_mn || 0), 0),
+    total_turnover_mn: rows.reduce((s, r) => s + (r.turnover_mn || 0), 0),
+  };
+}
+
+/** Drop bulky per-ticker histories from the first-paint table payload. */
+export function toPublicUsDbList(payload: EtfDbUsPayload): EtfDbUsPayload {
+  return {
+    ...payload,
+    ticker_series: {},
+    series_symbols: Object.keys(payload.ticker_series || {}),
+  };
 }
 
 export async function persistUsSnapshot(payload: EtfDbUsPayload): Promise<void> {

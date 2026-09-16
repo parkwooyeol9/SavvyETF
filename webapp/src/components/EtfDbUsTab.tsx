@@ -21,6 +21,7 @@ import {
   type EtfDbUsHistory,
   type EtfDbUsPayload,
   type EtfDbUsRow,
+  type EtfDbUsTickerSeries,
 } from "@/lib/etfDbUs";
 
 /** Primary chart series (수급 is in the side panel). */
@@ -133,6 +134,7 @@ export default function EtfDbUsTab() {
   const [showFlowPanel, setShowFlowPanel] = useState(false);
   const [flowKind, setFlowKind] = useState<FlowKind>("flow_cum");
   const [focusSymbol, setFocusSymbol] = useState<string>("SPY");
+  const [tickerSeries, setTickerSeries] = useState<EtfDbUsTickerSeries | null>(null);
   const [intraday, setIntraday] = useState<Array<{ t: string; aum: number }>>([]);
   const seriesKeyRef = useRef("");
 
@@ -150,12 +152,17 @@ export default function EtfDbUsTab() {
         }
         setData(json);
         setError(null);
-        const symbols = Object.keys(json.ticker_series || {});
+        const symbols = json.series_symbols?.length
+          ? json.series_symbols
+          : Object.keys(json.ticker_series || {});
         setFocusSymbol((prev) => {
-          if (symbols.includes(prev)) return prev;
+          if (symbols.includes(prev) || json.rows.some((r) => r.symbol === prev)) {
+            return prev;
+          }
           return (
             json.rows.find((r) => r.watch && symbols.includes(r.symbol))?.symbol ||
             symbols[0] ||
+            json.rows[0]?.symbol ||
             prev
           );
         });
@@ -170,9 +177,41 @@ export default function EtfDbUsTab() {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(true), 90_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 300_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (!focusSymbol) {
+      setTickerSeries(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const qs = new URLSearchParams({ symbol: focusSymbol });
+        if (equityOnly) qs.set("equity", "1");
+        if (watchOnly) qs.set("watch", "1");
+        const res = await fetch(`/api/etf-db-us?${qs.toString()}`);
+        const json = (await res.json()) as { series?: EtfDbUsTickerSeries | null };
+        if (!cancelled) setTickerSeries(json.series || null);
+      } catch {
+        if (!cancelled) setTickerSeries(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusSymbol, equityOnly, watchOnly, data?.generated_at]);
 
   useEffect(() => {
     setSelected(null);
@@ -363,7 +402,7 @@ export default function EtfDbUsTab() {
   }, [flowChartData, multiFlowMode, flowMultiLabels]);
 
   const tickerChartData = useMemo(() => {
-    const ts = data?.ticker_series?.[focusSymbol];
+    const ts = tickerSeries;
     if (!ts?.dates?.length) return [];
     const step = Math.max(1, Math.ceil(ts.dates.length / 140));
     const out: Array<{
@@ -387,7 +426,7 @@ export default function EtfDbUsTab() {
       };
     }
     return out;
-  }, [data, focusSymbol]);
+  }, [tickerSeries]);
 
   const tickerAumDomain = useMemo(
     () => padDomain(tickerChartData.map((r) => r.aum)),
@@ -399,9 +438,12 @@ export default function EtfDbUsTab() {
   );
 
   const focusOptions = useMemo(() => {
-    const series = data?.ticker_series || {};
+    const seriesSymbols = data?.series_symbols?.length
+      ? data.series_symbols
+      : Object.keys(data?.ticker_series || {});
+    const allowed = new Set(seriesSymbols);
     return (data?.rows || [])
-      .filter((r) => series[r.symbol])
+      .filter((r) => !allowed.size || allowed.has(r.symbol))
       .map((r) => ({ symbol: r.symbol, name: r.name, watch: !!r.watch }));
   }, [data]);
 
@@ -821,11 +863,9 @@ export default function EtfDbUsTab() {
                               ? "etfdbus-watch-row"
                               : undefined
                         }
-                        onClick={() => {
-                          if (data.ticker_series?.[r.symbol]) setFocusSymbol(r.symbol);
-                        }}
+                        onClick={() => setFocusSymbol(r.symbol)}
                         style={{
-                          cursor: data.ticker_series?.[r.symbol] ? "pointer" : undefined,
+                          cursor: "pointer",
                         }}
                       >
                         <td>

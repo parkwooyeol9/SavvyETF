@@ -138,6 +138,23 @@ export function expectedLatestUsDailyDate(at: Date = new Date()): string | null 
   return ymd;
 }
 
+/** Weekday 08:00–17:00 ET on NYSE days — premarket through post-close snapshot. */
+export function isUsDbWarmWindow(at: Date = new Date()): boolean {
+  const { ymd, minutes } = etParts(at);
+  if (!isUsEquityTradingDay(ymd)) return false;
+  return minutes >= 8 * 60 && minutes < 17 * 60;
+}
+
+/**
+ * Rebuild US ETF DB from Yahoo only in the cash window, every ~30 minutes.
+ * After hours / weekends, keep the last session snapshot (5-day safety net).
+ */
+export function usDbSnapshotStale(ageMs: number, at: Date = new Date()): boolean {
+  if (!Number.isFinite(ageMs) || ageMs < 0) return true;
+  if (isUsDbWarmWindow(at)) return ageMs >= 30 * 60_000;
+  return ageMs >= 5 * 24 * 60 * 60_000;
+}
+
 export function isUsListedSymbol(symbol: string): boolean {
   const s = symbol.trim().toUpperCase();
   if (!s) return false;

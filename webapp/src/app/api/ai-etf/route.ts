@@ -184,12 +184,12 @@ async function buildPayload(): Promise<AiEtfPayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("ai-etf:v2", 180_000, 600_000, () => buildPayload());
-    return jsonWithCdnCache(payload, "yahoo");
+    const payload = await withServerCache("ai-etf:v2", 1_080_000, 2_400_000, () => buildPayload());
+    return jsonWithCdnCache(payload, "yahooSlow");
   } catch (exc) {
     return jsonWithCdnCache(
       emptyAiEtfPayload(exc instanceof Error ? exc.message : "AI ETF 로드 실패"),
-      "yahoo",
+      "yahooSlow",
       200,
     );
   }

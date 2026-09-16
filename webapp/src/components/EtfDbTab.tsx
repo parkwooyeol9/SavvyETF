@@ -84,8 +84,17 @@ export default function EtfDbTab() {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(true), 60_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 180_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [load]);
 
   // Reset category selection when universe filter changes.

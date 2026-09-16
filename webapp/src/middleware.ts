@@ -48,7 +48,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/kosdaq-active": { limit: 12, windowMs: 60_000 },
   "/api/country-etf": { limit: 10, windowMs: 60_000 },
   "/api/etf-market-structure": { limit: 10, windowMs: 60_000 },
-  "/api/etf-db-us": { limit: 12, windowMs: 60_000 },
+  "/api/etf-db-us": { limit: 30, windowMs: 60_000 },
   "/api/green-minerals": { limit: 30, windowMs: 60_000 },
   "/api/poli-themes": { limit: 20, windowMs: 60_000 },
   "/api/midterm-study": { limit: 10, windowMs: 60_000 },

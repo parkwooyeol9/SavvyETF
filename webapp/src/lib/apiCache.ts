@@ -9,11 +9,13 @@ export const CACHE_TIER = {
   /** ETF KOR15 — 10 min UI poll */
   etfSlow: { sMaxAge: 300, swr: 600 },
   /** ETF new listings — 5 min UI poll */
-  etfNew: { sMaxAge: 120, swr: 300 },
+  etfNew: { sMaxAge: 300, swr: 600 },
   /** R2 brief snapshots — slightly longer CDN TTL to cut origin hits from polling */
   briefs: { sMaxAge: 120, swr: 300 },
   /** Yahoo / RSS backed panels */
   yahoo: { sMaxAge: 180, swr: 600 },
+  /** Heatmap / NLP / AI ETF / US DB — warmed on a 20–60 min cadence */
+  yahooSlow: { sMaxAge: 300, swr: 1_800 },
   /** Heavy Naver + bot overlays (etf-db, kr-leverage) */
   heavy: { sMaxAge: 180, swr: 600 },
   /** KRX short balance — updates slowly intraday */
