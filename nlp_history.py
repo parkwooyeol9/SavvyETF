@@ -39,11 +39,14 @@ KST = ZoneInfo("Asia/Seoul")
 
 LOOKBACK_DAYS = 365
 RECENT_DAYS = 7
+KEEP_FULL_HEADLINES_DAYS = 30
+COMPACT_HEADLINE_CAP = 2
+SKIP_RECRAWL_MIN_N = 4
 MAX_HEADLINES_PER_DAY = 8
 MAX_HEADLINES_TOP = 12
 MAX_PAGES_PER_DAY = 1
 MAX_PAGES_TOP = 3
-MAX_PAGES_REST = 2
+MAX_PAGES_REST = 1
 TOP_KOSPI_DENSE = 20
 TOP_KOSDAQ_DENSE = 10
 TOP_N = 10
@@ -483,6 +486,26 @@ def _upload_r2(code: str | None, payload: dict[str, Any]) -> bool:
         return False
 
 
+def days_needing_naver(
+    prev_days: list[dict[str, Any]],
+    start: date,
+    end: date,
+    today: date,
+    *,
+    min_n: int = SKIP_RECRAWL_MIN_N,
+) -> list[date]:
+    """Always recrawl today; skip older days that already have enough titles."""
+    by = {str(row.get("date") or ""): row for row in prev_days}
+    out: list[date] = []
+    day = start
+    while day <= end:
+        hit = by.get(day.isoformat())
+        if day >= today or not hit or int(hit.get("n") or 0) < min_n:
+            out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
 def crawl_name_headlines(
     spec: dict[str, str],
     start: date,
@@ -490,13 +513,21 @@ def crawl_name_headlines(
     *,
     max_pages: int = MAX_PAGES_PER_DAY,
     stride: int = 1,
+    only_days: list[date] | None = None,
 ) -> list[dict[str, Any]]:
     query = news_query_for(spec["name"])
     collected: list[dict[str, Any]] = []
     seen: set[str] = set()
-    day = start
-    step = max(1, stride)
-    while day <= end:
+    if only_days is not None:
+        day_list = [day for day in only_days if start <= day <= end]
+    else:
+        day_list = []
+        day = start
+        step = max(1, stride)
+        while day <= end:
+            day_list.append(day)
+            day += timedelta(days=step)
+    for i, day in enumerate(day_list):
         rows = fetch_naver_news_on_day(query, day, max_pages=max_pages, korean_only=True)
         for row in rows:
             title = (row.get("title") or "").strip()
@@ -516,9 +547,8 @@ def crawl_name_headlines(
             if row.get("url"):
                 item["url"] = row["url"]
             collected.append(item)
-        if (day - start).days % 50 == 0:
+        if i % 50 == 0:
             print(f"    {spec['code']} {spec['name']} {day} headlines={len(collected)}", flush=True)
-        day += timedelta(days=step)
     return collected
 
 
@@ -640,10 +670,34 @@ def recent_score_from_days(days: list[dict[str, Any]], today: date | None = None
     return None if weight <= 0 else total / weight
 
 
+def trim_and_compact_days(days: list[dict[str, Any]], today: date | None = None) -> list[dict[str, Any]]:
+    today = today or datetime.now(KST).date()
+    keep_from = (today - timedelta(days=LOOKBACK_DAYS - 1)).isoformat()
+    full_from = (today - timedelta(days=KEEP_FULL_HEADLINES_DAYS - 1)).isoformat()
+    out: list[dict[str, Any]] = []
+    for row in days:
+        day = str(row.get("date") or "")
+        if not day or day < keep_from:
+            continue
+        item = dict(row)
+        if day < full_from:
+            headlines = list(item.get("headlines") or [])
+            headlines = sorted(
+                headlines,
+                key=lambda h: abs(float(h.get("score") or 0)),
+                reverse=True,
+            )[:COMPACT_HEADLINE_CAP]
+            item["headlines"] = headlines
+        out.append(item)
+    out.sort(key=lambda r: str(r.get("date") or ""))
+    return out
+
+
 def build_name_payload(spec: dict[str, str], days: list[dict[str, Any]]) -> dict[str, Any]:
+    today = datetime.now(KST).date()
+    days = trim_and_compact_days(days, today)
     n_headlines = sum(int(d.get("n") or 0) for d in days)
     last = days[-1] if days else None
-    today = datetime.now(KST).date()
     recent_from = recent_window_start(today)
     recent_days = [d for d in days if str(d.get("date") or "") >= recent_from]
     recent_n = sum(int(d.get("n") or 0) for d in recent_days)
@@ -690,8 +744,9 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
         "max_headlines_per_day": MAX_HEADLINES_TOP,
         "methodology": [
             "유니버스: 코스닥 100 + 코스피 200 구성종목",
-            "뉴스: Google News RSS when:1y + 네이버 데스크톱 일자 검색 '{종목} 주가'",
+            "뉴스: 네이버 데스크톱 일자 검색 '{종목} 주가'. 일일 수집은 당일(상위 30종은 빈 날만 최근 7일)",
             f"최근 {RECENT_DAYS}일: 시총 상위 {TOP_KOSPI_DENSE}+{TOP_KOSDAQ_DENSE}종은 하루 최대 {MAX_HEADLINES_TOP}건, 나머지는 {MAX_HEADLINES_PER_DAY}건",
+            f"{LOOKBACK_DAYS}일 이전은 삭제. {KEEP_FULL_HEADLINES_DAYS}일 이전 제목은 극성 {COMPACT_HEADLINE_CAP}건만 보관",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100). 증시 종합기사는 제외",
             "일자 점수: 그날 제목의 단순 평균",
             f"맵 점수: 최근 {RECENT_DAYS}일 기사 건수 가중 평균. 7일 뉴스가 없으면 흐리게 표시",
@@ -856,18 +911,21 @@ def run_today_append() -> dict[str, Any]:
         start = recent_start if top else today
         pages = MAX_PAGES_TOP if top else MAX_PAGES_REST
         cap = MAX_HEADLINES_TOP if top else MAX_HEADLINES_PER_DAY
-        headlines = crawl_google_rss(spec) + crawl_name_headlines(
-            spec, start, today, max_pages=pages
-        )
-        new_days = aggregate_days(headlines, cap=cap)
         prev = existing.get(spec["code"]) or build_name_payload(spec, [])
+        need = days_needing_naver(prev.get("days") or [], start, today, today)
+        headlines = (
+            crawl_name_headlines(spec, start, today, max_pages=pages, only_days=need)
+            if need
+            else []
+        )
+        new_days = aggregate_days(headlines, cap=cap) if headlines else []
         merged = merge_days(prev.get("days") or [], new_days)
         payload = build_name_payload(spec, merged)
         save_payload(payload)
         payloads.append(payload)
         print(
             f"  today {spec['code']} {spec['name']}: "
-            f"{'top7d' if top else 'today'} +{len(headlines)} raw → {payload['n_days']} days"
+            f"{'top7d' if top else 'today'} days={len(need)} +{len(headlines)} raw → {payload['n_days']} days"
         )
     by_code = {str(row.get("code")): row for row in existing.values()}
     for row in payloads:
