@@ -1779,6 +1779,161 @@ a.geo-choke-hl:hover {
   background: rgba(20, 184, 166, 0.07);
 }
 
+.etf-hold-sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.55rem;
+  align-items: center;
+}
+
+.etf-hold-set-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: inherit;
+  font: inherit;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.etf-hold-set-chip em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+.etf-hold-set-chip.active {
+  border-color: var(--accent);
+  background: rgba(77, 163, 255, 0.12);
+}
+
+.etf-hold-set-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0 0 0.85rem;
+}
+
+.etf-hold-templates-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 0.35rem;
+}
+
+.etf-hold-rename {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.etf-hold-rename input {
+  width: 10rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.28rem 0.5rem;
+  font: inherit;
+}
+
+.etf-hold-insight {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: 0.85rem 1rem 1rem;
+  margin: 0.35rem 0 0.9rem;
+}
+
+.etf-hold-insight h3,
+.etf-hold-insight h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.etf-hold-insight h4 {
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.etf-hold-insight-head {
+  margin: 0 0 0.7rem;
+  line-height: 1.45;
+}
+
+.etf-hold-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+}
+
+.etf-hold-metrics div {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  background: var(--panel);
+}
+
+.etf-hold-metrics em {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.etf-hold-metrics strong {
+  display: block;
+  margin: 0.15rem 0 0.1rem;
+}
+
+.etf-hold-metrics span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.etf-hold-insight-bullets {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.etf-hold-insight-bullets li {
+  margin: 0.28rem 0;
+  line-height: 1.45;
+}
+
+.etf-hold-gap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.etf-hold-gap-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 0.8rem;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.etf-hold-gap-list li:last-child {
+  border-bottom: 0;
+}
+
+.etf-hold-fund-stats td .etf-result-code {
+  margin-left: 0.25rem;
+}
+
 .lev-filter {
   margin-bottom: 0.85rem;
 }
