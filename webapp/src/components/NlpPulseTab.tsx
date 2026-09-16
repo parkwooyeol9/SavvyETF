@@ -96,6 +96,7 @@ function NameChip({ card, onPick, active }: { card: NlpNameCard; onPick: (id: st
     >
       <span>{card.name}</span>
       <strong className={toneClass(card.tone)}>{fmtScore(card.score)}</strong>
+      <em className="nlp-chip-n">{card.news_n}건</em>
       <em className={`nlp-verdict-tag nlp-${card.verdict}`}>{card.verdict_ko}</em>
       {card.event_n ? <em>공시 {card.event_n}</em> : null}
       {card.call_n ? <em>콜 {card.call_n}</em> : null}
@@ -358,9 +359,9 @@ export default function NlpPulseTab() {
         <h3 className="geo-section-title">종목 투심 맵</h3>
         <p className="macro-subhead">
           {market === "kosdaq100"
-            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 종목을 누르면 점수·주가 겹침 차트가 열립니다.`
+            ? `코스닥 100 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩의 숫자는 점수, 건수는 마지막 뉴스 날 기사 수입니다.`
             : market === "kospi200"
-              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 종목을 누르면 점수·주가 겹침 차트가 열립니다.`
+              ? `코스피 200 ${mapNames.length}종목 · 1년 뉴스 수집 ${readyN}개. 칩의 숫자는 점수, 건수는 마지막 뉴스 날 기사 수입니다.`
               : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
         {market !== "sp500" ? (
@@ -399,7 +400,11 @@ export default function NlpPulseTab() {
                   card.last_score != null ? `nlp-${nlpHistoryTone(card.last_score)}` : ""
                 }`}
                 onClick={() => setPicked(card.code)}
-                title={card.last_date ? `${card.last_date} 점수` : "1년 뉴스 대기"}
+                title={
+                  card.last_date
+                    ? `${card.last_date} 점수 · 그날 ${card.last_n ?? "?"}건 · 7일 ${card.recent_n ?? 0}건`
+                    : "1년 뉴스 대기"
+                }
               >
                 <span>{card.name}</span>
                 {card.last_score != null ? (
@@ -407,6 +412,11 @@ export default function NlpPulseTab() {
                 ) : (
                   <em>대기</em>
                 )}
+                {typeof card.last_n === "number" || typeof card.recent_n === "number" ? (
+                  <em className="nlp-chip-n">
+                    {typeof card.last_n === "number" ? `${card.last_n}건` : `7일 ${card.recent_n}건`}
+                  </em>
+                ) : null}
               </button>
             ))}
           </div>
@@ -450,7 +460,13 @@ export default function NlpPulseTab() {
               {pickedHistoryMeta.n_days
                 ? `1년 뉴스 ${pickedHistoryMeta.n_days}일 · 기사 ${pickedHistoryMeta.n_headlines || 0}건`
                 : "이 종목의 1년 뉴스 아카이브를 수집하는 중입니다."}
-              {pickedHistoryMeta.last_date ? ` · 마지막 ${pickedHistoryMeta.last_date}` : ""}
+              {typeof pickedHistoryMeta.last_n === "number"
+                ? ` · 마지막 날 ${pickedHistoryMeta.last_n}건`
+                : ""}
+              {typeof pickedHistoryMeta.recent_n === "number"
+                ? ` · 최근 7일 ${pickedHistoryMeta.recent_n}건`
+                : ""}
+              {pickedHistoryMeta.last_date ? ` · ${pickedHistoryMeta.last_date}` : ""}
             </p>
           </article>
         ) : null}
@@ -547,9 +563,9 @@ export default function NlpPulseTab() {
           {market !== "sp500"
             ? [
                 "유니버스: 코스닥 100 · 코스피 200 구성종목",
-                "뉴스: Google News RSS 1년 + 네이버 일자 검색 '{종목} 주가'",
-                "차트: 파란선은 그날 제목 점수, 노란선은 종가. r는 뉴스가 있던 날의 점수·종가 상관",
-                "점수: 호재−악재 키워드 순점수 (−100~+100)",
+                "뉴스: Google News RSS 1년 + 네이버 일자 검색 '{종목} 주가'. 최근 7일은 시총 상위 30종 최대 12건, 나머지 최대 8건",
+                "차트: 파란선은 그날 제목 점수, 노란선은 종가, 분홍 점은 DART 이벤트. r는 뉴스가 있던 날의 점수·종가 상관",
+                "점수: 호재−악재 키워드 순점수 (−100~+100). 증시 종합기사·방향어는 제외",
               ].map((m) => (
                 <li key={m}>{m}</li>
               ))

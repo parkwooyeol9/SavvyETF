@@ -92,7 +92,7 @@ export const NLP_DISCLAIMER =
 
 export const NLP_METHODOLOGY: string[] = [
   "유니버스: KOSPI200·S&P500 시총·뉴스 유동성 상위 대표주 (전 구성종목 전수 아님)",
-  "뉴스: Google News RSS 최근 2일, 종목명 쿼리",
+  "뉴스: Google News RSS 최근 2일, 종목명 쿼리 (증시 종합기사 제외)",
   "국내 공시: Open DART 주요 이벤트(실적·배당·계약·지배구조·이슈)",
   "미국 공시: SEC EDGAR 8-K (실적 Item 2.02, 기타 중요 이벤트)",
   "컨콜: Finnhub 실적 캘린더 + 콜/가이던스 키워드 헤드라인",
@@ -149,19 +149,31 @@ export const NLP_UNIVERSE: NlpName[] = [
 const POS_KO = [
   "호실적", "급등", "수주", "배당", "상향", "흑자", "확대", "신고가", "매수", "회복",
   "최대실적", "깜짝실적", "공급계약", "독점", "자사주", "상승", "반등", "호조", "개선",
+  "흑자전환", "사상최대", "어닝서프라이즈", "실적개선", "실적호조", "가이던스 상향",
+  "목표가 상향", "투자의견 상향", "신규수주", "대규모수주", "본계약", "우선협상",
+  "낙찰", "수출", "증설", "허가", "승인", "임상 성공", "자사주매입", "자사주 소각",
+  "배당확대", "특별배당", "무상증자", "수주잔고", "독점공급",
 ];
 const NEG_KO = [
   "적자", "급락", "하향", "리콜", "횡령", "적발", "감산", "하회", "매도", "손실",
-  "적자전환", "영업정지", "과징금", "하락", "우려", "부진", "축소", "파업", "리콜",
+  "적자전환", "영업정지", "과징금", "하락", "우려", "부진", "축소", "파업",
+  "실적쇼크", "어닝쇼크", "가이던스 하향", "목표가 하향", "투자의견 하향", "적자확대",
+  "손상차손", "충당금", "분식", "배임", "기소", "압수수색", "제재", "중대재해",
+  "수주취소", "계약해지", "자본잠식", "관리종목", "상장폐지", "감자", "블록딜",
+  "대량매도", "실적하회",
 ];
 const POS_EN = [
   "beat", "surge", "upgrade", "buy", "record", "raises", "guidance up", "outperform",
-  "rally", "dividend", "buyback", "growth", "strong", "profit",
+  "rally", "dividend", "buyback", "growth", "strong", "profit", "raises guidance",
+  "beats estimates", "new contract", "approval",
 ];
 const NEG_EN = [
   "miss", "plunge", "downgrade", "sell", "cut", "guidance down", "underperform",
-  "lawsuit", "probe", "layoff", "loss", "weak", "fraud", "recall",
+  "lawsuit", "probe", "layoff", "loss", "weak", "fraud", "recall", "cuts guidance",
+  "misses estimates", "investigation", "warning",
 ];
+const MARKET_CTX = ["코스피", "코스닥", "증시", "뉴욕증시", "나스닥", "다우", "환율", "원달러", "원·달러"];
+const GENERIC_DIR = ["급등", "급락", "상승", "하락", "반등", "surge", "plunge", "rally"];
 const CALL_KEYS = [
   "컨퍼런스콜", "컨콜", "실적발표", "가이던스", "earnings call", "conference call",
   "guidance", "transcript", "analyst day",
@@ -269,30 +281,43 @@ export function buildNameComment(
   return parts.join(" ");
 }
 
-export function scoreText(text: string): { score: number; matched: string[] } {
+export function isMarketWideNoise(text: string, name = ""): boolean {
+  if (name && text.includes(name)) return false;
+  return MARKET_CTX.some((tok) => text.includes(tok));
+}
+
+export function scoreText(text: string, name = ""): { score: number; matched: string[] } {
   const raw = text.toLowerCase();
+  if (isMarketWideNoise(text, name)) {
+    return { score: 0, matched: [] };
+  }
+  const skipGeneric = MARKET_CTX.some((tok) => text.includes(tok));
   const matched: string[] = [];
   let pos = 0;
   let neg = 0;
   for (const w of POS_KO) {
+    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
     if (text.includes(w)) {
       pos += 1;
       matched.push(w);
     }
   }
   for (const w of NEG_KO) {
+    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
     if (text.includes(w)) {
       neg += 1;
       matched.push(w);
     }
   }
   for (const w of POS_EN) {
+    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
     if (raw.includes(w)) {
       pos += 1;
       matched.push(w);
     }
   }
   for (const w of NEG_EN) {
+    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
     if (raw.includes(w)) {
       neg += 1;
       matched.push(w);

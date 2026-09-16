@@ -915,3 +915,18 @@ def nlp_pulse_payload() -> dict[str, Any]:
             "errors": [str(exc)],
             "error": str(exc),
         }
+
+
+def nlp_dart_payload(code: str) -> dict[str, Any]:
+    """Per-name DART events for the NLP history chart overlay."""
+    try:
+        from nlp_pulse import dart_events_for_stock
+
+        return dart_events_for_stock(code)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "code": code,
+            "events": [],
+            "error": str(exc),
+        }

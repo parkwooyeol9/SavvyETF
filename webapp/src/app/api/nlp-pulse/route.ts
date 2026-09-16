@@ -10,6 +10,7 @@ import {
   emptyNlpPayload,
   isCallHeadline,
   isDartEvent,
+  isMarketWideNoise,
   matchUniverse,
   scoreText,
   type NlpHeadline,
@@ -106,9 +107,11 @@ async function fetchNameNews(spec: NlpName): Promise<NlpHeadline[]> {
     });
     if (!res.ok) return [];
     const xml = await res.text();
-    const items = parseRss(xml, 5);
-    return items.map((item) => {
-      const scored = scoreText(item.title);
+    const items = parseRss(xml, 8);
+    return items
+      .filter((item) => !isMarketWideNoise(item.title, spec.name))
+      .map((item) => {
+      const scored = scoreText(item.title, spec.name);
       const kind = isCallHeadline(item.title) ? "call" : "news";
       return {
         id: `${spec.id}|${item.title.slice(0, 48)}|${item.date}`,
@@ -591,7 +594,7 @@ async function buildPayload(): Promise<NlpPulsePayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("nlp-pulse:v3", 1_080_000, 2_400_000, buildPayload);
+    const payload = await withServerCache("nlp-pulse:v4", 1_080_000, 2_400_000, buildPayload);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
     });

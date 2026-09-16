@@ -6,6 +6,7 @@ expecting DART_API_KEY / FINNHUB_API_KEY in the webapp env.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -266,4 +267,88 @@ def build_nlp_pulse_keyed() -> dict[str, Any]:
         "earnings": earnings,
         "sources": sources,
         "errors": errors,
+    }
+
+
+def dart_events_for_stock(stock_code: str, lookback_days: int = 400) -> dict[str, Any]:
+    """1y DART event filings for one 6-digit KR stock code."""
+    code = (stock_code or "").strip()
+    if not re.fullmatch(r"\d{6}", code):
+        return {"ok": False, "code": code, "events": [], "error": "종목코드가 올바르지 않습니다."}
+    try:
+        from dart_data import _dart_get, resolve_corp
+    except Exception as exc:
+        return {"ok": False, "code": code, "events": [], "error": f"DART import: {exc}"}
+
+    try:
+        corp = resolve_corp(code)
+    except Exception as exc:
+        return {"ok": False, "code": code, "events": [], "error": str(exc)[:180]}
+
+    end = datetime.now(KST)
+    start = end - timedelta(days=max(30, lookback_days))
+    events: list[dict[str, Any]] = []
+    try:
+        for page in range(1, 8):
+            try:
+                payload = _dart_get(
+                    "list.json",
+                    {
+                        "corp_code": corp["corp_code"],
+                        "bgn_de": _ymd(start),
+                        "end_de": _ymd(end),
+                        "page_count": "100",
+                        "page_no": str(page),
+                    },
+                )
+            except RuntimeError as exc:
+                msg = str(exc)
+                if "013" in msg or "조회된 데이타가 없습니다" in msg:
+                    break
+                raise
+            rows = list(payload.get("list") or [])
+            if not rows:
+                break
+            for row in rows:
+                report = str(row.get("report_nm") or "").strip()
+                matched = [k for k in DART_EVENT_KEYS if k in report]
+                if not matched:
+                    continue
+                rcept = str(row.get("rcept_no") or "").strip()
+                raw_dt = str(row.get("rcept_dt") or "").strip()
+                date = (
+                    f"{raw_dt[:4]}-{raw_dt[4:6]}-{raw_dt[6:8]}"
+                    if len(raw_dt) == 8
+                    else _iso(end)
+                )
+                events.append(
+                    {
+                        "date": date,
+                        "title": report,
+                        "matched": matched,
+                        "url": (
+                            f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept}"
+                            if rcept
+                            else None
+                        ),
+                    }
+                )
+            if len(rows) < 100:
+                break
+    except Exception as exc:
+        return {
+            "ok": False,
+            "code": code,
+            "name": corp.get("corp_name"),
+            "events": events,
+            "error": str(exc)[:180],
+        }
+
+    events.sort(key=lambda r: str(r.get("date") or ""), reverse=True)
+    return {
+        "ok": True,
+        "code": code,
+        "name": corp.get("corp_name") or code,
+        "events": events[:80],
+        "count": min(len(events), 80),
     }

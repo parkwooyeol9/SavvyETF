@@ -107,6 +107,8 @@ function parseIndex(raw: unknown): NlpHistoryIndex | null {
       n_headlines: typeof n.n_headlines === "number" ? n.n_headlines : undefined,
       last_score: typeof n.last_score === "number" ? n.last_score : null,
       last_date: typeof n.last_date === "string" ? n.last_date : null,
+      last_n: typeof n.last_n === "number" ? n.last_n : undefined,
+      recent_n: typeof n.recent_n === "number" ? n.recent_n : undefined,
     });
   }
   if (!names.length) return null;
@@ -195,7 +197,7 @@ export async function GET(req: NextRequest) {
   const code = (req.nextUrl.searchParams.get("code") || "").trim();
   try {
     if (!code) {
-      const payload = await withServerCache("nlp-history:index:v3", 120_000, 600_000, loadIndex);
+      const payload = await withServerCache("nlp-history:index:v4", 120_000, 600_000, loadIndex);
       return NextResponse.json(payload, {
         headers: { "Cache-Control": cdnCacheHeader("yahoo") },
       });

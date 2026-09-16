@@ -8007,6 +8007,11 @@ button.country-etf-card {
   font-size: 0.7rem;
 }
 
+.nlp-chip-n {
+  color: var(--muted) !important;
+  font-variant-numeric: tabular-nums;
+}
+
 .nlp-chip.nlp-bull {
   border-color: rgba(61, 214, 140, 0.45);
 }

@@ -14,6 +14,8 @@ export type NlpHistoryName = {
   n_headlines?: number;
   last_score?: number | null;
   last_date?: string | null;
+  last_n?: number;
+  recent_n?: number;
 };
 
 export type NlpHistoryHeadline = {
@@ -103,6 +105,9 @@ export type NlpOverlayRow = {
   score: number | null;
   n: number | null;
   news: boolean;
+  dart?: boolean;
+  dartTitles?: string[];
+  dartMark?: number | null;
 };
 
 export function emptyNlpHistoryIndex(error?: string): NlpHistoryIndex {
@@ -156,6 +161,8 @@ export function mergeHistoryNames(
             n_headlines: hit.n_headlines,
             last_score: hit.last_score,
             last_date: hit.last_date,
+            last_n: hit.last_n,
+            recent_n: hit.recent_n,
           }
         : row,
     );
@@ -172,8 +179,10 @@ export function mergeHistoryNames(
 export function mergeScoreAndPrice(
   days: NlpHistoryDay[],
   bars: Array<{ date: string; label: string; close: number }>,
+  dartByDay?: Map<string, string[]>,
 ): NlpOverlayRow[] {
   const byDay = new Map(days.map((d) => [d.date, d]));
+  const dart = dartByDay || new Map<string, string[]>();
   if (!bars.length) {
     return days.map((d) => ({
       date: d.date,
@@ -182,6 +191,9 @@ export function mergeScoreAndPrice(
       score: d.score,
       n: d.n,
       news: true,
+      dart: dart.has(d.date),
+      dartTitles: dart.get(d.date),
+      dartMark: dart.has(d.date) ? d.score : null,
     }));
   }
   let lastScore: number | null = null;
@@ -201,6 +213,9 @@ export function mergeScoreAndPrice(
       score: lastScore,
       n: lastN,
       news: Boolean(hit),
+      dart: dart.has(date),
+      dartTitles: dart.get(date),
+      dartMark: dart.has(date) ? lastScore ?? 0 : null,
     });
   }
   return out;

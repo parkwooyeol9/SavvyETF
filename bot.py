@@ -3261,6 +3261,17 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/nlp-dart":
+                from web_api import nlp_dart_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                code = (query.get("code") or [""])[0].strip()
+                payload = nlp_dart_payload(code)
+                status = 200 if payload.get("ok") else 400
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             self._send(b"not found", "text/plain; charset=utf-8", status=404)
 
         def _send_cors_json(self, body: bytes, status: int = 200) -> None:

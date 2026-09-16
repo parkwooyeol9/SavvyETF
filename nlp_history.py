@@ -38,8 +38,14 @@ R2_PREFIX = "nlp_history"
 KST = ZoneInfo("Asia/Seoul")
 
 LOOKBACK_DAYS = 365
+RECENT_DAYS = 7
 MAX_HEADLINES_PER_DAY = 8
+MAX_HEADLINES_TOP = 12
 MAX_PAGES_PER_DAY = 1
+MAX_PAGES_TOP = 3
+MAX_PAGES_REST = 2
+TOP_KOSPI_DENSE = 20
+TOP_KOSDAQ_DENSE = 10
 TOP_N = 10
 KIND_WEIGHT_NEWS = 1.0
 
@@ -58,19 +64,31 @@ NAVER_HEADERS = {
 POS_KO = [
     "호실적", "급등", "수주", "배당", "상향", "흑자", "확대", "신고가", "매수", "회복",
     "최대실적", "깜짝실적", "공급계약", "독점", "자사주", "상승", "반등", "호조", "개선",
+    "흑자전환", "사상최대", "어닝서프라이즈", "실적개선", "실적호조", "가이던스 상향",
+    "목표가 상향", "투자의견 상향", "신규수주", "대규모수주", "본계약", "우선협상",
+    "낙찰", "수출", "증설", "허가", "승인", "임상 성공", "자사주매입", "자사주 소각",
+    "배당확대", "특별배당", "무상증자", "수주잔고", "독점공급",
 ]
 NEG_KO = [
     "적자", "급락", "하향", "리콜", "횡령", "적발", "감산", "하회", "매도", "손실",
     "적자전환", "영업정지", "과징금", "하락", "우려", "부진", "축소", "파업",
+    "실적쇼크", "어닝쇼크", "가이던스 하향", "목표가 하향", "투자의견 하향", "적자확대",
+    "손상차손", "충당금", "분식", "배임", "기소", "압수수색", "제재", "중대재해",
+    "수주취소", "계약해지", "자본잠식", "관리종목", "상장폐지", "감자", "블록딜",
+    "대량매도", "실적하회",
 ]
 POS_EN = [
     "beat", "surge", "upgrade", "buy", "record", "raises", "guidance up", "outperform",
-    "rally", "dividend", "buyback", "growth", "strong", "profit",
+    "rally", "dividend", "buyback", "growth", "strong", "profit", "raises guidance",
+    "beats estimates", "new contract", "approval",
 ]
 NEG_EN = [
     "miss", "plunge", "downgrade", "sell", "cut", "guidance down", "underperform",
-    "lawsuit", "probe", "layoff", "loss", "weak", "fraud", "recall",
+    "lawsuit", "probe", "layoff", "loss", "weak", "fraud", "recall", "cuts guidance",
+    "misses estimates", "investigation", "warning",
 ]
+MARKET_CTX = ("코스피", "코스닥", "증시", "뉴욕증시", "나스닥", "다우", "환율", "원달러", "원·달러")
+GENERIC_DIR = ("급등", "급락", "상승", "하락", "반등", "surge", "plunge", "rally")
 
 _YMD_RE = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})")
 _REL_RE = re.compile(r"(\d+)\s*(분|시간|일)\s*전")
@@ -104,24 +122,42 @@ def _clip(n: float, lo: float = -100.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, n))
 
 
-def score_text(text: str) -> tuple[float, list[str]]:
+def is_market_wide_noise(title: str, name: str = "") -> bool:
+    text = title or ""
+    if name and name in text:
+        return False
+    return any(tok in text for tok in MARKET_CTX)
+
+
+def score_text(text: str, name: str = "") -> tuple[float, list[str]]:
     raw = (text or "").lower()
+    if is_market_wide_noise(text, name):
+        return 0.0, []
+    skip_generic = any(tok in text for tok in MARKET_CTX)
     matched: list[str] = []
     pos = 0
     neg = 0
     for w in POS_KO:
+        if skip_generic and w in GENERIC_DIR:
+            continue
         if w in text:
             pos += 1
             matched.append(w)
     for w in NEG_KO:
+        if skip_generic and w in GENERIC_DIR:
+            continue
         if w in text:
             neg += 1
             matched.append(w)
     for w in POS_EN:
+        if skip_generic and w in GENERIC_DIR:
+            continue
         if w in raw:
             pos += 1
             matched.append(w)
     for w in NEG_EN:
+        if skip_generic and w in GENERIC_DIR:
+            continue
         if w in raw:
             neg += 1
             matched.append(w)
@@ -190,6 +226,8 @@ def crawl_google_rss(spec: dict[str, str]) -> list[dict[str, Any]]:
             continue
         if not title_matches_name(spec["name"], title):
             continue
+        if is_market_wide_noise(title, spec["name"]):
+            continue
         pub_m = re.search(r"<pubDate[^>]*>([\s\S]*?)</pubDate>", chunk)
         day = None
         if pub_m:
@@ -200,7 +238,7 @@ def crawl_google_rss(spec: dict[str, str]) -> list[dict[str, Any]]:
         if not day:
             continue
         link_m = re.search(r"<link[^>]*>([\s\S]*?)</link>", chunk)
-        score, matched = score_text(title)
+        score, matched = score_text(title, spec["name"])
         seen.add(title)
         item = {
             "title": title,
@@ -464,7 +502,9 @@ def crawl_name_headlines(
             title = (row.get("title") or "").strip()
             if not title or title in seen:
                 continue
-            score, matched = score_text(title)
+            if is_market_wide_noise(title, spec["name"]):
+                continue
+            score, matched = score_text(title, spec["name"])
             seen.add(title)
             item = {
                 "title": title,
@@ -482,16 +522,20 @@ def crawl_name_headlines(
     return collected
 
 
-def _pick_day_headlines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _pick_day_headlines(rows: list[dict[str, Any]], cap: int = MAX_HEADLINES_PER_DAY) -> list[dict[str, Any]]:
     ranked = sorted(
         rows,
         key=lambda r: (abs(float(r.get("score") or 0)), str(r.get("title") or "")),
         reverse=True,
     )
-    return ranked[:MAX_HEADLINES_PER_DAY]
+    return ranked[: max(1, cap)]
 
 
-def aggregate_days(headlines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def aggregate_days(
+    headlines: list[dict[str, Any]],
+    *,
+    cap: int = MAX_HEADLINES_PER_DAY,
+) -> list[dict[str, Any]]:
     by_day: dict[str, list[dict[str, Any]]] = {}
     for row in headlines:
         by_day.setdefault(str(row.get("date") or ""), []).append(row)
@@ -499,7 +543,7 @@ def aggregate_days(headlines: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for day in sorted(by_day):
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
             continue
-        picked = _pick_day_headlines(by_day[day])
+        picked = _pick_day_headlines(by_day[day], cap)
         wsum = 0.0
         w = 0.0
         bull_n = 0
@@ -566,7 +610,8 @@ def merge_days(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dic
                     **({"url": h["url"]} if h.get("url") else {}),
                 }
                 for h in combined
-            ]
+            ],
+            cap=max(MAX_HEADLINES_PER_DAY, min(MAX_HEADLINES_TOP, len(combined))),
         )
         if rebuilt:
             by[day] = rebuilt[0]
@@ -576,6 +621,10 @@ def merge_days(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dic
 def build_name_payload(spec: dict[str, str], days: list[dict[str, Any]]) -> dict[str, Any]:
     n_headlines = sum(int(d.get("n") or 0) for d in days)
     last = days[-1] if days else None
+    today = datetime.now(KST).date()
+    recent_from = (today - timedelta(days=RECENT_DAYS - 1)).isoformat()
+    recent_days = [d for d in days if str(d.get("date") or "") >= recent_from]
+    recent_n = sum(int(d.get("n") or 0) for d in recent_days)
     return {
         "code": spec["code"],
         "name": spec["name"],
@@ -587,6 +636,8 @@ def build_name_payload(spec: dict[str, str], days: list[dict[str, Any]]) -> dict
         "n_headlines": n_headlines,
         "last_score": None if last is None else last.get("score"),
         "last_date": None if last is None else last.get("date"),
+        "last_n": None if last is None else int(last.get("n") or 0),
+        "recent_n": recent_n,
         "days": days,
     }
 
@@ -604,18 +655,21 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
                 "n_headlines": row.get("n_headlines") or 0,
                 "last_score": row.get("last_score"),
                 "last_date": row.get("last_date"),
+                "last_n": row.get("last_n") or 0,
+                "recent_n": row.get("recent_n") or 0,
             }
         )
     return {
         "ok": True,
         "generated_at": datetime.now(KST).isoformat(),
         "lookback_days": LOOKBACK_DAYS,
-        "max_headlines_per_day": MAX_HEADLINES_PER_DAY,
+        "max_headlines_per_day": MAX_HEADLINES_TOP,
         "methodology": [
             "유니버스: 코스닥 100 + 코스피 200 구성종목",
             "뉴스: Google News RSS when:1y + 네이버 데스크톱 일자 검색 '{종목} 주가'",
-            "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100)",
-            "일자 점수: 그날 제목의 단순 평균. 하루 최대 8건 보관",
+            f"최근 {RECENT_DAYS}일: 시총 상위 {TOP_KOSPI_DENSE}+{TOP_KOSDAQ_DENSE}종은 하루 최대 {MAX_HEADLINES_TOP}건, 나머지는 {MAX_HEADLINES_PER_DAY}건",
+            "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100). 증시 종합기사는 제외",
+            "일자 점수: 그날 제목의 단순 평균",
         ],
         "names": names,
     }
@@ -658,7 +712,7 @@ def backfill_one(
     headlines = crawl_google_rss(spec)
     if not google_only:
         headlines.extend(crawl_name_headlines(spec, start, end, stride=naver_stride))
-    days = aggregate_days(headlines)
+    days = aggregate_days(headlines, cap=MAX_HEADLINES_PER_DAY)
     existing = _load_existing(spec["code"])
     if existing and isinstance(existing.get("days"), list):
         days = merge_days(existing["days"], days)
@@ -755,24 +809,41 @@ def run_backfill(
     return index
 
 
+def dense_name_codes() -> set[str]:
+    kospi = load_constituents(KOSPI200_PATH, "kospi")[:TOP_KOSPI_DENSE]
+    kosdaq = load_constituents(KOSDAQ100_PATH, "kosdaq")[:TOP_KOSDAQ_DENSE]
+    return {spec["code"] for spec in kospi + kosdaq}
+
+
 def run_today_append() -> dict[str, Any]:
     today = datetime.now(KST).date()
     existing = load_local_payloads()
     names = specs_from_payloads(existing)
     if not names:
-        names = resolve_universe(refresh=False, market="kosdaq")
+        names = resolve_universe(refresh=False, market="all")
         if names:
             save_universe(names)
+    dense = dense_name_codes()
+    recent_start = today - timedelta(days=RECENT_DAYS - 1)
     payloads: list[dict[str, Any]] = []
     for spec in names:
-        headlines = crawl_google_rss(spec) + crawl_name_headlines(spec, today, today, max_pages=2)
-        new_days = aggregate_days(headlines)
+        top = spec["code"] in dense
+        start = recent_start if top else today
+        pages = MAX_PAGES_TOP if top else MAX_PAGES_REST
+        cap = MAX_HEADLINES_TOP if top else MAX_HEADLINES_PER_DAY
+        headlines = crawl_google_rss(spec) + crawl_name_headlines(
+            spec, start, today, max_pages=pages
+        )
+        new_days = aggregate_days(headlines, cap=cap)
         prev = existing.get(spec["code"]) or build_name_payload(spec, [])
         merged = merge_days(prev.get("days") or [], new_days)
         payload = build_name_payload(spec, merged)
         save_payload(payload)
         payloads.append(payload)
-        print(f"  today {spec['code']} {spec['name']}: +{len(headlines)} raw → {payload['n_days']} days")
+        print(
+            f"  today {spec['code']} {spec['name']}: "
+            f"{'top7d' if top else 'today'} +{len(headlines)} raw → {payload['n_days']} days"
+        )
     by_code = {str(row.get("code")): row for row in existing.values()}
     for row in payloads:
         by_code[str(row.get("code"))] = row

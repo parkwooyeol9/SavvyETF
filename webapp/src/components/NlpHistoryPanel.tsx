@@ -70,6 +70,9 @@ function OverlayTooltip({
       ) : null}
       {row.score != null ? <div>뉴스 점수 {fmtScore(row.score)}</div> : null}
       {row.news && row.n != null ? <div>기사 {row.n}건</div> : <div className="meta-soft">뉴스 없는 날 · 직전 점수 유지</div>}
+      {row.dart && row.dartTitles?.length ? (
+        <div>DART {row.dartTitles.slice(0, 2).join(" · ")}</div>
+      ) : null}
     </div>
   );
 }
@@ -87,6 +90,8 @@ export default function NlpHistoryPanel({
 }) {
   const [price, setPrice] = useState<NlpChartPayload | null>(null);
   const [loadingPx, setLoadingPx] = useState(false);
+  const [dartByDay, setDartByDay] = useState<Map<string, string[]>>(new Map());
+  const [dartEvents, setDartEvents] = useState<Array<{ date: string; title: string; url?: string | null }>>([]);
   const yahoo = series?.yahoo;
 
   useEffect(() => {
@@ -114,9 +119,50 @@ export default function NlpHistoryPanel({
     };
   }, [yahoo]);
 
+  useEffect(() => {
+    const code = series?.code;
+    if (!code || !/^\d{6}$/.test(code)) {
+      setDartByDay(new Map());
+      setDartEvents([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/nlp-dart?code=${encodeURIComponent(code)}`);
+        const json = (await res.json()) as {
+          ok?: boolean;
+          events?: Array<{ date?: string; title?: string; url?: string | null }>;
+        };
+        if (cancelled) return;
+        const byDay = new Map<string, string[]>();
+        const rows: Array<{ date: string; title: string; url?: string | null }> = [];
+        for (const ev of json.events || []) {
+          const date = (ev.date || "").slice(0, 10);
+          const title = (ev.title || "").trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !title) continue;
+          const list = byDay.get(date) || [];
+          if (!list.includes(title)) list.push(title);
+          byDay.set(date, list);
+          rows.push({ date, title, url: ev.url });
+        }
+        setDartByDay(byDay);
+        setDartEvents(rows);
+      } catch {
+        if (!cancelled) {
+          setDartByDay(new Map());
+          setDartEvents([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [series?.code]);
+
   const chartRows: ChartRow[] = useMemo(() => {
-    return mergeScoreAndPrice(series?.days || [], price?.bars || []);
-  }, [series, price]);
+    return mergeScoreAndPrice(series?.days || [], price?.bars || [], dartByDay);
+  }, [series, price, dartByDay]);
 
   const corr = useMemo(() => nlpPearson(chartRows), [chartRows]);
   const currency = price?.currency || (yahoo?.includes(".KS") || yahoo?.includes(".KQ") ? "KRW" : "USD");
@@ -157,7 +203,7 @@ export default function NlpHistoryPanel({
             {loading
               ? "1년 뉴스 시계열을 불러오는 중…"
               : series
-                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수(우축) · 노란선 종가(좌축). 점을 누르면 그날 기사가 열립니다.`
+                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART 이벤트. 점을 누르면 그날 기사가 열립니다.`
                 : "이 종목의 1년 아카이브가 없습니다."}
           </p>
           {hasPrice ? (
@@ -211,7 +257,9 @@ export default function NlpHistoryPanel({
                 />
                 <Legend
                   wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }}
-                  formatter={(value) => (value === "close" ? "종가" : "뉴스 점수")}
+                  formatter={(value) =>
+                    value === "close" ? "종가" : value === "dartMark" ? "DART" : "뉴스 점수"
+                  }
                 />
                 <ReferenceLine yAxisId="score" y={0} stroke="rgba(148,163,184,0.28)" />
                 {hasPrice ? (
@@ -251,6 +299,33 @@ export default function NlpHistoryPanel({
                     );
                   }}
                   activeDot={{ r: 5 }}
+                />
+                <Line
+                  yAxisId="score"
+                  type="monotone"
+                  dataKey="dartMark"
+                  name="dartMark"
+                  stroke="#f472b6"
+                  strokeWidth={0}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                  legendType="circle"
+                  dot={(props: { cx?: number; cy?: number; payload?: ChartRow }) => {
+                    if (!props.payload?.dart || props.cx == null || props.cy == null) {
+                      return <g key={`dart-${props.payload?.date || "x"}`} />;
+                    }
+                    return (
+                      <circle
+                        key={`dart-${props.payload.date}`}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={4}
+                        fill="#f472b6"
+                        stroke="#0b1220"
+                        strokeWidth={1}
+                      />
+                    );
+                  }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -295,6 +370,38 @@ export default function NlpHistoryPanel({
           </ul>
         )}
       </section>
+
+      {dartEvents.length ? (
+        <section className="geo-section">
+          <h3 className="geo-section-title">DART 이벤트</h3>
+          <p className="macro-subhead">
+            차트 분홍 점. {selectedDate ? `${selectedDate} 공시` : "최근 이벤트 공시"}입니다.
+          </p>
+          <ul className="nlp-feed">
+            {(selectedDate
+              ? dartEvents.filter((e) => e.date === selectedDate)
+              : dartEvents.slice(0, 8)
+            ).map((ev, i) => (
+              <li key={`${ev.date}-${i}-${ev.title.slice(0, 20)}`} className="nlp-feed-item">
+                <div className="nlp-feed-top">
+                  <span className="nlp-date">{ev.date}</span>
+                  <span className="nlp-src">DART</span>
+                </div>
+                {ev.url ? (
+                  <a href={ev.url} target="_blank" rel="noreferrer">
+                    {ev.title}
+                  </a>
+                ) : (
+                  <span>{ev.title}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {selectedDate && !dartEvents.some((e) => e.date === selectedDate) ? (
+            <p className="empty">이 날짜에 필터된 DART 이벤트는 없습니다.</p>
+          ) : null}
+        </section>
+      ) : null}
     </>
   );
 }
