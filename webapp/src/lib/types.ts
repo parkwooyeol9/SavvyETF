@@ -306,6 +306,7 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "bookclubboard",
   "heatpick",
   "round",
+  "signals",
 ];
 
 export function isAdminOnlyTab(tab: ShellTabId): boolean {

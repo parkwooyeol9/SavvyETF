@@ -182,6 +182,7 @@ export default function MainTab() {
             ["nlp", "NLP"],
             ["cardnews", "카드뉴스"],
             ["eventstudy", "이벤트 스터디"],
+            ["usmidterm", "정치분석"],
             ["etfholdings", "편입비"],
           ] as const
         ).map(([id, label]) => (

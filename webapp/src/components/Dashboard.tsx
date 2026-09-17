@@ -203,12 +203,15 @@ function DashboardInner({
   useEffect(() => {
     if (!ready) return;
     if (!isAdminOnlyTab(tab) || unlocked) return;
-    // AI포트 stays next to AI Pick; 교육 숨김 탭은 같은 그룹의 공개 탭으로.
+    // AI포트 stays next to AI Pick; 나머지는 같은 대분류의 첫 공개 탭으로.
     if (tab === "aiport") {
       setTab("ideas");
       return;
     }
-    setTab("cardnews");
+    const group = NAV_GROUPS.find((g) => g.id === navPlacement(tab).groupId);
+    setTab(
+      (group ? visibleShellTabs(group.tabs, false)[0] : undefined) || "main",
+    );
   }, [tab, unlocked, ready]);
 
   useEffect(() => {
@@ -480,7 +483,7 @@ function DashboardInner({
       ) : tab === "usportfolio" ? (
         <UsPortfolioTab />
       ) : tab === "signals" ? (
-        <TradingSignalsTab />
+        unlocked ? <TradingSignalsTab /> : null
       ) : tab === "graph" ? (
         <GraphTab />
       ) : tab === "nlp" || tab === "nlphistory" ? (
