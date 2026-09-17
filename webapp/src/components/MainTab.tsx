@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
 import EquityChart from "@/components/EquityChart";
 import TreemapHeatmap from "@/components/TreemapHeatmap";
 import type { HeatmapCell } from "@/lib/heatmap";
@@ -114,6 +115,7 @@ function retClass(n: number): string {
 }
 
 export default function MainTab() {
+  const { unlocked } = useAdminSession();
   const [universe, setUniverse] = useState<(typeof UNIVERSES)[number]["id"]>("etf");
   const [heatmap, setHeatmap] = useState<HeatmapPayload | null>(null);
   const [why, setWhy] = useState<WhyPayload | null>(null);
@@ -369,40 +371,42 @@ export default function MainTab() {
         </div>
       </section>
 
-      <section className="feature-block tg-channels" aria-labelledby="tg-channels-title">
-        <div className="feature-head">
-          <h2 className="feature-title" id="tg-channels-title">
-            텔레그램 채널
-          </h2>
-          <p className="feature-lead">
-            텔레그램으로 시황을 받아보세요, 업데이트 내용은 본 홈페이지에 실시간
-            적재됩니다.
-          </p>
-        </div>
+      {unlocked ? (
+        <section className="feature-block tg-channels" aria-labelledby="tg-channels-title">
+          <div className="feature-head">
+            <h2 className="feature-title" id="tg-channels-title">
+              텔레그램 채널
+            </h2>
+            <p className="feature-lead">
+              텔레그램으로 시황을 받아보세요, 업데이트 내용은 본 홈페이지에 실시간
+              적재됩니다.
+            </p>
+          </div>
 
-        <div className="tg-channel-grid">
-          {TELEGRAM_CHANNELS.map((ch) => (
-            <a
-              key={ch.id}
-              className={`tg-channel tg-channel--${ch.accent}`}
-              href={ch.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <div className="tg-channel-top">
-                <span className="tg-channel-title">{ch.title}</span>
-                <span className="tg-channel-handle">{ch.handle}</span>
-              </div>
-              <ul className="tg-channel-lines">
-                {ch.lines.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-              <span className="tg-channel-cta">채널 입장 →</span>
-            </a>
-          ))}
-        </div>
-      </section>
+          <div className="tg-channel-grid">
+            {TELEGRAM_CHANNELS.map((ch) => (
+              <a
+                key={ch.id}
+                className={`tg-channel tg-channel--${ch.accent}`}
+                href={ch.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <div className="tg-channel-top">
+                  <span className="tg-channel-title">{ch.title}</span>
+                  <span className="tg-channel-handle">{ch.handle}</span>
+                </div>
+                <ul className="tg-channel-lines">
+                  {ch.lines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+                <span className="tg-channel-cta">채널 입장 →</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

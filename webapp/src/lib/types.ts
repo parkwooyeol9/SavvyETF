@@ -300,7 +300,13 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
-export const ADMIN_ONLY_TABS: readonly ShellTabId[] = ["aiport"];
+export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
+  "aiport",
+  "bookclub",
+  "bookclubboard",
+  "heatpick",
+  "round",
+];
 
 export function isAdminOnlyTab(tab: ShellTabId): boolean {
   return (ADMIN_ONLY_TABS as readonly string[]).includes(tab);

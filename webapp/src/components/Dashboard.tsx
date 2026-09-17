@@ -202,7 +202,13 @@ function DashboardInner({
 
   useEffect(() => {
     if (!ready) return;
-    if (isAdminOnlyTab(tab) && !unlocked) setTab("ideas");
+    if (!isAdminOnlyTab(tab) || unlocked) return;
+    // AI포트 stays next to AI Pick; 교육 숨김 탭은 같은 그룹의 공개 탭으로.
+    if (tab === "aiport") {
+      setTab("ideas");
+      return;
+    }
+    setTab("cardnews");
   }, [tab, unlocked, ready]);
 
   useEffect(() => {
@@ -468,7 +474,7 @@ function DashboardInner({
       {tab === "main" ? (
         <MainTab />
       ) : tab === "bookclub" ? (
-        <BookClubTab />
+        unlocked ? <BookClubTab /> : null
       ) : tab === "simulate" ? (
         <SimulateTab />
       ) : tab === "usportfolio" ? (
@@ -494,7 +500,7 @@ function DashboardInner({
       ) : tab === "polithemes" ? (
         <PoliThemesTab />
       ) : tab === "heatpick" ? (
-        <ChartTradeTab />
+        unlocked ? <ChartTradeTab /> : null
       ) : tab === "cardnews" ? (
         <CardNewsTab />
       ) : tab === "education" ? (
