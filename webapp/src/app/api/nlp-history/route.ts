@@ -7,6 +7,9 @@ import {
   NLP_HISTORY_R2_PREFIX,
   emptyNlpHistoryIndex,
   emptyNlpHistorySeries,
+  finalizeNlpHistorySeries,
+  mergeNlpHistoryName,
+  mergeNlpHistorySeries,
   nlpRecentFromIso,
   nlpRecentScoreFromDays,
   type NlpHistoryDay,
@@ -16,6 +19,7 @@ import {
   type NlpHistorySeries,
 } from "@/lib/nlpHistory";
 import { r2Configured, r2GetObjectText } from "@/lib/r2";
+import nlpHistorySeed from "@/data/nlpHistorySeed.json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,10 +58,7 @@ async function readR2Json(file: string): Promise<unknown | null> {
 }
 
 function richerName(a: NlpHistoryName, b: NlpHistoryName): NlpHistoryName {
-  const ad = a.n_days || 0;
-  const bd = b.n_days || 0;
-  if (bd !== ad) return bd > ad ? b : a;
-  return (b.n_headlines || 0) > (a.n_headlines || 0) ? b : a;
+  return mergeNlpHistoryName(a, b);
 }
 
 function mergeIndexes(a: NlpHistoryIndex | null, b: NlpHistoryIndex | null): NlpHistoryIndex | null {
@@ -69,20 +70,29 @@ function mergeIndexes(a: NlpHistoryIndex | null, b: NlpHistoryIndex | null): Nlp
     byCode.set(row.code, prev ? richerName(prev, row) : row);
   }
   const newer = (a.generated_at || "") >= (b.generated_at || "") ? a : b;
+  const older = newer === a ? b : a;
   return {
     ...newer,
     ok: true,
+    lookback_days: Math.max(a.lookback_days || 0, b.lookback_days || 0) || newer.lookback_days,
+    methodology: newer.methodology?.length ? newer.methodology : older.methodology,
     names: [...byCode.values()],
   };
 }
 
 function richerSeries(a: NlpHistorySeries | null, b: NlpHistorySeries | null): NlpHistorySeries | null {
-  if (!a) return b;
-  if (!b) return a;
-  if ((b.n_days || 0) !== (a.n_days || 0)) {
-    return (b.n_days || 0) > (a.n_days || 0) ? b : a;
-  }
-  return (b.n_headlines || 0) > (a.n_headlines || 0) ? b : a;
+  return mergeNlpHistorySeries(a, b);
+}
+
+function seriesFromSeed(code: string): NlpHistorySeries | null {
+  const raw = nlpHistorySeed as { names?: Array<Record<string, unknown>> };
+  const hit = (raw.names || []).find((row) => String(row.code || "") === code);
+  if (!hit) return null;
+  return parseSeries(hit, code);
+}
+
+function indexFromSeed(): NlpHistoryIndex | null {
+  return parseIndex(nlpHistorySeed);
 }
 
 function asMarket(v: unknown): NlpHistoryMarket {
@@ -187,8 +197,8 @@ function parseSeries(raw: unknown, fallbackCode: string): NlpHistorySeries | nul
 
 async function loadIndex(): Promise<NlpHistoryIndex> {
   const merged = mergeIndexes(
-    parseIndex(await readR2Json("index.json")),
-    parseIndex(await readLocalJson("index.json")),
+    mergeIndexes(parseIndex(await readR2Json("index.json")), parseIndex(await readLocalJson("index.json"))),
+    indexFromSeed(),
   );
   if (merged) return merged;
   return emptyNlpHistoryIndex("뉴스 아카이브가 아직 없습니다. 백필을 실행하세요.");
@@ -196,10 +206,13 @@ async function loadIndex(): Promise<NlpHistoryIndex> {
 
 async function loadSeries(code: string): Promise<NlpHistorySeries> {
   const merged = richerSeries(
-    parseSeries(await readR2Json(`${code}.json`), code),
-    parseSeries(await readLocalJson(`${code}.json`), code),
+    richerSeries(
+      parseSeries(await readR2Json(`${code}.json`), code),
+      parseSeries(await readLocalJson(`${code}.json`), code),
+    ),
+    seriesFromSeed(code),
   );
-  if (merged) return merged;
+  if (merged) return finalizeNlpHistorySeries(merged);
   return emptyNlpHistorySeries(code, "해당 종목의 뉴스 시계열이 없습니다.");
 }
 
@@ -207,7 +220,7 @@ export async function GET(req: NextRequest) {
   const code = (req.nextUrl.searchParams.get("code") || "").trim();
   try {
     if (!code) {
-      const payload = await withServerCache("nlp-history:index:v4", 120_000, 600_000, loadIndex);
+      const payload = await withServerCache("nlp-history:index:v5", 120_000, 600_000, loadIndex);
       return NextResponse.json(payload, {
         headers: { "Cache-Control": cdnCacheHeader("yahoo") },
       });
@@ -216,7 +229,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(emptyNlpHistorySeries(code, "종목코드가 올바르지 않습니다."), { status: 400 });
     }
     const payload = await withServerCache(
-      `nlp-history:code:${code}:v2`,
+      `nlp-history:code:${code}:v3`,
       120_000,
       600_000,
       () => loadSeries(code),

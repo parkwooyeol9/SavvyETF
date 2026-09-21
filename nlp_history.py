@@ -35,8 +35,12 @@ KOSPI200_PATH = PROJECT_DIR / "data" / "universes" / "kospi200.json"
 WEBAPP_UNIVERSE = PROJECT_DIR / "webapp" / "src" / "data" / "nlpHistoryUniverse.json"
 LOCAL_DIR = PROJECT_DIR / "data" / "nlp_history"
 HEADLINE_ARCHIVE_DIR = LOCAL_DIR / "headlines"
+DAYS_DIR = LOCAL_DIR / "days"
+SEED_PATH = PROJECT_DIR / "data" / "nlp_history_seed.json"
+WEBAPP_SEED_PATH = WEBAPP_UNIVERSE.parent / "nlpHistorySeed.json"
 R2_PREFIX = "nlp_history"
 R2_HEADLINE_PREFIX = f"{R2_PREFIX}/headlines"
+R2_DAYS_PREFIX = f"{R2_PREFIX}/days"
 KST = ZoneInfo("Asia/Seoul")
 
 LOOKBACK_DAYS = 365  # initial backfill window only; daily append never drops older days
@@ -354,12 +358,148 @@ def load_local_payloads() -> dict[str, dict[str, Any]]:
     if not LOCAL_DIR.exists():
         return out
     for path in LOCAL_DIR.glob("*.json"):
-        if path.name == "index.json":
+        if path.name in {"index.json"}:
             continue
         data = _read_json(path)
         if data and data.get("code"):
             out[str(data["code"])] = data
     return out
+
+
+def _payload_from_days(spec: dict[str, str], days: list[dict[str, Any]]) -> dict[str, Any]:
+    cleaned = [row for row in days if str(row.get("date") or "")]
+    cleaned.sort(key=lambda row: str(row.get("date") or ""))
+    last = cleaned[-1] if cleaned else None
+    n_headlines = sum(int(d.get("n") or 0) for d in cleaned)
+    return {
+        "code": spec["code"],
+        "name": spec["name"],
+        "market": spec["market"],
+        "yahoo": spec["yahoo"],
+        "n_days": len(cleaned),
+        "n_headlines": n_headlines,
+        "last_score": None if last is None else last.get("score"),
+        "last_date": None if last is None else last.get("date"),
+        "last_n": None if last is None else int(last.get("n") or 0),
+        "days": cleaned,
+    }
+
+
+def load_seed_payloads() -> dict[str, dict[str, Any]]:
+    raw = None
+    for path in (SEED_PATH, WEBAPP_SEED_PATH):
+        raw = _read_json(path)
+        if raw and isinstance(raw.get("names"), list):
+            break
+        raw = None
+    if not raw:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in raw.get("names") or []:
+        if not isinstance(row, dict):
+            continue
+        spec = _normalize_spec(row)
+        if not spec:
+            continue
+        days = [d for d in (row.get("days") or []) if isinstance(d, dict) and d.get("date")]
+        if not days:
+            continue
+        out[spec["code"]] = _payload_from_days(spec, days)
+    return out
+
+
+def restore_seed_into_local() -> int:
+    """Reattach the 2025-09..2026-09 score window if disk/R2 was wiped down to a few days."""
+    seed = load_seed_payloads()
+    if not seed:
+        return 0
+    local = load_local_payloads()
+    restored = 0
+    for code, seeded in seed.items():
+        spec = _normalize_spec(seeded)
+        if not spec:
+            continue
+        prev = local.get(code) or {}
+        merged = merge_days(list(prev.get("days") or []), list(seeded.get("days") or []))
+        if len(merged) <= len(prev.get("days") or []):
+            continue
+        payload = build_name_payload(spec, merged)
+        _write_json(_local_path(code), payload)
+        local[code] = payload
+        restored += 1
+    if restored:
+        print(f"nlp history restored {restored} names from seed archive", flush=True)
+    return restored
+
+
+def _compact_day_row(row: dict[str, Any]) -> dict[str, Any]:
+    headlines = list(row.get("headlines") or [])[:MAX_HEADLINES_TOP]
+    return {
+        "score": row.get("score"),
+        "n": int(row.get("n") or 0),
+        "bull_n": int(row.get("bull_n") or 0),
+        "bear_n": int(row.get("bear_n") or 0),
+        "headlines": headlines,
+    }
+
+
+def _merge_day_file(day: str, incoming: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    path = DAYS_DIR / f"{day}.json"
+    local = _read_json(path) if path.exists() else None
+    remote = None
+    try:
+        from r2_data import get_json
+
+        remote = get_json(f"{R2_DAYS_PREFIX}/{day}.json")
+    except Exception:
+        remote = None
+    names: dict[str, dict[str, Any]] = {}
+    for src in (remote, local):
+        if not src:
+            continue
+        for code, row in dict(src.get("names") or {}).items():
+            if isinstance(row, dict):
+                names[str(code)] = row
+    for code, row in incoming.items():
+        prev = names.get(code)
+        if not prev or int(row.get("n") or 0) >= int(prev.get("n") or 0):
+            names[code] = row
+    payload = {
+        "date": day,
+        "updated_at": datetime.now(KST).isoformat(),
+        "n": len(names),
+        "names": names,
+    }
+    _write_json(path, payload)
+    try:
+        from r2_data import put_json, r2_configured
+
+        if r2_configured():
+            put_json(f"{R2_DAYS_PREFIX}/{day}.json", payload)
+    except Exception as exc:
+        print(f"nlp history day deposit failed ({day}): {exc}", flush=True)
+    return payload
+
+
+def deposit_day_cross_sections(
+    payloads: list[dict[str, Any]],
+    *,
+    only_dates: set[str] | None = None,
+) -> int:
+    """Write one immutable cross-section per calendar day. Existing names are merged, never dropped."""
+    by_day: dict[str, dict[str, dict[str, Any]]] = {}
+    for payload in payloads:
+        code = str(payload.get("code") or "")
+        if not code:
+            continue
+        for row in payload.get("days") or []:
+            day = str(row.get("date") or "")
+            if not day or (only_dates is not None and day not in only_dates):
+                continue
+            by_day.setdefault(day, {})[code] = _compact_day_row(row)
+    for day, incoming in sorted(by_day.items()):
+        _merge_day_file(day, incoming)
+    return len(by_day)
 
 
 def specs_from_payloads(payloads: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
@@ -850,7 +990,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
             "유니버스: 코스닥 100 + 코스피 200 구성종목",
             "뉴스: 네이버 데스크톱 일자 검색 '{종목} 주가'. 일일 수집은 당일(상위 30종은 빈 날만 최근 7일)",
             f"최근 {RECENT_DAYS}일: 시총 상위 {TOP_KOSPI_DENSE}+{TOP_KOSDAQ_DENSE}종은 하루 최대 {MAX_HEADLINES_TOP}건, 나머지는 {MAX_HEADLINES_PER_DAY}건",
-            f"시계열은 삭제하지 않고 쌓음. 초기 백필 {LOOKBACK_DAYS}일, 이후 매일 당일을 추가",
+            f"시계열은 일자별 nlp_history/days/{{YYYY-MM-DD}}.json 에 적재하고, 종목 JSON은 병합만 함. 짧은 시계열로 덮어쓰지 않음. 초기 백필 {LOOKBACK_DAYS}일, 이후 매일 당일을 추가",
             f"{KEEP_FULL_HEADLINES_DAYS}일 이전 제목은 종목 JSON에서 극성 {COMPACT_HEADLINE_CAP}건만 유지하고, 전체 제목은 nlp_history/headlines/{{code}}/{{YYYY-MM}}.json에 아카이브",
             "점수: NLP 탭과 같은 호재−악재 제목 렉시콘 (−100~+100). 증시 종합기사는 제외",
             "일자 점수: 그날 제목의 단순 평균",
@@ -932,6 +1072,14 @@ def hydrate_local_from_r2() -> int:
 def save_index(index: dict[str, Any]) -> None:
     _write_json(LOCAL_DIR / "index.json", index)
     _upload_r2(None, index)
+    day = datetime.now(KST).date().isoformat()
+    try:
+        from r2_data import put_json, r2_configured
+
+        if r2_configured():
+            put_json(f"{R2_PREFIX}/snapshots/{day}/index.json", index)
+    except Exception as exc:
+        print(f"nlp history index snapshot failed: {exc}", flush=True)
 
 
 def save_payload(payload: dict[str, Any]) -> None:
@@ -946,6 +1094,10 @@ def save_payload(payload: dict[str, Any]) -> None:
                 spec,
                 merge_days(list(remote.get("days") or []), list(payload.get("days") or [])),
             )
+        elif int(remote.get("n_days") or 0) > int(payload.get("n_days") or 0):
+            return
+    if remote and not (payload.get("days") or []) and (remote.get("days") or []):
+        return
     _write_json(_local_path(code), payload)
     _upload_r2(code, payload)
 
@@ -998,6 +1150,7 @@ def run_backfill(
     start = end - timedelta(days=LOOKBACK_DAYS)
     names = resolve_universe(refresh=market == "all", market=market, limit=limit, offset=offset)
     hydrate_local_from_r2()
+    restore_seed_into_local()
     existing_payloads = load_local_payloads()
     archived = specs_from_payloads(existing_payloads)
     save_universe(_merge_specs(names, archived))
@@ -1055,6 +1208,7 @@ def run_backfill(
     merged.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
     index = build_index(merged)
     save_index(index)
+    deposit_day_cross_sections(merged)
     print(f"wrote {LOCAL_DIR} index names={len(index['names'])}", flush=True)
     return index
 
@@ -1068,6 +1222,7 @@ def dense_name_codes() -> set[str]:
 def run_today_append() -> dict[str, Any]:
     today = datetime.now(KST).date()
     hydrate_local_from_r2()
+    seeded = restore_seed_into_local()
     existing = load_local_payloads()
     names = specs_from_payloads(existing)
     if not names:
@@ -1105,6 +1260,10 @@ def run_today_append() -> dict[str, Any]:
     merged_all.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
     index = build_index(merged_all)
     save_index(index)
+    deposit_day_cross_sections(
+        merged_all,
+        only_dates=None if seeded else {today.isoformat()},
+    )
     return index
 
 
@@ -1120,6 +1279,10 @@ def start_nlp_history_scheduler() -> None:
 
     def loop() -> None:
         print("nlp history scheduler active — daily 16:25 KST append")
+        try:
+            bootstrap_nlp_history()
+        except Exception as exc:
+            print(f"nlp history bootstrap failed: {exc}")
         while True:
             try:
                 if past_startup_grace():
@@ -1146,6 +1309,32 @@ def start_nlp_history_scheduler() -> None:
     threading.Thread(target=loop, name="nlp-history-scheduler", daemon=True).start()
 
 
+def bootstrap_nlp_history() -> dict[str, Any] | None:
+    """One-shot: merge the committed year-window seed into local/R2 day deposits."""
+    hydrate_local_from_r2()
+    seeded = restore_seed_into_local()
+    existing = load_local_payloads()
+    if not existing:
+        return None
+    if not seeded:
+        print("nlp history bootstrap skipped — local series already as long as the seed", flush=True)
+        return None
+    payloads: list[dict[str, Any]] = []
+    for spec in specs_from_payloads(existing):
+        payload = existing.get(spec["code"])
+        if not payload:
+            continue
+        save_payload(payload)
+        payloads.append(payload)
+        print(f"  seed {payload['code']} {payload['name']}: {payload['n_days']} days", flush=True)
+    payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
+    index = build_index(payloads)
+    save_index(index)
+    deposit_day_cross_sections(payloads)
+    print(f"nlp history bootstrap uploaded {len(payloads)} seeded names", flush=True)
+    return index
+
+
 def push_local_to_r2() -> dict[str, Any]:
     """Upload on-disk series to R2, merging so a thin remote cannot wipe a long local archive."""
     from r2_briefs import r2_configured
@@ -1153,6 +1342,7 @@ def push_local_to_r2() -> dict[str, Any]:
     if not r2_configured():
         raise SystemExit("R2 is not configured — set R2_* env before --push-local")
     hydrate_local_from_r2()
+    restore_seed_into_local()
     existing = load_local_payloads()
     if not existing:
         raise SystemExit("no local nlp_history payloads to push")
@@ -1165,6 +1355,7 @@ def push_local_to_r2() -> dict[str, Any]:
     payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
     index = build_index(payloads)
     save_index(index)
+    deposit_day_cross_sections(payloads)
     print(f"pushed {len(payloads)} names to R2", flush=True)
     return index
 
@@ -1174,6 +1365,7 @@ def main() -> None:
     parser.add_argument("--backfill", action="store_true")
     parser.add_argument("--today", action="store_true")
     parser.add_argument("--push-local", action="store_true")
+    parser.add_argument("--restore-seed", action="store_true")
     parser.add_argument("--google-only", action="store_true")
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--market", choices=["all", "kosdaq", "kospi"], default="all")
@@ -1183,6 +1375,9 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
     args = parser.parse_args()
+    if args.restore_seed:
+        bootstrap_nlp_history()
+        return
     if args.push_local:
         push_local_to_r2()
         return

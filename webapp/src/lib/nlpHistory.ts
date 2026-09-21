@@ -247,6 +247,61 @@ export function nlpRecentFromIso(now = Date.now()): string {
   return dt.toISOString().slice(0, 10);
 }
 
+export function mergeNlpHistoryDays(a: NlpHistoryDay[], b: NlpHistoryDay[]): NlpHistoryDay[] {
+  const by = new Map<string, NlpHistoryDay>();
+  for (const row of [...a, ...b]) {
+    if (!row?.date) continue;
+    const prev = by.get(row.date);
+    if (!prev) {
+      by.set(row.date, row);
+      continue;
+    }
+    const prevN = prev.headlines?.length || prev.n || 0;
+    const nextN = row.headlines?.length || row.n || 0;
+    by.set(row.date, nextN >= prevN ? row : prev);
+  }
+  return [...by.values()].sort((x, y) => x.date.localeCompare(y.date));
+}
+
+export function finalizeNlpHistorySeries(row: NlpHistorySeries): NlpHistorySeries {
+  const days = row.days || [];
+  const last = days[days.length - 1];
+  return {
+    ...row,
+    ok: true,
+    n_days: days.length,
+    n_headlines: days.reduce((sum, d) => sum + (d.n || 0), 0),
+    last_score: last ? last.score : row.last_score ?? null,
+    last_date: last ? last.date : row.last_date ?? null,
+    last_n: last ? last.n : row.last_n,
+    recent_n: days.filter((d) => d.date >= nlpRecentFromIso()).reduce((sum, d) => sum + (d.n || 0), 0),
+    recent_score: nlpRecentScoreFromDays(days),
+    days,
+  };
+}
+
+export function mergeNlpHistorySeries(
+  a: NlpHistorySeries | null,
+  b: NlpHistorySeries | null,
+): NlpHistorySeries | null {
+  if (!a) return b;
+  if (!b) return a;
+  const later = (a.last_date || "") >= (b.last_date || "") ? a : b;
+  return finalizeNlpHistorySeries({
+    ...later,
+    days: mergeNlpHistoryDays(a.days || [], b.days || []),
+  });
+}
+
+export function mergeNlpHistoryName(a: NlpHistoryName, b: NlpHistoryName): NlpHistoryName {
+  const later = (a.last_date || "") >= (b.last_date || "") ? a : b;
+  return {
+    ...later,
+    n_days: Math.max(a.n_days || 0, b.n_days || 0),
+    n_headlines: Math.max(a.n_headlines || 0, b.n_headlines || 0),
+  };
+}
+
 export function nlpRecentScoreFromDays(
   days: Array<{ date: string; score: number; n?: number }>,
   now = Date.now(),
