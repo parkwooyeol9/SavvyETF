@@ -9033,7 +9033,7 @@ button.country-etf-card {
 
 .graph-kpi {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.55rem;
   margin: 0.85rem 0 0.7rem;
 }
@@ -9087,6 +9087,70 @@ button.country-etf-card {
   font-style: normal;
 }
 
+.graph-heat-chip.quiet {
+  opacity: 0.78;
+}
+
+.graph-heat-extra {
+  margin-top: 0.35rem;
+}
+
+.graph-search input {
+  min-width: 10rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: inherit;
+}
+
+.graph-search-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+}
+
+.graph-search-hits button {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: inherit;
+  cursor: pointer;
+}
+
+.graph-search-hits em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.graph-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(16rem, 0.9fr);
+  gap: 0.85rem;
+}
+
+.graph-drawer .graph-drawer-h {
+  margin: 0.85rem 0 0.2rem;
+  font-size: 0.82rem;
+}
+
+.graph-nlp-jump {
+  margin: 0.45rem 0 0;
+}
+
+.graph-more-toggle {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
 .graph-rank-lab {
   fill: var(--muted);
   font-size: 11px;
@@ -9135,7 +9199,8 @@ button.country-etf-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .graph-split {
+  .graph-split,
+  .graph-stage {
     grid-template-columns: 1fr;
   }
 }
@@ -9255,7 +9320,8 @@ button.country-etf-card {
 
 @media (max-width: 980px) {
   .chain-detail-grid,
-  .graph-split {
+  .graph-split,
+  .graph-stage {
     grid-template-columns: 1fr;
   }
 }

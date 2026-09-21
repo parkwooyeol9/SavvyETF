@@ -108,11 +108,14 @@ export const CHAIN_CLUSTERS: ChainCluster[] = [
   { id: "finance", label: "금융", hub: "JPM" },
 ];
 
+/** Chains with a real supply path. Peer-only islands stay in the secondary row. */
+export const PRIMARY_CHAIN_IDS = ["gpu", "memory", "battery", "auto", "cloud"] as const;
+
 export const CHAIN_METHODOLOGY: string[] = [
-  "간선은 공개 공시·관용 서술로 고정한 시드입니다. 실시간 10-K 추출기가 아닙니다.",
-  "supply: 공급 → 고객. peer: 동종. complement: 같은 밸류체인 보완.",
-  "노드 색은 Yahoo 1일 등락, 숫자는 1일·5일. 2홉 이웃만 그립니다.",
-  "뉴스를 누르면 발원 종목이 포커스가 되고, 헤드라인 언급·1홉 이웃이 하이라이트됩니다.",
+  "간선은 공개 공시·관용 서술로 고정한 관계 지도입니다. 실시간 10-K 추출기가 아닙니다.",
+  "실선 화살표는 공급 → 고객. 점선은 동종, 짧은 점선은 같은 체인의 보완.",
+  "노드 색은 Yahoo 1일 등락. 국내 종목은 뉴스 점수를 같이 표시합니다.",
+  "포커스를 누르면 상류(공급)와 하류(고객)가 다시 그려집니다.",
 ];
 
 export const CHAIN_DISCLAIMER =
@@ -135,6 +138,8 @@ export const CHAIN_NODES: ChainNode[] = [
   N("AMD", "AMD", "AMD", "AMD", "us", "GPU·CPU", ["AMD"]),
   N("AVGO", "Broadcom", "AVGO", "AVGO", "us", "커스텀칩", ["Broadcom", "AVGO"]),
   N("AMAT", "Applied Materials", "AMAT", "AMAT", "us", "전공정", ["Applied Materials", "AMAT"]),
+  N("LRCX", "Lam Research", "LRCX", "LRCX", "us", "식각장비", ["Lam Research", "LRCX", "램리서치"]),
+  N("KLAC", "KLA", "KLA", "KLAC", "us", "검사장비", ["KLA", "KLAC"]),
   N("MU", "Micron", "MU", "MU", "us", "DRAM", ["Micron", "MU", "마이크론"]),
   N("INTC", "Intel", "INTC", "INTC", "us", "파운드리·CPU", ["Intel", "INTC", "인텔"]),
   N("QCOM", "Qualcomm", "QCOM", "QCOM", "us", "모바일 AP", ["Qualcomm", "QCOM"]),
@@ -159,6 +164,7 @@ export const CHAIN_NODES: ChainNode[] = [
   N("373220", "LG에너지솔루션", "LG엔솔", "373220.KS", "kr", "배터리", ["LG에너지솔루션", "LG엔솔", "LGES"]),
   N("006400", "삼성SDI", "SDI", "006400.KS", "kr", "배터리", ["삼성SDI", "SDI"]),
   N("003670", "포스코퓨처엠", "퓨처엠", "003670.KS", "kr", "양극재", ["포스코퓨처엠", "퓨처엠"]),
+  N("247540", "에코프로비엠", "에코비엠", "247540.KQ", "kr", "양극재", ["에코프로비엠", "에코비엠"]),
   N("051910", "LG화학", "LG화학", "051910.KS", "kr", "소재", ["LG화학"]),
   N("005490", "POSCO홀딩스", "POSCO", "005490.KS", "kr", "철강·소재", ["POSCO홀딩스", "포스코홀딩스", "포스코"]),
   N("005380", "현대차", "현대차", "005380.KS", "kr", "완성차", ["현대차", "현대자동차"]),
@@ -186,6 +192,10 @@ export const CHAIN_EDGES: ChainEdge[] = [
   E("ASML", "005930", "supply", "노광 장비 → 삼성 파운드리", "공개 공급 관계"),
   E("AMAT", "TSM", "supply", "전공정 장비 → 파운드리", "공개 공급 관계"),
   E("AMAT", "005930", "supply", "전공정 장비 → 삼성", "공개 공급 관계"),
+  E("LRCX", "TSM", "supply", "식각 장비 → 선단 파운드리", "공개 공급 관계"),
+  E("LRCX", "005930", "supply", "식각 장비 → 삼성", "공개 공급 관계"),
+  E("KLAC", "TSM", "supply", "계측·검사 → 파운드리", "공개 공급 관계"),
+  E("KLAC", "005930", "supply", "계측·검사 → 삼성", "공개 공급 관계"),
   E("ARM", "QCOM", "supply", "아키텍처 IP → 모바일 AP", "라이선스 관용 서술"),
   E("ARM", "NVDA", "complement", "CPU IP와 GPU 동반 설계", "공개 파트너십 서술"),
   E("TSM", "NVDA", "supply", "GPU 웨이퍼 위탁생산 (sole-source 서술)", "NVIDIA 10-K Item 1A 관용 문구"),
@@ -218,6 +228,8 @@ export const CHAIN_EDGES: ChainEdge[] = [
   E("AAPL", "GOOGL", "peer", "모바일 플랫폼 경쟁", "동종"),
   E("003670", "373220", "supply", "양극재 → 셀", "국내 소재·셀 밸류체인"),
   E("003670", "006400", "supply", "양극재 → 셀", "국내 소재·셀 밸류체인"),
+  E("247540", "373220", "supply", "하이니켈 양극재 → 셀", "국내 소재·셀 밸류체인"),
+  E("247540", "006400", "supply", "하이니켈 양극재 → 셀", "국내 소재·셀 밸류체인"),
   E("051910", "373220", "supply", "소재·분리막 계열 → 셀", "그룹 밸류체인"),
   E("005490", "003670", "complement", "지주 → 양극재 자회사", "그룹"),
   E("373220", "TSLA", "supply", "전기차 배터리 공급", "공개 고객 서술"),
@@ -425,7 +437,17 @@ export function chainComment(nodes: ChainNodeView[]): string {
     return "시세가 비어 관계 지도만 표시합니다. 노드는 클릭하면 상·하류가 바뀝니다.";
   }
   const sign = top.ret1d > 0 ? "+" : "";
-  return `오늘 시드 그래프에서 1일 등락이 가장 큰 노드는 ${top.name} ${sign}${top.ret1d.toFixed(1)}%입니다. 포커스를 옮기면 공급·고객 2홉이 다시 그려집니다.`;
+  const heat = clusterHeat(nodes).filter((h) =>
+    (PRIMARY_CHAIN_IDS as readonly string[]).includes(h.id),
+  );
+  const chain = [...heat].sort(
+    (a, b) => Math.abs(b.avg1d || 0) - Math.abs(a.avg1d || 0),
+  )[0];
+  const chainBit =
+    chain?.avg1d != null
+      ? `${chain.label} 체인 평균 ${chain.avg1d > 0 ? "+" : ""}${chain.avg1d.toFixed(1)}%. `
+      : "";
+  return `${chainBit}가장 크게 움직인 노드는 ${top.name} ${sign}${top.ret1d.toFixed(1)}%입니다.`;
 }
 
 export function matchChainMentions(text: string): ChainNode[] {

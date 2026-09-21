@@ -13,6 +13,7 @@ import {
   mergeHistoryNames,
   nlpHistoryTone,
   nlpMapScore,
+  nlpNameByCode,
   nlpScoreIsStale,
   type NlpHistoryIndex,
   type NlpHistoryName,
@@ -157,6 +158,7 @@ export default function NlpPulseTab() {
   const [histDate, setHistDate] = useState<string | null>(null);
   const [loadingHist, setLoadingHist] = useState(false);
   const climatePickRef = useRef<{ code: string; date: string } | null>(null);
+  const bootCodeRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,6 +176,17 @@ export default function NlpPulseTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const code = new URLSearchParams(window.location.search).get("code") || "";
+    if (!/^\d{6}$/.test(code)) return;
+    bootCodeRef.current = code;
+    const spec = nlpNameByCode(code);
+    if (spec?.market === "kosdaq") setMarket("kosdaq100");
+    else setMarket("kospi200");
+    setPicked(code);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,9 +300,15 @@ export default function NlpPulseTab() {
   const hasCautious = market === "sp500" ? cautiousPulse.length > 0 : cautiousHist.length > 0;
 
   useEffect(() => {
+    const boot = bootCodeRef.current;
+    if (boot && (picked === boot || picked == null)) {
+      if (picked !== boot) setPicked(boot);
+      return;
+    }
     const okPulse = Boolean(picked && pulseNames.some((n) => n.id === picked));
     const okHist = Boolean(picked && mapNames.some((n) => n.code === picked));
     if (okPulse || okHist) return;
+    if (!mapNames.length && !pulseNames.length) return;
     setPicked(mapNames[0]?.code || pulseNames[0]?.id || null);
   }, [mapNames, pulseNames, picked]);
 

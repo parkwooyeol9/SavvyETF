@@ -119,7 +119,7 @@ async function buildPayload(): Promise<ChainPayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("chain:v1", 180_000, 540_000, buildPayload);
+    const payload = await withServerCache("chain:v2", 180_000, 540_000, buildPayload);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahoo") },
     });

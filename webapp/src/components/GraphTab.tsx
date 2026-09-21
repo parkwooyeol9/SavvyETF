@@ -6,19 +6,23 @@ import {
   CHAIN_CLUSTERS,
   GRAPH_NODE_H,
   GRAPH_NODE_W,
+  PRIMARY_CHAIN_IDS,
   clusterHeat,
   fmtPct,
   layoutNeighborhood,
   meanRet,
-  nodeDegrees,
   retTone,
-  rippleHitsFor,
   supplyChainFromFocus,
   supplyChainToFocus,
   type ChainPayload,
-  type ChainQuote,
-  type RippleEvent,
 } from "@/lib/chainGraph";
+import type { NlpClimateNameDay } from "@/lib/nlpClimate";
+import {
+  emptyNlpHistoryIndex,
+  nlpHistoryTone,
+  nlpMapScore,
+  type NlpHistoryIndex,
+} from "@/lib/nlpHistory";
 import { emptyNlpPayload, type NlpHeadline, type NlpPulsePayload } from "@/lib/nlpPulse";
 
 function fillForRet(ret: number | null, focus: boolean): string {
@@ -29,54 +33,49 @@ function fillForRet(ret: number | null, focus: boolean): string {
   return "var(--panel-2)";
 }
 
-function asEvents(feed: NlpHeadline[], quotes: Map<string, ChainQuote>): RippleEvent[] {
-  const rows: RippleEvent[] = [];
-  for (const h of feed) {
-    const hits = rippleHitsFor(h.name_id, h.title, quotes, 8);
-    rows.push({
-      id: h.id,
-      date: h.date,
-      title: h.title,
-      source: h.source,
-      url: h.url,
-      kind: h.kind,
-      score: h.score,
-      origin_id: h.name_id,
-      origin_name: h.name,
-      hits,
-    });
-  }
-  return rows
-    .slice()
-    .sort((a, b) => b.hits.length - a.hits.length || Math.abs(b.score) - Math.abs(a.score))
-    .slice(0, 16);
-}
-
 function relKo(rel: string): string {
-  if (rel === "mention") return "언급";
   if (rel === "supply") return "공급";
   if (rel === "peer") return "동종";
   return "보완";
 }
 
+function fmtNews(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "";
+  const sign = n > 0 ? "+" : "";
+  return `뉴스 ${sign}${n.toFixed(0)}`;
+}
+
+function isKrCode(id: string): boolean {
+  return /^\d{6}$/.test(id);
+}
+
+function openNlpTab(code: string) {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams();
+  params.set("tab", "nlp");
+  params.set("code", code);
+  window.history.replaceState(null, "", `/?${params.toString()}`);
+  window.dispatchEvent(new CustomEvent("savvyetf-nav-tab", { detail: { tab: "nlp", code } }));
+}
+
 export default function GraphTab() {
   const [data, setData] = useState<ChainPayload | null>(null);
   const [nlp, setNlp] = useState<NlpPulsePayload | null>(null);
+  const [histIndex, setHistIndex] = useState<NlpHistoryIndex | null>(null);
+  const [nameNews, setNameNews] = useState<NlpClimateNameDay | null>(null);
   const [loading, setLoading] = useState(true);
   const [focusId, setFocusId] = useState("NVDA");
   const [clusterId, setClusterId] = useState("gpu");
+  const [booted, setBooted] = useState(false);
   const [supplyOnly, setSupplyOnly] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [showMore, setShowMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [chainRes, nlpRes] = await Promise.all([
-        fetch("/api/chain"),
-        fetch("/api/nlp-pulse"),
-      ]);
+      const chainRes = await fetch("/api/chain");
       setData((await chainRes.json()) as ChainPayload);
-      setNlp((await nlpRes.json()) as NlpPulsePayload);
     } catch (exc) {
       const msg = exc instanceof Error ? exc.message : "로드 실패";
       setData({
@@ -91,9 +90,20 @@ export default function GraphTab() {
         errors: [msg],
         error: msg,
       });
-      setNlp(emptyNlpPayload(msg));
     } finally {
       setLoading(false);
+    }
+    try {
+      const [nlpRes, histRes] = await Promise.all([
+        fetch("/api/nlp-pulse"),
+        fetch("/api/nlp-history"),
+      ]);
+      setNlp((await nlpRes.json()) as NlpPulsePayload);
+      setHistIndex((await histRes.json()) as NlpHistoryIndex);
+    } catch (exc) {
+      const msg = exc instanceof Error ? exc.message : "로드 실패";
+      setNlp(emptyNlpPayload(msg));
+      setHistIndex(emptyNlpHistoryIndex(msg));
     }
   }, []);
 
@@ -101,38 +111,42 @@ export default function GraphTab() {
     void load();
   }, [load]);
 
-  const quotes = useMemo(() => {
-    const m = new Map<string, ChainQuote>();
-    for (const n of data?.nodes || []) {
-      m.set(n.id, { price: n.price, ret1d: n.ret1d, ret5d: n.ret5d });
+  const nlpByCode = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of histIndex?.names || []) {
+      const score = nlpMapScore(n) ?? n.last_score;
+      if (score != null) m.set(n.code, score);
     }
     return m;
-  }, [data]);
+  }, [histIndex]);
 
-  const events = useMemo(() => {
-    const feed = [...(nlp?.feed || []), ...(nlp?.events || []), ...(nlp?.calls || [])];
-    return asEvents(feed, quotes);
-  }, [nlp, quotes]);
+  const heat = useMemo(() => clusterHeat(data?.nodes || []), [data]);
+  const primaryHeat = heat.filter((h) => (PRIMARY_CHAIN_IDS as readonly string[]).includes(h.id));
+  const extraHeat = heat.filter((h) => !(PRIMARY_CHAIN_IDS as readonly string[]).includes(h.id));
 
-  const active = events.find((e) => e.id === picked) || null;
-  const hitIds = useMemo(() => new Set(active?.hits.map((h) => h.id) || []), [active]);
+  useEffect(() => {
+    if (booted || !data?.nodes.length) return;
+    const ranked = [...primaryHeat].sort(
+      (a, b) => Math.abs(b.avg1d || 0) - Math.abs(a.avg1d || 0),
+    );
+    const top = ranked[0];
+    if (top) {
+      setClusterId(top.id);
+      setFocusId(top.hub);
+    }
+    setBooted(true);
+  }, [booted, data, primaryHeat]);
 
   const pickCluster = (id: string) => {
     setClusterId(id);
-    setPicked(null);
     const hub = (data?.clusters || CHAIN_CLUSTERS).find((c) => c.id === id)?.hub;
     if (hub) setFocusId(hub);
   };
 
   const pickNode = (id: string) => {
     setFocusId(id);
-    const related = events.find((e) => e.origin_id === id || e.hits.some((h) => h.id === id));
-    setPicked(related?.id || null);
-  };
-
-  const pickEvent = (ev: RippleEvent) => {
-    setPicked(ev.id);
-    if ((data?.nodes || []).some((n) => n.id === ev.origin_id)) setFocusId(ev.origin_id);
+    const cluster = (data?.clusters || CHAIN_CLUSTERS).find((c) => c.hub === id);
+    if (cluster) setClusterId(cluster.id);
   };
 
   const layout = useMemo(() => {
@@ -146,110 +160,134 @@ export default function GraphTab() {
   const focus = data?.nodes.find((n) => n.id === focusId) || data?.nodes[0] || null;
   const inbound = (data?.edges || []).filter((e) => e.to === focusId && (!supplyOnly || e.rel === "supply"));
   const outbound = (data?.edges || []).filter((e) => e.from === focusId && (!supplyOnly || e.rel === "supply"));
-  const degrees = useMemo(() => nodeDegrees(), []);
-  const heat = useMemo(() => clusterHeat(data?.nodes || []), [data]);
+  const activeHeat = heat.find((h) => h.id === clusterId) || null;
   const neighAvg = meanRet((layout?.nodes || []).map((n) => n.ret1d));
-  const hottest = useMemo(() => {
-    const rows = (data?.nodes || []).filter((n) => n.ret1d != null);
-    if (!rows.length) return null;
-    return rows.slice().sort((a, b) => (b.ret1d || 0) - (a.ret1d || 0))[0]!;
-  }, [data]);
-  const coldest = useMemo(() => {
-    const rows = (data?.nodes || []).filter((n) => n.ret1d != null);
-    if (!rows.length) return null;
-    return rows.slice().sort((a, b) => (a.ret1d || 0) - (b.ret1d || 0))[0]!;
-  }, [data]);
-  const hubs = useMemo(() => {
-    const byId = new Map((data?.nodes || []).map((n) => [n.id, n]));
-    return [...degrees.entries()]
-      .map(([id, d]) => ({ id, deg: d.all, node: byId.get(id) }))
-      .filter((r) => r.node)
-      .sort((a, b) => b.deg - a.deg)
+  const focusNews = focus && isKrCode(focus.id) ? nlpByCode.get(focus.id) ?? null : null;
+
+  useEffect(() => {
+    if (!focus || !isKrCode(focus.id)) {
+      setNameNews(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/nlp-climate?code=${encodeURIComponent(focus.id)}`);
+        const json = (await res.json()) as NlpClimateNameDay;
+        if (!cancelled) setNameNews(json);
+      } catch {
+        if (!cancelled) setNameNews(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focus]);
+
+  const usHeadlines = useMemo(() => {
+    if (!focus || isKrCode(focus.id)) return [] as NlpHeadline[];
+    const aliases = new Set(focus.aliases.map((a) => a.toUpperCase()));
+    aliases.add(focus.short.toUpperCase());
+    aliases.add(focus.name.toUpperCase());
+    const feed = [...(nlp?.feed || []), ...(nlp?.events || []), ...(nlp?.calls || [])];
+    return feed
+      .filter((h) => {
+        const blob = `${h.title} ${h.name}`.toUpperCase();
+        return [...aliases].some((a) => a.length >= 2 && blob.includes(a));
+      })
       .slice(0, 8);
-  }, [data, degrees]);
+  }, [focus, nlp]);
+
+  const krHeadlines = nameNews?.headlines || [];
+  const newsCount = isKrCode(focusId) ? krHeadlines.length : usHeadlines.length;
 
   const upPath = useMemo(() => supplyChainToFocus(focusId), [focusId]);
   const downPath = useMemo(() => supplyChainFromFocus(focusId), [focusId]);
 
-  const shockRows = (layout?.nodes || [])
-    .slice()
-    .sort((a, b) => a.hop - b.hop || Math.abs(b.ret1d || 0) - Math.abs(a.ret1d || 0));
+  const searchHits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 1) return [];
+    return (data?.nodes || [])
+      .filter(
+        (n) =>
+          n.name.toLowerCase().includes(q) ||
+          n.short.toLowerCase().includes(q) ||
+          n.ticker.toLowerCase().includes(q) ||
+          n.id.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [data, query]);
 
-  const newsForFocus = events.filter(
-    (e) => e.origin_id === focusId || e.hits.some((h) => h.id === focusId),
-  );
-
-  const comment =
-    data?.comment && events.length
-      ? `${data.comment} 뉴스 ${events.length}건이 시드 이웃과 연결됩니다.`
-      : data?.comment || "";
+  const comment = data?.comment || "";
 
   return (
     <div className="geo-tab graph-tab">
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">그래프</h2>
+            <h2 className="kr-hero-title">밸류체인</h2>
+            <p className="macro-subhead">공개 관계 지도 + 오늘 등락. 체인을 고르거나 종목을 검색하세요.</p>
           </div>
           <div className="kr-hero-actions">
+            <label className="graph-search">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="종목·티커 검색"
+                aria-label="종목 검색"
+              />
+            </label>
             <button type="button" className="ghost-btn" onClick={() => void load()} disabled={loading}>
               {loading ? "수집 중…" : "새로고침"}
             </button>
           </div>
         </div>
+        {searchHits.length ? (
+          <ul className="graph-search-hits">
+            {searchHits.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pickNode(n.id);
+                    setQuery("");
+                  }}
+                >
+                  {n.name} <em>{n.short}</em>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {comment ? <p className="quant-comment">{comment}</p> : null}
         {data?.error ? <p className="meta-soft">{data.error}</p> : null}
-        {nlp?.error ? <p className="meta-soft">{nlp.error}</p> : null}
 
         <div className="graph-kpi">
           <article>
-            <span>시드 노드</span>
-            <strong>{data?.nodes.length || 0}</strong>
+            <span>체인 평균 1일</span>
+            <strong className={retTone(activeHeat?.avg1d ?? neighAvg)}>
+              {fmtPct(activeHeat?.avg1d ?? neighAvg)}
+            </strong>
           </article>
           <article>
-            <span>간선</span>
-            <strong>{data?.edges.length || 0}</strong>
+            <span>포커스 1일</span>
+            <strong className={retTone(focus?.ret1d)}>{focus ? `${focus.short} ${fmtPct(focus.ret1d)}` : "—"}</strong>
           </article>
           <article>
-            <span>이웃 평균 1일</span>
-            <strong className={retTone(neighAvg)}>{fmtPct(neighAvg)}</strong>
+            <span>뉴스 점수</span>
+            <strong className={focusNews == null ? "flat" : nlpHistoryTone(focusNews) === "bull" ? "up" : nlpHistoryTone(focusNews) === "bear" ? "down" : "flat"}>
+              {focusNews == null ? (isKrCode(focusId) ? "없음" : "해외") : fmtNews(focusNews)}
+            </strong>
           </article>
           <article>
-            <span>1일 최강</span>
-            <strong className="up">{hottest ? `${hottest.short} ${fmtPct(hottest.ret1d)}` : "—"}</strong>
+            <span>관련 뉴스</span>
+            <strong>{newsCount}건</strong>
           </article>
-          <article>
-            <span>1일 최약</span>
-            <strong className="down">{coldest ? `${coldest.short} ${fmtPct(coldest.ret1d)}` : "—"}</strong>
-          </article>
-          <article>
-            <span>파급 뉴스</span>
-            <strong>{events.length}</strong>
-          </article>
-        </div>
-
-        <div className="nlp-filters">
-          {(data?.clusters || CHAIN_CLUSTERS).map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`tab-btn sub ${clusterId === c.id ? "active" : ""}`}
-              onClick={() => pickCluster(c.id)}
-            >
-              {c.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={`tab-btn sub ${supplyOnly ? "active" : ""}`}
-            onClick={() => setSupplyOnly((v) => !v)}
-          >
-            공급만
-          </button>
         </div>
 
         <div className="graph-heat-row">
-          {heat.map((h) => (
+          {primaryHeat.map((h) => (
             <button
               key={h.id}
               type="button"
@@ -266,223 +304,171 @@ export default function GraphTab() {
             >
               <span>{h.label}</span>
               <strong className={retTone(h.avg1d)}>{fmtPct(h.avg1d)}</strong>
-              <em>{h.n}노드</em>
+              <em>{h.n}종</em>
             </button>
           ))}
+          <button
+            type="button"
+            className={`tab-btn sub ${supplyOnly ? "active" : ""}`}
+            onClick={() => setSupplyOnly((v) => !v)}
+          >
+            공급만
+          </button>
         </div>
-      </section>
-
-      <section className="geo-section chain-stage-section">
-        <div className="geo-section-head">
-          <h3 className="geo-section-title">
-            공급망 · {focus?.name || "포커스"}
-            {active ? ` · 파급 ${active.hits.length}` : ""}
-          </h3>
-          <p className="macro-subhead">
-            노드를 누르면 상·하류가 다시 그려집니다. 뉴스를 고르면 언급·1홉이 노란 테두리로 표시됩니다.
-          </p>
-        </div>
-        {!layout || !layout.nodes.length ? (
-          <p className="empty">{loading ? "그래프 준비 중…" : "표시할 간선이 없습니다."}</p>
-        ) : (
-          <div className="chain-stage-wrap">
-            <svg
-              className="chain-svg"
-              viewBox={`0 0 ${layout.width} ${layout.height}`}
-              role="img"
-              aria-label={`${focus?.name || "포커스"} 공급망`}
-            >
-              <defs>
-                <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 z" fill="currentColor" />
-                </marker>
-              </defs>
-              {layout.bands.map((b) => (
-                <text key={`band-${b.rank}`} x={b.x} y={16} className="graph-rank-lab">
-                  {b.label}
-                </text>
-              ))}
-              {layout.edges.map((e) => {
-                const dx = Math.max(36, (e.x2 - e.x1) / 2);
-                const dash = e.rel === "peer" ? "5 4" : e.rel === "complement" ? "2 3" : undefined;
-                const hot = e.from === focusId || e.to === focusId || hitIds.has(e.from) || hitIds.has(e.to);
-                return (
-                  <path
-                    key={`${e.from}-${e.to}-${e.rel}`}
-                    className={`chain-link chain-link-${e.rel} ${hot ? "hot" : ""}`}
-                    d={`M ${e.x1} ${e.y1} C ${e.x1 + dx} ${e.y1}, ${e.x2 - dx} ${e.y2}, ${e.x2} ${e.y2}`}
-                    fill="none"
-                    strokeDasharray={dash}
-                    markerEnd={e.rel === "peer" ? undefined : "url(#graph-arrow)"}
-                  />
-                );
-              })}
-              {layout.nodes.map((n) => {
-                const isFocus = n.id === focusId;
-                const isHit = hitIds.has(n.id);
-                return (
-                  <g
-                    key={n.id}
-                    className="chain-node"
-                    transform={`translate(${n.x}, ${n.y})`}
-                    opacity={isFocus || isHit ? 1 : n.hop === 1 ? 0.92 : 0.68}
-                    onClick={() => pickNode(n.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        pickNode(n.id);
-                      }
-                    }}
-                  >
-                    <rect
-                      width={GRAPH_NODE_W}
-                      height={GRAPH_NODE_H}
-                      rx={8}
-                      fill={fillForRet(n.ret1d, isFocus)}
-                      stroke={isFocus ? "var(--accent)" : isHit ? "var(--warn)" : "var(--border)"}
-                      strokeWidth={isFocus || isHit ? 2.2 : 1}
-                    />
-                    <text x={10} y={18} className={`chain-node-name ${isFocus ? "on-accent" : ""}`}>
-                      {n.short}
-                    </text>
-                    <text x={10} y={34} className={`chain-node-meta ${isFocus ? "on-accent" : ""}`}>
-                      {n.role}
-                    </text>
-                    <text x={10} y={48} className={`chain-node-meta ${isFocus ? "on-accent" : ""}`}>
-                      1일 {fmtPct(n.ret1d)} · 5일 {fmtPct(n.ret5d)}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+        {extraHeat.length ? (
+          <div className="graph-heat-row graph-heat-extra">
+            {extraHeat.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                className={`graph-heat-chip quiet ${clusterId === h.id ? "active" : ""}`}
+                onClick={() => pickCluster(h.id)}
+              >
+                <span>{h.label}</span>
+                <strong className={retTone(h.avg1d)}>{fmtPct(h.avg1d)}</strong>
+              </button>
+            ))}
           </div>
-        )}
-        <div className="chain-legend">
-          <span><i className="chain-swatch supply" /> 공급</span>
-          <span><i className="chain-swatch peer" /> 동종</span>
-          <span><i className="chain-swatch complement" /> 보완</span>
-          <span><i className="chain-swatch hit" /> 뉴스 파급</span>
-          <span>녹색·빨강 = 1일 ±1.2% 이상</span>
-        </div>
-        <p className="graph-path">
-          <span>상류</span>
-          {upPath.map((id, i) => {
-            const n = data?.nodes.find((x) => x.id === id);
-            return (
-              <span key={`up-${id}`}>
-                {i ? " → " : ""}
-                <button type="button" onClick={() => pickNode(id)}>
-                  {n?.short || id}
-                </button>
-              </span>
-            );
-          })}
-          <span className="graph-path-gap">하류</span>
-          {downPath.map((id, i) => {
-            const n = data?.nodes.find((x) => x.id === id);
-            return (
-              <span key={`dn-${id}`}>
-                {i ? " → " : ""}
-                <button type="button" onClick={() => pickNode(id)}>
-                  {n?.short || id}
-                </button>
-              </span>
-            );
-          })}
-        </p>
+        ) : null}
       </section>
 
-      <div className="graph-split">
-        <section className="geo-section">
-          <h3 className="geo-section-title">뉴스 파급</h3>
-          {active ? (
-            <p className="macro-subhead">
-              {active.origin_name} · {active.hits.map((h) => `${h.short}(${relKo(h.via)})`).join(" · ")}
-              {active.url ? (
-                <>
-                  {" "}
-                  <a href={active.url} target="_blank" rel="noreferrer">
-                    원문
-                  </a>
-                </>
-              ) : null}
-            </p>
+      <div className="graph-stage">
+        <section className="geo-section chain-stage-section">
+          <div className="geo-section-head">
+            <h3 className="geo-section-title">
+              {activeHeat?.label || "체인"} · {focus?.name || "포커스"}
+            </h3>
+            <p className="macro-subhead">왼쪽이 공급, 오른쪽이 고객. 노드를 누르면 서랍이 바뀝니다.</p>
+          </div>
+          {!layout || !layout.nodes.length ? (
+            <p className="empty">{loading ? "관계 지도 준비 중…" : "표시할 간선이 없습니다."}</p>
           ) : (
-            <p className="macro-subhead">헤드라인을 누르면 DAG에 파급 노드가 표시됩니다.</p>
-          )}
-          {!events.length ? (
-            <p className="empty">{loading ? "NLP 피드 수집 중…" : "최근 헤드라인이 없습니다."}</p>
-          ) : (
-            <ul className="ripple-event-list">
-              {events.map((e) => (
-                <li key={e.id}>
-                  <button
-                    type="button"
-                    className={active?.id === e.id ? "active" : ""}
-                    onClick={() => pickEvent(e)}
-                  >
-                    <span className="ripple-event-top">
-                      <em>{e.origin_name}</em>
-                      <span>{e.kind}</span>
-                      <strong>{e.hits.length}파급</strong>
-                    </span>
-                    <span className="ripple-event-title">{e.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="geo-section">
-          <h3 className="geo-section-title">쇼크 보드 · 2홉</h3>
-          {!shockRows.length ? (
-            <p className="empty">포커스 이웃이 없습니다.</p>
-          ) : (
-            <div className="deriv-table-wrap">
-              <table className="deriv-table">
-                <thead>
-                  <tr>
-                    <th>종목</th>
-                    <th>홉</th>
-                    <th>1일</th>
-                    <th>5일</th>
-                    <th>차수</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shockRows.map((n) => (
-                    <tr
+            <div className="chain-stage-wrap">
+              <svg
+                className="chain-svg"
+                viewBox={`0 0 ${layout.width} ${layout.height}`}
+                role="img"
+                aria-label={`${focus?.name || "포커스"} 밸류체인`}
+              >
+                <defs>
+                  <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                    <path d="M0,0 L8,4 L0,8 z" fill="currentColor" />
+                  </marker>
+                </defs>
+                {layout.bands.map((b) => (
+                  <text key={`band-${b.rank}`} x={b.x} y={16} className="graph-rank-lab">
+                    {b.label}
+                  </text>
+                ))}
+                {layout.edges.map((e) => {
+                  const dx = Math.max(36, (e.x2 - e.x1) / 2);
+                  const dash = e.rel === "peer" ? "5 4" : e.rel === "complement" ? "2 3" : undefined;
+                  const hot = e.from === focusId || e.to === focusId;
+                  return (
+                    <path
+                      key={`${e.from}-${e.to}-${e.rel}`}
+                      className={`chain-link chain-link-${e.rel} ${hot ? "hot" : ""}`}
+                      d={`M ${e.x1} ${e.y1} C ${e.x1 + dx} ${e.y1}, ${e.x2 - dx} ${e.y2}, ${e.x2} ${e.y2}`}
+                      fill="none"
+                      strokeDasharray={dash}
+                      markerEnd={e.rel === "peer" ? undefined : "url(#graph-arrow)"}
+                    />
+                  );
+                })}
+                {layout.nodes.map((n) => {
+                  const isFocus = n.id === focusId;
+                  const news = isKrCode(n.id) ? nlpByCode.get(n.id) : undefined;
+                  return (
+                    <g
                       key={n.id}
-                      className={n.id === focusId ? "quant-hot" : hitIds.has(n.id) ? "quant-drawn" : ""}
+                      className="chain-node"
+                      transform={`translate(${n.x}, ${n.y})`}
+                      opacity={isFocus ? 1 : n.hop === 1 ? 0.92 : 0.68}
                       onClick={() => pickNode(n.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          pickNode(n.id);
+                        }
+                      }}
                     >
-                      <td>{n.name}</td>
-                      <td>{n.hop === 0 ? "포커스" : n.hop}</td>
-                      <td className={retTone(n.ret1d)}>{fmtPct(n.ret1d)}</td>
-                      <td className={retTone(n.ret5d)}>{fmtPct(n.ret5d)}</td>
-                      <td>{degrees.get(n.id)?.all ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      <rect
+                        width={GRAPH_NODE_W}
+                        height={GRAPH_NODE_H}
+                        rx={8}
+                        fill={fillForRet(n.ret1d, isFocus)}
+                        stroke={isFocus ? "var(--accent)" : "var(--border)"}
+                        strokeWidth={isFocus ? 2.2 : 1}
+                      />
+                      <text x={10} y={18} className={`chain-node-name ${isFocus ? "on-accent" : ""}`}>
+                        {n.short}
+                      </text>
+                      <text x={10} y={34} className={`chain-node-meta ${isFocus ? "on-accent" : ""}`}>
+                        {n.role}
+                      </text>
+                      <text x={10} y={48} className={`chain-node-meta ${isFocus ? "on-accent" : ""}`}>
+                        1일 {fmtPct(n.ret1d)}
+                        {news != null ? ` N${news > 0 ? "+" : ""}${Math.round(news)}` : ""}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
             </div>
           )}
-          {newsForFocus.length ? (
-            <p className="macro-subhead" style={{ marginTop: 10 }}>
-              이 포커스 관련 뉴스 {newsForFocus.length}건
+          <div className="chain-legend">
+            <span><i className="chain-swatch supply" /> 공급</span>
+            <span><i className="chain-swatch peer" /> 동종</span>
+            <span><i className="chain-swatch complement" /> 보완</span>
+            <span>녹색·빨강 = 1일 ±1.2% 이상</span>
+          </div>
+          <p className="graph-path">
+            <span>상류</span>
+            {upPath.map((id, i) => {
+              const n = data?.nodes.find((x) => x.id === id);
+              return (
+                <span key={`up-${id}`}>
+                  {i ? " → " : ""}
+                  <button type="button" onClick={() => pickNode(id)}>
+                    {n?.short || id}
+                  </button>
+                </span>
+              );
+            })}
+            <span className="graph-path-gap">하류</span>
+            {downPath.map((id, i) => {
+              const n = data?.nodes.find((x) => x.id === id);
+              return (
+                <span key={`dn-${id}`}>
+                  {i ? " → " : ""}
+                  <button type="button" onClick={() => pickNode(id)}>
+                    {n?.short || id}
+                  </button>
+                </span>
+              );
+            })}
+          </p>
+        </section>
+
+        <aside className="geo-section graph-drawer">
+          <h3 className="geo-section-title">{focus?.name || "포커스"}</h3>
+          <p className="macro-subhead">
+            1일 {fmtPct(focus?.ret1d)} · 5일 {fmtPct(focus?.ret5d)}
+            {focusNews != null ? ` · ${fmtNews(focusNews)}` : ""}
+          </p>
+          {focus && isKrCode(focus.id) ? (
+            <p className="graph-nlp-jump">
+              <button type="button" className="ghost-btn" onClick={() => openNlpTab(focus.id)}>
+                NLP에서 이 종목 보기
+              </button>
             </p>
           ) : null}
-        </section>
-      </div>
 
-      <div className="chain-detail-grid">
-        <section className="geo-section">
-          <h3 className="geo-section-title">{focus?.name || "포커스"} 상류</h3>
+          <h4 className="graph-drawer-h">상류 · 공급</h4>
           {!inbound.length ? (
-            <p className="empty">시드에 공급 간선이 없습니다.</p>
+            <p className="empty">공급 간선이 없습니다.</p>
           ) : (
             <ul className="chain-edge-list">
               {inbound.map((e) => {
@@ -502,11 +488,10 @@ export default function GraphTab() {
               })}
             </ul>
           )}
-        </section>
-        <section className="geo-section">
-          <h3 className="geo-section-title">{focus?.name || "포커스"} 하류</h3>
+
+          <h4 className="graph-drawer-h">하류 · 고객</h4>
           {!outbound.length ? (
-            <p className="empty">시드에 고객 간선이 없습니다.</p>
+            <p className="empty">고객 간선이 없습니다.</p>
           ) : (
             <ul className="chain-edge-list">
               {outbound.map((e) => {
@@ -526,37 +511,68 @@ export default function GraphTab() {
               })}
             </ul>
           )}
-        </section>
+
+          <h4 className="graph-drawer-h">관련 뉴스</h4>
+          {isKrCode(focusId) ? (
+            !krHeadlines.length ? (
+              <p className="empty">{nameNews?.error || "이 날짜에 저장된 제목이 없습니다."}</p>
+            ) : (
+              <ul className="nlp-feed">
+                {krHeadlines.map((row, i) => (
+                  <li key={`${row.title}-${i}`} className="nlp-feed-item">
+                    <div className="nlp-feed-top">
+                      <span className="nlp-src">{row.source}</span>
+                    </div>
+                    {row.url ? (
+                      <a href={row.url} target="_blank" rel="noreferrer">
+                        {row.title}
+                      </a>
+                    ) : (
+                      <span>{row.title}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : !usHeadlines.length ? (
+            <p className="empty">{loading ? "헤드라인 수집 중…" : "헤드라인에 이 이름이 없습니다."}</p>
+          ) : (
+            <ul className="nlp-feed">
+              {usHeadlines.map((row) => (
+                <li key={row.id} className="nlp-feed-item">
+                  <div className="nlp-feed-top">
+                    <span className="nlp-src">{row.source}</span>
+                  </div>
+                  {row.url ? (
+                    <a href={row.url} target="_blank" rel="noreferrer">
+                      {row.title}
+                    </a>
+                  ) : (
+                    <span>{row.title}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
       </div>
 
       <section className="geo-section">
-        <h3 className="geo-section-title">연결 허브</h3>
-        <div className="chain-hop-row">
-          {hubs.map((h) => (
-            <button
-              key={h.id}
-              type="button"
-              className={`chain-hop-chip ${h.id === focusId ? "active" : ""}`}
-              onClick={() => pickNode(h.id)}
-            >
-              <span>{h.node?.short}</span>
-              <strong className={retTone(h.node?.ret1d)}>{fmtPct(h.node?.ret1d)}</strong>
-              <em>차수 {h.deg}</em>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="geo-section">
-        <h3 className="geo-section-title">방법</h3>
-        <ul className="ideas-summary">
-          {(data?.methodology || []).map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-        {data?.disclaimer ? <p className="meta-soft">{data.disclaimer}</p> : null}
-        {data?.generated_at ? (
-          <p className="meta-soft">{new Date(data.generated_at).toLocaleString("ko-KR")}</p>
+        <button type="button" className="graph-more-toggle" onClick={() => setShowMore((v) => !v)}>
+          {showMore ? "자세히 접기" : "방법 · 출처"}
+        </button>
+        {showMore ? (
+          <>
+            <ul className="ideas-summary">
+              {(data?.methodology || []).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {data?.disclaimer ? <p className="meta-soft">{data.disclaimer}</p> : null}
+            {data?.generated_at ? (
+              <p className="meta-soft">{new Date(data.generated_at).toLocaleString("ko-KR")}</p>
+            ) : null}
+          </>
         ) : null}
       </section>
     </div>

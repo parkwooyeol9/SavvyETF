@@ -209,7 +209,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aiport: "AI포트",
   nlp: "NLP",
   nlphistory: "NLP",
-  graph: "그래프",
+  graph: "밸류체인",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
   midtermstudy: "중간선거 스터디",

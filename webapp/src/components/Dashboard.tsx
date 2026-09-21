@@ -229,6 +229,10 @@ function DashboardInner({
     const prev = new URLSearchParams(window.location.search);
     const nextParams = new URLSearchParams();
     if (tab !== "main") nextParams.set("tab", tab);
+    if (tab === "nlp" || tab === "nlphistory") {
+      const code = prev.get("code");
+      if (code && /^\d{6}$/.test(code)) nextParams.set("code", code);
+    }
     if (tab === "midtermstudy") {
       const sc = prev.get("scenario");
       const g = prev.get("grouping");

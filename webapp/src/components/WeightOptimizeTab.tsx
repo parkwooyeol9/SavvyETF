@@ -54,7 +54,7 @@ function ViewChips({ row }: { row: OptimizedSleeve }) {
   const chips: Array<{ k: string; v: number }> = [
     { k: "시그널", v: row.views.signal },
     { k: "NLP", v: row.views.nlp },
-    { k: "그래프", v: row.views.graph },
+    { k: "밸류체인", v: row.views.graph },
     { k: "수급", v: row.views.flow },
   ].filter((c) => Math.abs(c.v) >= 0.004);
   if (!chips.length) return <span className="meta-soft">—</span>;
