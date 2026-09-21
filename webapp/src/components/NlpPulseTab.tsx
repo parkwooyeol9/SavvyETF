@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import NlpClimatePanel from "@/components/NlpClimatePanel";
 import NlpHistoryPanel from "@/components/NlpHistoryPanel";
 import NlpPriceChart from "@/components/NlpPriceChart";
 import {
@@ -327,8 +328,8 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              코스피 200과 코스닥 100을 나눠 보고, 종목을 고르면 쌓인 뉴스 점수와 주가를 겹쳐
-              상관을 비교합니다.
+              맨 위는 오늘의 뉴스 분위기입니다. 코스피 200과 코스닥 100을 나누고, 종목을 고르면
+              쌓인 뉴스 점수와 주가를 겹쳐 상관을 비교합니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -360,6 +361,8 @@ export default function NlpPulseTab() {
             </button>
           ))}
         </div>
+
+        {market !== "sp500" ? <NlpClimatePanel view={market} onPickName={setPicked} /> : null}
 
         {market !== "sp500" ? (
           <div className="nlp-gauge-row">
@@ -594,7 +597,8 @@ export default function NlpPulseTab() {
         <ul className="ideas-summary">
           {market !== "sp500"
             ? [
-                "유니버스: 코스닥 100 · 코스피 200 구성종목",
+                "유니버스: 코스닥 100 · 코스피 200 구성종목(약 298종). 매일 전 종목을 조회하지만, 기사가 있는 종목·날짜만 적재",
+                "오늘의 뉴스 분위기: 일별 단면의 제목 수 가중 평균. 300건이 매일 쌓이는 것이 아니라, 그날 뉴스가 있는 종목 수(보통 수십 종)입니다",
                 "뉴스: 네이버 일자 검색 '{종목} 주가'. 매일 당일을 쌓고, 시계열은 지우지 않음. 최근 7일은 시총 상위 30종 최대 12건, 나머지 최대 8건",
                 "차트: 파란선은 그날 제목 점수, 노란선은 종가, 분홍 점은 DART 이벤트. r는 뉴스가 있던 날의 점수·종가 상관",
                 "점수: 호재−악재 키워드 순점수 (−100~+100). 증시 종합기사·방향어는 제외",

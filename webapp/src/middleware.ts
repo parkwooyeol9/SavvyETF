@@ -39,6 +39,8 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/trading-ideas": { limit: 20, windowMs: 60_000 },
   "/api/weight-optimize": { limit: 12, windowMs: 60_000 },
   "/api/nlp-pulse": { limit: 12, windowMs: 60_000 },
+  "/api/nlp-history": { limit: 20, windowMs: 60_000 },
+  "/api/nlp-climate": { limit: 20, windowMs: 60_000 },
   "/api/nlp-dart": { limit: 20, windowMs: 60_000 },
   "/api/nlp-chart": { limit: 30, windowMs: 60_000 },
   "/api/chain": { limit: 20, windowMs: 60_000 },

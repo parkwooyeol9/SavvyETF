@@ -8513,6 +8513,94 @@ button.country-etf-card {
   line-height: 1.45;
 }
 
+.nlp-climate {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.nlp-climate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.nlp-climate-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nlp-climate-date {
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.nlp-climate-cov {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.nlp-climate-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 56px;
+  margin: 0.55rem 0 0.9rem;
+}
+
+.nlp-climate-bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px 2px 0 0;
+  background: #8fa3b8;
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.nlp-climate-bar.nlp-bull {
+  background: #34d399;
+}
+
+.nlp-climate-bar.nlp-bear {
+  background: #f87171;
+}
+
+.nlp-climate-bar.active {
+  opacity: 1;
+  box-shadow: 0 0 0 1px #e8eef5;
+}
+
+.nlp-climate-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.nlp-climate-name:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .nlp-climate-head {
+    flex-direction: column;
+  }
+}
+
 .nlp-chip em.nlp-verdict-tag {
   color: inherit;
   font-size: 0.68rem;

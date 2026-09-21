@@ -25,6 +25,7 @@ const MEDIUM_PATHS = [
   "/api/heatmap?universe=nas&top_n=30",
   "/api/ai-etf",
   "/api/nlp-pulse",
+  "/api/nlp-climate",
   "/api/etf-kor15",
   "/api/etf-new?kr=10&us=10",
   "/api/us-midterm",
