@@ -638,7 +638,7 @@ async function saveSnap(snap: StoredSnap): Promise<void> {
 }
 
 export async function collectCountryEtfFund(meta: CountryEtfMeta): Promise<CountryEtfFund> {
-  const as_of = new Date().toISOString().slice(0, 10);
+  const as_of = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   try {
     const yahoo = await fetchYahooTopHoldings(meta.ticker);
     let countries: WeightRow[] = [];

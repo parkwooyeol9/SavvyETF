@@ -2,16 +2,14 @@ import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { botBaseUrl } from "@/lib/bot";
-import {
-  pickRicherHistory,
-  reconstructAumHistories,
-} from "@/lib/etfAumHistory";
+import { reconstructAumHistories } from "@/lib/etfAumHistory";
 import {
   aggregateRows,
   buildPayloadFromNaver,
   enrichIndexClassification,
   type EtfDbPayload,
 } from "@/lib/etfDb";
+import { fillHistoryGaps, loadEtfDbHistoryFromR2 } from "@/lib/etfDbSnapshots";
 import { r2Configured, r2GetObjectText } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
@@ -162,24 +160,28 @@ async function fetchOverlay(): Promise<Overlay> {
 export async function GET(request: Request) {
   try {
     const equityOnly = new URL(request.url).searchParams.get("equity") === "1";
-    const cacheKey = `etf-db:v4:${equityOnly ? "eq" : "all"}`;
+    const cacheKey = `etf-db:v5:${equityOnly ? "eq" : "all"}`;
 
     const payload = await withServerCache(
       cacheKey,
       170_000,
       600_000,
       async () => {
-        const [items, overlay] = await Promise.all([
+        const [items, overlay, snapHist] = await Promise.all([
           fetchNaverUniverse(),
           fetchOverlay(),
+          loadEtfDbHistoryFromR2({ equityOnly }).catch((exc) => {
+            console.warn("etf-db snapshot history failed:", exc);
+            return null;
+          }),
         ]);
         const built = buildPayloadFromNaver(
           items as Parameters<typeof buildPayloadFromNaver>[0],
           {
             flowByCode: overlay.flowByCode,
             prevAsOf: overlay.prevAsOf,
-            flowHistory: equityOnly ? undefined : overlay.flowHistory,
-            aumHistory: equityOnly ? undefined : overlay.aumHistory,
+            flowHistory: snapHist?.flow || (equityOnly ? undefined : overlay.flowHistory),
+            aumHistory: snapHist?.aum || (equityOnly ? undefined : overlay.aumHistory),
             equityOnly,
           },
         );
@@ -193,30 +195,32 @@ export async function GET(request: Request) {
           index: aggregateRows(built.rows, "index"),
         };
 
-        try {
-          const reconstructed = await reconstructAumHistories({
-            rows: built.rows,
-            aggregates: built.aggregates,
-            liveDay: built.as_of || built.generated_at.slice(0, 10),
-            equityOnly,
-          });
-          built.aum_history = {
-            type: pickRicherHistory(built.aum_history.type, reconstructed.type),
-            country: pickRicherHistory(
-              built.aum_history.country,
-              reconstructed.country,
-            ),
-            sector: pickRicherHistory(
-              built.aum_history.sector,
-              reconstructed.sector,
-            ),
-            index: pickRicherHistory(
-              built.aum_history.index,
-              reconstructed.index,
-            ),
-          };
-        } catch (histExc) {
-          console.warn("etf-db aum history reconstruct failed:", histExc);
+        if (historyDepth(built.aum_history) < 5) {
+          try {
+            const reconstructed = await reconstructAumHistories({
+              rows: built.rows,
+              aggregates: built.aggregates,
+              liveDay: built.as_of || built.generated_at.slice(0, 10),
+              equityOnly,
+            });
+            built.aum_history = {
+              type: fillHistoryGaps(built.aum_history.type, reconstructed.type),
+              country: fillHistoryGaps(
+                built.aum_history.country,
+                reconstructed.country,
+              ),
+              sector: fillHistoryGaps(
+                built.aum_history.sector,
+                reconstructed.sector,
+              ),
+              index: fillHistoryGaps(
+                built.aum_history.index,
+                reconstructed.index,
+              ),
+            };
+          } catch (histExc) {
+            console.warn("etf-db aum history reconstruct failed:", histExc);
+          }
         }
 
         return built;

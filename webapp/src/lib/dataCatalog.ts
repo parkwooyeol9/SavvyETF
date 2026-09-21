@@ -27,7 +27,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
     group: "etf",
     kind: "timeseries",
     prefixes: ["etf_db/latest.json", "etf_db/snapshots/", "etf_db/archive/"],
-    hotWindow: "일별 스냅샷 최근 90일 (수급 계산용)",
+    hotWindow: "일별 스냅샷 최근 90일 + archive 전량으로 차트 조립",
     archive: "90일 초과분은 etf_db/archive/로 이동. 삭제하지 않음",
     volatile: false,
     insight: "NAV×Δ설정좌수 추정 수급. 자금흐름 모니터(OI·거래대금)와 합산하지 말 것",
@@ -255,3 +255,28 @@ export function fmtBytes(n: number): string {
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
+
+export type SeriesKey = { key: string; size: number };
+export type SeriesDay = { date: string; keys: SeriesKey[] };
+
+export type SeriesIndex = {
+  ok: boolean;
+  r2: boolean;
+  dataset: string;
+  label: string;
+  days: SeriesDay[];
+  undated: SeriesKey[];
+  error?: string;
+};
+
+export type SeriesObject = {
+  ok: boolean;
+  r2: boolean;
+  dataset: string;
+  date: string | null;
+  key: string;
+  size: number;
+  truncated: boolean;
+  json: unknown;
+  error?: string;
+};

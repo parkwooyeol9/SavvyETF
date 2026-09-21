@@ -397,7 +397,7 @@ export default function EtfDbTab() {
             {" · "}
             {chartMode === "intraday"
               ? "AUM 라이브(당일 포인트) — 일별 히스토리 로딩 전"
-              : "AUM 일별 추정(가격×설정좌수 근사) + 당일 라이브"}
+              : "AUM 일별 스냅샷(R2) + 당일 라이브"}
             {data.prev_as_of ? ` · 수급 전일 ${data.prev_as_of}` : ""}
             {dim === "index"
               ? " · 유효 추종자금 = 일반AUM + 레버리지AUM×2 − 인버스AUM"

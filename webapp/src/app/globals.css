@@ -10892,6 +10892,68 @@ a.chip {
   font-size: 0.86rem;
 }
 
+.data-cat-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-top: 0.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.data-cat-preview-label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.data-cat-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.data-cat-preview-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.data-cat-preview-bar select {
+  min-width: 12rem;
+  max-width: min(100%, 28rem);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: inherit;
+  font-size: 0.82rem;
+}
+
+.data-cat-preview-out {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.data-cat-preview-out pre {
+  margin: 0;
+  max-height: 22rem;
+  overflow: auto;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 720px) {
   .data-cat-summary {
     grid-template-columns: 1fr 1fr;
