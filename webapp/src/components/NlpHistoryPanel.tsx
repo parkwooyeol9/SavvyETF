@@ -338,7 +338,7 @@ export default function NlpHistoryPanel({
 
       <section className="geo-section">
         <h3 className="geo-section-title">
-          {selectedDay ? `${selectedDay.date} 뉴스` : "그날의 뉴스"}
+          {selectedDay ? `${selectedDay.date} 뉴스` : "선택일 뉴스"}
           {selectedDay ? (
             <span className={toneClass(selectedDay.score)}>
               {" "}

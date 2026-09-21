@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   emptyNlpClimatePayload,
+  nlpClimateHeadlinesForName,
   nlpClimateSeriesForView,
   nlpClimateSliceForView,
+  type NlpClimateHeadline,
+  type NlpClimateNameDay,
   type NlpClimatePayload,
   type NlpClimatePoint,
   type NlpClimateSlice,
@@ -110,11 +113,14 @@ export default function NlpClimatePanel({
   onPickName,
 }: {
   view: NlpMapView;
-  onPickName: (code: string) => void;
+  onPickName: (code: string, date: string) => void;
 }) {
   const [data, setData] = useState<NlpClimatePayload | null>(null);
   const [date, setDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [openCode, setOpenCode] = useState<string | null>(null);
+  const [nameNews, setNameNews] = useState<NlpClimateHeadline[] | null>(null);
+  const [loadingNews, setLoadingNews] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,11 +150,77 @@ export default function NlpClimatePanel({
   const dates = data?.dates || [];
   const prev = neighborDate(dates, data?.date || date, -1);
   const next = neighborDate(dates, data?.date || date, 1);
+  const chosenDate = slice?.date || data?.date || date;
 
   const coverage = useMemo(() => {
     if (!slice) return "";
     return `${slice.name_n}/${slice.universe_n}종`;
   }, [slice]);
+
+  const polarHeadlines = useMemo(() => {
+    if (!slice) return [] as NlpClimateHeadline[];
+    if (slice.headlines.length) return slice.headlines;
+    return [...slice.movers_up, ...slice.movers_down]
+      .flatMap((row) =>
+        row.headlines.length
+          ? row.headlines
+          : row.title
+            ? [
+                {
+                  code: row.code,
+                  name: row.name,
+                  title: row.title,
+                  source: "news",
+                  score: row.score,
+                } satisfies NlpClimateHeadline,
+              ]
+            : [],
+      )
+      .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
+      .slice(0, 10);
+  }, [slice]);
+
+  const pickedMover = useMemo(() => {
+    if (!slice || !openCode) return null;
+    return [...slice.movers_up, ...slice.movers_down].find((row) => row.code === openCode) || null;
+  }, [slice, openCode]);
+
+  useEffect(() => {
+    setOpenCode(null);
+    setNameNews(null);
+  }, [view]);
+
+  useEffect(() => {
+    if (!openCode || !chosenDate) {
+      setNameNews(null);
+      return;
+    }
+    const local = slice ? nlpClimateHeadlinesForName(slice, openCode) : [];
+    if (local.length) {
+      setNameNews(local);
+      setLoadingNews(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingNews(true);
+    setNameNews(null);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/nlp-climate?date=${encodeURIComponent(chosenDate)}&code=${encodeURIComponent(openCode)}`,
+        );
+        const json = (await res.json()) as NlpClimateNameDay;
+        if (!cancelled) setNameNews(json.headlines || []);
+      } catch {
+        if (!cancelled) setNameNews([]);
+      } finally {
+        if (!cancelled) setLoadingNews(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [openCode, chosenDate, slice]);
 
   if (view === "sp500") return null;
 
@@ -160,6 +232,15 @@ export default function NlpClimatePanel({
       })
     : null;
 
+  function pick(code: string) {
+    if (!chosenDate) return;
+    setOpenCode(code);
+    onPickName(code, chosenDate);
+  }
+
+  const shownNews = nameNews;
+  const pickedName = pickedMover?.name || shownNews?.[0]?.name || openCode;
+
   return (
     <div className="nlp-climate">
       <div className="nlp-climate-head">
@@ -167,8 +248,8 @@ export default function NlpClimatePanel({
           <h3 className="geo-section-title">오늘의 뉴스 분위기</h3>
           <p className="macro-subhead">
             코스피 200·코스닥 100을 매일 조회한 일별 단면입니다. 유니버스는 약{" "}
-            {data?.all.universe_n || 298}종이지만, 뉴스가 나온 종목만 쌓입니다. 막대를 누르거나
-            날짜를 고르면 그 날의 호조·경계 종목과 극성 제목을 봅니다.
+            {data?.all.universe_n || 298}종이지만, 뉴스가 나온 종목만 쌓입니다. 날짜를 고르고
+            종목을 누르면 그 날짜의 제목을 봅니다.
           </p>
         </div>
         <div className="nlp-climate-controls">
@@ -206,14 +287,18 @@ export default function NlpClimatePanel({
 
           <div className="nlp-verdict-board">
             <section className="geo-section nlp-verdict-col nlp-friendly">
-              <h3 className="geo-section-title">그날 호조</h3>
+              <h3 className="geo-section-title">호조</h3>
               {!slice.movers_up.length ? (
                 <p className="empty">호조로 기울인 종목이 없습니다.</p>
               ) : (
                 <ul className="nlp-verdict-list">
                   {slice.movers_up.map((row) => (
                     <li key={row.code}>
-                      <button type="button" onClick={() => onPickName(row.code)}>
+                      <button
+                        type="button"
+                        className={openCode === row.code ? "active" : ""}
+                        onClick={() => pick(row.code)}
+                      >
                         <strong>{row.name}</strong>
                         <span className="up">{fmtScore(row.score)}</span>
                       </button>
@@ -226,14 +311,18 @@ export default function NlpClimatePanel({
               )}
             </section>
             <section className="geo-section nlp-verdict-col nlp-cautious">
-              <h3 className="geo-section-title">그날 경계</h3>
+              <h3 className="geo-section-title">경계</h3>
               {!slice.movers_down.length ? (
                 <p className="empty">경계로 기울인 종목이 없습니다.</p>
               ) : (
                 <ul className="nlp-verdict-list">
                   {slice.movers_down.map((row) => (
                     <li key={row.code}>
-                      <button type="button" onClick={() => onPickName(row.code)}>
+                      <button
+                        type="button"
+                        className={openCode === row.code ? "active" : ""}
+                        onClick={() => pick(row.code)}
+                      >
                         <strong>{row.name}</strong>
                         <span className="down">{fmtScore(row.score)}</span>
                       </button>
@@ -247,34 +336,68 @@ export default function NlpClimatePanel({
             </section>
           </div>
 
-          <h3 className="geo-section-title">그날 극성 제목</h3>
-          {!slice.headlines.length ? (
-            <p className="empty">이 날짜의 제목은 아직 단면 파일에 없습니다. 점수는 종목 시계열에서 복원했습니다.</p>
-          ) : (
-            <ul className="nlp-feed">
-              {slice.headlines.map((row, i) => (
-                <li
-                  key={`${row.code}-${i}-${row.title.slice(0, 24)}`}
-                  className={`nlp-feed-item nlp-${row.score >= 12 ? "bull" : row.score <= -12 ? "bear" : "flat"}`}
-                >
-                  <div className="nlp-feed-top">
-                    <button type="button" className="nlp-climate-name" onClick={() => onPickName(row.code)}>
-                      {row.name}
-                    </button>
-                    <span className="nlp-src">{row.source}</span>
-                    <span className={toneClass(row.score)}>{fmtScore(row.score)}</span>
-                  </div>
-                  {row.url ? (
-                    <a href={row.url} target="_blank" rel="noreferrer">
-                      {row.title}
-                    </a>
-                  ) : (
-                    <span>{row.title}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+          <section className="nlp-climate-daynews" id="nlp-day-news">
+            <h3 className="geo-section-title">
+              {openCode && pickedName ? `${slice.date} ${pickedName} 뉴스` : "극성 제목"}
+            </h3>
+            {openCode ? (
+              loadingNews && !shownNews?.length ? (
+                <p className="meta-soft">{pickedName} 제목을 찾는 중…</p>
+              ) : shownNews?.length ? (
+                <ul className="nlp-feed">
+                  {shownNews.map((row, i) => (
+                    <li
+                      key={`${row.code}-${i}-${row.title.slice(0, 24)}`}
+                      className={`nlp-feed-item nlp-${row.score >= 12 ? "bull" : row.score <= -12 ? "bear" : "flat"}`}
+                    >
+                      <div className="nlp-feed-top">
+                        <span className="nlp-src">{row.source}</span>
+                        <span className={toneClass(row.score)}>{fmtScore(row.score)}</span>
+                      </div>
+                      {row.url ? (
+                        <a href={row.url} target="_blank" rel="noreferrer">
+                          {row.title}
+                        </a>
+                      ) : (
+                        <span>{row.title}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty">
+                  {slice.date} {pickedName}의 저장된 제목이 없습니다. 점수는 있어도 제목 아카이브가 비어 있을 수
+                  있습니다.
+                </p>
+              )
+            ) : !polarHeadlines.length ? (
+              <p className="empty">호조·경계 종목을 누르면 해당 날짜의 제목이 여기에 열립니다.</p>
+            ) : (
+              <ul className="nlp-feed">
+                {polarHeadlines.map((row, i) => (
+                  <li
+                    key={`${row.code}-${i}-${row.title.slice(0, 24)}`}
+                    className={`nlp-feed-item nlp-${row.score >= 12 ? "bull" : row.score <= -12 ? "bear" : "flat"}`}
+                  >
+                    <div className="nlp-feed-top">
+                      <button type="button" className="nlp-climate-name" onClick={() => pick(row.code)}>
+                        {row.name}
+                      </button>
+                      <span className="nlp-src">{row.source}</span>
+                      <span className={toneClass(row.score)}>{fmtScore(row.score)}</span>
+                    </div>
+                    {row.url ? (
+                      <a href={row.url} target="_blank" rel="noreferrer">
+                        {row.title}
+                      </a>
+                    ) : (
+                      <span>{row.title}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </>
       ) : null}
     </div>

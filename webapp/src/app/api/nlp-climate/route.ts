@@ -12,9 +12,10 @@ import {
   type NlpClimatePayload,
   type NlpClimateRow,
 } from "@/lib/nlpClimate";
-import { NLP_HISTORY_R2_PREFIX, nlpKstTodayIso } from "@/lib/nlpHistory";
+import { NLP_HISTORY_R2_PREFIX, nlpKstTodayIso, nlpNameByCode } from "@/lib/nlpHistory";
 import { r2Configured, r2GetObjectText } from "@/lib/r2";
 import nlpHistorySeed from "@/data/nlpHistorySeed.json";
+import type { NlpClimateNameDay } from "@/lib/nlpClimate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -186,6 +187,31 @@ async function overlayRecentDayFiles(target: DayMap, around: string): Promise<vo
   );
 }
 
+function namesNeedingHeadlines(rows: NlpClimateRow[], extraCodes: string[] = []): string[] {
+  const missing = rows.filter((row) => !row.headlines.length);
+  const byAbs = [...missing].sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+  const bull = missing.filter((row) => row.score >= 12).sort((a, b) => b.score - a.score);
+  const bear = missing.filter((row) => row.score <= -12).sort((a, b) => a.score - b.score);
+  const codes: string[] = [];
+  const add = (code: string) => {
+    if (!/^\d{6}$/.test(code) || codes.includes(code) || codes.length >= 28) return;
+    codes.push(code);
+  };
+  extraCodes.forEach(add);
+  bull.slice(0, 8).forEach((row) => add(row.code));
+  bear.slice(0, 8).forEach((row) => add(row.code));
+  byAbs.forEach((row) => add(row.code));
+  return codes;
+}
+
+async function hydrateNameHeadlines(target: DayMap, code: string, date: string): Promise<void> {
+  const month = date.slice(0, 7);
+  ingestNamePayload(target, await readR2Json(`${code}.json`));
+  ingestNamePayload(target, await readLocalJson(`${code}.json`));
+  ingestNamePayload(target, await readR2Json(`headlines/${code}/${month}.json`));
+  ingestNamePayload(target, await readLocalJson(`headlines/${code}/${month}.json`));
+}
+
 function rowsOn(target: DayMap, date: string): NlpClimateRow[] {
   return [...(target.get(date)?.values() || [])];
 }
@@ -224,29 +250,81 @@ function buildPayload(target: DayMap, date: string, source: string): NlpClimateP
   };
 }
 
-async function loadClimate(date: string): Promise<NlpClimatePayload> {
+async function assembleClimate(date: string, extraCodes: string[] = []): Promise<{
+  target: DayMap;
+  payload: NlpClimatePayload;
+}> {
   const target = cloneDays(seedIndex());
   mergeDayMaps(target, await localIndex());
   const wanted = YMD.test(date) ? date : nlpKstTodayIso();
   await overlayRecentDayFiles(target, wanted);
-  if (YMD.test(date)) {
-    ingestDayFile(target, await readR2Json(`days/${date}.json`), date);
-    ingestDayFile(target, await readLocalJson(`days/${date}.json`), date);
+  const day = YMD.test(date) ? date : wanted;
+  ingestDayFile(target, await readR2Json(`days/${day}.json`), day);
+  ingestDayFile(target, await readLocalJson(`days/${day}.json`), day);
+  const draft = buildPayload(target, date, "seed");
+  const chosen = draft.date;
+  const hydrateCodes = namesNeedingHeadlines(rowsOn(target, chosen), extraCodes);
+  if (hydrateCodes.length) {
+    await Promise.all(hydrateCodes.map((code) => hydrateNameHeadlines(target, code, chosen)));
   }
   const sources = ["seed"];
   if (localDays && localDays.size) sources.push("local");
-  if (r2Configured()) sources.push("r2-days");
-  return buildPayload(target, date, sources.join("+"));
+  if (r2Configured()) sources.push("r2");
+  return { target, payload: buildPayload(target, date, sources.join("+")) };
+}
+
+async function loadClimate(date: string, extraCodes: string[] = []): Promise<NlpClimatePayload> {
+  return (await assembleClimate(date, extraCodes)).payload;
+}
+
+async function loadNameDay(date: string, code: string): Promise<NlpClimateNameDay> {
+  const { target, payload } = await assembleClimate(date, [code]);
+  const spec = nlpNameByCode(code);
+  const row = rowsOn(target, payload.date).find((item) => item.code === code);
+  const name = row?.name || spec?.name || code;
+  const headlines = (row?.headlines || []).map((h) => ({
+    code,
+    name,
+    title: h.title,
+    source: h.source,
+    url: h.url,
+    score: h.score,
+  }));
+  return {
+    ok: true,
+    date: payload.date,
+    code,
+    name,
+    score: row?.score ?? 0,
+    n: row?.n || headlines.length,
+    headlines,
+    error: headlines.length ? undefined : "이 날짜에 저장된 제목이 없습니다.",
+  };
 }
 
 export async function GET(req: NextRequest) {
   const date = (req.nextUrl.searchParams.get("date") || "").trim();
+  const code = (req.nextUrl.searchParams.get("code") || "").trim();
   if (date && !YMD.test(date)) {
     return NextResponse.json(emptyNlpClimatePayload("날짜 형식이 올바르지 않습니다."), { status: 400 });
   }
+  if (code && !/^\d{6}$/.test(code)) {
+    return NextResponse.json({ ok: false, date, code, name: code, score: 0, n: 0, headlines: [], error: "종목코드가 올바르지 않습니다." }, { status: 400 });
+  }
   try {
+    if (code) {
+      const payload = await withServerCache(
+        `nlp-climate:${date || "latest"}:${code}:v2`,
+        120_000,
+        600_000,
+        () => loadNameDay(date, code),
+      );
+      return NextResponse.json(payload, {
+        headers: { "Cache-Control": cdnCacheHeader("yahoo") },
+      });
+    }
     const payload = await withServerCache(
-      `nlp-climate:${date || "latest"}:v1`,
+      `nlp-climate:${date || "latest"}:v2`,
       120_000,
       600_000,
       () => loadClimate(date),
@@ -256,6 +334,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (exc) {
     const msg = exc instanceof Error ? exc.message : "로드 실패";
+    if (code) {
+      return NextResponse.json({ ok: false, date, code, name: code, score: 0, n: 0, headlines: [], error: msg }, { status: 500 });
+    }
     return NextResponse.json(emptyNlpClimatePayload(msg), { status: 500 });
   }
 }

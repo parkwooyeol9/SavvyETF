@@ -8595,6 +8595,14 @@ button.country-etf-card {
   text-decoration: underline;
 }
 
+.nlp-climate-daynews {
+  margin-top: 0.9rem;
+}
+
+.nlp-verdict-list button.active {
+  box-shadow: 0 0 0 1px var(--text);
+}
+
 @media (max-width: 720px) {
   .nlp-climate-head {
     flex-direction: column;

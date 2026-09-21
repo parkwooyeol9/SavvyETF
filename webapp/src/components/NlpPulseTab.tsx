@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import NlpClimatePanel from "@/components/NlpClimatePanel";
 import NlpHistoryPanel from "@/components/NlpHistoryPanel";
@@ -156,6 +156,7 @@ export default function NlpPulseTab() {
   const [histSeries, setHistSeries] = useState<NlpHistorySeries | null>(null);
   const [histDate, setHistDate] = useState<string | null>(null);
   const [loadingHist, setLoadingHist] = useState(false);
+  const climatePickRef = useRef<{ code: string; date: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -295,12 +296,12 @@ export default function NlpPulseTab() {
   useEffect(() => {
     if (!historyCode) {
       setHistSeries(null);
-      setHistDate(null);
       return;
     }
     let cancelled = false;
     setLoadingHist(true);
-    setHistDate(null);
+    const keepDate = climatePickRef.current?.code === historyCode ? climatePickRef.current.date : null;
+    setHistDate(keepDate);
     void (async () => {
       try {
         const res = await fetch(`/api/nlp-history?code=${encodeURIComponent(historyCode)}`);
@@ -355,6 +356,7 @@ export default function NlpPulseTab() {
                 setMarket(id);
                 setPicked(null);
                 setMapQuery("");
+                climatePickRef.current = null;
               }}
             >
               {label}
@@ -362,7 +364,16 @@ export default function NlpPulseTab() {
           ))}
         </div>
 
-        {market !== "sp500" ? <NlpClimatePanel view={market} onPickName={setPicked} /> : null}
+        {market !== "sp500" ? (
+          <NlpClimatePanel
+            view={market}
+            onPickName={(code, day) => {
+              climatePickRef.current = { code, date: day };
+              setPicked(code);
+              setHistDate(day);
+            }}
+          />
+        ) : null}
 
         {market !== "sp500" ? (
           <div className="nlp-gauge-row">
@@ -429,7 +440,10 @@ export default function NlpPulseTab() {
                 className={`nlp-chip ${picked === card.code ? "active" : ""} ${
                   displayScore != null ? `nlp-${nlpHistoryTone(displayScore)}` : ""
                 } ${stale && displayScore != null ? "nlp-stale" : ""}`}
-                onClick={() => setPicked(card.code)}
+                onClick={() => {
+                  climatePickRef.current = null;
+                  setPicked(card.code);
+                }}
                 title={
                   displayScore != null
                     ? stale
@@ -598,9 +612,9 @@ export default function NlpPulseTab() {
           {market !== "sp500"
             ? [
                 "유니버스: 코스닥 100 · 코스피 200 구성종목(약 298종). 매일 전 종목을 조회하지만, 기사가 있는 종목·날짜만 적재",
-                "오늘의 뉴스 분위기: 일별 단면의 제목 수 가중 평균. 300건이 매일 쌓이는 것이 아니라, 그날 뉴스가 있는 종목 수(보통 수십 종)입니다",
+                "오늘의 뉴스 분위기: 일별 단면의 제목 수 가중 평균. 300건이 매일 쌓이는 것이 아니라, 뉴스가 있는 종목 수(보통 수십 종)입니다",
                 "뉴스: 네이버 일자 검색 '{종목} 주가'. 매일 당일을 쌓고, 시계열은 지우지 않음. 최근 7일은 시총 상위 30종 최대 12건, 나머지 최대 8건",
-                "차트: 파란선은 그날 제목 점수, 노란선은 종가, 분홍 점은 DART 이벤트. r는 뉴스가 있던 날의 점수·종가 상관",
+                "차트: 파란선은 제목 점수, 노란선은 종가, 분홍 점은 DART 이벤트. r는 뉴스가 있던 날의 점수·종가 상관",
                 "점수: 호재−악재 키워드 순점수 (−100~+100). 증시 종합기사·방향어는 제외",
               ].map((m) => (
                 <li key={m}>{m}</li>

@@ -35,6 +35,7 @@ export type NlpClimateMover = {
   score: number;
   n: number;
   title?: string;
+  headlines: NlpClimateHeadline[];
 };
 
 export type NlpClimateHeadline = {
@@ -136,14 +137,17 @@ export function emptyNlpClimatePayload(error?: string): NlpClimatePayload {
 }
 
 export function mergeNlpClimateRows(a: NlpClimateRow, b: NlpClimateRow): NlpClimateRow {
-  const aN = a.headlines.length || a.n || 0;
-  const bN = b.headlines.length || b.n || 0;
-  if (bN > aN) return { ...b, name: b.name || a.name, market: b.market || a.market };
-  if (aN > bN) return { ...a, name: a.name || b.name, market: a.market || b.market };
-  if ((b.headlines.length || 0) > (a.headlines.length || 0)) {
-    return { ...b, name: b.name || a.name, market: b.market || a.market };
-  }
-  return { ...a, name: a.name || b.name, market: a.market || b.market };
+  const richerHeadlines = (b.headlines.length || 0) > (a.headlines.length || 0) ? b : a;
+  const richerN = (b.n || 0) > (a.n || 0) ? b : a;
+  const base = richerHeadlines.headlines.length ? richerHeadlines : richerN;
+  const other = base === a ? b : a;
+  return {
+    ...base,
+    name: base.name || other.name,
+    market: base.market || other.market,
+    headlines: richerHeadlines.headlines,
+    n: Math.max(a.n || 0, b.n || 0, richerHeadlines.headlines.length),
+  };
 }
 
 export function nlpClimateRowFromRaw(
@@ -214,6 +218,24 @@ function topTitle(row: NlpClimateRow): string | undefined {
   return ranked[0]?.title;
 }
 
+function asMover(row: NlpClimateRow): NlpClimateMover {
+  return {
+    code: row.code,
+    name: row.name,
+    score: row.score,
+    n: row.n,
+    title: topTitle(row),
+    headlines: row.headlines.map((h) => ({
+      code: row.code,
+      name: row.name,
+      title: h.title,
+      source: h.source,
+      url: h.url,
+      score: h.score,
+    })),
+  };
+}
+
 export function summarizeNlpClimate(
   date: string,
   market: NlpClimateMarket,
@@ -249,12 +271,12 @@ export function summarizeNlpClimate(
     .filter((r) => r.score >= 12)
     .sort((a, b) => b.score - a.score)
     .slice(0, MOVER_CAP)
-    .map((r) => ({ code: r.code, name: r.name, score: r.score, n: r.n, title: topTitle(r) }));
+    .map(asMover);
   const movers_down = [...subset]
     .filter((r) => r.score <= -12)
     .sort((a, b) => a.score - b.score)
     .slice(0, MOVER_CAP)
-    .map((r) => ({ code: r.code, name: r.name, score: r.score, n: r.n, title: topTitle(r) }));
+    .map(asMover);
   const headlines: NlpClimateHeadline[] = subset
     .flatMap((r) =>
       r.headlines.map((h) => ({
@@ -315,3 +337,21 @@ export function nlpClimateSeriesForView(
   if (!payload?.ok) return [];
   return view === "kosdaq100" ? payload.series.kosdaq : payload.series.kospi;
 }
+
+export function nlpClimateHeadlinesForName(slice: NlpClimateSlice, code: string): NlpClimateHeadline[] {
+  const fromMovers = [...slice.movers_up, ...slice.movers_down].find((row) => row.code === code);
+  if (fromMovers?.headlines.length) return fromMovers.headlines;
+  const fromPolar = slice.headlines.filter((row) => row.code === code);
+  return fromPolar;
+}
+
+export type NlpClimateNameDay = {
+  ok: boolean;
+  date: string;
+  code: string;
+  name: string;
+  score: number;
+  n: number;
+  headlines: NlpClimateHeadline[];
+  error?: string;
+};
