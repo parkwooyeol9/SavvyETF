@@ -148,7 +148,7 @@ function HeadlineList({
 export default function NlpPulseTab() {
   const [data, setData] = useState<NlpPulsePayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [market, setMarket] = useState<NlpMapView>("kosdaq100");
+  const [market, setMarket] = useState<NlpMapView>("kospi200");
   const [mapQuery, setMapQuery] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [histIndex, setHistIndex] = useState<NlpHistoryIndex | null>(null);
@@ -327,7 +327,7 @@ export default function NlpPulseTab() {
           <div>
             <h2 className="kr-hero-title">NLP 투심 모니터</h2>
             <p className="kr-hero-sub">
-              코스닥 100과 코스피 200을 나눠 보고, 종목을 고르면 쌓인 뉴스 점수와 주가를 겹쳐
+              코스피 200과 코스닥 100을 나눠 보고, 종목을 고르면 쌓인 뉴스 점수와 주가를 겹쳐
               상관을 비교합니다.
             </p>
           </div>
@@ -341,8 +341,8 @@ export default function NlpPulseTab() {
         <div className="nlp-filters">
           {(
             [
-              ["kosdaq100", "코스닥 100"],
               ["kospi200", "코스피 200"],
+              ["kosdaq100", "코스닥 100"],
               ["sp500", "해외 기업"],
             ] as const
           ).map(([id, label]) => (
@@ -382,9 +382,9 @@ export default function NlpPulseTab() {
         <h3 className="geo-section-title">종목 투심 맵</h3>
         <p className="macro-subhead">
           {market === "kosdaq100"
-            ? `코스닥 100 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
+            ? `코스닥 100 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균입니다. 흐린 칩은 7일 뉴스가 없어도, 종목을 누르면 더 긴 아카이브가 보입니다.`
             : market === "kospi200"
-              ? `코스피 200 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균이고, 건수는 그 기간 기사 수입니다. 흐린 칩은 7일 뉴스가 없습니다.`
+              ? `코스피 200 ${mapNames.length}종목 · 아카이브 수집 ${readyN}개. 칩 점수는 최근 7일 기사 가중 평균입니다. 흐린 칩은 7일 뉴스가 없어도, 종목을 누르면 더 긴 아카이브가 보입니다.`
               : "해외 대표주의 오늘 뉴스·공시 기울기입니다."}
         </p>
         {market !== "sp500" ? (

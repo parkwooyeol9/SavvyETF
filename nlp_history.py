@@ -860,23 +860,7 @@ def build_index(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def save_payload(payload: dict[str, Any]) -> None:
-    code = str(payload.get("code") or "")
-    if not code:
-        return
-    _write_json(_local_path(code), payload)
-    _upload_r2(code, payload)
-
-
-def save_index(index: dict[str, Any]) -> None:
-    _write_json(LOCAL_DIR / "index.json", index)
-    _upload_r2(None, index)
-
-
-def _load_existing(code: str) -> dict[str, Any] | None:
-    local = _read_json(_local_path(code))
-    if local:
-        return local
+def _load_remote(code: str) -> dict[str, Any] | None:
     try:
         from r2_data import get_json
 
@@ -884,6 +868,86 @@ def _load_existing(code: str) -> dict[str, Any] | None:
         return remote if isinstance(remote, dict) else None
     except Exception:
         return None
+
+
+def _load_existing(code: str) -> dict[str, Any] | None:
+    local = _read_json(_local_path(code))
+    remote = _load_remote(code)
+    if local and remote and isinstance(remote.get("days"), list):
+        spec = _normalize_spec(local) or _normalize_spec(remote)
+        if spec:
+            return build_name_payload(
+                spec,
+                merge_days(list(remote.get("days") or []), list(local.get("days") or [])),
+            )
+        if int(remote.get("n_days") or 0) > int(local.get("n_days") or 0):
+            return remote
+        return local
+    return local or remote
+
+
+def hydrate_local_from_r2() -> int:
+    """After a Render wipe, pull richer R2 series back onto disk before daily append."""
+    local = load_local_payloads()
+    depths = sorted(int(row.get("n_days") or 0) for row in local.values())
+    median = depths[len(depths) // 2] if depths else 0
+    if len(local) >= 50 and median >= 15:
+        return 0
+    try:
+        from r2_data import get_json
+
+        index = get_json(f"{R2_PREFIX}/index.json")
+    except Exception:
+        index = None
+    names = list((index or {}).get("names") or [])
+    if not names:
+        return 0
+    LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    restored = 0
+    for row in names:
+        code = str(row.get("code") or "").strip()
+        if not code:
+            continue
+        local_p = local.get(code)
+        if local_p and int(local_p.get("n_days") or 0) >= 15:
+            continue
+        remote = _load_remote(code)
+        if not remote:
+            continue
+        if local_p and isinstance(remote.get("days"), list):
+            spec = _normalize_spec(local_p) or _normalize_spec(remote)
+            if spec:
+                remote = build_name_payload(
+                    spec,
+                    merge_days(list(remote.get("days") or []), list(local_p.get("days") or [])),
+                )
+        _write_json(_local_path(code), remote)
+        local[code] = remote
+        restored += 1
+    if restored:
+        print(f"nlp history hydrated {restored} names from R2", flush=True)
+    return restored
+
+
+def save_index(index: dict[str, Any]) -> None:
+    _write_json(LOCAL_DIR / "index.json", index)
+    _upload_r2(None, index)
+
+
+def save_payload(payload: dict[str, Any]) -> None:
+    code = str(payload.get("code") or "")
+    if not code:
+        return
+    remote = _load_remote(code)
+    if remote and isinstance(remote.get("days"), list):
+        spec = _normalize_spec(payload) or _normalize_spec(remote)
+        if spec:
+            payload = build_name_payload(
+                spec,
+                merge_days(list(remote.get("days") or []), list(payload.get("days") or [])),
+            )
+    _write_json(_local_path(code), payload)
+    _upload_r2(code, payload)
 
 
 def backfill_one(
@@ -933,6 +997,7 @@ def run_backfill(
     end = datetime.now(KST).date()
     start = end - timedelta(days=LOOKBACK_DAYS)
     names = resolve_universe(refresh=market == "all", market=market, limit=limit, offset=offset)
+    hydrate_local_from_r2()
     existing_payloads = load_local_payloads()
     archived = specs_from_payloads(existing_payloads)
     save_universe(_merge_specs(names, archived))
@@ -1002,6 +1067,7 @@ def dense_name_codes() -> set[str]:
 
 def run_today_append() -> dict[str, Any]:
     today = datetime.now(KST).date()
+    hydrate_local_from_r2()
     existing = load_local_payloads()
     names = specs_from_payloads(existing)
     if not names:
@@ -1080,10 +1146,34 @@ def start_nlp_history_scheduler() -> None:
     threading.Thread(target=loop, name="nlp-history-scheduler", daemon=True).start()
 
 
+def push_local_to_r2() -> dict[str, Any]:
+    """Upload on-disk series to R2, merging so a thin remote cannot wipe a long local archive."""
+    from r2_briefs import r2_configured
+
+    if not r2_configured():
+        raise SystemExit("R2 is not configured — set R2_* env before --push-local")
+    hydrate_local_from_r2()
+    existing = load_local_payloads()
+    if not existing:
+        raise SystemExit("no local nlp_history payloads to push")
+    payloads: list[dict[str, Any]] = []
+    for spec in specs_from_payloads(existing):
+        payload = existing.get(spec["code"]) or build_name_payload(spec, [])
+        save_payload(payload)
+        payloads.append(payload)
+        print(f"  push {payload['code']} {payload['name']}: {payload['n_days']} days", flush=True)
+    payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
+    index = build_index(payloads)
+    save_index(index)
+    print(f"pushed {len(payloads)} names to R2", flush=True)
+    return index
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NLP news sentiment history")
     parser.add_argument("--backfill", action="store_true")
     parser.add_argument("--today", action="store_true")
+    parser.add_argument("--push-local", action="store_true")
     parser.add_argument("--google-only", action="store_true")
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--market", choices=["all", "kosdaq", "kospi"], default="all")
@@ -1093,6 +1183,9 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
     args = parser.parse_args()
+    if args.push_local:
+        push_local_to_r2()
+        return
     if args.today and not args.backfill:
         run_today_append()
         return

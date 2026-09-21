@@ -206,7 +206,7 @@ export default function NlpHistoryPanel({
             {loading
               ? "뉴스 시계열을 불러오는 중…"
               : series
-                ? `${series.n_days}일 뉴스 · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART 이벤트. 제목 점수는 최근 7일 가중 평균입니다. 점을 누르면 그날 기사가 열립니다.`
+                ? `${series.n_days}일 뉴스(기사가 있는 날만) · 기사 ${series.n_headlines}건 · 파란선 점수 · 노란선 종가 · 분홍 점은 DART. 칩/맵 점수는 최근 7일 가중 평균입니다.`
                 : "이 종목의 뉴스 아카이브가 없습니다."}
           </p>
           {hasPrice ? (
