@@ -307,6 +307,7 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "aiport",
   "bookclub",
   "bookclubboard",
+  "datacatalog",
   "heatpick",
   "round",
   "signals",

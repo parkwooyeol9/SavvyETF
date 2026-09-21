@@ -209,6 +209,10 @@ function DashboardInner({
       setTab("ideas");
       return;
     }
+    if (tab === "datacatalog") {
+      setTab("etfdb");
+      return;
+    }
     const group = NAV_GROUPS.find((g) => g.id === navPlacement(tab).groupId);
     setTab(
       (group ? visibleShellTabs(group.tabs, false)[0] : undefined) || "main",

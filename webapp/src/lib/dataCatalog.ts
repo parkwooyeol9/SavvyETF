@@ -58,6 +58,18 @@ export const DATA_CATALOG: DatasetSpec[] = [
     viewTab: "nlp",
   },
   {
+    id: "kospi200_panel",
+    label: "코스피 200 패널",
+    group: "news",
+    kind: "timeseries",
+    prefixes: ["kospi200_panel/latest.json", "kospi200_panel/snapshots/"],
+    hotWindow: "latest + 일별 패널 (종가·거래량·뉴스점수·재무 레벨)",
+    archive: "스냅샷 전량 유지",
+    volatile: false,
+    insight: "주가/거래량/뉴스점수/PER 등을 합산하지 말 것. 멤버십은 그날 스냅샷",
+    viewTab: "nlp",
+  },
+  {
     id: "briefs",
     label: "시황 브리프",
     group: "briefs",
