@@ -5,8 +5,8 @@ import { stripUsSummaryMacroSlot } from "./briefSrcDoc";
 import {
   gcSlotImageOrphans,
   publicUrlForKey,
+  r2ArchiveThenDelete,
   r2Configured,
-  r2DeleteKeys,
   r2GetObjectText,
   r2ListKeys,
   r2PutObject,
@@ -43,6 +43,10 @@ function historyStorePath(tab: TabId, slot: string, ts: string): string {
 
 function historyPrefix(tab: TabId, slot: string): string {
   return `briefs/${tab}/history/${safeKeyPart(slot, "slot")}/`;
+}
+
+function archiveStorePath(tab: string, slot: string, name: string): string {
+  return `briefs/${tab}/archive/${safeKeyPart(slot, "slot")}/${name}`;
 }
 
 const HISTORY_KEEP = 5;
@@ -566,7 +570,12 @@ export async function upsertBriefSlot(body: IngestBody): Promise<TabBriefs> {
         .filter((k) => k.endsWith(".json"))
         .sort();
       if (histKeys.length > HISTORY_KEEP) {
-        await r2DeleteKeys(histKeys.slice(0, histKeys.length - HISTORY_KEEP));
+        const extra = histKeys.slice(0, histKeys.length - HISTORY_KEEP);
+        const tab = body.tab;
+        await r2ArchiveThenDelete(extra, (key) => {
+          const name = key.split("/").pop() || "t.json";
+          return archiveStorePath(tab, slotKey, name);
+        });
       }
     } catch (exc) {
       console.warn(`r2 history warning (${body.tab}/${slotKey}):`, exc);

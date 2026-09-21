@@ -13,6 +13,7 @@ export type ShellTabId =
   | "greenmin"
   | "etfdb"
   | "etfdbus"
+  | "datacatalog"
   | "aietf"
   | "leverage"
   | "etfweights"
@@ -137,6 +138,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "leverage",
   "etfdb",
   "etfdbus",
+  "datacatalog",
   "aietf",
   "etfweights",
   "etfholdings",
@@ -176,6 +178,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   derivedu: "파생상품",
   etfdb: "한국 상장 ETF",
   etfdbus: "미국 상장 ETF",
+  datacatalog: "적재 현황",
   leverage: "레버리지 ETF",
   etfweights: "편입비 모니터",
   etfholdings: "비교",
@@ -254,7 +257,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "db",
         label: "DB",
-        tabs: ["etfdb", "etfdbus"],
+        tabs: ["etfdb", "etfdbus", "datacatalog"],
       },
     ],
   },
@@ -445,6 +448,14 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (v === "aietf" || v === "ai-etf" || v === "ai_etf") return "aietf";
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
+  if (
+    v === "datacatalog" ||
+    v === "data-catalog" ||
+    v === "inventory" ||
+    v === "적재"
+  ) {
+    return "datacatalog";
+  }
   return null;
 }
 

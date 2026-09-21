@@ -54,6 +54,7 @@ import {
   AiEtfTab,
   EtfDbTab,
   EtfDbUsTab,
+  DataCatalogTab,
 } from "@/components/lazyTabs";
 import {
   AdminLoginControl,
@@ -347,6 +348,7 @@ function DashboardInner({
       tab === "moneyflow" ||
       tab === "etfdb" ||
       tab === "etfdbus" ||
+      tab === "datacatalog" ||
       tab === "aietf" ||
       tab === "leverage" ||
       tab === "etfweights" ||
@@ -514,6 +516,8 @@ function DashboardInner({
         <EtfDbTab />
       ) : tab === "etfdbus" ? (
         <EtfDbUsTab />
+      ) : tab === "datacatalog" ? (
+        <DataCatalogTab />
       ) : tab === "etfholdings" ? (
         <EtfHoldingsTab />
       ) : tab === "etfweights" ? (

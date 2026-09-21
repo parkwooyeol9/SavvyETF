@@ -1,7 +1,7 @@
 """KOSDAQ 100 monitor — daily EOD snapshot + 3–4 line AI brief.
 
 Schedule: 17:15 KST (post close) via kosdaq100_scheduler.py
-R2: kosdaq100/latest.json
+R2: kosdaq100/latest.json + kosdaq100/snapshots/{YYYY-MM-DD}.json
 """
 
 from __future__ import annotations
@@ -532,12 +532,12 @@ def save_local(payload: dict[str, Any]) -> Path:
 
 def publish_r2(payload: dict[str, Any]) -> bool:
     try:
-        from r2_data import put_json, r2_configured
+        from r2_data import put_json_daily, r2_configured
     except Exception:
         return False
     if not r2_configured():
         return False
-    return put_json(R2_KEY, payload)
+    return put_json_daily(R2_KEY, payload, day=str(payload.get("as_of") or "")[:10])
 
 
 def load_latest() -> dict[str, Any] | None:

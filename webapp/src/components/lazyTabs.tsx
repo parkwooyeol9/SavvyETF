@@ -52,3 +52,4 @@ export const ThemeEtfTab = dynamic(() => import("@/components/ThemeEtfTab"), { l
 export const AiEtfTab = dynamic(() => import("@/components/AiEtfTab"), { loading });
 export const EtfDbTab = dynamic(() => import("@/components/EtfDbTab"), { loading });
 export const EtfDbUsTab = dynamic(() => import("@/components/EtfDbUsTab"), { loading });
+export const DataCatalogTab = dynamic(() => import("@/components/DataCatalogTab"), { loading });

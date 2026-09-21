@@ -377,6 +377,152 @@ export function newPortfolioId(): string {
   return `pf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const UNIVERSE_NAME_MAP: Record<string, string> = Object.fromEntries(
+  US_PORTFOLIO_UNIVERSE.flatMap((s) => s.names.map((n) => [n.symbol, n.name])),
+);
+
+export function universeName(symbol: string): string {
+  return UNIVERSE_NAME_MAP[symbol.trim().toUpperCase()] || "";
+}
+
+/** One target-weight line in the bulk allocation editor. */
+export type AllocRow = {
+  id: string;
+  symbol: string;
+  weight_pct: number;
+};
+
+export type AllocDraft = {
+  date: string;
+  price_mode: PriceMode;
+  rows: AllocRow[];
+  cash_pct: number;
+};
+
+export function emptyAllocRow(): AllocRow {
+  return { id: newTradeId(), symbol: "", weight_pct: 0 };
+}
+
+export function defaultAllocDraft(fallbackDate: string): AllocDraft {
+  return {
+    date: fallbackDate,
+    price_mode: "close",
+    rows: [emptyAllocRow(), emptyAllocRow(), emptyAllocRow()],
+    cash_pct: 0,
+  };
+}
+
+/** Rebuild the editor from same-day weight buys (initial allocation). */
+export function draftFromTrades(trades: PortfolioTrade[], fallbackDate: string): AllocDraft {
+  const buys = trades.filter((t) => t.side === "buy" && (t.weight_pct ?? 0) > 0);
+  if (!buys.length) return defaultAllocDraft(fallbackDate);
+  const date = [...buys.map((t) => t.date)].sort()[0]!;
+  const sameDay = buys.filter((t) => t.date === date);
+  const rows = sameDay.map((t) => ({
+    id: t.id,
+    symbol: t.symbol,
+    weight_pct: Number(t.weight_pct) || 0,
+  }));
+  const stockSum = rows.reduce((a, r) => a + r.weight_pct, 0);
+  return {
+    date,
+    price_mode: sameDay[0]?.price_mode || "close",
+    rows: rows.length ? rows : [emptyAllocRow()],
+    cash_pct: Math.max(0, Math.round((100 - stockSum) * 10) / 10),
+  };
+}
+
+export function tradesFromAllocDraft(draft: AllocDraft): PortfolioTrade[] {
+  return draft.rows
+    .map((r) => ({
+      id: r.id,
+      symbol: r.symbol.trim().toUpperCase(),
+      weight_pct: Number(r.weight_pct) || 0,
+    }))
+    .filter((r) => r.symbol && r.weight_pct > 0)
+    .map((r) => ({
+      id: r.id || newTradeId(),
+      symbol: r.symbol,
+      side: "buy" as const,
+      date: draft.date,
+      price_mode: draft.price_mode,
+      shares: null,
+      notional_usd: null,
+      weight_pct: r.weight_pct,
+    }));
+}
+
+const CASH_ALIASES = new Set(["CASH", "USD", "현금", "CASHUSD"]);
+
+/**
+ * Parse bulk text such as `AAPL 25, NVDA 20, CASH 15` or line-broken pairs.
+ */
+export function parseAllocationText(text: string): {
+  rows: Array<{ symbol: string; weight_pct: number }>;
+  cash_pct: number | null;
+} {
+  const normalized = text
+    .replace(/[%:=,;/\t]+/g, " ")
+    .replace(/\n+/g, " ")
+    .trim();
+  if (!normalized) return { rows: [], cash_pct: null };
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const rows: Array<{ symbol: string; weight_pct: number }> = [];
+  let cash_pct: number | null = null;
+  let i = 0;
+  while (i < tokens.length) {
+    const a = tokens[i]!;
+    const b = tokens[i + 1];
+    if (b == null) break;
+    const aNum = Number(a);
+    const bNum = Number(b);
+    let symbol = "";
+    let weight = NaN;
+    if (!Number.isFinite(aNum) && Number.isFinite(bNum)) {
+      symbol = a.toUpperCase();
+      weight = bNum;
+      i += 2;
+    } else if (Number.isFinite(aNum) && !Number.isFinite(bNum)) {
+      symbol = b.toUpperCase();
+      weight = aNum;
+      i += 2;
+    } else {
+      i += 1;
+      continue;
+    }
+    if (!(weight >= 0) || weight > 100) continue;
+    if (CASH_ALIASES.has(symbol) || symbol === "현금") {
+      cash_pct = weight;
+    } else {
+      const prev = rows.find((r) => r.symbol === symbol);
+      if (prev) prev.weight_pct = weight;
+      else rows.push({ symbol, weight_pct: weight });
+    }
+  }
+  return { rows, cash_pct };
+}
+
+export function equalizeAllocRows(rows: AllocRow[], cashPct: number): AllocRow[] {
+  const filledIdx = rows
+    .map((r, i) => (r.symbol.trim() ? i : -1))
+    .filter((i) => i >= 0);
+  if (!filledIdx.length) return rows;
+  const budget = Math.max(0, 100 - (Number(cashPct) || 0));
+  const n = filledIdx.length;
+  const base = Math.floor((budget / n) * 10) / 10;
+  let used = 0;
+  const weights = filledIdx.map((_, i) => {
+    if (i === n - 1) return Math.round((budget - used) * 10) / 10;
+    used += base;
+    return base;
+  });
+  return rows.map((r, i) => {
+    const pos = filledIdx.indexOf(i);
+    if (pos < 0) return r;
+    return { ...r, weight_pct: weights[pos]! };
+  });
+}
+
 export async function fetchDailyOhlc(
   symbol: string,
   startDate: string,
@@ -689,12 +835,15 @@ export async function simulateUsPortfolio(input: {
 
   for (const day of calendar) {
     const dayTrades = tradeIdxByDate.get(day) || [];
-    for (const trade of dayTrades) {
+    const sells = dayTrades.filter((t) => t.side === "sell");
+    const buys = dayTrades.filter((t) => t.side === "buy");
+
+    const applyTrade = (trade: PortfolioTrade, frozenEquity: number | null) => {
       const sym = trade.symbol.trim().toUpperCase();
       const bar = ohlcMap.get(sym)?.get(day);
-      if (!bar) continue;
+      if (!bar) return;
       const px = pickPrice(bar, trade.price_mode);
-      if (!(px > 0)) continue;
+      if (!(px > 0)) return;
 
       if (trade.side === "buy") {
         let shares = 0;
@@ -703,21 +852,24 @@ export async function simulateUsPortfolio(input: {
         } else if (trade.notional_usd && trade.notional_usd > 0) {
           shares = trade.notional_usd / px;
         } else if (trade.weight_pct && trade.weight_pct > 0) {
-          const equity = equityAt(day, trade.price_mode);
+          const equity =
+            frozenEquity != null && frozenEquity > 0
+              ? frozenEquity
+              : equityAt(day, trade.price_mode);
           shares = (equity * (trade.weight_pct / 100)) / px;
         }
-        if (!(shares > 0)) continue;
+        if (!(shares > 0)) return;
         const cost = shares * px;
         if (cost > cash + 1e-6) {
           shares = cash / px;
         }
-        if (!(shares > 0)) continue;
+        if (!(shares > 0)) return;
         cash -= shares * px;
         positions.set(sym, (positions.get(sym) || 0) + shares);
         costBasis.set(sym, (costBasis.get(sym) || 0) + shares * px);
       } else {
         const held = positions.get(sym) || 0;
-        if (!(held > 0)) continue;
+        if (!(held > 0)) return;
         let shares = 0;
         if (trade.shares && trade.shares > 0) {
           shares = trade.shares;
@@ -727,11 +879,10 @@ export async function simulateUsPortfolio(input: {
           const equity = equityAt(day, trade.price_mode);
           shares = (equity * (trade.weight_pct / 100)) / px;
         } else {
-          // no size → sell all
           shares = held;
         }
         shares = Math.min(shares, held);
-        if (!(shares > 0)) continue;
+        if (!(shares > 0)) return;
         cash += shares * px;
         const left = held - shares;
         if (left <= 1e-8) {
@@ -742,6 +893,18 @@ export async function simulateUsPortfolio(input: {
           costBasis.set(sym, (costBasis.get(sym) || 0) * (left / held));
         }
       }
+    };
+
+    for (const trade of sells) applyTrade(trade, null);
+    // Target weights on the same day are % of post-sell / pre-buy equity.
+    const frozenClose = buys.some((t) => t.weight_pct) ? equityAt(day, "close") : null;
+    const frozenOpen = buys.some((t) => t.weight_pct && t.price_mode === "open")
+      ? equityAt(day, "open")
+      : null;
+    for (const trade of buys) {
+      const frozen =
+        trade.price_mode === "open" ? frozenOpen : frozenClose;
+      applyTrade(trade, frozen);
     }
 
     // Seed SPY buy&hold with same initial cash on first calendar day

@@ -3,7 +3,7 @@
  */
 
 import universeJson from "@/data/kosdaq100Universe.json";
-import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+import { r2Configured, r2GetObjectText, r2PutJsonDaily } from "@/lib/r2";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -623,10 +623,11 @@ async function loadFundCache(): Promise<FundCache | null> {
 async function saveFundCache(cache: FundCache): Promise<void> {
   if (!r2Configured()) return;
   try {
-    await r2PutObject(
+    const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    await r2PutJsonDaily(
       R2_FUND_KEY,
       Buffer.from(JSON.stringify(cache), "utf8"),
-      "application/json; charset=utf-8",
+      day,
       "public, max-age=300",
     );
   } catch {

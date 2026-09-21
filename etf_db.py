@@ -27,6 +27,7 @@ KST = ZoneInfo("Asia/Seoul")
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_DIR / "data" / "etf_db"
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
+ARCHIVE_DIR = DATA_DIR / "archive"
 LATEST_PATH = DATA_DIR / "latest.json"
 HTML_PATH = DATA_DIR / "etfdb.html"
 META_PATH = DATA_DIR / "etfdb_meta.json"
@@ -384,10 +385,16 @@ def save_snapshot(rows: list[dict[str, Any]], *, day: str | None = None) -> Path
 
 
 def _prune_snapshots() -> None:
+    """Keep the newest MAX_SNAPSHOTS locally; move older files to archive/."""
     files = sorted(SNAPSHOT_DIR.glob("*.json"))
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     for old in files[:-MAX_SNAPSHOTS]:
+        dest = ARCHIVE_DIR / old.name
         try:
-            old.unlink()
+            if dest.exists():
+                old.unlink()
+            else:
+                old.replace(dest)
         except OSError:
             pass
 
@@ -702,7 +709,7 @@ def build_etf_db(*, force_fetch: bool = True) -> dict[str, Any]:
         if pub.get("ok"):
             print(
                 f"etf_db: published to R2 (snapshot={pub.get('snapshot')}, "
-                f"pruned={pub.get('pruned', 0)})"
+                f"archived={pub.get('archived', pub.get('pruned', 0))})"
             )
         elif pub.get("error"):
             print(f"etf_db: R2 publish skipped: {pub['error']}")

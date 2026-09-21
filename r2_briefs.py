@@ -3,6 +3,7 @@
 Layout (per-slot — one write cannot erase sibling slots):
   briefs/{tab}/slots/{slot}.json
   briefs/{tab}/history/{slot}/{ts}.json   (rolling backup, last N)
+  briefs/{tab}/archive/{slot}/{ts}.json  (older history — never deleted)
   briefs/{tab}.json                      (legacy monolith — read/migrate only)
 
 Images:
@@ -97,6 +98,45 @@ def _history_key(tab: str, slot: str, ts: str) -> str:
 
 def _history_prefix(tab: str, slot: str) -> str:
     return f"briefs/{_safe_part(tab)}/history/{_safe_part(slot, 'slot')}/"
+
+
+def _archive_prefix(tab: str, slot: str) -> str:
+    return f"briefs/{_safe_part(tab)}/archive/{_safe_part(slot, 'slot')}/"
+
+
+def _key_exists(client, key: str) -> bool:
+    try:
+        client.head_object(Bucket=_bucket(), Key=key)
+        return True
+    except Exception as exc:
+        msg = str(exc)
+        if "NoSuchKey" in msg or "404" in msg or "Not Found" in msg or "NotFound" in msg:
+            return False
+        name = type(exc).__name__
+        if "NoSuchKey" in name or "NotFound" in name:
+            return False
+        raise
+
+
+def _copy_object(client, src: str, dest: str) -> None:
+    """Server-side copy; fall back to get+put so archive never depends on CopyObject quirks."""
+    if src == dest:
+        return
+    bucket = _bucket()
+    try:
+        client.copy_object(
+            Bucket=bucket,
+            CopySource={"Bucket": bucket, "Key": src},
+            Key=dest,
+        )
+        return
+    except Exception as exc:
+        print(f"r2 copy_object fallback ({src} → {dest}): {exc}")
+    obj = client.get_object(Bucket=bucket, Key=src)
+    body = obj["Body"].read()
+    content_type = obj.get("ContentType") or "application/octet-stream"
+    cache_control = "private, max-age=0"
+    _put_bytes(client, dest, body, content_type, cache_control=cache_control)
 
 
 def _image_key(tab: str, slot: str, image_id: str) -> str:
@@ -306,12 +346,23 @@ def _migrate_legacy_slots(client, tab: str) -> int:
 
 
 def _gc_history(client, tab: str, slot: str) -> None:
-    keys = sorted(_list_keys(client, _history_prefix(tab, slot)))
+    """Keep the newest HISTORY_KEEP hot copies; move older ones to archive/ first."""
+    keys = sorted(k for k in _list_keys(client, _history_prefix(tab, slot)) if k.endswith(".json"))
     if len(keys) <= HISTORY_KEEP:
         return
     doomed = keys[: len(keys) - HISTORY_KEEP]
-    for i in range(0, len(doomed), 900):
-        chunk = doomed[i : i + 900]
+    ready: list[str] = []
+    for key in doomed:
+        name = key.rsplit("/", 1)[-1]
+        dest = f"{_archive_prefix(tab, slot)}{name}"
+        try:
+            if not _key_exists(client, dest):
+                _copy_object(client, key, dest)
+            ready.append(key)
+        except Exception as exc:
+            print(f"r2 archive history failed ({key}): {exc}")
+    for i in range(0, len(ready), 900):
+        chunk = ready[i : i + 900]
         client.delete_objects(
             Bucket=_bucket(),
             Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True},

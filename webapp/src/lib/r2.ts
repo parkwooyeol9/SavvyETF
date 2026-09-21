@@ -11,6 +11,7 @@
  */
 
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -131,6 +132,26 @@ export async function r2PutObject(
       ...(opts?.ifMatch ? { IfMatch: opts.ifMatch } : {}),
       ...(opts?.ifNoneMatch ? { IfNoneMatch: opts.ifNoneMatch } : {}),
     }),
+  );
+}
+
+/** Write latest.json and a same-day snapshots/{YYYY-MM-DD}.json. No prune — JSON is small. */
+export async function r2PutJsonDaily(
+  latestKey: string,
+  body: Buffer | Uint8Array | string,
+  day: string,
+  cacheControlLatest = "public, max-age=120",
+): Promise<void> {
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : new Date().toISOString().slice(0, 10);
+  const slash = latestKey.lastIndexOf("/");
+  const dir = slash >= 0 ? latestKey.slice(0, slash) : latestKey.replace(/\.json$/i, "");
+  const buf = typeof body === "string" ? Buffer.from(body, "utf8") : body;
+  await r2PutObject(latestKey, buf, "application/json; charset=utf-8", cacheControlLatest);
+  await r2PutObject(
+    `${dir}/snapshots/${ymd}.json`,
+    buf,
+    "application/json; charset=utf-8",
+    "public, max-age=86400",
   );
 }
 
@@ -345,4 +366,49 @@ export async function gcSlotImageOrphans(
     return !keepNames.has(name);
   });
   return r2DeleteKeys(doomed);
+}
+
+export async function r2CopyObject(srcKey: string, destKey: string): Promise<void> {
+  const cfg = getR2Config();
+  if (!cfg) throw new Error("R2 is not configured");
+  if (srcKey === destKey) return;
+  const existing = await r2HeadObject(destKey);
+  if (existing) return;
+  const client = clientFor(cfg);
+  const copySource = `${cfg.bucket}/${srcKey
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}`;
+  try {
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: cfg.bucket,
+        CopySource: copySource,
+        Key: destKey,
+      }),
+    );
+  } catch {
+    const bytes = await r2GetObjectBytes(srcKey);
+    if (!bytes) throw new Error(`r2 copy source missing: ${srcKey}`);
+    await r2PutObject(destKey, Buffer.from(bytes.body), bytes.contentType, "private, max-age=0");
+  }
+}
+
+export async function r2ArchiveThenDelete(
+  keys: string[],
+  destKeyFor: (srcKey: string) => string,
+): Promise<{ archived: number; deleted: number; failed: number }> {
+  const ready: string[] = [];
+  let failed = 0;
+  for (const key of keys) {
+    try {
+      await r2CopyObject(key, destKeyFor(key));
+      ready.push(key);
+    } catch (exc) {
+      failed += 1;
+      console.warn(`r2 archive skip ${key}:`, exc);
+    }
+  }
+  const deleted = ready.length ? await r2DeleteKeys(ready) : 0;
+  return { archived: ready.length, deleted, failed };
 }

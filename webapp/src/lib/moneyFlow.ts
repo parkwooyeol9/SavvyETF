@@ -1,7 +1,7 @@
 /**
  * Global Money Flow Monitor — free/public connectors only.
  *
- * Storage (MVP): R2 `money_flow/latest.json` (same pattern as CFTC).
+ * Storage: R2 `money_flow/latest.json` + daily `money_flow/snapshots/{YYYY-MM-DD}.json` (1m payload).
  * Logical Supabase schema: see `webapp/supabase/money_flow.sql`.
  *
  * Metric families (NEVER sum across families):
@@ -12,7 +12,7 @@
  */
 
 import { getCftcPayload, type CftcMarketId } from "@/lib/cftc";
-import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+import { r2Configured, r2GetObjectText, r2PutJsonDaily, r2PutObject } from "@/lib/r2";
 import { withServerCache } from "@/lib/apiCache";
 import { buildBasketFlows, ETF_BASKETS } from "@/lib/moneyFlowEtf";
 
@@ -1241,7 +1241,12 @@ export async function buildMoneyFlowPayload(
 
   if (r2Configured()) {
     try {
-      await r2PutObject(MONEY_FLOW_R2_KEY, JSON.stringify(payload), "application/json");
+      const body = JSON.stringify(payload);
+      if (period === "1m") {
+        await r2PutJsonDaily(MONEY_FLOW_R2_KEY, body, payload.as_of_kst);
+      } else {
+        await r2PutObject(MONEY_FLOW_R2_KEY, body, "application/json");
+      }
     } catch (e) {
       errors.push(`R2 persist: ${e instanceof Error ? e.message : "failed"}`);
       payload.errors = errors;

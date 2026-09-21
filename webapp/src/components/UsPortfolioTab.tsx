@@ -16,14 +16,22 @@ import {
   appendHistory,
   buildIndexedChartSeries,
   createPortfolioInLibrary,
+  defaultAllocDraft,
   deletePortfolioInLibrary,
+  draftFromTrades,
   duplicatePortfolioInLibrary,
+  emptyAllocRow,
+  equalizeAllocRows,
   formatTelegramPortfolioBrief,
   getActivePortfolio,
   loadPortfolioLibrary,
+  parseAllocationText,
   savePortfolioLibrary,
+  tradesFromAllocDraft,
+  universeName,
   upsertActivePortfolio,
   US_PORTFOLIO_UNIVERSE,
+  type AllocRow,
   type PortfolioTrade,
   type PriceMode,
   type SizeMode,
@@ -79,18 +87,26 @@ export default function UsPortfolioTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [symbol, setSymbol] = useState("AAPL");
-  const [side, setSide] = useState<TradeSide>("buy");
-  const [date, setDate] = useState(() => {
+  const defaultDate = useMemo(() => {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - 30);
     return d.toISOString().slice(0, 10);
-  });
+  }, []);
+
+  const [symbol, setSymbol] = useState("AAPL");
+  const [side, setSide] = useState<TradeSide>("buy");
+  const [date, setDate] = useState(defaultDate);
   const [priceMode, setPriceMode] = useState<PriceMode>("close");
-  const [sizeMode, setSizeMode] = useState<SizeMode>("notional");
-  const [sizeValue, setSizeValue] = useState("10000");
+  const [sizeMode, setSizeMode] = useState<SizeMode>("weight_pct");
+  const [sizeValue, setSizeValue] = useState("10");
   const [universeQuery, setUniverseQuery] = useState("");
   const [universeSector, setUniverseSector] = useState<string>("all");
+
+  const [allocDate, setAllocDate] = useState(defaultDate);
+  const [allocPriceMode, setAllocPriceMode] = useState<PriceMode>("close");
+  const [allocRows, setAllocRows] = useState<AllocRow[]>(() => defaultAllocDraft(defaultDate).rows);
+  const [cashPct, setCashPct] = useState(0);
+  const [quickText, setQuickText] = useState("");
 
   useEffect(() => {
     setLib(loadPortfolioLibrary());
@@ -114,10 +130,23 @@ export default function UsPortfolioTab() {
 
   useEffect(() => {
     if (side === "buy" && sizeMode === "all") {
-      setSizeMode("notional");
-      setSizeValue("10000");
+      setSizeMode("weight_pct");
+      setSizeValue("10");
     }
   }, [side, sizeMode]);
+
+  // Re-hydrate the allocation editor only when switching the active portfolio.
+  useEffect(() => {
+    if (!lib) return;
+    const active = getActivePortfolio(lib);
+    const draft = draftFromTrades(active.trades, defaultDate);
+    setAllocDate(draft.date);
+    setAllocPriceMode(draft.price_mode);
+    setAllocRows(draft.rows);
+    setCashPct(draft.cash_pct);
+    setQuickText("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lib object changes on every persist
+  }, [lib?.active_id, defaultDate]);
 
   const run = useCallback(
     async (s: StoredUsPortfolio) => {
@@ -177,7 +206,7 @@ export default function UsPortfolioTab() {
     sizeMode === "notional"
       ? "금액 USD"
       : sizeMode === "weight_pct"
-        ? "포트폴리오 %"
+        ? "편입비 %"
         : sizeMode === "shares"
           ? "수량(주)"
           : "전량";
@@ -254,9 +283,93 @@ export default function UsPortfolioTab() {
     });
   };
 
+  const stockWeightSum = useMemo(
+    () =>
+      allocRows.reduce((a, r) => a + (r.symbol.trim() && r.weight_pct > 0 ? Number(r.weight_pct) : 0), 0),
+    [allocRows],
+  );
+  const cashWeight = Number(cashPct) || 0;
+  const totalWeight = stockWeightSum + cashWeight;
+  const weightOk = Math.abs(totalWeight - 100) <= 0.51;
+  const weightOver = totalWeight > 100.05;
+
+  const updateAllocRow = (id: string, patch: Partial<AllocRow>) => {
+    setAllocRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const addAllocRow = (symbolHint?: string) => {
+    setAllocRows((prev) => {
+      if (symbolHint) {
+        const sym = symbolHint.toUpperCase();
+        if (prev.some((r) => r.symbol.trim().toUpperCase() === sym)) return prev;
+        const empty = prev.find((r) => !r.symbol.trim());
+        if (empty) {
+          return prev.map((r) => (r.id === empty.id ? { ...r, symbol: sym } : r));
+        }
+        return [...prev, { ...emptyAllocRow(), symbol: sym }];
+      }
+      return [...prev, emptyAllocRow()];
+    });
+  };
+
+  const removeAllocRow = (id: string) => {
+    setAllocRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
+  };
+
   const pickSymbol = (sym: string) => {
+    addAllocRow(sym);
     setSymbol(sym);
     setError(null);
+  };
+
+  const applyQuickText = () => {
+    const parsed = parseAllocationText(quickText);
+    if (!parsed.rows.length && parsed.cash_pct == null) {
+      setError("빠른 입력 형식을 확인하세요. 예: AAPL 25 NVDA 20 CASH 15");
+      return;
+    }
+    setAllocRows((prev) => {
+      const next = parsed.rows.length
+        ? parsed.rows.map((r) => ({
+            id: prev.find((p) => p.symbol.trim().toUpperCase() === r.symbol)?.id || emptyAllocRow().id,
+            symbol: r.symbol,
+            weight_pct: r.weight_pct,
+          }))
+        : prev;
+      return next.length ? next : [emptyAllocRow()];
+    });
+    if (parsed.cash_pct != null) setCashPct(parsed.cash_pct);
+    setError(null);
+  };
+
+  const applyAllocAndRun = () => {
+    if (!store) return;
+    if (!allocDate) {
+      setError("편입일을 입력하세요.");
+      return;
+    }
+    const trades = tradesFromAllocDraft({
+      date: allocDate,
+      price_mode: allocPriceMode,
+      rows: allocRows,
+      cash_pct: cashWeight,
+    });
+    if (!trades.length) {
+      setError("편입할 종목과 비중(%)을 입력하세요.");
+      return;
+    }
+    if (weightOver) {
+      setError("종목+현금 편입비 합계는 100% 이하여야 합니다.");
+      return;
+    }
+    const next: StoredUsPortfolio = {
+      ...store,
+      trades,
+      updated_at: new Date().toISOString(),
+    };
+    persistActive(next);
+    setError(null);
+    void run(next);
   };
 
   const switchPortfolio = (id: string) => {
@@ -330,18 +443,18 @@ export default function UsPortfolioTab() {
           <div>
             <h2 className="kr-hero-title">미국 주식 포트폴리오</h2>
             <p className="kr-hero-sub">
-              로그인 없이 로컬 다중 저장 · 시가/종가 편출입 · SPY 대비 업종·리스크 비교 ·
-              텔레그램 스냅샷 준비
+              여러 종목과 현금 편입비(%)를 한 번에 입력한 뒤 S&P500(SPY) 대비 성과·리스크를
+              평가합니다. 로그인 없이 로컬에 다중 저장됩니다.
             </p>
           </div>
           <div className="kr-hero-actions">
             <button
               type="button"
-              className="ghost-btn"
-              disabled={loading || !store.trades.length}
-              onClick={() => void run(store)}
+              className="tab-btn"
+              disabled={loading}
+              onClick={applyAllocAndRun}
             >
-              {loading ? "계산 중…" : "시뮬레이션 실행"}
+              {loading ? "계산 중…" : "평가 (BM: S&P500)"}
             </button>
           </div>
         </div>
@@ -417,61 +530,201 @@ export default function UsPortfolioTab() {
         </div>
 
         <h3 className="geo-section-title" style={{ marginTop: 14 }}>
-          매매 유니버스
+          목표 편입비
         </h3>
         <p className="meta-soft">
-          미국 상장 주요 {universeCount}종 · 클릭하면 티커가 선택됩니다. 목록에 없어도 직접
-          입력 가능합니다.
+          종목 비중과 현금 비중을 함께 입력하세요. 평가 시 편입일 종가(또는 시가)로 구성하고
+          벤치마크는 S&P500(SPY)입니다.
         </p>
-        <div className="us-pf-universe-toolbar">
-          <input
-            value={universeQuery}
-            onChange={(e) => setUniverseQuery(e.target.value)}
-            placeholder="티커·종목명 검색 (예: NVDA, Apple)"
-          />
-          <select
-            value={universeSector}
-            onChange={(e) => setUniverseSector(e.target.value)}
-          >
-            <option value="all">전체 업종</option>
-            {US_PORTFOLIO_UNIVERSE.map((s) => (
-              <option key={s.sector} value={s.sector}>
-                {s.sector_ko}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="us-pf-universe">
-          {!filteredUniverse.length ? (
-            <p className="empty">검색 결과가 없습니다. 티커를 직접 입력해 주세요.</p>
-          ) : (
-            filteredUniverse.map((sec) => (
-              <div key={sec.sector} className="us-pf-universe-sector">
-                <div className="us-pf-universe-sector-label">{sec.sector_ko}</div>
-                <div className="us-pf-universe-chips">
-                  {sec.names.map((n) => (
-                    <button
-                      key={n.symbol}
-                      type="button"
-                      className={
-                        symbol.toUpperCase() === n.symbol
-                          ? "us-pf-chip us-pf-chip-active"
-                          : "us-pf-chip"
-                      }
-                      title={n.name}
-                      onClick={() => pickSymbol(n.symbol)}
-                    >
-                      <strong>{n.symbol}</strong>
-                      <span>{n.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
+
+        <div className="us-pf-form us-pf-alloc-toolbar">
+          <label>
+            편입일
+            <input
+              type="date"
+              value={allocDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setAllocDate(e.target.value)}
+            />
+          </label>
+          <label>
+            체결 가격
+            <select
+              value={allocPriceMode}
+              onChange={(e) => setAllocPriceMode(e.target.value as PriceMode)}
+            >
+              <option value="close">종가</option>
+              <option value="open">시가</option>
+            </select>
+          </label>
+          <label>
+            현금 비중 (%)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={cashPct}
+              onChange={(e) => setCashPct(Number(e.target.value) || 0)}
+            />
+          </label>
         </div>
 
-        <div className="us-pf-trade-form" style={{ marginTop: 14 }}>
+        <div className="table-wrap">
+          <table className="data-table us-pf-alloc-table">
+            <thead>
+              <tr>
+                <th>종목</th>
+                <th>이름</th>
+                <th className="num">편입비 (%)</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {allocRows.map((row) => {
+                const sym = row.symbol.trim().toUpperCase();
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <input
+                        value={row.symbol}
+                        onChange={(e) =>
+                          updateAllocRow(row.id, { symbol: e.target.value.toUpperCase() })
+                        }
+                        placeholder="티커"
+                        aria-label="티커"
+                      />
+                    </td>
+                    <td className="meta-soft">{sym ? universeName(sym) || "—" : ""}</td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={row.weight_pct || ""}
+                        onChange={(e) =>
+                          updateAllocRow(row.id, {
+                            weight_pct: Number(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="%"
+                        aria-label={`${sym || "종목"} 편입비`}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => removeAllocRow(row.id)}
+                        disabled={allocRows.length <= 1}
+                      >
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="us-pf-alloc-cash">
+                <td>
+                  <strong>CASH</strong>
+                </td>
+                <td className="meta-soft">현금</td>
+                <td className="num">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={cashPct || ""}
+                    onChange={(e) => setCashPct(Number(e.target.value) || 0)}
+                    placeholder="%"
+                    aria-label="현금 편입비"
+                  />
+                </td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="us-pf-alloc-actions">
+          <button type="button" className="ghost-btn" onClick={() => addAllocRow()}>
+            종목 추가
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => setAllocRows((prev) => equalizeAllocRows(prev, cashWeight))}
+          >
+            잔여를 종목 균등
+          </button>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() =>
+              setCashPct(Math.max(0, Math.round((100 - stockWeightSum) * 10) / 10))
+            }
+          >
+            잔여를 현금
+          </button>
+          <span
+            className={
+              weightOver
+                ? "us-pf-alloc-sum warn"
+                : weightOk
+                  ? "us-pf-alloc-sum ok"
+                  : "us-pf-alloc-sum"
+            }
+          >
+            종목 {stockWeightSum.toFixed(1)}% · 현금 {cashWeight.toFixed(1)}% · 합계{" "}
+            {totalWeight.toFixed(1)}%
+            {weightOk ? " ✓" : weightOver ? " ← 100% 이하로" : " ← 100%로 맞춰 주세요"}
+          </span>
+        </div>
+
+        <label className="us-pf-quick-label">
+          빠른 입력
+          <textarea
+            className="us-pf-quick"
+            value={quickText}
+            onChange={(e) => setQuickText(e.target.value)}
+            placeholder="예: AAPL 25 NVDA 20 MSFT 15 CASH 40"
+            rows={2}
+          />
+        </label>
+        <div className="us-pf-alloc-actions">
+          <button type="button" className="ghost-btn" onClick={applyQuickText}>
+            빠른 입력 반영
+          </button>
+          <button
+            type="button"
+            className="tab-btn"
+            disabled={loading}
+            onClick={applyAllocAndRun}
+          >
+            {loading ? "계산 중…" : "평가 (BM: S&P500)"}
+          </button>
+          {store.trades.length ? (
+            <button
+              type="button"
+              className="ghost-btn"
+              disabled={loading}
+              onClick={() => void run(store)}
+            >
+              기존 매매로 재실행
+            </button>
+          ) : null}
+        </div>
+
+        <h3 className="geo-section-title" style={{ marginTop: 18 }}>
+          개별 매매 추가
+        </h3>
+        <p className="meta-soft">
+          기본은 편입비(%). 리밸런싱·편출이 필요할 때만 사용하세요. 위 평가 버튼은 목표
+          편입비로 매매 내역을 다시 구성합니다.
+        </p>
+        <div className="us-pf-trade-form" style={{ marginTop: 10 }}>
           <input
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
@@ -493,15 +746,15 @@ export default function UsPortfolioTab() {
             value={sizeMode}
             onChange={(e) => onSizeModeChange(e.target.value as SizeMode)}
           >
+            <option value="weight_pct">편입비 %</option>
             <option value="notional">금액(USD)</option>
-            <option value="weight_pct">포트폴리오 %</option>
             <option value="shares">수량(주)</option>
             {side === "sell" ? <option value="all">전량 매도</option> : null}
           </select>
           <input
             type="number"
             min={0}
-            step={sizeMode === "weight_pct" ? 1 : sizeMode === "shares" ? 1 : 100}
+            step={sizeMode === "weight_pct" ? 0.1 : sizeMode === "shares" ? 1 : 100}
             value={sizeValue}
             onChange={(e) => setSizeValue(e.target.value)}
             placeholder={sizePlaceholder}
@@ -513,7 +766,7 @@ export default function UsPortfolioTab() {
         </div>
         <p className="meta-soft" style={{ marginTop: 6 }}>
           {sizeMode === "weight_pct"
-            ? "포트폴리오 %: 해당 시점 평가액(현금+보유) 대비 비중으로 체결합니다."
+            ? "편입비 %: 해당 시점 평가액(현금+보유) 대비 비중으로 체결합니다."
             : sizeMode === "notional"
               ? "금액(USD): 시가/종가 기준으로 수량을 환산합니다."
               : sizeMode === "shares"
@@ -537,7 +790,7 @@ export default function UsPortfolioTab() {
               {!store.trades.length ? (
                 <tr>
                   <td colSpan={6} className="empty">
-                    유니버스에서 종목을 고르거나 티커를 입력한 뒤 편출입을 추가하세요.
+                    위에서 편입비를 입력한 뒤 평가하거나, 개별 매매를 추가하세요.
                   </td>
                 </tr>
               ) : (
@@ -955,6 +1208,66 @@ export default function UsPortfolioTab() {
           </div>
         </section>
       ) : null}
+
+      <section className="geo-section us-pf-universe-ref" style={{ marginTop: 16 }}>
+        <details>
+          <summary className="geo-section-title">매매 유니버스 (참고)</summary>
+          <p className="meta-soft">
+            미국 상장 주요 {universeCount}종 참고 목록입니다. 클릭하면 위 목표 편입비에
+            티커가 추가됩니다. 목록에 없어도 직접 입력할 수 있습니다.
+          </p>
+          <div className="us-pf-universe-toolbar">
+            <input
+              value={universeQuery}
+              onChange={(e) => setUniverseQuery(e.target.value)}
+              placeholder="티커·종목명 검색 (예: NVDA, Apple)"
+            />
+            <select
+              value={universeSector}
+              onChange={(e) => setUniverseSector(e.target.value)}
+            >
+              <option value="all">전체 업종</option>
+              {US_PORTFOLIO_UNIVERSE.map((s) => (
+                <option key={s.sector} value={s.sector}>
+                  {s.sector_ko}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="us-pf-universe">
+            {!filteredUniverse.length ? (
+              <p className="empty">검색 결과가 없습니다. 티커를 직접 입력해 주세요.</p>
+            ) : (
+              filteredUniverse.map((sec) => (
+                <div key={sec.sector} className="us-pf-universe-sector">
+                  <div className="us-pf-universe-sector-label">{sec.sector_ko}</div>
+                  <div className="us-pf-universe-chips">
+                    {sec.names.map((n) => {
+                      const active = allocRows.some(
+                        (r) => r.symbol.trim().toUpperCase() === n.symbol,
+                      );
+                      return (
+                        <button
+                          key={n.symbol}
+                          type="button"
+                          className={
+                            active ? "us-pf-chip us-pf-chip-active" : "us-pf-chip"
+                          }
+                          title={n.name}
+                          onClick={() => pickSymbol(n.symbol)}
+                        >
+                          <strong>{n.symbol}</strong>
+                          <span>{n.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </details>
+      </section>
     </div>
   );
 }

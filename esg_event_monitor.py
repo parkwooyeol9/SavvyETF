@@ -710,10 +710,12 @@ def persist_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     )
     r2_ok = False
     try:
-        from r2_data import put_json, r2_configured
+        from r2_data import put_json_daily, r2_configured
 
         if r2_configured():
-            r2_ok = bool(put_json(R2_KEY, bundle))
+            r2_ok = bool(
+                put_json_daily(R2_KEY, bundle, day=str(bundle.get("as_of") or "")[:10])
+            )
     except Exception as exc:
         print(f"esg_events R2 upload skipped: {exc}")
     return {"local": True, "r2": r2_ok}

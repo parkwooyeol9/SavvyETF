@@ -2,8 +2,10 @@
 
 Layout:
   etf_db/latest.json
-  etf_db/snapshots/{YYYY-MM-DD}.json
+  etf_db/snapshots/{YYYY-MM-DD}.json   (hot window, last MAX_R2_SNAPSHOTS)
+  etf_db/archive/{YYYY-MM-DD}.json     (older days — never deleted)
   credit_monitor/latest.json
+  credit_monitor/snapshots/{YYYY-MM-DD}.json
 
 Reuses the same R2_* env as r2_briefs.py.
 """
@@ -14,10 +16,20 @@ import json
 import re
 from typing import Any
 
-from r2_briefs import _bucket, _client, _get_json, _list_keys, _put_bytes, r2_configured
+from r2_briefs import (
+    _bucket,
+    _client,
+    _copy_object,
+    _get_json,
+    _key_exists,
+    _list_keys,
+    _put_bytes,
+    r2_configured,
+)
 
 ETF_DB_LATEST_KEY = "etf_db/latest.json"
 ETF_DB_SNAPSHOTS_PREFIX = "etf_db/snapshots/"
+ETF_DB_ARCHIVE_PREFIX = "etf_db/archive/"
 CREDIT_MONITOR_LATEST_KEY = "credit_monitor/latest.json"
 MAX_R2_SNAPSHOTS = 90
 
@@ -42,6 +54,30 @@ def put_json(key: str, payload: dict[str, Any] | list[Any]) -> bool:
         cache_control="public, max-age=120",
     )
     return True
+
+
+def _kst_today() -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+
+
+def put_json_daily(
+    latest_key: str,
+    payload: dict[str, Any] | list[Any],
+    *,
+    day: str | None = None,
+) -> bool:
+    """Write latest + snapshots/{YYYY-MM-DD}.json. Keep every day (payloads are small)."""
+    ymd = _ymd((day or "")[:10])
+    if not ymd and isinstance(payload, dict):
+        ymd = _ymd(str(payload.get("as_of") or payload.get("as_of_kst") or "")[:10])
+    ymd = ymd or _kst_today()
+    parent = latest_key.rsplit("/", 1)[0] if "/" in latest_key else latest_key
+    latest_ok = put_json(latest_key, payload)
+    snap_ok = put_json(f"{parent}/snapshots/{ymd}.json", payload)
+    return bool(latest_ok and snap_ok)
 
 
 def put_bytes(
@@ -92,9 +128,26 @@ def list_prefix_keys(prefix: str) -> list[str]:
     if not r2_configured():
         return []
     return _list_keys(_client(), prefix)
-    """Keep the newest MAX_R2_SNAPSHOTS snapshot objects; delete older keys."""
+
+
+def list_etf_archive_days_r2() -> list[str]:
     if not r2_configured():
-        return 0
+        return []
+    days: list[str] = []
+    for key in _list_keys(_client(), ETF_DB_ARCHIVE_PREFIX):
+        if not key.endswith(".json"):
+            continue
+        day = key.rsplit("/", 1)[-1].removesuffix(".json")
+        if _ymd(day):
+            days.append(day)
+    return sorted(days)
+
+
+def archive_etf_snapshots_r2() -> dict[str, int]:
+    """Move hot snapshots older than MAX_R2_SNAPSHOTS into archive/. Never delete uncopied objects."""
+    result = {"archived": 0, "deleted": 0, "failed": 0}
+    if not r2_configured():
+        return result
     client = _client()
     keys = sorted(
         k
@@ -102,19 +155,34 @@ def list_prefix_keys(prefix: str) -> list[str]:
         if k.endswith(".json") and _ymd(k.rsplit("/", 1)[-1].removesuffix(".json"))
     )
     doomed = keys[:-MAX_R2_SNAPSHOTS] if len(keys) > MAX_R2_SNAPSHOTS else []
-    deleted = 0
     for key in doomed:
+        dest = f"{ETF_DB_ARCHIVE_PREFIX}{key.rsplit('/', 1)[-1]}"
         try:
+            if not _key_exists(client, dest):
+                _copy_object(client, key, dest)
+            result["archived"] += 1
             client.delete_object(Bucket=_bucket(), Key=key)
-            deleted += 1
+            result["deleted"] += 1
         except Exception as exc:
-            print(f"r2_data prune etf snapshot failed ({key}): {exc}")
-    return deleted
+            result["failed"] += 1
+            print(f"r2_data archive etf snapshot failed ({key}): {exc}")
+    return result
+
+
+def prune_etf_snapshots_r2() -> int:
+    """Backward-compatible alias: archive then drop from the hot prefix. Returns archived count."""
+    return archive_etf_snapshots_r2().get("archived", 0)
 
 
 def publish_etf_db_to_r2(payload: dict[str, Any], *, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
     """Best-effort upload of latest (+ optional same-day snapshot)."""
-    result: dict[str, Any] = {"ok": False, "latest": False, "snapshot": False, "pruned": 0}
+    result: dict[str, Any] = {
+        "ok": False,
+        "latest": False,
+        "snapshot": False,
+        "pruned": 0,
+        "archived": 0,
+    }
     if not r2_configured():
         result["error"] = "R2 not configured"
         return result
@@ -127,7 +195,9 @@ def publish_etf_db_to_r2(payload: dict[str, Any], *, snapshot: dict[str, Any] | 
             snapshot = load_snapshot(day)
         if snapshot and day:
             result["snapshot"] = upload_etf_snapshot(day, snapshot)
-            result["pruned"] = prune_etf_snapshots_r2()
+            moved = archive_etf_snapshots_r2()
+            result["archived"] = moved.get("archived", 0)
+            result["pruned"] = result["archived"]
         result["ok"] = bool(result["latest"])
     except Exception as exc:
         result["error"] = str(exc)
@@ -166,7 +236,11 @@ def sync_etf_snapshots_from_r2(*, local_dir) -> int:
 
 
 def upload_credit_monitor(board: dict[str, Any]) -> bool:
-    return put_json(CREDIT_MONITOR_LATEST_KEY, board)
+    return put_json_daily(
+        CREDIT_MONITOR_LATEST_KEY,
+        board,
+        day=str(board.get("as_of") or "")[:10],
+    )
 
 
 def load_credit_monitor() -> dict[str, Any] | None:

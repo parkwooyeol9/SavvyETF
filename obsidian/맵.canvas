@@ -1,0 +1,314 @@
+{
+  "nodes": [
+    {
+      "id": "g-store",
+      "type": "group",
+      "x": -80,
+      "y": -280,
+      "width": 1480,
+      "height": 160,
+      "label": "저장소 · R2가 정본"
+    },
+    {
+      "id": "t-r2",
+      "type": "text",
+      "text": "**Cloudflare R2**\n`savvyetf-briefs` JSON",
+      "x": -40,
+      "y": -230,
+      "width": 320,
+      "height": 80,
+      "color": "5"
+    },
+    {
+      "id": "t-local",
+      "type": "text",
+      "text": "**Render `data/`**\n재배포 시 휘발",
+      "x": 360,
+      "y": -230,
+      "width": 280,
+      "height": 80
+    },
+    {
+      "id": "t-sb",
+      "type": "text",
+      "text": "**Supabase**\n커뮤니티만 · 금융 아님",
+      "x": 720,
+      "y": -230,
+      "width": 300,
+      "height": 80
+    },
+    {
+      "id": "t-live",
+      "type": "text",
+      "text": "**비저장**\nYahoo·/news 본문",
+      "x": 1100,
+      "y": -230,
+      "width": 260,
+      "height": 80,
+      "color": "1"
+    },
+    {
+      "id": "g-etf",
+      "type": "group",
+      "x": -80,
+      "y": -40,
+      "width": 1480,
+      "height": 220,
+      "label": "ETF 시계열 · 보존",
+      "color": "4"
+    },
+    {
+      "id": "n-kr",
+      "type": "file",
+      "file": "datasets/한국 상장 ETF.md",
+      "x": -40,
+      "y": 20,
+      "width": 260,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-us",
+      "type": "file",
+      "file": "datasets/미국 상장 ETF.md",
+      "x": 260,
+      "y": 20,
+      "width": 260,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-w",
+      "type": "file",
+      "file": "datasets/ETF 편입비.md",
+      "x": 560,
+      "y": 20,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-ka",
+      "type": "file",
+      "file": "datasets/코스닥 액티브 ETF.md",
+      "x": 840,
+      "y": 20,
+      "width": 260,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-co",
+      "type": "file",
+      "file": "datasets/국가 ETF.md",
+      "x": 1140,
+      "y": 20,
+      "width": 220,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "g-news",
+      "type": "group",
+      "x": -80,
+      "y": 240,
+      "width": 560,
+      "height": 200,
+      "label": "뉴스 시계열",
+      "color": "4"
+    },
+    {
+      "id": "n-nlp",
+      "type": "file",
+      "file": "datasets/종목 뉴스 감성.md",
+      "x": 40,
+      "y": 300,
+      "width": 360,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "g-brief",
+      "type": "group",
+      "x": 520,
+      "y": 240,
+      "width": 440,
+      "height": 200,
+      "label": "롤링 + 아카이브",
+      "color": "5"
+    },
+    {
+      "id": "n-br",
+      "type": "file",
+      "file": "datasets/시황 브리프.md",
+      "x": 580,
+      "y": 300,
+      "width": 320,
+      "height": 100,
+      "color": "5"
+    },
+    {
+      "id": "g-mon",
+      "type": "group",
+      "x": -80,
+      "y": 500,
+      "width": 1480,
+      "height": 340,
+      "label": "모니터 · 일별 스냅샷 (prune 없음)",
+      "color": "4"
+    },
+    {
+      "id": "n-mf",
+      "type": "file",
+      "file": "datasets/글로벌 자금 흐름.md",
+      "x": -40,
+      "y": 560,
+      "width": 280,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-cftc",
+      "type": "file",
+      "file": "datasets/CFTC 포지션.md",
+      "x": 280,
+      "y": 560,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-cr",
+      "type": "file",
+      "file": "datasets/신용 자금.md",
+      "x": 560,
+      "y": 560,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-k100",
+      "type": "file",
+      "file": "datasets/코스닥100.md",
+      "x": -40,
+      "y": 700,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-esg",
+      "type": "file",
+      "file": "datasets/ESG 이벤트.md",
+      "x": 280,
+      "y": 700,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "n-mid",
+      "type": "file",
+      "file": "datasets/미 중간선거.md",
+      "x": 560,
+      "y": 700,
+      "width": 240,
+      "height": 100,
+      "color": "4"
+    },
+    {
+      "id": "g-ops",
+      "type": "group",
+      "x": 1000,
+      "y": 240,
+      "width": 400,
+      "height": 200,
+      "label": "운영"
+    },
+    {
+      "id": "n-sch",
+      "type": "file",
+      "file": "datasets/스케줄러.md",
+      "x": 1060,
+      "y": 300,
+      "width": 280,
+      "height": 100
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-kr-us",
+      "fromNode": "n-kr",
+      "fromSide": "right",
+      "toNode": "n-us",
+      "toSide": "left",
+      "label": "같은 수급 공식"
+    },
+    {
+      "id": "e-kr-mf",
+      "fromNode": "n-kr",
+      "fromSide": "bottom",
+      "toNode": "n-mf",
+      "toSide": "top",
+      "label": "합산 금지",
+      "color": "1"
+    },
+    {
+      "id": "e-us-mf",
+      "fromNode": "n-us",
+      "fromSide": "bottom",
+      "toNode": "n-mf",
+      "toSide": "top",
+      "label": "합산 금지",
+      "color": "1"
+    },
+    {
+      "id": "e-cftc-mf",
+      "fromNode": "n-cftc",
+      "fromSide": "left",
+      "toNode": "n-mf",
+      "toSide": "right",
+      "label": "Position"
+    },
+    {
+      "id": "e-nlp-k100",
+      "fromNode": "n-nlp",
+      "fromSide": "bottom",
+      "toNode": "n-k100",
+      "toSide": "top",
+      "label": "유니버스 겹침"
+    },
+    {
+      "id": "e-nlp-br",
+      "fromNode": "n-nlp",
+      "fromSide": "right",
+      "toNode": "n-br",
+      "toSide": "left",
+      "label": "원문 vs 가공"
+    },
+    {
+      "id": "e-esg-br",
+      "fromNode": "n-esg",
+      "fromSide": "top",
+      "toNode": "n-br",
+      "toSide": "bottom"
+    },
+    {
+      "id": "e-ka-k100",
+      "fromNode": "n-ka",
+      "fromSide": "bottom",
+      "toNode": "n-k100",
+      "toSide": "right",
+      "label": "펀드 vs 지수"
+    },
+    {
+      "id": "e-w-kr",
+      "fromNode": "n-w",
+      "fromSide": "left",
+      "toNode": "n-kr",
+      "toSide": "right",
+      "label": "비중 ≠ 수급"
+    }
+  ]
+}

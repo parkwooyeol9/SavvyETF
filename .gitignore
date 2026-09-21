@@ -56,3 +56,6 @@ data/credit_monitor/
 data/esg_events/
 fonts/*.ttf
 data/fonts/
+obsidian/.obsidian/workspace.json
+obsidian/.obsidian/workspace-mobile.json
+obsidian/.trash/
