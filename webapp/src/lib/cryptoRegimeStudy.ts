@@ -7,6 +7,12 @@
  * Uses OKX USDT-M perpetual 5m candles (crypto trades 24/7).
  */
 
+import {
+  classifySessionRegime,
+  LIVE_FETCH_MAX_PAGES,
+  LIVE_FETCH_TARGET_BARS,
+} from "@/lib/cryptoSessionRegime";
+
 export type CryptoRegimeId = "asia" | "us" | "weekend";
 
 export type RegimeStats = {
@@ -136,19 +142,22 @@ function densityHist(retsPct: number[]): Array<{ x_pct: number; density: number 
 type Bar = { ts: number; close: number };
 
 function regimeOf(ts: number): CryptoRegimeId | null {
-  const d = new Date(ts);
-  const dow = d.getUTCDay(); // 0 Sun .. 6 Sat
-  if (dow === 0 || dow === 6) return "weekend";
-  const minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
-  if (minutes >= 0 && minutes < 8 * 60) return "asia";
-  if (minutes >= 13 * 60 + 30 && minutes < 20 * 60) return "us";
-  return null; // weekday off-hours (EU overlap etc.) — excluded from a/b/c
+  const reg = classifySessionRegime(ts);
+  if (reg === "other") return null; // weekday off-hours — excluded from a/b/c
+  return reg;
 }
 
-async function fetchOkx5m(instId: string, target = 3_000): Promise<Bar[]> {
+async function fetchOkx5m(
+  instId: string,
+  target = LIVE_FETCH_TARGET_BARS,
+): Promise<Bar[]> {
   const out: Bar[] = [];
   let after: string | undefined;
-  for (let page = 0; page < 14 && out.length < target; page++) {
+  for (
+    let page = 0;
+    page < LIVE_FETCH_MAX_PAGES && out.length < target;
+    page++
+  ) {
     const qs = new URLSearchParams({
       instId,
       bar: "5m",

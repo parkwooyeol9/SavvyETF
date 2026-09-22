@@ -14,6 +14,14 @@
  */
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
+import {
+  ARCHIVE_MAX_BARS,
+  LIVE_FETCH_MAX_PAGES,
+  LIVE_FETCH_TARGET_BARS,
+  regimeVolSnapshot,
+  sizeFromRegimeVol,
+  type RegimeSizing,
+} from "@/lib/cryptoSessionRegime";
 
 export const MINUTE_FORECAST_R2_KEY = "minute_forecast/latest.json";
 
@@ -67,6 +75,12 @@ export type HorizonForecast = {
   signal: "buy" | "hold" | "sell";
   signal_ko: string;
   signal_note: string;
+  /** Regime-aware size (1 = full). Present for crypto; 1 for others. */
+  size_mult: number;
+  regime?: string;
+  regime_label_ko?: string;
+  regime_vol_pct?: number;
+  regime_sizing_note?: string;
 };
 
 export type AssetForecast = {
@@ -91,6 +105,7 @@ export type AssetForecast = {
     crps_4h_impr_pct: number | null;
   }>;
   methodology_note: string;
+  regime_sizing?: RegimeSizing | null;
   error?: string;
 };
 
@@ -190,6 +205,8 @@ export const MINUTE_FORECAST_METHODOLOGY: string[] = [
   "분할: walk-forward + purge + embargo + 최종 15% locked holdout(하이퍼파라미터 금지).",
   "베이스라인: historical 분위수 · EWMA 정규 · (연구) GARCH/LightGBM은 research/short_forecast.",
   "프로덕션 모델: 선형 분위수 + 베이스라인 수축(OOS CRPS). 복잡도↑는 기준모델을 이길 때만.",
+  "아카이브: OKX 5m을 R2에 최대 ~90일(26k봉)까지 누적·병합. 업데이트 시 깊게 재수집.",
+  "사이징: BTC는 아시아/미국/주말 레짐 σ 대비 역변동성 배수(size_mult)로 시그널 임계·관망 강화.",
   "PDF/경로: 분위수 질량→밀도, √t 브리지 경로. conformal coverage 조정.",
   "비용: 연구 하네스에서 fee+spread+funding+1봉 지연 반영. 비교 횟수(comparison_count) 기록.",
 ];
@@ -319,8 +336,20 @@ function signalFromDist(
   pUp: number,
   medianPct: number,
   bandWidthPct: number,
+  sizeMult = 1,
 ): { signal: "buy" | "hold" | "sell"; signal_ko: string; signal_note: string } {
   const edge = Math.abs(pUp - 0.5);
+  const buyThr = 0.58 + Math.max(0, 1 - sizeMult) * 0.1;
+  const sellThr = 0.42 - Math.max(0, 1 - sizeMult) * 0.1;
+  const medThr = 0.05 * (0.7 + 0.3 * sizeMult);
+
+  if (sizeMult < 0.5 && edge < 0.14) {
+    return {
+      signal: "hold",
+      signal_ko: "관망(고변동 레짐)",
+      signal_note: `레짐 사이즈×${sizeMult.toFixed(2)} · 확신 부족 (P↑=${(pUp * 100).toFixed(0)}%)`,
+    };
+  }
   if (bandWidthPct > 2.5 && edge < 0.12) {
     return {
       signal: "hold",
@@ -328,24 +357,24 @@ function signalFromDist(
       signal_note: "예측 구간이 넓어 확신이 낮음",
     };
   }
-  if (pUp >= 0.58 && medianPct > 0.05) {
+  if (pUp >= buyThr && medianPct > medThr) {
     return {
       signal: "buy",
-      signal_ko: "매수 우세",
-      signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}%`,
+      signal_ko: sizeMult < 0.85 ? "매수(축소)" : "매수 우세",
+      signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}% · 사이즈×${sizeMult.toFixed(2)}`,
     };
   }
-  if (pUp <= 0.42 && medianPct < -0.05) {
+  if (pUp <= sellThr && medianPct < -medThr) {
     return {
       signal: "sell",
-      signal_ko: "매도 우세",
-      signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}%`,
+      signal_ko: sizeMult < 0.85 ? "매도(축소)" : "매도 우세",
+      signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}% · 사이즈×${sizeMult.toFixed(2)}`,
     };
   }
   return {
     signal: "hold",
     signal_ko: "관망",
-    signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}%`,
+    signal_note: `P(상승)=${(pUp * 100).toFixed(0)}% · 중앙 ${medianPct.toFixed(2)}% · 사이즈×${sizeMult.toFixed(2)}`,
   };
 }
 
@@ -353,11 +382,11 @@ function signalFromDist(
 
 async function fetchOkxBars5m(
   instId: string,
-  targetBars = 4_000,
+  targetBars = LIVE_FETCH_TARGET_BARS,
 ): Promise<OhlcvBar[]> {
   const out: OhlcvBar[] = [];
   let after: string | undefined;
-  const maxPages = 20;
+  const maxPages = LIVE_FETCH_MAX_PAGES;
   for (let page = 0; page < maxPages && out.length < targetBars; page++) {
     const qs = new URLSearchParams({
       instId,
@@ -365,7 +394,6 @@ async function fetchOkxBars5m(
       limit: "300",
     });
     if (after) qs.set("after", after);
-    // history-candles covers deeper archive than /candles
     const path =
       page === 0 && !after
         ? "candles"
@@ -390,13 +418,16 @@ async function fetchOkxBars5m(
       const vol = Number(row[5]);
       const confirm = row[8] != null ? Number(row[8]) : 1;
       if (![ts, o, h, l, c].every(Number.isFinite)) continue;
-      if (confirm === 0) continue; // unfinished candle
+      if (confirm === 0) continue;
       out.push({ ts, open: o, high: h, low: l, close: c, volume: vol || 0 });
     }
     const oldest = rows[rows.length - 1];
     if (!oldest) break;
     after = String(oldest[0]);
     if (rows.length < 50) break;
+    if (page > 0 && page % 5 === 0) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
   }
   out.sort((a, b) => a.ts - b.ts);
   const seen = new Set<number>();
@@ -405,7 +436,6 @@ async function fetchOkxBars5m(
     seen.add(b.ts);
     return true;
   });
-  // Drop trailing bar if wall-clock window not finished
   const now = Date.now();
   return deduped.filter((b) => b.ts + 5 * 60_000 <= now);
 }
@@ -495,7 +525,7 @@ async function saveCachedBars(
   bars: OhlcvBar[],
 ): Promise<void> {
   if (!r2Configured() || !bars.length) return;
-  const trimmed = bars.slice(-8_000);
+  const trimmed = bars.slice(-ARCHIVE_MAX_BARS);
   await r2PutObject(
     `${MINUTE_FORECAST_R2_KEY.replace(/\/latest\.json$/, "")}/bars/${id}.json`,
     JSON.stringify(trimmed),
@@ -523,15 +553,19 @@ async function loadBars(
     live = await fetchYahooBars5m(spec.yahoo || spec.symbol);
     source = `Yahoo ${spec.yahoo || spec.symbol} 5m`;
   }
-  const bars = mergeBars(cached, live);
-  if (bars.length > cached.length) {
+  const bars = mergeBars(cached, live).slice(-ARCHIVE_MAX_BARS);
+  if (bars.length) {
     try {
       await saveCachedBars(spec.id, bars);
     } catch {
       // optional
     }
   }
-  if (cached.length) source += ` · R2 archive ${cached.length}bars`;
+  if (cached.length) {
+    source += ` · R2 archive ${cached.length}→${bars.length}bars`;
+  } else {
+    source += ` · live ${bars.length}bars`;
+  }
   return { bars, source };
 }
 
@@ -961,6 +995,7 @@ function buildHorizonForecast(
   },
   baselineSig: number,
   assetSource: string,
+  sizing: RegimeSizing | null,
 ): HorizonForecast {
   let qLog = predictQuantiles(qm, liveX);
   qLog = conformalAdjust(qLog, metrics.coverage_90);
@@ -976,7 +1011,8 @@ function buildHorizonForecast(
   const expected = mean(qLog) * 100;
   const medianPct = qPct[2]!;
   const band = qPct[4]! - qPct[0]!;
-  const sig = signalFromDist(pUp, medianPct, band);
+  const sizeMult = sizing?.size_mult ?? 1;
+  const sig = signalFromDist(pUp, medianPct, band, sizeMult);
 
   const crpsImpr =
     metrics.crps_baseline != null &&
@@ -997,7 +1033,8 @@ function buildHorizonForecast(
     `분위수 간격으로 밀도 재구성` +
     (metrics.coverage_90 != null
       ? ` · OOS 90% coverage ${(metrics.coverage_90 * 100).toFixed(0)}%로 밴드 conformal`
-      : "");
+      : "") +
+    (sizing ? ` · ${sizing.note_ko}` : "");
 
   const basis_path =
     `동일 호라이즌 분위수(중앙·q05·q95)를 시간 축에 펼침: ` +
@@ -1026,6 +1063,11 @@ function buildHorizonForecast(
     signal: sig.signal,
     signal_ko: sig.signal_ko,
     signal_note: sig.signal_note,
+    size_mult: sizeMult,
+    regime: sizing?.regime,
+    regime_label_ko: sizing?.regime_label_ko,
+    regime_vol_pct: sizing?.regime_vol_pct,
+    regime_sizing_note: sizing?.note_ko,
   };
 }
 
@@ -1176,6 +1218,15 @@ async function forecastAsset(
       return { ...base, fold_summary, error: "최신 feature를 만들지 못했습니다." };
     }
 
+    // BTC: inverse-vol size vs asia/us/weekend σ; GLD/WTI keep full size.
+    let sizing: RegimeSizing | null = null;
+    if (spec.id === "btc") {
+      const vols = regimeVolSnapshot(bars);
+      sizing = sizeFromRegimeVol(last.ts, vols);
+      base.regime_sizing = sizing;
+      base.methodology_note += ` · ${sizing.note_ko}`;
+    }
+
     const h1 = buildHorizonForecast(
       "1h",
       H1_BARS,
@@ -1184,6 +1235,7 @@ async function forecastAsset(
       a1,
       sig,
       base.source,
+      sizing,
     );
     const h4 = buildHorizonForecast(
       "4h",
@@ -1193,6 +1245,7 @@ async function forecastAsset(
       a4,
       sig,
       base.source,
+      sizing,
     );
 
     return {

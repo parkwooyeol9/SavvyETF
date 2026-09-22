@@ -137,7 +137,15 @@ function AssetCard({
         </span>
       </div>
       <p className="meta-soft" style={{ marginTop: 0 }}>
-        {h.signal_note} · 가격{" "}
+        {h.signal_note}
+        {h.size_mult != null && h.size_mult !== 1
+          ? ` · 사이즈×${h.size_mult.toFixed(2)}`
+          : ""}
+        {h.regime_label_ko ? ` · ${h.regime_label_ko}` : ""}
+        {h.regime_vol_pct != null
+          ? ` σ=${h.regime_vol_pct.toFixed(3)}%`
+          : ""}{" "}
+        · 가격{" "}
         {asset.price != null
           ? asset.price.toLocaleString("en-US", {
               maximumFractionDigits: asset.price >= 100 ? 1 : 3,
@@ -145,6 +153,11 @@ function AssetCard({
           : "—"}{" "}
         · 봉 시각 {fmtWhen(asset.as_of)}
       </p>
+      {h.regime_sizing_note ? (
+        <p className="meta-soft" style={{ marginTop: 4, fontSize: "0.85em" }}>
+          {h.regime_sizing_note}
+        </p>
+      ) : null}
 
       <div className="table-wrap" style={{ marginBottom: 12 }}>
         <table className="data-table">
