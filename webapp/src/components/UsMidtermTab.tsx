@@ -215,6 +215,8 @@ export default function UsMidtermTab() {
   const [data, setData] = useState<MidtermPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const [excelError, setExcelError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -238,6 +240,30 @@ export default function UsMidtermTab() {
     const id = window.setInterval(() => void load(), 5 * 60_000);
     return () => window.clearInterval(id);
   }, [load]);
+
+  async function downloadExcel() {
+    if (excelBusy) return;
+    setExcelBusy(true);
+    setExcelError(null);
+    try {
+      const res = await fetch("/api/us-midterm/excel");
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as MidtermPayload | null;
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = match?.[1] || "savvyetf-us-midterm.xlsx";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (exc) {
+      setExcelError(exc instanceof Error ? exc.message : "엑셀 다운로드 실패");
+    } finally {
+      setExcelBusy(false);
+    }
+  }
 
   const hist = useMemo(() => {
     return (data?.seat_histogram || []).map((b) => ({
@@ -287,11 +313,23 @@ export default function UsMidtermTab() {
                 : ""}
             </p>
           </div>
-          <div className="midterm-countdown">
-            <span>D-{data?.days_to_election ?? "—"}</span>
-            <em>11월 3일</em>
+          <div className="midterm-head-actions">
+            <button
+              type="button"
+              className="eventstudy-example-btn primary"
+              onClick={() => void downloadExcel()}
+              disabled={excelBusy || loading}
+            >
+              {excelBusy ? "엑셀 만드는 중…" : "엑셀 다운로드"}
+            </button>
+            <div className="midterm-countdown">
+              <span>D-{data?.days_to_election ?? "—"}</span>
+              <em>11월 3일</em>
+            </div>
           </div>
         </div>
+
+        {excelError ? <p className="empty warn">{excelError}</p> : null}
 
         {loading && !data ? <p className="empty">예보·시장 불러오는 중…</p> : null}
         {error ? <p className="empty warn">{error}</p> : null}

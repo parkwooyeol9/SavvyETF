@@ -7182,6 +7182,13 @@ button.country-etf-card {
   min-width: 5.5rem;
 }
 
+.midterm-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
 .midterm-countdown span {
   font-family: var(--display);
   font-size: 2rem;
