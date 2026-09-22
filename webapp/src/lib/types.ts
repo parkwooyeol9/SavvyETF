@@ -42,6 +42,7 @@ export type ShellTabId =
   | "signals"
   | "eventstudy"
   | "aiport"
+  | "minutepred"
   | "nlp"
   | "nlphistory"
   | "graph"
@@ -130,6 +131,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "ideas",
   "weightopt",
   "aiport",
+  "minutepred",
   "nlp",
   "nlphistory",
   "graph",
@@ -207,6 +209,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   kosdaq100: "코스닥100",
   moneyflow: "자금 흐름",
   aiport: "AI포트",
+  minutepred: "분봉예측",
   nlp: "NLP",
   nlphistory: "NLP",
   graph: "밸류체인",
@@ -264,7 +267,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport"],
+    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport", "minutepred"],
     nested: [
       {
         id: "politics",
@@ -309,6 +312,7 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "bookclubboard",
   "datacatalog",
   "heatpick",
+  "minutepred",
   "round",
   "signals",
 ];

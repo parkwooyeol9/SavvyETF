@@ -43,6 +43,10 @@ export const MoneyFlowTab = dynamic(() => import("@/components/MoneyFlowTab"), {
 export const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading });
 export const UsPortfolioTab = dynamic(() => import("@/components/UsPortfolioTab"), { loading });
 export const AiPortTab = dynamic(() => import("@/components/AiPortTab"), { loading });
+export const MinuteForecastTab = dynamic(
+  () => import("@/components/MinuteForecastTab"),
+  { loading },
+);
 export const CorridorTab = dynamic(() => import("@/components/CorridorTab"), { loading });
 export const UsMarketTab = dynamic(() => import("@/components/UsMarketTab"), { loading });
 export const UsMidtermTab = dynamic(() => import("@/components/UsMidtermTab"), { loading });

@@ -3148,6 +3148,18 @@ a.geo-choke-hl:hover {
   margin-bottom: 0.85rem;
 }
 
+.minutepred-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .minutepred-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .feature-title {
   margin: 0 0 0.35rem;
   font-family: var(--display);

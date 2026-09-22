@@ -45,6 +45,7 @@ import {
   SimulateTab,
   UsPortfolioTab,
   AiPortTab,
+  MinuteForecastTab,
   CorridorTab,
   UsMarketTab,
   UsMidtermTab,
@@ -205,7 +206,7 @@ function DashboardInner({
     if (!ready) return;
     if (!isAdminOnlyTab(tab) || unlocked) return;
     // AI포트 stays next to AI Pick; 나머지는 같은 대분류의 첫 공개 탭으로.
-    if (tab === "aiport") {
+    if (tab === "aiport" || tab === "minutepred") {
       setTab("ideas");
       return;
     }
@@ -365,6 +366,7 @@ function DashboardInner({
       tab === "countryetf" ||
       tab === "etf" ||
       tab === "aiport" ||
+      tab === "minutepred" ||
       tab === "nlp" ||
       tab === "nlphistory" ||
       tab === "graph" ||
@@ -504,6 +506,8 @@ function DashboardInner({
         <WeightOptimizeTab />
       ) : tab === "aiport" ? (
         unlocked ? <AiPortTab /> : null
+      ) : tab === "minutepred" ? (
+        unlocked ? <MinuteForecastTab /> : null
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (
