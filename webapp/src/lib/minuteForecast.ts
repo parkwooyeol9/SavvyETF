@@ -107,6 +107,8 @@ export type MinuteForecastPayload = {
   /** Seconds until next POST is allowed (when cooldown active). */
   cooldown_remaining_sec?: number;
   next_update_after?: string | null;
+  /** Research comparison counter (production path increments fold×model evals). */
+  comparison_count?: number;
 };
 
 const UA =
@@ -140,44 +142,56 @@ const ASSET_SPECS: Array<{
   symbol: string;
   label: string;
   kind: "okx" | "yahoo";
+  instrument: string;
   yahoo?: string;
   okx?: string;
+  /** Session-aware labels: reject horizons that cross a gap > maxGapBars. */
+  session_aware: boolean;
+  max_gap_bars: number;
 }> = [
   {
     id: "btc",
     symbol: "BTCUSDT.P",
-    label: "Bitcoin",
+    label: "Bitcoin perp (not spot)",
     kind: "okx",
+    instrument: "OKX BTC-USDT-SWAP USDT-M perpetual — not BTC-USD spot",
     okx: "BTC-USDT-SWAP",
+    session_aware: false,
+    max_gap_bars: 3,
   },
   {
     id: "gld",
     symbol: "GLD",
-    label: "Gold ETF",
+    label: "SPDR Gold Shares ETF",
     kind: "yahoo",
+    instrument: "Yahoo GLD equity ETF (NYSE Arca RTH) — not GC futures",
     yahoo: "GLD",
+    session_aware: true,
+    max_gap_bars: 3,
   },
   {
     id: "wti",
     symbol: "CL=F",
-    label: "WTI Crude",
+    label: "WTI continuous future",
     kind: "yahoo",
+    instrument:
+      "Yahoo CL=F continuous front — roll jumps not back-adjusted; treat as distorted near rolls",
     yahoo: "CL=F",
+    session_aware: true,
+    max_gap_bars: 3,
   },
 ];
 
 export const MINUTE_FORECAST_METHODOLOGY: string[] = [
-  "입력: 5분 OHLCV (BTC=OKX 퍼프, GLD/WTI=Yahoo) · R2에 분봉 아카이브를 누적·병합.",
-  "라벨: t 종가 기준 다음 1시간(12봉)·4시간(48봉) 로그수익률.",
-  "분할: walk-forward 3-fold + purge(horizon) + embargo(12봉).",
-  "베이스라인: EWMA 변동성 조건부 정규분포.",
-  "모델: 선형 분위수 회귀(pinball SGD) q05/25/50/75/95.",
-  "PDF: 분위수 간격에 질량을 배분해 이산 밀도 곡선으로 표시.",
-  "경로: 중앙은 선형·밴드는 √t 확산(브리지)으로 분 단위 누적 수익 근사.",
-  "보정: OOS CRPS 기준 베이스라인 수축 + 경험적 90% coverage로 밴드 폭 conformal 조정.",
-  "검증: pinball, CRPS, 90% PI coverage, Brier, 방향 적중.",
-  "시그널: P(r>0)·중앙값·밴드 폭으로 buy/hold/sell (교육용).",
-  "업데이트: 공개 API · 2분 cooldown으로 중복 재계산 제한.",
+  "상품 구분: BTC=OKX 무기한 선물(현물 아님), GLD=주식형 ETF, WTI=Yahoo CL=F 연속선물(롤 왜곡 주의).",
+  "QC: 미완성 봉(confirm=0)·중복 ts 제거, 갭 점검. GLD/WTI는 거래시간 연속성 기준 라벨.",
+  "입력: 5분 OHLCV (+BTC 펀딩비 asof) · R2 분봉 아카이브 병합.",
+  "라벨: 벽시계 +1h/+4h 로그수익(타임스탬프 매칭). 1h·4h 라벨 overlap → purge.",
+  "분할: walk-forward + purge + embargo + 최종 15% locked holdout(하이퍼파라미터 금지).",
+  "베이스라인: historical 분위수 · EWMA 정규 · (연구) GARCH/LightGBM은 research/short_forecast.",
+  "프로덕션 모델: 선형 분위수 + 베이스라인 수축(OOS CRPS). 복잡도↑는 기준모델을 이길 때만.",
+  "PDF/경로: 분위수 질량→밀도, √t 브리지 경로. conformal coverage 조정.",
+  "비용: 연구 하네스에서 fee+spread+funding+1봉 지연 반영. 비교 횟수(comparison_count) 기록.",
 ];
 
 export const UPDATE_COOLDOWN_MS = 120_000;
@@ -374,7 +388,9 @@ async function fetchOkxBars5m(
       const l = Number(row[3]);
       const c = Number(row[4]);
       const vol = Number(row[5]);
+      const confirm = row[8] != null ? Number(row[8]) : 1;
       if (![ts, o, h, l, c].every(Number.isFinite)) continue;
+      if (confirm === 0) continue; // unfinished candle
       out.push({ ts, open: o, high: h, low: l, close: c, volume: vol || 0 });
     }
     const oldest = rows[rows.length - 1];
@@ -384,11 +400,14 @@ async function fetchOkxBars5m(
   }
   out.sort((a, b) => a.ts - b.ts);
   const seen = new Set<number>();
-  return out.filter((b) => {
+  const deduped = out.filter((b) => {
     if (seen.has(b.ts)) return false;
     seen.add(b.ts);
     return true;
   });
+  // Drop trailing bar if wall-clock window not finished
+  const now = Date.now();
+  return deduped.filter((b) => b.ts + 5 * 60_000 <= now);
 }
 
 async function fetchYahooBars5m(symbol: string): Promise<OhlcvBar[]> {
@@ -531,20 +550,51 @@ function conformalAdjust(
 
 /* ---------- features / labels ---------- */
 
-function buildSamples(bars: OhlcvBar[]): Sample[] {
+function horizonIndex(
+  bars: OhlcvBar[],
+  i: number,
+  horizonMs: number,
+  sessionAware: boolean,
+  maxGapBars: number,
+): number | null {
+  const target = bars[i]!.ts + horizonMs;
+  let j = i + 1;
+  while (j < bars.length && bars[j]!.ts < target) j += 1;
+  if (j >= bars.length) return null;
+  if (sessionAware) {
+    const maxGap = maxGapBars * 5 * 60_000 * 4; // ~1h gap tolerance inside path
+    for (let k = i + 1; k <= j; k++) {
+      if (bars[k]!.ts - bars[k - 1]!.ts > maxGap) return null;
+    }
+  }
+  return j;
+}
+
+function buildSamples(
+  bars: OhlcvBar[],
+  opts?: { sessionAware?: boolean; maxGapBars?: number },
+): Sample[] {
+  const sessionAware = Boolean(opts?.sessionAware);
+  const maxGapBars = opts?.maxGapBars ?? 3;
   const n = bars.length;
   if (n < H4_BARS + 80) return [];
   const closes = bars.map((b) => b.close);
   const vols = bars.map((b) => b.volume);
   const samples: Sample[] = [];
+  const H1_MS = 60 * 60_000;
+  const H4_MS = 4 * 60 * 60_000;
 
-  for (let i = 60; i < n - H4_BARS; i++) {
+  for (let i = 60; i < n - 2; i++) {
     const c = closes[i]!;
     const c1 = closes[i - 1]!;
     const c3 = closes[i - 3]!;
     const c12 = closes[i - 12]!;
     const c48 = closes[i - 48]!;
     if (!(c > 0 && c1 > 0 && c3 > 0 && c12 > 0 && c48 > 0)) continue;
+
+    const j1 = horizonIndex(bars, i, H1_MS, sessionAware, maxGapBars);
+    const j4 = horizonIndex(bars, i, H4_MS, sessionAware, maxGapBars);
+    if (j1 == null || j4 == null) continue;
 
     const rets: number[] = [];
     for (let k = i - 47; k <= i; k++) {
@@ -556,8 +606,7 @@ function buildSamples(bars: OhlcvBar[]): Sample[] {
     const rv48 = Math.sqrt(rets.reduce((a, r) => a + r * r, 0) / 48);
 
     const bar = bars[i]!;
-    const rangePct =
-      c > 0 ? (bar.high - bar.low) / c : 0;
+    const rangePct = c > 0 ? (bar.high - bar.low) / c : 0;
     const volWindow = vols.slice(i - 47, i + 1);
     const vMean = mean(volWindow);
     const vStd = std(volWindow) || 1;
@@ -568,8 +617,8 @@ function buildSamples(bars: OhlcvBar[]): Sample[] {
     const hourSin = Math.sin((2 * Math.PI * hour) / 24);
     const hourCos = Math.cos((2 * Math.PI * hour) / 24);
 
-    const y1 = logRet(c, closes[i + H1_BARS]!);
-    const y4 = logRet(c, closes[i + H4_BARS]!);
+    const y1 = logRet(c, closes[j1]!);
+    const y4 = logRet(c, closes[j4]!);
     if (![y1, y4].every(Number.isFinite)) continue;
 
     samples.push({
@@ -797,24 +846,23 @@ function makeFolds(samples: Sample[], nFolds = 3): Fold[] {
   if (samples.length < 200) return [];
   const folds: Fold[] = [];
   const n = samples.length;
-  const emb = 12; // bars of samples ≈ embargo
-  const purge1 = H1_BARS;
-  const purge4 = H4_BARS;
-  const purge = Math.max(purge1, purge4);
+  // Locked holdout: last 15% never enters fold test (selection / weight tuning)
+  const holdoutStart = Math.floor(n * 0.85);
+  const usable = holdoutStart;
+  const emb = 12;
+  const purge = Math.max(H1_BARS, H4_BARS);
 
   for (let f = 0; f < nFolds; f++) {
-    // expanding train, contiguous test slices in the last 45% of data
-    const testStartFrac = 0.55 + (f * 0.12);
-    const testEndFrac = Math.min(0.55 + (f + 1) * 0.12, 0.97);
-    const t0 = Math.floor(n * testStartFrac);
-    const t1 = Math.floor(n * testEndFrac);
+    const testStartFrac = 0.55 + f * 0.1;
+    const testEndFrac = Math.min(0.55 + (f + 1) * 0.1, 0.84);
+    const t0 = Math.floor(usable * testStartFrac);
+    const t1 = Math.floor(usable * testEndFrac);
     if (t1 - t0 < 40) continue;
 
     const trainEnd = t0 - emb;
     const train: Sample[] = [];
     for (let i = 0; i < trainEnd; i++) {
       const s = samples[i]!;
-      // purge: drop train samples whose label window overlaps test start
       if (s.i + purge >= samples[t0]!.i) continue;
       train.push(s);
     }
@@ -1017,7 +1065,12 @@ async function forecastAsset(
     base.price = last.close;
     base.as_of = new Date(last.ts).toISOString();
 
-    const samples = buildSamples(bars);
+    const samples = buildSamples(bars, {
+      sessionAware: spec.session_aware,
+      maxGapBars: spec.max_gap_bars,
+    });
+    base.methodology_note = `${spec.instrument} · session_aware=${spec.session_aware} · walk-forward+holdout`;
+    base.source = `${source} · ${spec.instrument}`;
     if (samples.length < 200) {
       return {
         ...base,
