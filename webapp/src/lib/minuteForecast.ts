@@ -57,8 +57,13 @@ export type HorizonForecast = {
   coverage_90: number | null;
   brier: number | null;
   direction_hit: number | null;
+  model_weight_pct: number;
   density: DensityPoint[];
   path: PathPoint[];
+  /** Short Korean note: what the PDF is based on. */
+  basis_pdf: string;
+  /** Short Korean note: what the path band is based on. */
+  basis_path: string;
   signal: "buy" | "hold" | "sell";
   signal_ko: string;
   signal_note: string;
@@ -99,6 +104,9 @@ export type MinuteForecastPayload = {
   disclaimer: string;
   error?: string;
   cached?: boolean;
+  /** Seconds until next POST is allowed (when cooldown active). */
+  cooldown_remaining_sec?: number;
+  next_update_after?: string | null;
 };
 
 const UA =
@@ -159,16 +167,20 @@ const ASSET_SPECS: Array<{
 ];
 
 export const MINUTE_FORECAST_METHODOLOGY: string[] = [
-  "입력: 5분 OHLCV (BTC=OKX 퍼프, GLD/WTI=Yahoo).",
+  "입력: 5분 OHLCV (BTC=OKX 퍼프, GLD/WTI=Yahoo) · R2에 분봉 아카이브를 누적·병합.",
   "라벨: t 종가 기준 다음 1시간(12봉)·4시간(48봉) 로그수익률.",
   "분할: walk-forward 3-fold + purge(horizon) + embargo(12봉).",
-  "베이스라인: EWMA 변동성 조건부 정규분포 PDF.",
-  "모델: 선형 분위수 회귀(pinball SGD) q05/25/50/75/95 → 이산 PDF.",
-  "보정: OOS CRPS가 EWMA 베이스라인보다 나쁘면 예측을 베이스라인 쪽으로 수축.",
-  "경로: 분위수 브리지(중앙·10–90% 밴드)로 분 단위 경로 근사.",
-  "검증: pinball, CRPS 근사, 90% PI coverage, Brier, 방향 적중.",
+  "베이스라인: EWMA 변동성 조건부 정규분포.",
+  "모델: 선형 분위수 회귀(pinball SGD) q05/25/50/75/95.",
+  "PDF: 분위수 간격에 질량을 배분해 이산 밀도 곡선으로 표시.",
+  "경로: 중앙은 선형·밴드는 √t 확산(브리지)으로 분 단위 누적 수익 근사.",
+  "보정: OOS CRPS 기준 베이스라인 수축 + 경험적 90% coverage로 밴드 폭 conformal 조정.",
+  "검증: pinball, CRPS, 90% PI coverage, Brier, 방향 적중.",
   "시그널: P(r>0)·중앙값·밴드 폭으로 buy/hold/sell (교육용).",
+  "업데이트: 공개 API · 2분 cooldown으로 중복 재계산 제한.",
 ];
+
+export const UPDATE_COOLDOWN_MS = 120_000;
 
 export const MINUTE_FORECAST_DISCLAIMER =
   "교육·연구용 분포 추정입니다. 투자 자문·자동매매가 아니며, 실시간 체결을 보장하지 않습니다.";
@@ -436,15 +448,85 @@ async function fetchYahooBars5m(symbol: string): Promise<OhlcvBar[]> {
   return out.sort((a, b) => a.ts - b.ts);
 }
 
+async function loadCachedBars(
+  id: MinuteForecastAssetId,
+): Promise<OhlcvBar[]> {
+  if (!r2Configured()) return [];
+  try {
+    const text = await r2GetObjectText(
+      `${MINUTE_FORECAST_R2_KEY.replace(/\/latest\.json$/, "")}/bars/${id}.json`,
+    );
+    if (!text) return [];
+    const rows = JSON.parse(text) as OhlcvBar[];
+    if (!Array.isArray(rows)) return [];
+    return rows.filter(
+      (b) =>
+        b &&
+        Number.isFinite(b.ts) &&
+        Number.isFinite(b.close) &&
+        b.close > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function saveCachedBars(
+  id: MinuteForecastAssetId,
+  bars: OhlcvBar[],
+): Promise<void> {
+  if (!r2Configured() || !bars.length) return;
+  const trimmed = bars.slice(-8_000);
+  await r2PutObject(
+    `${MINUTE_FORECAST_R2_KEY.replace(/\/latest\.json$/, "")}/bars/${id}.json`,
+    JSON.stringify(trimmed),
+    "application/json; charset=utf-8",
+    "private, max-age=300",
+  );
+}
+
+function mergeBars(a: OhlcvBar[], b: OhlcvBar[]): OhlcvBar[] {
+  const map = new Map<number, OhlcvBar>();
+  for (const bar of [...a, ...b]) map.set(bar.ts, bar);
+  return [...map.values()].sort((x, y) => x.ts - y.ts);
+}
+
 async function loadBars(
   spec: (typeof ASSET_SPECS)[number],
 ): Promise<{ bars: OhlcvBar[]; source: string }> {
+  const cached = await loadCachedBars(spec.id);
+  let live: OhlcvBar[] = [];
+  let source = "";
   if (spec.kind === "okx" && spec.okx) {
-    const bars = await fetchOkxBars5m(spec.okx);
-    return { bars, source: `OKX ${spec.okx} 5m` };
+    live = await fetchOkxBars5m(spec.okx);
+    source = `OKX ${spec.okx} 5m`;
+  } else {
+    live = await fetchYahooBars5m(spec.yahoo || spec.symbol);
+    source = `Yahoo ${spec.yahoo || spec.symbol} 5m`;
   }
-  const bars = await fetchYahooBars5m(spec.yahoo || spec.symbol);
-  return { bars, source: `Yahoo ${spec.yahoo || spec.symbol} 5m` };
+  const bars = mergeBars(cached, live);
+  if (bars.length > cached.length) {
+    try {
+      await saveCachedBars(spec.id, bars);
+    } catch {
+      // optional
+    }
+  }
+  if (cached.length) source += ` · R2 archive ${cached.length}bars`;
+  return { bars, source };
+}
+
+/** Widen/narrow q05–q95 around median so OOS coverage ≈ 90%. */
+function conformalAdjust(
+  qLog: number[],
+  coverage90: number | null,
+  target = 0.9,
+): number[] {
+  if (coverage90 == null || !(coverage90 > 0)) return qLog;
+  const scale = clamp(target / clamp(coverage90, 0.55, 0.99), 0.75, 1.35);
+  if (Math.abs(scale - 1) < 0.02) return qLog;
+  const med = qLog[2]!;
+  return qLog.map((q, i) => (i === 2 ? q : med + (q - med) * scale));
 }
 
 /* ---------- features / labels ---------- */
@@ -830,8 +912,10 @@ function buildHorizonForecast(
     direction_hit: number | null;
   },
   baselineSig: number,
+  assetSource: string,
 ): HorizonForecast {
-  const qLog = predictQuantiles(qm, liveX);
+  let qLog = predictQuantiles(qm, liveX);
+  qLog = conformalAdjust(qLog, metrics.coverage_90);
   const levels = QUANTILE_LEVELS as number[];
   const qPct = qLog.map((v) => v * 100);
   const quantiles_pct: Record<string, number> = {};
@@ -855,8 +939,21 @@ function buildHorizonForecast(
         100
       : null;
 
-  // mild blend toward baseline if model is unstable
+  const wPct = Math.round(qm.modelWeight * 100);
+  const basePct = 100 - wPct;
   void baselineSig;
+
+  const basis_pdf =
+    `5분봉(${assetSource}) 모멘텀·실현변동성·거래량z·시각 feature → ` +
+    `선형 분위수 회귀 q05–q95(${wPct}%) + EWMA 정규(${basePct}%) 혼합 · ` +
+    `분위수 간격으로 밀도 재구성` +
+    (metrics.coverage_90 != null
+      ? ` · OOS 90% coverage ${(metrics.coverage_90 * 100).toFixed(0)}%로 밴드 conformal`
+      : "");
+
+  const basis_path =
+    `동일 호라이즌 분위수(중앙·q05·q95)를 시간 축에 펼침: ` +
+    `중앙은 선형 누적, 밴드는 √t 확산(브리지) · ${barsAhead}×5분=${horizon}`;
 
   return {
     horizon,
@@ -873,8 +970,11 @@ function buildHorizonForecast(
     coverage_90: metrics.coverage_90,
     brier: metrics.brier,
     direction_hit: metrics.direction_hit,
+    model_weight_pct: wPct,
     density: densityFromQuantiles(levels, qPct),
     path: pathFromQuantiles(barsAhead, qLog[0]!, qLog[2]!, qLog[4]!),
+    basis_pdf,
+    basis_path,
     signal: sig.signal,
     signal_ko: sig.signal_ko,
     signal_note: sig.signal_note,
@@ -1023,8 +1123,24 @@ async function forecastAsset(
       return { ...base, fold_summary, error: "최신 feature를 만들지 못했습니다." };
     }
 
-    const h1 = buildHorizonForecast("1h", H1_BARS, liveX, qm1, a1, sig);
-    const h4 = buildHorizonForecast("4h", H4_BARS, liveX, qm4, a4, sig);
+    const h1 = buildHorizonForecast(
+      "1h",
+      H1_BARS,
+      liveX,
+      qm1,
+      a1,
+      sig,
+      base.source,
+    );
+    const h4 = buildHorizonForecast(
+      "4h",
+      H4_BARS,
+      liveX,
+      qm4,
+      a4,
+      sig,
+      base.source,
+    );
 
     return {
       ...base,

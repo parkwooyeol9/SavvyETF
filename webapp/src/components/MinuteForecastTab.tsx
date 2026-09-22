@@ -13,7 +13,6 @@ import {
   AreaChart,
 } from "recharts";
 
-import { useAdminSession } from "@/components/AdminSession";
 import type {
   AssetForecast,
   HorizonForecast,
@@ -154,6 +153,7 @@ function AssetCard({
               <th>Coverage90</th>
               <th>Brier</th>
               <th>방향적중</th>
+              <th>모델비중</th>
             </tr>
           </thead>
           <tbody>
@@ -183,6 +183,7 @@ function AssetCard({
                   ? `${(h.direction_hit * 100).toFixed(0)}%`
                   : "—"}
               </td>
+              <td>{h.model_weight_pct}%</td>
             </tr>
           </tbody>
         </table>
@@ -193,6 +194,9 @@ function AssetCard({
           <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
             수익률 PDF ({horizonId})
           </h4>
+          <p className="meta-soft" style={{ marginTop: 0, marginBottom: 6 }}>
+            근거: {h.basis_pdf}
+          </p>
           <div style={{ width: "100%", height: 220 }}>
             <ResponsiveContainer>
               <AreaChart data={densityRows}>
@@ -224,6 +228,9 @@ function AssetCard({
           <h4 className="geo-section-title" style={{ fontSize: "0.95rem" }}>
             경로 밴드 ({horizonId})
           </h4>
+          <p className="meta-soft" style={{ marginTop: 0, marginBottom: 6 }}>
+            근거: {h.basis_path}
+          </p>
           <div style={{ width: "100%", height: 220 }}>
             <ResponsiveContainer>
               <ComposedChart data={pathRows}>
@@ -301,31 +308,22 @@ function AssetCard({
 }
 
 export default function MinuteForecastTab() {
-  const { secret, unlocked } = useAdminSession();
   const [data, setData] = useState<MinuteForecastPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [assetId, setAssetId] = useState<MinuteForecastAssetId>("btc");
   const [horizon, setHorizon] = useState<"1h" | "4h">("1h");
-
-  const authHeaders = useMemo(() => {
-    if (!secret) return {} as HeadersInit;
-    return { Authorization: `Bearer ${secret}` };
-  }, [secret]);
+  const [cooldown, setCooldown] = useState(0);
 
   const load = useCallback(async () => {
-    if (!unlocked || !secret) {
-      setLoading(false);
-      setError("관리자 로그인 후 이용할 수 있습니다.");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/minute-forecast", { headers: authHeaders });
+      const res = await fetch("/api/minute-forecast");
       const json = (await res.json()) as MinuteForecastPayload;
       setData(json);
+      setCooldown(json.cooldown_remaining_sec || 0);
       if (!json.ok && json.error) setError(json.error);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
@@ -333,23 +331,17 @@ export default function MinuteForecastTab() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, secret, unlocked]);
+  }, []);
 
   const update = useCallback(async () => {
-    if (!unlocked || !secret) {
-      setError("관리자 로그인 후 이용할 수 있습니다.");
-      return;
-    }
     setUpdating(true);
     setError(null);
     try {
-      const res = await fetch("/api/minute-forecast", {
-        method: "POST",
-        headers: authHeaders,
-      });
+      const res = await fetch("/api/minute-forecast", { method: "POST" });
       const json = (await res.json()) as MinuteForecastPayload;
       setData(json);
-      if (!json.ok) {
+      setCooldown(json.cooldown_remaining_sec || 0);
+      if (!res.ok || !json.ok) {
         setError(json.error || "계산 실패");
       }
     } catch (exc) {
@@ -357,33 +349,47 @@ export default function MinuteForecastTab() {
     } finally {
       setUpdating(false);
     }
-  }, [authHeaders, secret, unlocked]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = window.setInterval(() => {
+      setCooldown((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [cooldown]);
+
   const selected =
     data?.assets.find((a) => a.id === assetId) || data?.assets[0] || null;
+
+  const updateDisabled = updating || cooldown > 0;
 
   return (
     <div className="geo-tab macro-tab">
       <section className="feature-block">
       <div className="feature-head geo-head-row">
         <div>
-          <h2 className="feature-title">분봉예측</h2>
+          <h2 className="feature-title">단기예측</h2>
           <p className="macro-subhead">
             BTC · GLD · WTI 5분봉 → 다음 1시간/4시간 수익률 PDF·경로 추정
-            (walk-forward 분위수 회귀)
+            (walk-forward 분위수 회귀 · EWMA 보정)
           </p>
         </div>
         <button
           type="button"
           className="ghost-btn"
-          disabled={updating || !unlocked}
+          disabled={updateDisabled}
           onClick={() => void update()}
         >
-          {updating ? "계산 중…" : "업데이트"}
+          {updating
+            ? "계산 중…"
+            : cooldown > 0
+              ? `대기 ${cooldown}s`
+              : "업데이트"}
         </button>
       </div>
 
@@ -392,6 +398,7 @@ export default function MinuteForecastTab() {
           ? `계산 시각 ${fmtWhen(data.generated_at)}${data.cached ? " (캐시)" : ""}`
           : null}
         {data?.as_of_note ? ` · ${data.as_of_note}` : null}
+        {" · "}재계산은 2분마다 가능
       </p>
 
       {loading ? <p className="empty">불러오는 중…</p> : null}
