@@ -32,7 +32,7 @@ function ScenarioCard({ scenario }: { scenario: BudgetScenario }) {
       </header>
       <dl className="budget-scenario-dl">
         <div>
-          <dt>트리거</dt>
+          <dt>전개</dt>
           <dd>{scenario.trigger}</dd>
         </div>
         <div>
@@ -45,7 +45,7 @@ function ScenarioCard({ scenario }: { scenario: BudgetScenario }) {
         </div>
       </dl>
       <div className="budget-scenario-watch">
-        <span>관찰</span>
+        <span>관심</span>
         {scenario.watch.map((t) => (
           <code key={t}>{t}</code>
         ))}
@@ -82,15 +82,15 @@ export default function BudgetDelayScenarioPanel({ etfs }: { etfs?: MidtermEtf[]
     <section className="budget-delay-panel" aria-labelledby="budget-delay-title">
       <div className="budget-delay-head">
         <div>
-          <div className="budget-delay-kicker">FY2027 · Appropriations</div>
+          <div className="budget-delay-kicker">2027 회계연도 · 임시예산</div>
           <h3 id="budget-delay-title" className="geo-section-title">
-            예산안 지연 시나리오
+            예산안이 밀리면
           </h3>
           <p className="meta-soft">{ctx.headline}</p>
         </div>
-        <div className="budget-delay-countdown" aria-label="CR 만료까지">
+        <div className="budget-delay-countdown" aria-label="임시예산 만료까지">
           <span>D-{ctx.days_to_cliff}</span>
-          <em>CR ~12/11</em>
+          <em>~12/11</em>
         </div>
       </div>
 
@@ -104,9 +104,9 @@ export default function BudgetDelayScenarioPanel({ etfs }: { etfs?: MidtermEtf[]
         <div className="budget-delay-meta">
           <span>{ctx.bill}</span>
           <span>
-            CR {ctx.cr_start} → {ctx.cr_end} · 서명 {ctx.signed}
+            임시예산 {ctx.cr_start} → {ctx.cr_end} · 서명 {ctx.signed}
           </span>
-          <span>다음 클리프 {ctx.cliff_label}</span>
+          <span>다음 고비 {ctx.cliff_label}</span>
         </div>
       </article>
 
@@ -118,17 +118,17 @@ export default function BudgetDelayScenarioPanel({ etfs }: { etfs?: MidtermEtf[]
 
       <div className="budget-delay-lower">
         <article className="budget-history">
-          <h4>과거 셧다운·채무한도와 시장</h4>
+          <h4>과거에는 어땠나</h4>
           <div className="deriv-table-wrap">
             <table className="deriv-table budget-history-table">
               <thead>
                 <tr>
-                  <th>사례</th>
+                  <th>때</th>
                   <th>일수</th>
-                  <th>SPX</th>
+                  <th>S&P</th>
                   <th>채권</th>
                   <th>금</th>
-                  <th>시사점</th>
+                  <th>한 줄</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,7 +149,7 @@ export default function BudgetDelayScenarioPanel({ etfs }: { etfs?: MidtermEtf[]
 
         {scenarioTickers.length ? (
           <article className="budget-ticker-strip">
-            <h4>시나리오 관련 티커 (5D)</h4>
+            <h4>관련 종목 · 최근 5일</h4>
             <div className="budget-ticker-grid">
               {scenarioTickers.map((sym) => {
                 const q = etfBySymbol.get(sym);
@@ -158,7 +158,7 @@ export default function BudgetDelayScenarioPanel({ etfs }: { etfs?: MidtermEtf[]
                     <code>{sym}</code>
                     <strong>{q?.price != null ? q.price.toFixed(2) : "—"}</strong>
                     <span className={retClass(q?.change_5d_pct)}>
-                      5D {fmtPct(q?.change_5d_pct)}
+                      5일 {fmtPct(q?.change_5d_pct)}
                     </span>
                     {q?.label ? <em>{q.label}</em> : null}
                   </div>
