@@ -38,6 +38,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/trading-signals": { limit: 20, windowMs: 60_000 },
   "/api/trading-ideas": { limit: 20, windowMs: 60_000 },
   "/api/minute-forecast": { limit: 8, windowMs: 60_000 },
+  "/api/crypto-regime": { limit: 20, windowMs: 60_000 },
   "/api/weight-optimize": { limit: 12, windowMs: 60_000 },
   "/api/nlp-pulse": { limit: 12, windowMs: 60_000 },
   "/api/nlp-history": { limit: 20, windowMs: 60_000 },

@@ -310,10 +310,16 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "aiport",
   "bookclub",
   "bookclubboard",
+  "cftc",
+  "crypto",
   "datacatalog",
+  "economy",
   "heatpick",
+  "metals",
   "round",
   "signals",
+  "weightopt",
+  "yencarry",
 ];
 
 export function isAdminOnlyTab(tab: ShellTabId): boolean {
@@ -325,6 +331,15 @@ export function visibleShellTabs(
   isAdmin: boolean,
 ): ShellTabId[] {
   return isAdmin ? [...tabs] : tabs.filter((id) => !isAdminOnlyTab(id));
+}
+
+/** Nested nav groups with at least one visible leaf tab. */
+export function visibleNestedGroups(
+  nested: readonly NavGroup[] | undefined,
+  isAdmin: boolean,
+): NavGroup[] {
+  if (!nested?.length) return [];
+  return nested.filter((g) => visibleShellTabs(g.tabs, isAdmin).length > 0);
 }
 
 export function findNavGroup(id: NavGroupId): NavGroup | undefined {

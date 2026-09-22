@@ -81,6 +81,7 @@ import {
   canonicalShellTab,
   parseShellTab,
   visibleShellTabs,
+  visibleNestedGroups,
   type TabId,
 } from "@/lib/types";
 
@@ -167,14 +168,15 @@ function DashboardInner({
 
   const { groupId, nestedId } = navPlacement(tab);
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
-  const activeNested =
-    activeGroup.nested?.find((item) => item.id === nestedId) || null;
   const visibleGroupTabs = visibleShellTabs(activeGroup.tabs, unlocked);
+  const visibleNested = visibleNestedGroups(activeGroup.nested, unlocked);
+  const activeNested =
+    visibleNested.find((item) => item.id === nestedId) || null;
   const visibleNestedTabs = activeNested
     ? visibleShellTabs(activeNested.tabs, unlocked)
     : [];
   const showSubNav =
-    visibleGroupTabs.length + (activeGroup.nested?.length || 0) > 1;
+    visibleGroupTabs.length + visibleNested.length > 1;
   const showTertiary = Boolean(activeNested && visibleNestedTabs.length > 1);
 
   const load = useCallback(async () => {
@@ -206,8 +208,18 @@ function DashboardInner({
     if (!ready) return;
     if (!isAdminOnlyTab(tab) || unlocked) return;
     // AI포트 stays next to AI Pick; 나머지는 같은 대분류의 첫 공개 탭으로.
-    if (tab === "aiport") {
+    if (tab === "aiport" || tab === "weightopt") {
       setTab("ideas");
+      return;
+    }
+    if (
+      tab === "economy" ||
+      tab === "yencarry" ||
+      tab === "cftc" ||
+      tab === "metals" ||
+      tab === "crypto"
+    ) {
+      setTab("graph");
       return;
     }
     if (tab === "datacatalog") {
@@ -397,15 +409,19 @@ function DashboardInner({
     if (!group) return;
     if (navPlacement(tab).groupId === nextGroup) return;
     const first =
-      visibleShellTabs(group.tabs, unlocked)[0] || group.nested?.[0]?.tabs[0];
+      visibleShellTabs(group.tabs, unlocked)[0] ||
+      visibleNestedGroups(group.nested, unlocked)[0]?.tabs[0];
     if (first) setTab(first);
   }
 
   function selectNested(nestedId: NavGroupId) {
-    const nested = activeGroup.nested?.find((item) => item.id === nestedId);
-    if (!nested?.tabs[0]) return;
+    const nested = visibleNestedGroups(activeGroup.nested, unlocked).find(
+      (item) => item.id === nestedId,
+    );
+    const leaf = nested ? visibleShellTabs(nested.tabs, unlocked)[0] : undefined;
+    if (!leaf) return;
     if (activeNested?.id === nestedId) return;
-    setTab(nested.tabs[0]);
+    setTab(leaf);
   }
 
   return (
@@ -455,7 +471,7 @@ function DashboardInner({
               {SHELL_TAB_LABELS[id]}
             </button>
           ))}
-          {(activeGroup.nested || []).map((nested) => (
+          {(visibleNested || []).map((nested) => (
             <button
               key={nested.id}
               type="button"
@@ -503,7 +519,7 @@ function DashboardInner({
       ) : tab === "ideas" ? (
         <TradingIdeasTab />
       ) : tab === "weightopt" ? (
-        <WeightOptimizeTab />
+        unlocked ? <WeightOptimizeTab /> : null
       ) : tab === "aiport" ? (
         unlocked ? <AiPortTab /> : null
       ) : tab === "minutepred" ? (
@@ -561,15 +577,15 @@ function DashboardInner({
           <GreenMineralsTab />
         </EsgTabShell>
       ) : tab === "economy" ? (
-        <MacroTab />
+        unlocked ? <MacroTab /> : null
       ) : tab === "yencarry" ? (
-        <YenCarryTab />
+        unlocked ? <YenCarryTab /> : null
       ) : tab === "cftc" ? (
-        <CftcTab />
+        unlocked ? <CftcTab /> : null
       ) : tab === "metals" ? (
-        <PreciousMetalsTab />
+        unlocked ? <PreciousMetalsTab /> : null
       ) : tab === "crypto" ? (
-        <CryptoAssetsTab />
+        unlocked ? <CryptoAssetsTab /> : null
       ) : tab === "volmonitor" ? (
         <VolatilityMonitorTab />
       ) : tab === "derivatives" ? (

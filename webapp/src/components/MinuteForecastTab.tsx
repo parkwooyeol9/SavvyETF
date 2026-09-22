@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
   AreaChart,
+  Legend,
 } from "recharts";
 
 import type {
@@ -19,6 +20,11 @@ import type {
   MinuteForecastAssetId,
   MinuteForecastPayload,
 } from "@/lib/minuteForecast";
+import type {
+  AssetRegimePanel,
+  CryptoRegimePayload,
+  RegimeStats,
+} from "@/lib/cryptoRegimeStudy";
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -307,6 +313,190 @@ function AssetCard({
   );
 }
 
+function RegimeOverlayChart({
+  regimes,
+}: {
+  regimes: RegimeStats[];
+}) {
+  const rows = useMemo(() => {
+    const map = new Map<number, Record<string, number | null>>();
+    for (const reg of regimes) {
+      for (const p of reg.density) {
+        const key = Math.round(p.x_pct * 100) / 100;
+        const row = map.get(key) || { x: key };
+        row[reg.id] = p.density;
+        map.set(key, row);
+      }
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, v]) => v);
+  }, [regimes]);
+
+  const stroke: Record<string, string> = {
+    asia: "#5b9fd4",
+    us: "#e8c547",
+    weekend: "#c97b84",
+  };
+
+  return (
+    <div style={{ width: "100%", height: 220 }}>
+      <ResponsiveContainer>
+        <AreaChart data={rows}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
+          <XAxis
+            dataKey="x"
+            tick={{ fill: "#8b9bb4", fontSize: 11 }}
+            tickFormatter={(v: number) => `${Number(v).toFixed(1)}%`}
+          />
+          <YAxis hide domain={[0, 1.05]} />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            labelFormatter={(l: number) => `수익률 ${Number(l).toFixed(2)}%`}
+          />
+          <Legend />
+          {regimes.map((r) => (
+            <Area
+              key={r.id}
+              type="monotone"
+              dataKey={r.id}
+              name={r.label_ko}
+              stroke={stroke[r.id]}
+              fill={stroke[r.id]}
+              fillOpacity={0.18}
+              isAnimationActive={false}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function RegimeAssetBlock({ asset }: { asset: AssetRegimePanel }) {
+  if (asset.error) {
+    return (
+      <section className="geo-section">
+        <h4 className="geo-section-title">
+          {asset.symbol} · {asset.label}
+        </h4>
+        <p className="empty">{asset.error}</p>
+      </section>
+    );
+  }
+  return (
+    <section className="geo-section">
+      <h4 className="geo-section-title">
+        {asset.symbol} · {asset.label}
+        <span className="meta-soft">
+          {" "}
+          · {asset.source}
+          {asset.lookback_days != null ? ` · ${asset.lookback_days}d` : ""}
+        </span>
+      </h4>
+      <p className="meta-soft">{asset.summary_ko}</p>
+      <div className="table-wrap" style={{ marginBottom: 10 }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>레짐</th>
+              <th>n</th>
+              <th>평균</th>
+              <th>σ</th>
+              <th>|r|</th>
+              <th>P(↑)</th>
+              <th>왜도</th>
+              <th>첨도*</th>
+              <th>q05</th>
+              <th>q95</th>
+            </tr>
+          </thead>
+          <tbody>
+            {asset.regimes.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  <strong>{r.label_ko}</strong>
+                  <div className="meta-soft">{r.window_note}</div>
+                </td>
+                <td>{r.n_bars}</td>
+                <td>{fmtPct(r.mean_ret_pct, 4)}</td>
+                <td>{fmtNum(r.vol_pct, 4)}%</td>
+                <td>{fmtNum(r.abs_mean_pct, 4)}%</td>
+                <td>{(r.p_up * 100).toFixed(0)}%</td>
+                <td>{fmtNum(r.skew, 2)}</td>
+                <td>{fmtNum(r.kurtosis_excess, 2)}</td>
+                <td>{fmtPct(r.q05_pct, 3)}</td>
+                <td>{fmtPct(r.q95_pct, 3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="meta-soft" style={{ marginTop: 0 }}>
+        수익률 PDF 오버레이 (5분 로그수익 %, 레짐별 정규화 밀도)
+      </p>
+      <RegimeOverlayChart regimes={asset.regimes} />
+    </section>
+  );
+}
+
+function CryptoRegimeStudySection() {
+  const [data, setData] = useState<CryptoRegimePayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/crypto-regime");
+        const json = (await res.json()) as CryptoRegimePayload;
+        if (cancelled) return;
+        setData(json);
+        if (!json.ok) setError(json.error || "레짐 분석 실패");
+      } catch (exc) {
+        if (!cancelled) {
+          setError(exc instanceof Error ? exc.message : String(exc));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="geo-section" style={{ marginTop: 28 }}>
+      <h3 className="geo-section-title">레짐별 BTC·ETH 분포 연구</h3>
+      <p className="macro-subhead">
+        아시아장 · 미국장 · 주말(정규장 휴장)에서 비트코인(BTC)과 알트 대표
+        이더리움(ETH)의 5분 수익률 분포·변동성·꼬리가 어떻게 달라지는지 요약합니다.
+      </p>
+      {loading ? <p className="empty">레짐 분석 불러오는 중…</p> : null}
+      {error ? <p className="empty warn">{error}</p> : null}
+      {data?.headline_ko ? (
+        <p className="meta-soft" style={{ marginBottom: 12 }}>
+          {data.headline_ko}
+        </p>
+      ) : null}
+      {data?.assets.map((a) => (
+        <RegimeAssetBlock key={a.id} asset={a} />
+      ))}
+      {data?.methodology?.length ? (
+        <ul className="meta-soft" style={{ marginTop: 8, paddingLeft: 18 }}>
+          {data.methodology.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+          <li>첨도* = 초과첨도(정규분포=0). 교육·연구용이며 투자 자문이 아닙니다.</li>
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export default function MinuteForecastTab() {
   const [data, setData] = useState<MinuteForecastPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -506,6 +696,8 @@ export default function MinuteForecastTab() {
           {data?.disclaimer}
         </p>
       </section>
+
+      <CryptoRegimeStudySection />
       </section>
     </div>
   );
