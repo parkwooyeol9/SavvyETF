@@ -320,7 +320,7 @@ export default function UsMidtermTab() {
               onClick={() => void downloadExcel()}
               disabled={excelBusy || loading}
             >
-              {excelBusy ? "엑셀 만드는 중…" : "엑셀 다운로드"}
+              {excelBusy ? "리포트 만드는 중…" : "리포트 다운로드"}
             </button>
             <div className="midterm-countdown">
               <span>D-{data?.days_to_election ?? "—"}</span>
