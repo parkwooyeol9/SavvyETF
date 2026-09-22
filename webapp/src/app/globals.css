@@ -7195,6 +7195,234 @@ button.country-etf-card {
   font-size: 0.78rem;
 }
 
+.budget-delay-panel {
+  margin: 0.85rem 0 0.35rem;
+  padding: 1rem 1.05rem 1.05rem;
+  border: 1px solid rgba(231, 181, 73, 0.38);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(36, 28, 14, 0.55), rgba(12, 18, 28, 0.42));
+}
+
+.budget-delay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.budget-delay-kicker {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c9a24a;
+}
+
+.budget-delay-head .geo-section-title {
+  margin: 0.2rem 0 0.25rem;
+}
+
+.budget-delay-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  min-width: 4.5rem;
+}
+
+.budget-delay-countdown span {
+  font-family: var(--display);
+  font-size: 1.65rem;
+  line-height: 1;
+  color: #e7b549;
+}
+
+.budget-delay-countdown em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.budget-delay-status {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15, 22, 34, 0.5);
+  margin-bottom: 0.75rem;
+}
+
+.budget-delay-status > p {
+  margin: 0 0 0.45rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.budget-delay-bullets {
+  margin: 0 0 0.55rem;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.budget-delay-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.budget-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.budget-scenario-card {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15, 22, 34, 0.45);
+}
+
+.budget-scenario-card[data-tone="base"] {
+  border-color: rgba(77, 163, 255, 0.35);
+}
+
+.budget-scenario-card[data-tone="risk"] {
+  border-color: rgba(231, 181, 73, 0.4);
+}
+
+.budget-scenario-card[data-tone="tail"] {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.budget-scenario-card[data-tone="upside"] {
+  border-color: rgba(61, 214, 140, 0.35);
+}
+
+.budget-scenario-card header h4 {
+  margin: 0.15rem 0 0.1rem;
+  font-size: 0.95rem;
+}
+
+.budget-scenario-tone {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.budget-scenario-card header em {
+  font-style: normal;
+  font-size: 0.74rem;
+  color: #c9a24a;
+}
+
+.budget-scenario-dl {
+  margin: 0.45rem 0 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.budget-scenario-dl dt {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.budget-scenario-dl dd {
+  margin: 0.08rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.42;
+  color: var(--text);
+}
+
+.budget-scenario-watch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.budget-scenario-watch > span {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+
+.budget-scenario-watch code {
+  font-size: 0.68rem;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(77, 163, 255, 0.12);
+  border: 1px solid rgba(77, 163, 255, 0.25);
+}
+
+.budget-delay-lower {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.budget-history h4,
+.budget-ticker-strip h4 {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.budget-history-table td,
+.budget-history-table th {
+  font-size: 0.76rem;
+}
+
+.budget-ticker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.budget-ticker-chip {
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(15, 22, 34, 0.45);
+}
+
+.budget-ticker-chip code {
+  font-size: 0.72rem;
+}
+
+.budget-ticker-chip strong {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-ticker-chip span {
+  display: block;
+  margin-top: 0.08rem;
+  font-size: 0.72rem;
+}
+
+.budget-ticker-chip em {
+  display: block;
+  margin-top: 0.12rem;
+  font-style: normal;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.budget-delay-foot {
+  margin: 0.65rem 0 0;
+  font-size: 0.72rem;
+}
+
 .midterm-tape {
   margin: 0.85rem 0 0.2rem;
   padding: 0.95rem 1.05rem 1rem;
@@ -7897,7 +8125,10 @@ button.country-etf-card {
   .midterm-national-grid,
   .midterm-power-grid,
   .midterm-policy-grid,
-  .midterm-matchup-grid {
+  .midterm-matchup-grid,
+  .budget-scenario-grid,
+  .budget-delay-lower,
+  .budget-ticker-grid {
     grid-template-columns: 1fr;
   }
 

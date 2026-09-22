@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
+import BudgetDelayScenarioPanel from "@/components/BudgetDelayScenarioPanel";
 import MidtermTapeCard from "@/components/MidtermTapeCard";
 import {
   MIDTERM_ELECTION_LABEL,
@@ -299,6 +300,8 @@ export default function UsMidtermTab() {
             {w}
           </p>
         ))}
+
+        <BudgetDelayScenarioPanel etfs={data?.etfs} />
 
         <MidtermTapeCard midterm={data} waitForMidterm />
 
