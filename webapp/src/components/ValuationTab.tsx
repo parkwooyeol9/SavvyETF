@@ -8,20 +8,14 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
 import {
-  filterByMonths,
   fmtNum,
   fmtPct,
-  heatStyle,
-  HEAT_METRICS,
-  normalizeIndex,
   num,
   SAVVYDB_EXTERNAL,
   SECTOR_METRICS,
@@ -167,16 +161,14 @@ function LinePanel({
 
 function SectorsView({ meta }: { meta: SavvyMeta | null }) {
   const [rows, setRows] = useState<SavvySectorRow[]>([]);
-  const [daily, setDaily] = useState<Record<string, SavvyPoint[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [group, setGroup] = useState("미국");
   const [id, setId] = useState("XLK");
-  const [heat, setHeat] = useState("E");
   const [metric, setMetric] = useState("H");
   const [compare, setCompare] = useState("");
   const [months, setMonths] = useState(0);
-  const [sortKey, setSortKey] = useState("E");
+  const [sortKey, setSortKey] = useState("H");
   const [asc, setAsc] = useState(false);
 
   useEffect(() => {
@@ -185,13 +177,9 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
       setLoading(true);
       setError(null);
       try {
-        const [s, d] = await Promise.all([
-          loadFile<SavvySectorRow[]>("sectors"),
-          loadFile<Record<string, SavvyPoint[]>>("sector-daily"),
-        ]);
+        const s = await loadFile<SavvySectorRow[]>("sectors");
         if (cancelled) return;
         setRows(s);
-        setDaily(d);
       } catch (exc) {
         if (!cancelled) {
           setError(exc instanceof Error ? exc.message : String(exc));
@@ -237,21 +225,6 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
     return mergeSeries(a, b, selected.name, comp?.name || "비교");
   }, [selected, metric, months, compare, pool]);
 
-  const dailySeries = useMemo(() => {
-    if (!selected || group !== "미국") return [];
-    const key = selected.name === "미국" ? "Market" : selected.name;
-    let a = filterByMonths(daily[key], months);
-    let b = filterByMonths(daily.Market, months);
-    a = normalizeIndex(a);
-    b = normalizeIndex(b);
-    return mergeSeries(
-      a.map(([t, v]) => ({ t, v })),
-      b.map(([t, v]) => ({ t, v })),
-      selected.name,
-      "S&P 500",
-    );
-  }, [selected, group, daily, months]);
-
   function toggleSort(key: string) {
     if (sortKey === key) setAsc((v) => !v);
     else {
@@ -261,15 +234,23 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
   }
 
   function downloadCsv() {
-    const cols = ["D", "E", "F", "H", "G", "S"] as const;
-    const header = ["시장", "업종", "ETF", "1W", "1M", "3M", "PER", "PBR", "ERR"];
+    const cols = ["H", "G", "K", "S", "L", "M", "O"] as const;
+    const header = [
+      "시장",
+      "업종",
+      "ETF",
+      "PER",
+      "PBR",
+      "ROE",
+      "ERR",
+      "EPS3M",
+      "EPS1Y",
+      "RSI",
+    ];
     const body = pool.map((x) =>
-      [
-        x.group,
-        x.name,
-        x.ticker,
-        ...cols.map((c) => x.values[c] ?? ""),
-      ].join(","),
+      [x.group, x.name, x.ticker, ...cols.map((c) => x.values[c] ?? "")].join(
+        ",",
+      ),
     );
     const blob = new Blob([[header.join(","), ...body].join("\n")], {
       type: "text/csv;charset=utf-8",
@@ -294,7 +275,7 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
           <p className="eyebrow">01 / SECTOR EXPLORER</p>
           <h3 className="geo-section-title">업종의 흐름을 읽다</h3>
           <p className="macro-subhead">
-            미국·일본 업종 성과·이익 전망·밸류에이션 비교
+            미국·일본 업종 밸류에이션·이익 전망·ERR 비교
             {meta?.snapshotDate ? ` · 스냅샷 ${meta.snapshotDate}` : ""}
           </p>
         </div>
@@ -323,29 +304,17 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
               ))}
             </select>
           </label>
-          <label className="sdb-field">
-            히트맵
-            <select value={heat} onChange={(e) => setHeat(e.target.value)}>
-              {HEAT_METRICS.map((m) => (
-                <option key={m.key} value={m.key}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
       </div>
 
       <div className="nxt-stat-grid">
         <div className="geo-featured">
-          <div className="meta-soft">1개월 수익률</div>
-          <strong className={`nxt-stat-val ${toneClass(v.E)}`}>
-            {fmtPct(v.E)}
-          </strong>
-        </div>
-        <div className="geo-featured">
           <div className="meta-soft">12개월 선행 PER</div>
           <strong className="nxt-stat-val">{fmtNum(v.H)}배</strong>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">선행 PBR</div>
+          <strong className="nxt-stat-val">{fmtNum(v.G)}배</strong>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">EPS 1Y 성장률</div>
@@ -362,26 +331,21 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
       </div>
 
       <p className="meta-soft" style={{ marginBottom: 6 }}>
-        업종 퍼포먼스
+        업종 선택 · 선행 PER
       </p>
       <div className="sdb-heat">
-        {pool.map((x) => {
-          const z = x.values[heat];
-          const st = heatStyle(z);
-          return (
-            <button
-              key={x.id}
-              type="button"
-              className={`sdb-heat-btn${x.id === selectedId ? " selected" : ""}`}
-              style={st}
-              onClick={() => setId(x.id)}
-            >
-              <b>{x.name}</b>
-              <span>{fmtPct(z)}</span>
-              <small>{x.ticker}</small>
-            </button>
-          );
-        })}
+        {pool.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            className={`sdb-heat-btn${x.id === selectedId ? " selected" : ""}`}
+            onClick={() => setId(x.id)}
+          >
+            <b>{x.name}</b>
+            <span>{fmtNum(x.values.H)}배</span>
+            <small>{x.ticker}</small>
+          </button>
+        ))}
       </div>
 
       <div className="nxt-chart-grid" style={{ marginTop: 14 }}>
@@ -421,10 +385,12 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
           <LinePanel
             series={metricSeries}
             nameA={selected.name}
-            nameB={compare ? pool.find((x) => x.id === compare)?.name : undefined}
+            nameB={
+              compare ? pool.find((x) => x.id === compare)?.name : undefined
+            }
           />
           <p className="meta-soft" style={{ marginTop: 6 }}>
-            출처: 업종·테마·스타일 스냅샷 · 관측일 지표 (누적 수익률 아님)
+            출처: 업종·테마·스타일 스냅샷 · 관측일 밸류·이익 지표
           </p>
         </div>
         <div>
@@ -476,19 +442,6 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
         </div>
       </div>
 
-      {group === "미국" ? (
-        <div style={{ marginTop: 12 }}>
-          <p className="meta-soft" style={{ marginBottom: 6 }}>
-            업종 지수 추이 (구간 시작 = 100)
-          </p>
-          <LinePanel
-            series={dailySeries}
-            nameA={selected.name}
-            nameB="S&P 500"
-          />
-        </div>
-      ) : null}
-
       <div className="feature-head geo-head-row" style={{ marginTop: 14 }}>
         <p className="meta-soft">업종 비교표</p>
         <button type="button" className="ghost-btn" onClick={downloadCsv}>
@@ -502,12 +455,12 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
               <th>이름 / 티커</th>
               {(
                 [
-                  ["D", "1W"],
-                  ["E", "1M"],
-                  ["F", "3M"],
                   ["H", "PER"],
                   ["G", "PBR"],
+                  ["K", "ROE"],
                   ["S", "ERR"],
+                  ["L", "EPS3M"],
+                  ["O", "RSI"],
                 ] as const
               ).map(([k, lab]) => (
                 <th key={k}>
@@ -536,12 +489,12 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
                   <strong>{r.ticker}</strong>{" "}
                   <span className="meta-soft">{r.name}</span>
                 </td>
-                <td className={toneClass(r.values.D)}>{fmtPct(r.values.D)}</td>
-                <td className={toneClass(r.values.E)}>{fmtPct(r.values.E)}</td>
-                <td className={toneClass(r.values.F)}>{fmtPct(r.values.F)}</td>
                 <td>{fmtNum(r.values.H)}</td>
                 <td>{fmtNum(r.values.G)}</td>
+                <td>{fmtNum(r.values.K)}</td>
                 <td className={toneClass(r.values.S)}>{fmtNum(r.values.S)}</td>
+                <td className={toneClass(r.values.L)}>{fmtPct(r.values.L)}</td>
+                <td>{fmtNum(r.values.O)}</td>
               </tr>
             ))}
           </tbody>
@@ -625,7 +578,7 @@ function StocksView() {
           <p className="eyebrow">02 / EQUITY SCREENER</p>
           <h3 className="geo-section-title">미국 주식</h3>
           <p className="macro-subhead">
-            {rows.length.toLocaleString()}개 원본 레코드 · 스냅샷 값
+            {rows.length.toLocaleString()}개 원본 레코드 · 밸류·팩터 스냅샷
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -651,14 +604,12 @@ function StocksView() {
           <strong className="nxt-stat-val">{fmtNum(v.D)}</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">1개월 수익률</div>
-          <strong className={`nxt-stat-val ${toneClass(v.F)}`}>
-            {fmtPct(v.F)}
-          </strong>
-        </div>
-        <div className="geo-featured">
           <div className="meta-soft">선행 PER</div>
           <strong className="nxt-stat-val">{fmtNum(v.AA)}배</strong>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">선행 PBR</div>
+          <strong className="nxt-stat-val">{fmtNum(v.AB)}배</strong>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">팩터 종합</div>
@@ -683,7 +634,6 @@ function StocksView() {
                     시가총액
                   </button>
                 </th>
-                <th>1M</th>
                 <th>PER</th>
                 <th>ROE</th>
                 <th>점수</th>
@@ -702,7 +652,6 @@ function StocksView() {
                     <span className="meta-soft">{r.name}</span>
                   </td>
                   <td>{fmtNum(r.values.E, 0)}</td>
-                  <td className={toneClass(r.values.F)}>{fmtPct(r.values.F)}</td>
                   <td>{fmtNum(r.values.AA)}</td>
                   <td>{fmtNum(r.values.K)}</td>
                   <td>{fmtNum(r.values.AI, 3)}</td>
@@ -726,8 +675,8 @@ function StocksView() {
               <dd>{fmtNum(v.I)}</dd>
             </div>
             <div>
-              <dt>선행 PBR</dt>
-              <dd>{fmtNum(v.AB)}배</dd>
+              <dt>ROE</dt>
+              <dd>{fmtNum(v.K)}%</dd>
             </div>
             <div>
               <dt>배당수익률</dt>
@@ -782,6 +731,7 @@ function CountriesView() {
         <div>
           <p className="eyebrow">03 / COUNTRY MONITOR</p>
           <h3 className="geo-section-title">국가 모델</h3>
+          <p className="macro-subhead">밸류에이션 · 경기 국면 · ERR</p>
         </div>
         <select value={selected.id} onChange={(e) => setId(e.target.value)}>
           {rows.map((r) => (
@@ -793,14 +743,12 @@ function CountriesView() {
       </div>
       <div className="nxt-stat-grid">
         <div className="geo-featured">
-          <div className="meta-soft">1년 수익률</div>
-          <strong className={`nxt-stat-val ${toneClass(v.T)}`}>
-            {fmtPct(v.T)}
-          </strong>
-        </div>
-        <div className="geo-featured">
           <div className="meta-soft">선행 PER</div>
           <strong className="nxt-stat-val">{fmtNum(v.V)}배</strong>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">선행 PBR</div>
+          <strong className="nxt-stat-val">{fmtNum(v.U)}배</strong>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">경기 국면</div>
@@ -818,11 +766,9 @@ function CountriesView() {
           <thead>
             <tr>
               <th>국가</th>
-              <th>1M</th>
-              <th>3M</th>
-              <th>1Y</th>
               <th>PER</th>
               <th>PBR</th>
+              <th>ERR</th>
               <th>국면</th>
               <th>RSI</th>
             </tr>
@@ -839,11 +785,9 @@ function CountriesView() {
                   <strong>{r.name}</strong>{" "}
                   <span className="meta-soft">{r.ticker}</span>
                 </td>
-                <td className={toneClass(r.values.R)}>{fmtPct(r.values.R)}</td>
-                <td className={toneClass(r.values.S)}>{fmtPct(r.values.S)}</td>
-                <td className={toneClass(r.values.T)}>{fmtPct(r.values.T)}</td>
                 <td>{fmtNum(r.values.V)}</td>
                 <td>{fmtNum(r.values.U)}</td>
+                <td className={toneClass(r.values.AA)}>{fmtNum(r.values.AA)}</td>
                 <td>{String(r.values.K ?? "—")}</td>
                 <td>{fmtNum(r.values.AE)}</td>
               </tr>
@@ -1341,7 +1285,7 @@ function ThemesView() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [id, setId] = useState("SPY");
-  const [sortKey, setSortKey] = useState("ret");
+  const [sortKey, setSortKey] = useState("overall");
   const [asc, setAsc] = useState(false);
 
   useEffect(() => {
@@ -1396,20 +1340,6 @@ function ThemesView() {
 
   const selected = pool.find((r) => r.id === id) || sorted[0] || null;
 
-  const scatter = useMemo(
-    () =>
-      pool
-        .map((r) => ({
-          id: r.id,
-          ticker: r.ticker,
-          vol: num(r.values.vol),
-          ret: num(r.values.ret),
-          selected: r.id === (selected?.id || ""),
-        }))
-        .filter((r) => r.vol != null && r.ret != null),
-    [pool, selected],
-  );
-
   if (loading) return <p className="empty">ETF 비교 불러오는 중…</p>;
   if (error) return <p className="empty warn">{error}</p>;
   if (!selected) return <p className="empty">ETF가 없습니다.</p>;
@@ -1422,7 +1352,7 @@ function ThemesView() {
           <p className="eyebrow">05 / ETF COMPARISON</p>
           <h3 className="geo-section-title">ETF 비교</h3>
           <p className="macro-subhead">
-            중복 제거 · {rows.length}개 ETF · 수익률·변동성·보수·평가점수
+            중복 제거 · {rows.length}개 ETF · 보수·평가점수
           </p>
         </div>
         <input
@@ -1434,86 +1364,81 @@ function ThemesView() {
       </div>
       <div className="nxt-stat-grid">
         <div className="geo-featured">
-          <div className="meta-soft">{selected.ticker} · 1Y</div>
-          <strong className={`nxt-stat-val ${toneClass(v.ret)}`}>
-            {fmtPct(v.ret)}
-          </strong>
+          <div className="meta-soft">{selected.ticker} · 종합</div>
+          <strong className="nxt-stat-val">{fmtNum(v.overall, 0)}</strong>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">총보수</div>
           <strong className="nxt-stat-val">{fmtNum(v.fee)}%</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">변동성</div>
-          <strong className="nxt-stat-val">{fmtNum(v.vol)}%</strong>
+          <div className="meta-soft">밸류에이션 점수</div>
+          <strong className="nxt-stat-val">{fmtNum(v.valuation, 0)}</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">샤프</div>
-          <strong className="nxt-stat-val">{fmtNum(v.sharpe, 3)}</strong>
+          <div className="meta-soft">펀더멘털 점수</div>
+          <strong className="nxt-stat-val">{fmtNum(v.fundamental, 0)}</strong>
         </div>
       </div>
 
       <div className="nxt-chart-grid">
-        <div>
-          <p className="meta-soft" style={{ marginBottom: 6 }}>
-            위험과 수익률 (가로: 1Y 변동성 · 세로: 1Y 총수익률)
-          </p>
-          <div style={{ width: "100%", height: 260 }}>
-            <ResponsiveContainer>
-              <ScatterChart>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
-                <XAxis
-                  type="number"
-                  dataKey="vol"
-                  name="변동성"
-                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
-                  unit="%"
-                />
-                <YAxis
-                  type="number"
-                  dataKey="ret"
-                  name="수익률"
-                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
-                  unit="%"
-                  width={44}
-                />
-                <Tooltip
-                  contentStyle={tip}
-                  cursor={{ strokeDasharray: "3 3" }}
-                  formatter={(value: number | string, name: string) => [
-                    typeof value === "number" ? value.toFixed(2) : value,
-                    name === "ret" ? "1Y 수익률" : name === "vol" ? "변동성" : name,
-                  ]}
-                  labelFormatter={(_, payload) => {
-                    const p = payload?.[0]?.payload as
-                      | { ticker?: string }
-                      | undefined;
-                    return p?.ticker || "";
-                  }}
-                />
-                <Scatter
-                  data={scatter.filter((d) => !d.selected)}
-                  fill="#5b9fd4"
-                  fillOpacity={0.55}
-                  onClick={(d) => {
-                    const row = d as { id?: string };
-                    if (row.id) setId(row.id);
-                  }}
-                />
-                <Scatter
-                  data={scatter.filter((d) => d.selected)}
-                  fill="#e8c547"
-                  onClick={(d) => {
-                    const row = d as { id?: string };
-                    if (row.id) setId(row.id);
-                  }}
-                />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="meta-soft">
-            출처: 업종·테마·스타일 → ETF매칭 / 기타 (savvyDB etfs.json)
-          </p>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>ETF</th>
+                <th>분류</th>
+                {(
+                  [
+                    ["fee", "TER"],
+                    ["overall", "종합"],
+                    ["valuation", "밸류"],
+                    ["fundamental", "펀더"],
+                    ["cost", "비용"],
+                  ] as const
+                ).map(([k, lab]) => (
+                  <th key={k}>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      style={{ padding: "0 4px", fontSize: 11 }}
+                      onClick={() => {
+                        if (sortKey === k) setAsc((a) => !a);
+                        else {
+                          setSortKey(k);
+                          setAsc(false);
+                        }
+                      }}
+                    >
+                      {lab}
+                      {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr
+                  key={r.id}
+                  className={r.id === selected.id ? "sdb-row-active" : undefined}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setId(r.id)}
+                >
+                  <td>
+                    <strong>{r.ticker}</strong>{" "}
+                    <span className="meta-soft">{r.name}</span>
+                  </td>
+                  <td>{r.group}</td>
+                  <td>{fmtNum(r.values.fee)}</td>
+                  <td>{fmtNum(r.values.overall, 0)}</td>
+                  <td>{fmtNum(r.values.valuation, 0)}</td>
+                  <td>{fmtNum(r.values.fundamental, 0)}</td>
+                  <td>{fmtNum(r.values.cost, 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">
@@ -1526,10 +1451,6 @@ function ThemesView() {
             <div>
               <dt>종합</dt>
               <dd>{fmtNum(v.overall, 0)}</dd>
-            </div>
-            <div>
-              <dt>성과</dt>
-              <dd>{fmtNum(v.performance, 0)}</dd>
             </div>
             <div>
               <dt>리스크</dt>
@@ -1557,71 +1478,12 @@ function ThemesView() {
             </div>
           </dl>
           <p className="meta-soft" style={{ marginTop: 8 }}>
-            {selected.sheet ? `${selected.sheet}!${selected.row}:${selected.row}` : ""}
+            {selected.sheet
+              ? `${selected.sheet}!${selected.row}:${selected.row}`
+              : ""}
             · 평가점수는 원본 TR.ETF Score 저장값
           </p>
         </div>
-      </div>
-
-      <div className="table-wrap" style={{ marginTop: 12 }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ETF</th>
-              <th>분류</th>
-              {(
-                [
-                  ["fee", "TER"],
-                  ["ret", "1Y"],
-                  ["vol", "변동성"],
-                  ["sharpe", "샤프"],
-                  ["overall", "종합"],
-                ] as const
-              ).map(([k, lab]) => (
-                <th key={k}>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    style={{ padding: "0 4px", fontSize: 11 }}
-                    onClick={() => {
-                      if (sortKey === k) setAsc((a) => !a);
-                      else {
-                        setSortKey(k);
-                        setAsc(false);
-                      }
-                    }}
-                  >
-                    {lab}
-                    {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r) => (
-              <tr
-                key={r.id}
-                className={r.id === selected.id ? "sdb-row-active" : undefined}
-                style={{ cursor: "pointer" }}
-                onClick={() => setId(r.id)}
-              >
-                <td>
-                  <strong>{r.ticker}</strong>{" "}
-                  <span className="meta-soft">{r.name}</span>
-                </td>
-                <td>{r.group}</td>
-                <td>{fmtNum(r.values.fee)}</td>
-                <td className={toneClass(r.values.ret)}>
-                  {fmtPct(r.values.ret)}
-                </td>
-                <td>{fmtNum(r.values.vol)}</td>
-                <td>{fmtNum(r.values.sharpe, 3)}</td>
-                <td>{fmtNum(r.values.overall, 0)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </>
   );
@@ -1650,7 +1512,7 @@ export default function ValuationTab() {
         <div>
           <h2 className="kr-hero-title">밸류에이션</h2>
           <p className="kr-hero-sub">
-            savvyDB Excel 스냅샷 기반 리서치 · 실시간 시세 아님
+            주간 수동 업로드 스냅샷 · 수익률은 시황·포트폴리오 탭 참고
             {meta?.snapshotDate ? ` · 기준 ${meta.snapshotDate}` : ""}
           </p>
         </div>

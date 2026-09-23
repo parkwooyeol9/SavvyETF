@@ -87,17 +87,7 @@ export const SECTOR_METRICS: Record<string, string> = {
   O: "RSI",
   S: "ERR (%)",
   U: "ERR 전월차 (%p)",
-  D: "1W 수익률 (%)",
-  E: "1M 수익률 (%)",
-  F: "3M 수익률 (%)",
 };
-
-export const HEAT_METRICS: Array<{ key: string; label: string }> = [
-  { key: "D", label: "1주" },
-  { key: "E", label: "1개월" },
-  { key: "F", label: "3개월" },
-];
-
 export function num(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) {
@@ -127,13 +117,6 @@ export function toneClass(v: unknown): string {
   const n = num(v);
   if (n == null || Math.abs(n) < 1e-9) return "flat";
   return n > 0 ? "up" : "down";
-}
-
-export function heatStyle(v: unknown): { background: string; color: string } {
-  const n = num(v);
-  if (n == null) return { background: "rgba(43,54,72,0.55)", color: "#8b9bb4" };
-  if (n >= 0) return { background: "rgba(34,140,120,0.22)", color: "#7dcec0" };
-  return { background: "rgba(201,123,132,0.22)", color: "#e0a0a8" };
 }
 
 export function filterByMonths(
