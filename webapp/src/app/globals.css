@@ -475,6 +475,192 @@ a.tab-btn {
   margin-top: 0.35rem;
 }
 
+.regime-study-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .regime-study-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stockboard-theme-grid,
+.stockboard-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.stockboard-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+}
+
+.stockboard-score {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #8b9bb4);
+  font-size: 0.85rem;
+}
+
+.stockboard-up {
+  border-color: rgba(91, 159, 212, 0.35);
+}
+
+.stockboard-down {
+  border-color: rgba(201, 123, 132, 0.4);
+}
+
+.nxt-panel {
+  margin: 0.75rem 0 1.25rem;
+  padding: 1rem 1rem 1.1rem;
+  border: 1px solid var(--border, #2b3648);
+  border-radius: var(--radius, 10px);
+  background: rgba(16, 32, 40, 0.55);
+}
+
+.nxt-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.nxt-stat-val {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nxt-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.nxt-focus-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+}
+
+.nxt-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.sdb-tab .sdb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted, #8b9bb4);
+}
+
+.sdb-tab .sdb-field select,
+.sdb-tab select,
+.sdb-search {
+  background: rgba(16, 32, 40, 0.85);
+  border: 1px solid var(--border, #2b3648);
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.85rem;
+  min-width: 7.5rem;
+}
+
+.sdb-search {
+  min-width: 11rem;
+}
+
+.sdb-heat {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.sdb-heat-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sdb-heat-btn.selected {
+  border-color: rgba(91, 159, 212, 0.75);
+  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.35);
+}
+
+.sdb-heat-btn b {
+  font-size: 0.82rem;
+}
+
+.sdb-heat-btn span {
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sdb-heat-btn small {
+  opacity: 0.75;
+  font-size: 0.7rem;
+}
+
+.sdb-dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 0.75rem;
+  margin: 0.5rem 0 0;
+}
+
+.sdb-dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(43, 54, 72, 0.65);
+  font-size: 0.86rem;
+}
+
+.sdb-dl dt {
+  color: var(--muted, #8b9bb4);
+}
+
+.sdb-dl dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sdb-row-active td {
+  background: rgba(91, 159, 212, 0.12);
+}
+
+@media (max-width: 900px) {
+  .nxt-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nxt-chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .geo-chart-empty {
   margin-top: 0.45rem;
   padding: 1.2rem 0.5rem;

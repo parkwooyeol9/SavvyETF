@@ -47,6 +47,14 @@ export const MinuteForecastTab = dynamic(
   () => import("@/components/MinuteForecastTab"),
   { loading },
 );
+export const StockFeatureBoardTab = dynamic(
+  () => import("@/components/StockFeatureBoardTab"),
+  { loading },
+);
+export const ValuationTab = dynamic(
+  () => import("@/components/ValuationTab"),
+  { loading },
+);
 export const CorridorTab = dynamic(() => import("@/components/CorridorTab"), { loading });
 export const UsMarketTab = dynamic(() => import("@/components/UsMarketTab"), { loading });
 export const UsMidtermTab = dynamic(() => import("@/components/UsMidtermTab"), { loading });

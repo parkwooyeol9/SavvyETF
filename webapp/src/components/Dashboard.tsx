@@ -47,6 +47,7 @@ import {
   AiPortTab,
   MinuteForecastTab,
   StockFeatureBoardTab,
+  ValuationTab,
   CorridorTab,
   UsMarketTab,
   UsMidtermTab,
@@ -373,6 +374,7 @@ function DashboardInner({
       tab === "nlp" ||
       tab === "nlphistory" ||
       tab === "graph" ||
+      tab === "valuation" ||
       tab === "corridor" ||
       tab === "usmidterm" ||
       tab === "midtermstudy" ||
@@ -505,6 +507,8 @@ function DashboardInner({
         unlocked ? <TradingSignalsTab /> : null
       ) : tab === "graph" ? (
         <GraphTab />
+      ) : tab === "valuation" ? (
+        <ValuationTab />
       ) : tab === "nlp" || tab === "nlphistory" ? (
         <NlpPulseTab />
       ) : tab === "ideas" ? (

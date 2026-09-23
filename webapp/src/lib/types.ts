@@ -47,6 +47,7 @@ export type ShellTabId =
   | "nlp"
   | "nlphistory"
   | "graph"
+  | "valuation"
   | "corridor"
   | "usmidterm"
   | "midtermstudy"
@@ -63,6 +64,7 @@ export type NavGroupId =
   | "commodity"
   | "portfolio"
   | "ai"
+  | "valuation"
   | "esg"
   | "politics"
   | "fundmgr"
@@ -137,6 +139,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "nlp",
   "nlphistory",
   "graph",
+  "valuation",
   "corridor",
   "etf",
   "leverage",
@@ -216,6 +219,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   nlp: "NLP",
   nlphistory: "NLP",
   graph: "밸류체인",
+  valuation: "밸류에이션",
   corridor: "비중조절전략",
   usmidterm: "미 중간선거",
   midtermstudy: "중간선거 스터디",
@@ -278,6 +282,11 @@ export const NAV_GROUPS: NavGroup[] = [
         tabs: ["usmidterm", "midtermstudy", "polithemes"],
       },
     ],
+  },
+  {
+    id: "valuation",
+    label: "밸류에이션",
+    tabs: ["valuation"],
   },
   {
     id: "portfolio",

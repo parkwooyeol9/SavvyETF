@@ -69,6 +69,10 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/research/presign": { limit: 80, windowMs: 60_000 },
   "/api/research/complete": { limit: 80, windowMs: 60_000 },
   "/api/research/chunk": { limit: 200, windowMs: 60_000 },
+  "/api/stock-features": { limit: 20, windowMs: 60_000 },
+  "/api/nextrade": { limit: 20, windowMs: 60_000 },
+  "/api/nextrade/excel": { limit: 8, windowMs: 60_000 },
+  "/api/savvydb": { limit: 40, windowMs: 60_000 },
 };
 
 const WRITE_PATH =
