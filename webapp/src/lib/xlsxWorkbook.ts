@@ -55,11 +55,12 @@ function asCell(input: CellInput): CellObject {
   return { v: input };
 }
 
-function styleIndex(t?: CellStyle): number | null {
+function styleIndex(t?: CellStyle): number {
   if (t === "header") return 1;
   if (t === "num") return 2;
   if (t === "int") return 3;
-  return null;
+  if (t === "text") return 0;
+  return 0;
 }
 
 function xmlHeader(): string {
@@ -82,35 +83,62 @@ function isoZ(d: Date): string {
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+/** Report look: Nanum Barun Gothic 7pt, white cells, wrap. */
 function stylesXml(): string {
+  // Font: 나눔바른고딕 (fallback name also listed in some installs as NanumBarunGothic)
+  const face = "나눔바른고딕";
   return `${xmlHeader()}<styleSheet xmlns="${NS_MAIN}">
   <fonts count="2">
-    <font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
-    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><sz val="7"/><color rgb="FF000000"/><name val="${face}"/><family val="3"/><charset val="129"/></font>
+    <font><b/><sz val="7"/><color rgb="FF000000"/><name val="${face}"/><family val="3"/><charset val="129"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
-  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="2" borderId="0"/></cellStyleXfs>
   <cellXfs count="4">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
-    <xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
-    <xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top" horizontal="left"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="center" horizontal="left"/></xf>
+    <xf numFmtId="2" fontId="0" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment wrapText="1" vertical="top" horizontal="right"/></xf>
+    <xf numFmtId="1" fontId="0" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1"><alignment wrapText="1" vertical="top" horizontal="right"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 }
 
-function cellXml(col0: number, row1: number, input: CellInput): string {
-  const cell = asCell(input);
-  if (cell.v == null || cell.v === "") return "";
+function estimateRowHeight(row: CellInput[], widths: number[]): number {
+  let maxLines = 1;
+  for (let j = 0; j < row.length; j++) {
+    const cell = asCell(row[j]!);
+    if (cell.v == null || cell.v === "") continue;
+    const text = String(cell.v);
+    const colW = widths[j] ?? 16;
+    // ~chars per line at 7pt Nanum (CJK denser than Latin)
+    const cpl = Math.max(6, Math.floor(colW * 1.35));
+    let lines = 0;
+    for (const part of text.split(/\n/)) {
+      lines += Math.max(1, Math.ceil([...part].length / cpl));
+    }
+    maxLines = Math.max(maxLines, lines);
+  }
+  // ~10.5pt per wrapped line at font 7 with a little padding
+  return Math.min(140, Math.max(11, Math.round(maxLines * 10.5 + 2)));
+}
+
+function cellXml(col0: number, row1: number, input: CellInput | undefined): string {
   const ref = `${colLetter(col0)}${row1}`;
+  if (input == null) {
+    return `<c r="${ref}" s="0"/>`;
+  }
+  const cell = asCell(input);
   const s = styleIndex(cell.t);
-  const sAttr = s != null ? ` s="${s}"` : "";
+  const sAttr = ` s="${s}"`;
+  if (cell.v == null || cell.v === "") {
+    return `<c r="${ref}"${sAttr}/>`;
+  }
   if (typeof cell.v === "number" && Number.isFinite(cell.v)) {
     return `<c r="${ref}"${sAttr}><v>${cell.v}</v></c>`;
   }
@@ -124,25 +152,36 @@ function cellXml(col0: number, row1: number, input: CellInput): string {
 function worksheetXml(sheet: SheetSpec, hasDrawing: boolean): string {
   const rows = sheet.rows;
   let maxCol = 0;
-  const rowXml = rows.map((row, i) => {
-    maxCol = Math.max(maxCol, row.length);
-    const r = i + 1;
-    const cells = row.map((c, j) => cellXml(j, r, c)).join("");
-    return `<row r="${r}" spans="1:${Math.max(row.length, 1)}">${cells}</row>`;
-  });
-  const lastRow = Math.max(rows.length, 1);
-  const lastCol = Math.max(maxCol, 1);
-  const dim = `A1:${colLetter(lastCol - 1)}${lastRow}`;
+  for (const row of rows) maxCol = Math.max(maxCol, row.length);
+  const lastCol = Math.max(maxCol, sheet.widths?.length || 0, 1);
   const widths =
     sheet.widths && sheet.widths.length
-      ? sheet.widths
+      ? [
+          ...sheet.widths,
+          ...Array.from(
+            { length: Math.max(0, lastCol - sheet.widths.length) },
+            () => 16,
+          ),
+        ].slice(0, lastCol)
       : Array.from({ length: lastCol }, () => 16);
+
+  const rowXml = rows.map((row, i) => {
+    const r = i + 1;
+    const cells: string[] = [];
+    for (let j = 0; j < lastCol; j++) {
+      cells.push(cellXml(j, r, row[j]));
+    }
+    const ht = estimateRowHeight(row, widths);
+    return `<row r="${r}" spans="1:${lastCol}" ht="${ht}" customHeight="1">${cells.join("")}</row>`;
+  });
+  const lastRow = Math.max(rows.length, 1);
+  const dim = `A1:${colLetter(lastCol - 1)}${lastRow}`;
   const cols = widths
     .map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`)
     .join("");
   const freeze = sheet.freezeRows
-    ? `<sheetView workbookViewId="0"><pane ySplit="${sheet.freezeRows}" topLeftCell="A${sheet.freezeRows + 1}" activePane="bottomLeft" state="frozen"/></sheetView>`
-    : `<sheetView workbookViewId="0"/>`;
+    ? `<sheetView workbookViewId="0" showGridLines="0"><pane ySplit="${sheet.freezeRows}" topLeftCell="A${sheet.freezeRows + 1}" activePane="bottomLeft" state="frozen"/></sheetView>`
+    : `<sheetView workbookViewId="0" showGridLines="0"/>`;
   const filter =
     sheet.autoFilter && lastRow >= 1
       ? `<autoFilter ref="A1:${colLetter(lastCol - 1)}${lastRow}"/>`
@@ -151,11 +190,11 @@ function worksheetXml(sheet: SheetSpec, hasDrawing: boolean): string {
   return `${xmlHeader()}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">
   <dimension ref="${dim}"/>
   <sheetViews>${freeze}</sheetViews>
-  <sheetFormatPr defaultRowHeight="15"/>
+  <sheetFormatPr defaultRowHeight="11" defaultColWidth="14"/>
   <cols>${cols}</cols>
   <sheetData>${rowXml.join("")}</sheetData>
   ${filter}
-  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+  <pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
   ${drawing}
 </worksheet>`;
 }
