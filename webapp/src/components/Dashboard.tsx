@@ -522,7 +522,7 @@ function DashboardInner({
       ) : tab === "stockboard" ? (
         unlocked ? <StockFeatureBoardTab /> : null
       ) : tab === "corridor" ? (
-        <CorridorTab />
+        unlocked ? <CorridorTab /> : null
       ) : tab === "usmidterm" ? (
         <UsMidtermTab />
       ) : tab === "midtermstudy" ? (
