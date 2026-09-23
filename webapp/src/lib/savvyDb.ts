@@ -13,6 +13,7 @@ export const SAVVYDB_FILES = [
   "stocks",
   "countries",
   "valuation",
+  "etfs",
   "themes",
   "catalog",
   "country-daily",
@@ -56,7 +57,7 @@ export type SavvyCountryRow = {
 };
 
 export type SavvyThemeRow = {
-  id?: string;
+  id: string;
   ticker: string;
   name: string;
   group: string;

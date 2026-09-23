@@ -7,6 +7,8 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -939,21 +941,25 @@ function ThemesView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [id, setId] = useState("");
+  const [id, setId] = useState("SPY");
+  const [sortKey, setSortKey] = useState("ret");
+  const [asc, setAsc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const t = await loadFile<SavvyThemeRow[]>("themes");
+        // Original savvyDB #themes loads data/etfs.json (not themes.json).
+        const t = await loadFile<SavvyThemeRow[]>("etfs");
         if (cancelled) return;
-        const normalized = t.map((r, i) => ({
-          ...r,
-          id: r.id || r.ticker || `etf-${i}`,
-        }));
-        setRows(normalized);
-        setId(normalized[0]?.id || "");
+        setRows(t);
+        setId(
+          t.find((r) => r.id === "ACWI.O" || r.ticker === "ACWI")?.id ||
+            t.find((r) => r.id === "SPY")?.id ||
+            t[0]?.id ||
+            "",
+        );
       } catch (exc) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc));
       } finally {
@@ -976,7 +982,35 @@ function ThemesView() {
     );
   }, [rows, q]);
 
-  const selected = pool.find((r) => r.id === id) || pool[0] || null;
+  const sorted = useMemo(() => {
+    const list = [...pool];
+    list.sort((a, b) => {
+      const av = num(a.values[sortKey]);
+      const bv = num(b.values[sortKey]);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return (av - bv) * (asc ? 1 : -1);
+    });
+    return list;
+  }, [pool, sortKey, asc]);
+
+  const selected = pool.find((r) => r.id === id) || sorted[0] || null;
+
+  const scatter = useMemo(
+    () =>
+      pool
+        .map((r) => ({
+          id: r.id,
+          ticker: r.ticker,
+          vol: num(r.values.vol),
+          ret: num(r.values.ret),
+          selected: r.id === (selected?.id || ""),
+        }))
+        .filter((r) => r.vol != null && r.ret != null),
+    [pool, selected],
+  );
+
   if (loading) return <p className="empty">ETF 비교 불러오는 중…</p>;
   if (error) return <p className="empty warn">{error}</p>;
   if (!selected) return <p className="empty">ETF가 없습니다.</p>;
@@ -988,6 +1022,9 @@ function ThemesView() {
         <div>
           <p className="eyebrow">05 / ETF COMPARISON</p>
           <h3 className="geo-section-title">ETF 비교</h3>
+          <p className="macro-subhead">
+            중복 제거 · {rows.length}개 ETF · 수익률·변동성·보수·평가점수
+          </p>
         </div>
         <input
           className="sdb-search"
@@ -1016,26 +1053,159 @@ function ThemesView() {
           <strong className="nxt-stat-val">{fmtNum(v.sharpe, 3)}</strong>
         </div>
       </div>
-      <div className="table-wrap">
+
+      <div className="nxt-chart-grid">
+        <div>
+          <p className="meta-soft" style={{ marginBottom: 6 }}>
+            위험과 수익률 (가로: 1Y 변동성 · 세로: 1Y 총수익률)
+          </p>
+          <div style={{ width: "100%", height: 260 }}>
+            <ResponsiveContainer>
+              <ScatterChart>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
+                <XAxis
+                  type="number"
+                  dataKey="vol"
+                  name="변동성"
+                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
+                  unit="%"
+                />
+                <YAxis
+                  type="number"
+                  dataKey="ret"
+                  name="수익률"
+                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
+                  unit="%"
+                  width={44}
+                />
+                <Tooltip
+                  contentStyle={tip}
+                  cursor={{ strokeDasharray: "3 3" }}
+                  formatter={(value: number | string, name: string) => [
+                    typeof value === "number" ? value.toFixed(2) : value,
+                    name === "ret" ? "1Y 수익률" : name === "vol" ? "변동성" : name,
+                  ]}
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as
+                      | { ticker?: string }
+                      | undefined;
+                    return p?.ticker || "";
+                  }}
+                />
+                <Scatter
+                  data={scatter.filter((d) => !d.selected)}
+                  fill="#5b9fd4"
+                  fillOpacity={0.55}
+                  onClick={(d) => {
+                    const row = d as { id?: string };
+                    if (row.id) setId(row.id);
+                  }}
+                />
+                <Scatter
+                  data={scatter.filter((d) => d.selected)}
+                  fill="#e8c547"
+                  onClick={(d) => {
+                    const row = d as { id?: string };
+                    if (row.id) setId(row.id);
+                  }}
+                />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="meta-soft">
+            출처: 업종·테마·스타일 → ETF매칭 / 기타 (savvyDB etfs.json)
+          </p>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">
+            {selected.ticker} · {selected.group}
+          </div>
+          <h3 className="geo-section-title" style={{ marginTop: 4 }}>
+            {selected.name}
+          </h3>
+          <dl className="sdb-dl">
+            <div>
+              <dt>종합</dt>
+              <dd>{fmtNum(v.overall, 0)}</dd>
+            </div>
+            <div>
+              <dt>성과</dt>
+              <dd>{fmtNum(v.performance, 0)}</dd>
+            </div>
+            <div>
+              <dt>리스크</dt>
+              <dd>{fmtNum(v.risk, 0)}</dd>
+            </div>
+            <div>
+              <dt>비용</dt>
+              <dd>{fmtNum(v.cost, 0)}</dd>
+            </div>
+            <div>
+              <dt>펀더멘털</dt>
+              <dd>{fmtNum(v.fundamental, 0)}</dd>
+            </div>
+            <div>
+              <dt>밸류에이션</dt>
+              <dd>{fmtNum(v.valuation, 0)}</dd>
+            </div>
+            <div>
+              <dt>테크니컬</dt>
+              <dd>{fmtNum(v.technical, 0)}</dd>
+            </div>
+            <div>
+              <dt>센티먼트</dt>
+              <dd>{fmtNum(v.sentiment, 0)}</dd>
+            </div>
+          </dl>
+          <p className="meta-soft" style={{ marginTop: 8 }}>
+            {selected.sheet ? `${selected.sheet}!${selected.row}:${selected.row}` : ""}
+            · 평가점수는 원본 TR.ETF Score 저장값
+          </p>
+        </div>
+      </div>
+
+      <div className="table-wrap" style={{ marginTop: 12 }}>
         <table className="data-table">
           <thead>
             <tr>
               <th>ETF</th>
               <th>분류</th>
-              <th>TER</th>
-              <th>1Y</th>
-              <th>변동성</th>
-              <th>샤프</th>
-              <th>종합</th>
+              {(
+                [
+                  ["fee", "TER"],
+                  ["ret", "1Y"],
+                  ["vol", "변동성"],
+                  ["sharpe", "샤프"],
+                  ["overall", "종합"],
+                ] as const
+              ).map(([k, lab]) => (
+                <th key={k}>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    style={{ padding: "0 4px", fontSize: 11 }}
+                    onClick={() => {
+                      if (sortKey === k) setAsc((a) => !a);
+                      else {
+                        setSortKey(k);
+                        setAsc(false);
+                      }
+                    }}
+                  >
+                    {lab}
+                    {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {pool.slice(0, 60).map((r) => (
+            {sorted.map((r) => (
               <tr
                 key={r.id}
                 className={r.id === selected.id ? "sdb-row-active" : undefined}
                 style={{ cursor: "pointer" }}
-                onClick={() => setId(r.id || r.ticker)}
+                onClick={() => setId(r.id)}
               >
                 <td>
                   <strong>{r.ticker}</strong>{" "}

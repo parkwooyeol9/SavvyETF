@@ -64,7 +64,6 @@ export type NavGroupId =
   | "commodity"
   | "portfolio"
   | "ai"
-  | "valuation"
   | "esg"
   | "politics"
   | "fundmgr"
@@ -284,14 +283,9 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "valuation",
-    label: "밸류에이션",
-    tabs: ["valuation"],
-  },
-  {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["simulate", "usportfolio", "signals", "corridor"],
+    tabs: ["valuation", "simulate", "usportfolio", "signals", "corridor"],
     nested: [
       {
         id: "derivs",
