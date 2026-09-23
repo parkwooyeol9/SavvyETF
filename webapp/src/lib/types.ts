@@ -43,6 +43,7 @@ export type ShellTabId =
   | "eventstudy"
   | "aiport"
   | "minutepred"
+  | "stockboard"
   | "nlp"
   | "nlphistory"
   | "graph"
@@ -132,6 +133,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "weightopt",
   "aiport",
   "minutepred",
+  "stockboard",
   "nlp",
   "nlphistory",
   "graph",
@@ -210,6 +212,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   moneyflow: "자금 흐름",
   aiport: "AI포트",
   minutepred: "단기예측",
+  stockboard: "종목보드",
   nlp: "NLP",
   nlphistory: "NLP",
   graph: "밸류체인",
@@ -241,9 +244,9 @@ export const NAV_GROUPS: NavGroup[] = [
     tabs: ["kr", "us", "eventstudy", "quant"],
     nested: [
       {
-        id: "fundmgr",
-        label: "펀드매니저",
-        tabs: ["gurus", "moneyflow"],
+        id: "commodity",
+        label: "원자재",
+        tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
       },
     ],
   },
@@ -267,17 +270,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport", "minutepred"],
+    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
     nested: [
       {
         id: "politics",
         label: "정치분석",
         tabs: ["usmidterm", "midtermstudy", "polithemes"],
-      },
-      {
-        id: "commodity",
-        label: "원자재",
-        tabs: ["economy", "yencarry", "cftc", "metals", "crypto"],
       },
     ],
   },
@@ -302,6 +300,13 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "learn",
     label: "교육",
     tabs: ["cardnews", "bookclub", "heatpick", "education", "research"],
+    nested: [
+      {
+        id: "fundmgr",
+        label: "펀드매니저",
+        tabs: ["gurus", "moneyflow"],
+      },
+    ],
   },
 ];
 
@@ -310,16 +315,12 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "aiport",
   "bookclub",
   "bookclubboard",
-  "cftc",
-  "crypto",
   "datacatalog",
-  "economy",
   "heatpick",
-  "metals",
   "round",
   "signals",
+  "stockboard",
   "weightopt",
-  "yencarry",
 ];
 
 export function isAdminOnlyTab(tab: ShellTabId): boolean {
@@ -405,7 +406,8 @@ export const TAB_SLOT_ORDER: Record<TabId, string[]> = {
 
 /** Slots kept in storage/Telegram but hidden from the dashboard tab UI. */
 export const TAB_SLOT_HIDDEN: Partial<Record<TabId, readonly string[]>> = {
-  kr: ["summary_kor_intra"],
+  // summary_nxt → 국내시황 우측 상단 '넥스트레이드(장외)' 패널로 이동
+  kr: ["summary_kor_intra", "summary_nxt"],
   us: ["summary_pre"],
   // Live EtfNewTab + EtfKor15Tab replace these Telegram dumps (most schedules are OFF).
   etf: ["etf_kor15", "etf_sector", "etf_us_new", "etfcheck", "etf_memb"],
