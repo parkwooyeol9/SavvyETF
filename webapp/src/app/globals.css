@@ -2332,6 +2332,38 @@ a.geo-choke-hl:hover {
   font-weight: 650;
 }
 
+.kr-briefs-large {
+  margin-top: 1.15rem;
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
+.kr-briefs-large .kr-briefs-title {
+  margin-bottom: 1rem;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.kr-briefs-large .slot-card {
+  padding: 1rem 0.15rem 0.35rem;
+}
+
+.kr-briefs-large .slot-title {
+  font-size: 1.12rem;
+}
+
+.kr-briefs-large .html-frame {
+  min-height: 720px;
+}
+
+.kr-briefs-large .slot-card-tall .html-frame {
+  min-height: 1180px;
+}
+
+.kr-briefs-large .slot-image img {
+  max-height: none;
+  width: 100%;
+}
+
 .esg-themes-tab {
   margin-bottom: 0.85rem;
 }
@@ -4140,6 +4172,14 @@ a.geo-choke-hl:hover {
 
   .slot-card-tall .html-frame {
     min-height: 720px;
+  }
+
+  .kr-briefs-large .html-frame {
+    min-height: 540px;
+  }
+
+  .kr-briefs-large .slot-card-tall .html-frame {
+    min-height: 880px;
   }
 
   .movers-grid {

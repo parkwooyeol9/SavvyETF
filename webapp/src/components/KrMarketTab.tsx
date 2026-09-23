@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -17,15 +16,14 @@ import {
 } from "recharts";
 
 import {
-  fmtKrwEok,
   fmtNum,
   fmtPct,
   fmtValueEok,
   type KrMarketPayload,
 } from "@/lib/krMarket";
+import NextradePanel from "@/components/NextradePanel";
 
 type ChartMode = "intraday" | "daily";
-type FlowMarket = "kospi" | "kosdaq";
 
 const tooltipStyle = {
   background: "#141d2b",
@@ -167,132 +165,6 @@ function IndexCard({
             {fmtNum(ta.sma20, 1)} / {fmtNum(ta.sma60, 1)}
           </strong>
         </div>
-      </div>
-    </article>
-  );
-}
-
-function FlowPanel({
-  data,
-  market,
-  mode,
-  onMarket,
-  onMode,
-}: {
-  data: NonNullable<KrMarketPayload["flows"]>;
-  market: FlowMarket;
-  mode: ChartMode;
-  onMarket: (m: FlowMarket) => void;
-  onMode: (m: ChartMode) => void;
-}) {
-  const points = useMemo(() => {
-    if (mode === "intraday") {
-      const src =
-        market === "kospi" ? data.kospi_intraday : data.kosdaq_intraday;
-      return src.map((p) => ({
-        t: p.time,
-        개인: p.individual,
-        외국인: p.foreign,
-        기관: p.institution,
-      }));
-    }
-    const src = market === "kospi" ? data.kospi_daily : data.kosdaq_daily;
-    return src.slice(-20).map((p) => ({
-      t: p.date.slice(5),
-      개인: p.individual,
-      외국인: p.foreign,
-      기관: p.institution,
-    }));
-  }, [data, market, mode]);
-
-  const latest = points[points.length - 1];
-
-  return (
-    <article className="kr-card">
-      <div className="kr-card-head">
-        <div>
-          <h3 className="kr-card-title">투자자 수급</h3>
-          <p className="kr-card-sub">
-            외국인 · 기관 · 개인 순매수 (억원)
-            {data.as_of ? ` · 기준 ${data.as_of}` : ""}
-          </p>
-        </div>
-        <div className="kr-toggles">
-          <div className="seg">
-            <button
-              type="button"
-              className={market === "kospi" ? "active" : ""}
-              onClick={() => onMarket("kospi")}
-            >
-              코스피
-            </button>
-            <button
-              type="button"
-              className={market === "kosdaq" ? "active" : ""}
-              onClick={() => onMarket("kosdaq")}
-            >
-              코스닥
-            </button>
-          </div>
-          <div className="seg">
-            <button
-              type="button"
-              className={mode === "intraday" ? "active" : ""}
-              onClick={() => onMode("intraday")}
-            >
-              당일
-            </button>
-            <button
-              type="button"
-              className={mode === "daily" ? "active" : ""}
-              onClick={() => onMode("daily")}
-            >
-              일별
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {latest ? (
-        <div className="kr-flow-summary">
-          <div className={toneClass(latest.외국인)}>
-            <span>외국인</span>
-            <strong>{fmtKrwEok(latest.외국인)}</strong>
-          </div>
-          <div className={toneClass(latest.기관)}>
-            <span>기관</span>
-            <strong>{fmtKrwEok(latest.기관)}</strong>
-          </div>
-          <div className={toneClass(latest.개인)}>
-            <span>개인</span>
-            <strong>{fmtKrwEok(latest.개인)}</strong>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="kr-chart" style={{ height: 260 }}>
-        {!points.length ? (
-          <p className="empty">수급 데이터가 없습니다.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(43,54,72,0.85)" strokeDasharray="3 3" />
-              <XAxis dataKey="t" tick={{ fill: "#8fa3b8", fontSize: 10 }} minTickGap={24} />
-              <YAxis tick={{ fill: "#8fa3b8", fontSize: 10 }} width={48} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value: number, name: string) => [
-                  `${Number(value).toLocaleString("ko-KR")}억`,
-                  name,
-                ]}
-              />
-              <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
-              <Bar dataKey="외국인" fill="#4da3ff" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="기관" fill="#34d399" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="개인" fill="#fb923c" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
       </div>
     </article>
   );
@@ -513,14 +385,13 @@ function SingleStockLevPanel({
 export default function KrMarketTab({
   variant = "full",
 }: {
-  /** full = market + leverage; market = indices/flows only; leverage = single-stock lev board */
+  /** full = market + leverage; market = indices only; leverage = single-stock lev board */
   variant?: "full" | "market" | "leverage";
 } = {}) {
   const [data, setData] = useState<KrMarketPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartMode, setChartMode] = useState<ChartMode>("intraday");
-  const [flowMarket, setFlowMarket] = useState<FlowMarket>("kospi");
-  const [flowMode, setFlowMode] = useState<ChartMode>("intraday");
+  const [showNxt, setShowNxt] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -553,7 +424,7 @@ export default function KrMarketTab({
           <div>
             <h2 className="kr-hero-title">국내 시황 모니터</h2>
             <p className="kr-hero-sub">
-              코스피 · 코스닥 라이브 차트와 수급을 한눈에 봅니다.
+              코스피 · 코스닥 라이브 차트를 한눈에 봅니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -573,6 +444,13 @@ export default function KrMarketTab({
                 일봉
               </button>
             </div>
+            <button
+              type="button"
+              className={`tab-btn${showNxt ? " active" : ""}`}
+              onClick={() => setShowNxt((v) => !v)}
+            >
+              넥스트레이드(장외)
+            </button>
             <button type="button" className="ghost-btn" onClick={() => void load()}>
               새로고침
             </button>
@@ -593,6 +471,10 @@ export default function KrMarketTab({
           </div>
         </div>
       )}
+
+      {showMarket ? (
+        <NextradePanel open={showNxt} onClose={() => setShowNxt(false)} />
+      ) : null}
 
       {loading && !data ? <p className="empty">국내 시황 불러오는 중…</p> : null}
       {data && !data.ok ? (
@@ -615,22 +497,13 @@ export default function KrMarketTab({
                 {data.kosdaq ? (
                   <IndexCard
                     title="코스닥 종합"
-                    subtitle="舊 코스닥100 대체 시황 · 수급 연동"
+                    subtitle="舊 코스닥100 대체 시황"
                     board={data.kosdaq}
                     mode={chartMode}
                   />
                 ) : null}
               </div>
 
-              {data.flows ? (
-                <FlowPanel
-                  data={data.flows}
-                  market={flowMarket}
-                  mode={flowMode}
-                  onMarket={setFlowMarket}
-                  onMode={setFlowMode}
-                />
-              ) : null}
             </>
           ) : null}
 
@@ -639,7 +512,7 @@ export default function KrMarketTab({
           ) : null}
 
           <p className="kr-foot">
-            출처: Naver Finance (지수·수급) · 약 45초마다 갱신 ·{" "}
+            출처: Naver Finance (지수) · 약 45초마다 갱신 ·{" "}
             {data.generated_at
               ? new Date(data.generated_at).toLocaleString("ko-KR", { hour12: false })
               : ""}

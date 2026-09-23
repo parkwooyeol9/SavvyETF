@@ -124,14 +124,16 @@ function BriefSlotsPanel({
   note,
   emptyText,
   slots,
+  large,
 }: {
   title: string;
   note?: string;
   emptyText: string;
   slots: BriefSlot[];
+  large?: boolean;
 }) {
   return (
-    <section className="panel kr-briefs">
+    <section className={`panel kr-briefs${large ? " kr-briefs-large" : ""}`}>
       <h2 className="kr-briefs-title">{title}</h2>
       {note ? <p className="kr-note">{note}</p> : null}
       {!slots.length ? (
@@ -604,6 +606,7 @@ function DashboardInner({
             title="시황 브리프"
             emptyText="국내 브리프 스냅샷이 아직 없습니다. 텔레그램 봇 스케줄 또는 수동 명령 후 자동으로 채워집니다."
             slots={slots}
+            large
           />
         </>
       ) : tab === "us" ? (
