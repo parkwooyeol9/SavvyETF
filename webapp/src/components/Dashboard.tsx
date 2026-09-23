@@ -46,6 +46,7 @@ import {
   UsPortfolioTab,
   AiPortTab,
   MinuteForecastTab,
+  StockFeatureBoardTab,
   CorridorTab,
   UsMarketTab,
   UsMidtermTab,
@@ -210,16 +211,6 @@ function DashboardInner({
     // AI포트 stays next to AI Pick; 나머지는 같은 대분류의 첫 공개 탭으로.
     if (tab === "aiport" || tab === "weightopt") {
       setTab("ideas");
-      return;
-    }
-    if (
-      tab === "economy" ||
-      tab === "yencarry" ||
-      tab === "cftc" ||
-      tab === "metals" ||
-      tab === "crypto"
-    ) {
-      setTab("graph");
       return;
     }
     if (tab === "datacatalog") {
@@ -524,6 +515,8 @@ function DashboardInner({
         unlocked ? <AiPortTab /> : null
       ) : tab === "minutepred" ? (
         <MinuteForecastTab />
+      ) : tab === "stockboard" ? (
+        unlocked ? <StockFeatureBoardTab /> : null
       ) : tab === "corridor" ? (
         <CorridorTab />
       ) : tab === "usmidterm" ? (
@@ -577,15 +570,15 @@ function DashboardInner({
           <GreenMineralsTab />
         </EsgTabShell>
       ) : tab === "economy" ? (
-        unlocked ? <MacroTab /> : null
+        <MacroTab />
       ) : tab === "yencarry" ? (
-        unlocked ? <YenCarryTab /> : null
+        <YenCarryTab />
       ) : tab === "cftc" ? (
-        unlocked ? <CftcTab /> : null
+        <CftcTab />
       ) : tab === "metals" ? (
-        unlocked ? <PreciousMetalsTab /> : null
+        <PreciousMetalsTab />
       ) : tab === "crypto" ? (
-        unlocked ? <CryptoAssetsTab /> : null
+        <CryptoAssetsTab />
       ) : tab === "volmonitor" ? (
         <VolatilityMonitorTab />
       ) : tab === "derivatives" ? (
