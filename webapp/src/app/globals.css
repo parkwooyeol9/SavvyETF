@@ -652,6 +652,17 @@ a.tab-btn {
   background: rgba(91, 159, 212, 0.12);
 }
 
+.sdb-tab .callout {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-left: 3px solid rgba(91, 159, 212, 0.55);
+  background: rgba(91, 159, 212, 0.08);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted, #8b9bb4);
+}
+
 @media (max-width: 900px) {
   .nxt-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
