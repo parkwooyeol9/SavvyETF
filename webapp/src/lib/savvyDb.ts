@@ -4,7 +4,7 @@
  */
 
 export const SAVVYDB_ORIGIN = "https://savvydb.savvyetf.chatgpt.site";
-export const SAVVYDB_EXTERNAL = `${SAVVYDB_ORIGIN}/#sectors`;
+export const SAVVYDB_EXTERNAL = `${SAVVYDB_ORIGIN}/#fundamentals`;
 
 export const SAVVYDB_FILES = [
   "meta",
@@ -17,12 +17,17 @@ export const SAVVYDB_FILES = [
   "themes",
   "catalog",
   "country-daily",
+  "fundamentals",
 ] as const;
 
-export type SavvyDbFile = (typeof SAVVYDB_FILES)[number];
+export type SavvyDbFile = (typeof SAVVYDB_FILES)[number] | `holdings-${string}`;
+
+const HOLDINGS_FILE_RE = /^holdings-[A-Za-z0-9._-]+$/;
 
 export function isSavvyDbFile(v: string): v is SavvyDbFile {
-  return (SAVVYDB_FILES as readonly string[]).includes(v);
+  return (
+    (SAVVYDB_FILES as readonly string[]).includes(v) || HOLDINGS_FILE_RE.test(v)
+  );
 }
 
 export type SavvyPoint = [string, number | null];
@@ -66,6 +71,30 @@ export type SavvyThemeRow = {
   values: Record<string, number | string | null>;
 };
 
+export type SavvyFundThemeRow = {
+  id: string;
+  ticker: string;
+  name: string;
+  benchmark?: string;
+  row?: number;
+  values: Record<string, number | string | null>;
+  holdingsCount: number;
+  weightSum: number;
+  top10Weight?: number;
+  coverage?: Record<string, number | null>;
+  warnings?: string[];
+  lags?: Record<string, SavvyPoint[]>;
+};
+
+export type SavvyHoldingRow = {
+  id: string;
+  ticker: string;
+  name: string;
+  row?: number;
+  values: Record<string, number | string | null>;
+  annual?: Record<string, SavvyPoint[]>;
+};
+
 export type SavvyMeta = {
   sheets?: number;
   cells?: number;
@@ -76,6 +105,7 @@ export type SavvyMeta = {
   snapshotDate?: string;
   books?: Record<string, string>;
   etfs?: number;
+  sourceDates?: Record<string, { date?: string; basis?: string }>;
 };
 
 export const SECTOR_METRICS: Record<string, string> = {

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -25,6 +27,8 @@ import {
   seriesForChart,
   toneClass,
   type SavvyCountryRow,
+  type SavvyFundThemeRow,
+  type SavvyHoldingRow,
   type SavvyMeta,
   type SavvyPoint,
   type SavvySectorRow,
@@ -32,15 +36,44 @@ import {
   type SavvyThemeRow,
 } from "@/lib/savvyDb";
 
-type ViewId = "sectors" | "stocks" | "countries" | "longval" | "themes";
+type ViewId =
+  | "sectors"
+  | "stocks"
+  | "countries"
+  | "longval"
+  | "themes"
+  | "fundamentals";
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "sectors", label: "업종 · 스타일" },
+  { id: "fundamentals", label: "테마 펀더멘털" },
   { id: "stocks", label: "미국 주식" },
   { id: "countries", label: "국가 모델" },
   { id: "longval", label: "장기 밸류에이션" },
   { id: "themes", label: "ETF 비교" },
 ];
+
+const FUND_METRICS: Record<string, [string, string]> = {
+  per: ["선행 PER", "배"],
+  perAvg: ["PER 5Y 평균", "배"],
+  perPremium: ["PER 평균 대비", "%"],
+  rev1w: ["EPS 조정심리 1W", "%"],
+  rev2w: ["EPS 조정심리 2W", "%"],
+  rev1m: ["EPS 조정심리 1M", "%"],
+  rev3m: ["EPS 조정심리 3M", "%"],
+  rev6m: ["EPS 조정심리 6M", "%"],
+  epsGrowth: ["선행 EPS 성장", "%"],
+  roe: ["ROE", "%"],
+  roeGap: ["ROE 평균 대비", "%p"],
+  salesGrowth: ["매출 성장률", "%"],
+  salesGap: ["매출 성장률 차이", "%p"],
+  ev: ["EV/EBITDA", "배"],
+  pbr: ["PBR", "배"],
+  psr: ["PSR", "배"],
+  peg: ["PEG", "배"],
+};
+
+const LAG_COLORS = ["#5eead4", "#5b9fd4", "#e8c547", "#bd5663"];
 
 const tip = {
   background: "#141d2b",
@@ -1340,6 +1373,786 @@ function LongValView() {
   );
 }
 
+function LagBarPanel({
+  series,
+  unit,
+}: {
+  series: Array<{ name: string; points: SavvyPoint[] }>;
+  unit: string;
+}) {
+  const cats = [
+    ...new Set(series.flatMap((s) => s.points.map((p) => p[0]))),
+  ];
+  const data = cats.map((cat) => {
+    const row: Record<string, string | number | null> = { t: cat };
+    for (const s of series) {
+      const pt = s.points.find((p) => p[0] === cat);
+      row[s.name] = num(pt?.[1]);
+    }
+    return row;
+  });
+  const hasVal = data.some((d) =>
+    series.some((s) => num(d[s.name]) != null),
+  );
+  if (!hasVal) {
+    return <p className="empty">유효한 원본 관측값이 없습니다.</p>;
+  }
+  return (
+    <div style={{ width: "100%", height: 260 }}>
+      <ResponsiveContainer>
+        <BarChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
+          <XAxis dataKey="t" tick={{ fill: "#8b9bb4", fontSize: 10 }} />
+          <YAxis
+            width={44}
+            tick={{ fill: "#8b9bb4", fontSize: 10 }}
+            tickFormatter={(v: number) => `${fmtNum(v, 1)}${unit === "%" || unit === "%p" ? "" : ""}`}
+          />
+          <Tooltip
+            contentStyle={tip}
+            formatter={(value: number | string, name: string) => [
+              typeof value === "number"
+                ? `${fmtNum(value)}${unit}`
+                : value,
+              name,
+            ]}
+          />
+          <Legend />
+          {series.map((s, i) => (
+            <Bar
+              key={s.name}
+              dataKey={s.name}
+              fill={LAG_COLORS[i % LAG_COLORS.length]}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={36}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function revPoints(row: SavvyFundThemeRow): SavvyPoint[] {
+  const v = row.values;
+  return [
+    ["1주", num(v.rev1w)],
+    ["2주", num(v.rev2w)],
+    ["1개월", num(v.rev1m)],
+    ["3개월", num(v.rev3m)],
+    ["6개월", num(v.rev6m)],
+  ];
+}
+
+function FundamentalsView() {
+  const [rows, setRows] = useState<SavvyFundThemeRow[]>([]);
+  const [holdings, setHoldings] = useState<SavvyHoldingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [id, setId] = useState("SOXX");
+  const [compare, setCompare] = useState("");
+  const [lag, setLag] = useState<"roe" | "ev" | "pbr" | "psr">("roe");
+  const [holdingId, setHoldingId] = useState("");
+  const [hmetric, setHmetric] = useState<"per" | "eps" | "price">("per");
+  const [sortKey, setSortKey] = useState("rev1m");
+  const [asc, setAsc] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const t = await loadFile<SavvyFundThemeRow[]>("fundamentals");
+        if (cancelled) return;
+        setRows(t);
+        setId(
+          t.find((r) => r.id === "SOXX")?.id || t[0]?.id || "",
+        );
+      } catch (exc) {
+        if (!cancelled)
+          setError(exc instanceof Error ? exc.message : String(exc));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      setHoldingsLoading(true);
+      try {
+        const h = await loadFile<SavvyHoldingRow[]>(`holdings-${id}`);
+        if (cancelled) return;
+        setHoldings(h);
+        const top = [...h].sort(
+          (a, b) => (num(b.values.weight) ?? 0) - (num(a.values.weight) ?? 0),
+        )[0];
+        setHoldingId(top?.id || "");
+      } catch {
+        if (!cancelled) {
+          setHoldings([]);
+          setHoldingId("");
+        }
+      } finally {
+        if (!cancelled) setHoldingsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const pool = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return rows;
+    return rows.filter(
+      (r) =>
+        r.ticker.toLowerCase().includes(qq) ||
+        r.name.toLowerCase().includes(qq) ||
+        r.id.toLowerCase().includes(qq),
+    );
+  }, [rows, q]);
+
+  const sorted = useMemo(() => {
+    const list = [...pool];
+    list.sort((a, b) => {
+      const av = num(a.values[sortKey]);
+      const bv = num(b.values[sortKey]);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return (av - bv) * (asc ? 1 : -1);
+    });
+    return list;
+  }, [pool, sortKey, asc]);
+
+  const selected =
+    pool.find((r) => r.id === id) ||
+    rows.find((r) => r.id === id) ||
+    sorted[0] ||
+    null;
+  const compareRow = compare
+    ? rows.find((r) => r.id === compare) || null
+    : null;
+  const holding =
+    holdings.find((h) => h.id === holdingId) ||
+    [...holdings].sort(
+      (a, b) => (num(b.values.weight) ?? 0) - (num(a.values.weight) ?? 0),
+    )[0] ||
+    null;
+
+  const coverageKey: "roe" | "per" | "ev" | "pbr" | "psr" | "rev1m" = [
+    "roe",
+    "per",
+    "ev",
+    "pbr",
+    "psr",
+    "rev1m",
+  ].includes(lag)
+    ? lag
+    : "roe";
+  const coveragePct =
+    selected && selected.weightSum
+      ? ((selected.coverage?.[coverageKey] ?? 0) / selected.weightSum) * 100
+      : 0;
+  const maxWeight = Math.max(
+    ...holdings.map((h) => num(h.values.weight) ?? 0),
+    0,
+  );
+
+  const downloadCsv = () => {
+    const keys = Object.keys(FUND_METRICS);
+    const header = [
+      "ETF",
+      "테마",
+      ...keys.map((k) => FUND_METRICS[k].join(" ")),
+    ];
+    const body = rows.map((r) =>
+      [r.id, r.name, ...keys.map((k) => r.values[k] ?? "")].join(","),
+    );
+    const blob = new Blob([[header.join(","), ...body].join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "savvyDB-thematic-fundamentals.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  if (loading) return <p className="empty">테마 펀더멘털 불러오는 중…</p>;
+  if (error && !selected) return <p className="empty warn">{error}</p>;
+  if (!selected) return <p className="empty">테마 ETF가 없습니다.</p>;
+  const v = selected.values;
+
+  return (
+    <>
+      <div className="feature-head geo-head-row">
+        <div>
+          <p className="eyebrow">THEMATIC FUNDAMENTALS / KBAM</p>
+          <h3 className="geo-section-title">테마를 구성종목까지 들여다보다</h3>
+          <p className="macro-subhead">
+            {rows.length}개 테마 ETF의 편입종목, 이익 조정심리와 밸류에이션을
+            연결합니다.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            className="sdb-search"
+            placeholder="반도체, 전력, SOXX…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <select
+            className="sdb-select"
+            value={selected.id}
+            onChange={(e) => {
+              setId(e.target.value);
+              setHoldingId("");
+            }}
+          >
+            {rows.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.ticker} · {r.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="sdb-select"
+            value={compare}
+            onChange={(e) => setCompare(e.target.value)}
+          >
+            <option value="">비교 없음</option>
+            {rows
+              .filter((r) => r.id !== selected.id)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.ticker} · {r.name}
+                </option>
+              ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="nxt-stat-grid">
+        <div className="geo-featured">
+          <div className="meta-soft">{selected.ticker} · 선행 PER</div>
+          <strong className="nxt-stat-val">{fmtNum(v.per)}배</strong>
+          <div className="meta-soft">원본 구성종목 가중합</div>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">EPS 조정심리 · 1M</div>
+          <strong className={`nxt-stat-val ${toneClass(v.rev1m)}`}>
+            {fmtPct(v.rev1m)}
+          </strong>
+          <div className="meta-soft">상향−하향 조정 비율의 가중합</div>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">PER 5년 평균 대비</div>
+          <strong className={`nxt-stat-val ${toneClass(v.perPremium)}`}>
+            {fmtPct(v.perPremium)}
+          </strong>
+          <div className="meta-soft">현재 가중합 / 평균 가중합 − 1</div>
+        </div>
+        <div className="geo-featured">
+          <div className="meta-soft">편입종목</div>
+          <strong className="nxt-stat-val">
+            {selected.holdingsCount.toLocaleString()}
+          </strong>
+          <div className="meta-soft">
+            원본 편입비 합계 {fmtNum(selected.weightSum)}%
+          </div>
+        </div>
+      </div>
+
+      {selected.warnings?.length ? (
+        <div className="callout" style={{ marginBottom: 12 }}>
+          <strong>데이터 점검</strong>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+            {selected.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="nxt-chart-grid">
+        <div>
+          <div className="geo-featured" style={{ marginBottom: 12 }}>
+            <div
+              className="feature-head geo-head-row"
+              style={{ marginBottom: 8 }}
+            >
+              <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+                {selected.name} · 펀더멘털 구간 비교
+              </h3>
+              <select
+                className="sdb-select"
+                value={lag}
+                onChange={(e) =>
+                  setLag(e.target.value as "roe" | "ev" | "pbr" | "psr")
+                }
+              >
+                <option value="roe">ROE (%)</option>
+                <option value="ev">EV/EBITDA (배)</option>
+                <option value="pbr">PBR (배)</option>
+                <option value="psr">PSR (배)</option>
+              </select>
+            </div>
+            <p className="meta-soft" style={{ marginBottom: 8 }}>
+              현재 구성종목과 편입비로 계산된 과거 상대 시점 값입니다. 과거 ETF
+              포트폴리오의 실제 성과나 일별 시계열이 아닙니다.
+            </p>
+            <LagBarPanel
+              series={[
+                {
+                  name: selected.id,
+                  points: [...(selected.lags?.[lag] || [])].reverse(),
+                },
+                ...(compareRow
+                  ? [
+                      {
+                        name: compareRow.id,
+                        points: [
+                          ...(compareRow.lags?.[lag] || []),
+                        ].reverse(),
+                      },
+                    ]
+                  : []),
+              ]}
+              unit={lag === "roe" ? "%" : "배"}
+            />
+            <p className="meta-soft">
+              KBAM → {selected.ticker}!1행 · 1년 전 / 3개월 전 / 1개월 전 /
+              2주 전 / 1주 전 / 현재. 실제 관측일은 원본에 미기재.
+            </p>
+          </div>
+
+          <div className="geo-featured" style={{ marginBottom: 12 }}>
+            <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+              애널리스트 조정심리
+            </h3>
+            <LagBarPanel
+              series={[
+                { name: selected.id, points: revPoints(selected) },
+                ...(compareRow
+                  ? [{ name: compareRow.id, points: revPoints(compareRow) }]
+                  : []),
+              ]}
+              unit="%"
+            />
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              종목별 (상향 조정 수 − 하향 조정 수) ÷ 전체 애널리스트 수를
+              편입비로 가중했습니다. 각 기간의 조정 활동을 비교하는 지표이며
+              EPS 금액 증감률이 아닙니다.
+            </p>
+          </div>
+
+          <div className="table-wrap" style={{ marginBottom: 12 }}>
+            <div
+              className="feature-head geo-head-row"
+              style={{ marginBottom: 8 }}
+            >
+              <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+                테마 ETF 비교
+              </h3>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={downloadCsv}
+              >
+                전체 지표 CSV ↓
+              </button>
+            </div>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ETF</th>
+                  {(
+                    [
+                      ["rev1m", "조정심리 1M"],
+                      ["per", "PER"],
+                      ["perPremium", "평균 대비"],
+                      ["roe", "ROE (%)"],
+                      ["epsGrowth", "선행 EPS 성장"],
+                      ["ev", "EV/EBITDA"],
+                      ["pbr", "PBR"],
+                    ] as const
+                  ).map(([k, lab]) => (
+                    <th key={k}>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        style={{ padding: "0 4px", fontSize: 11 }}
+                        onClick={() => {
+                          if (sortKey === k) setAsc((a) => !a);
+                          else {
+                            setSortKey(k);
+                            setAsc(false);
+                          }
+                        }}
+                      >
+                        {lab}
+                        {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((r) => (
+                  <tr
+                    key={r.id}
+                    className={
+                      r.id === selected.id ? "sdb-row-active" : undefined
+                    }
+                    style={{ cursor: "pointer" }}
+                    onClick={() => {
+                      setId(r.id);
+                      setHoldingId("");
+                    }}
+                  >
+                    <td>
+                      <strong>{r.ticker}</strong>{" "}
+                      <span className="meta-soft">{r.name}</span>
+                    </td>
+                    <td className={toneClass(r.values.rev1m)}>
+                      {fmtPct(r.values.rev1m)}
+                    </td>
+                    <td>{fmtNum(r.values.per)}</td>
+                    <td className={toneClass(r.values.perPremium)}>
+                      {fmtPct(r.values.perPremium)}
+                    </td>
+                    <td>{fmtNum(r.values.roe)}</td>
+                    <td className={toneClass(r.values.epsGrowth)}>
+                      {fmtPct(r.values.epsGrowth)}
+                    </td>
+                    <td>{fmtNum(r.values.ev)}</td>
+                    <td>{fmtNum(r.values.pbr)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="geo-featured">
+            <div
+              className="feature-head geo-head-row"
+              style={{ marginBottom: 8 }}
+            >
+              <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+                구성종목 탐색
+              </h3>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <select
+                  className="sdb-select"
+                  value={holding?.id || ""}
+                  onChange={(e) => setHoldingId(e.target.value)}
+                  disabled={holdingsLoading || !holdings.length}
+                >
+                  {holdings.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.ticker} · {fmtNum(h.values.weight)}%
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="sdb-select"
+                  value={hmetric}
+                  onChange={(e) =>
+                    setHmetric(e.target.value as "per" | "eps" | "price")
+                  }
+                >
+                  <option value="per">선행 PER (배)</option>
+                  <option value="eps">선행 EPS (종목별 원통화)</option>
+                  <option value="price">주가 (종목별 원통화)</option>
+                </select>
+              </div>
+            </div>
+            {holdingsLoading ? (
+              <p className="empty">구성종목 불러오는 중…</p>
+            ) : holding ? (
+              <>
+                <div className="nxt-stat-grid" style={{ marginBottom: 10 }}>
+                  <div className="geo-featured">
+                    <div className="meta-soft">원본 편입비</div>
+                    <strong className="nxt-stat-val">
+                      {fmtNum(holding.values.weight)}%
+                    </strong>
+                  </div>
+                  <div className="geo-featured">
+                    <div className="meta-soft">선행 PER</div>
+                    <strong className="nxt-stat-val">
+                      {fmtNum(holding.values.per)}배
+                    </strong>
+                  </div>
+                  <div className="geo-featured">
+                    <div className="meta-soft">ROE</div>
+                    <strong className="nxt-stat-val">
+                      {fmtNum(holding.values.roe)}%
+                    </strong>
+                  </div>
+                  <div className="geo-featured">
+                    <div className="meta-soft">1M 조정심리</div>
+                    <strong
+                      className={`nxt-stat-val ${toneClass(holding.values.rev1m)}`}
+                    >
+                      {fmtPct(holding.values.rev1m)}
+                    </strong>
+                  </div>
+                </div>
+                <LagBarPanel
+                  series={[
+                    {
+                      name: holding.id,
+                      points: [
+                        ...(holding.annual?.[hmetric] || []),
+                      ].reverse(),
+                    },
+                  ]}
+                  unit={hmetric === "per" ? "배" : "원본 단위"}
+                />
+              </>
+            ) : (
+              <p className="empty">구성종목이 없습니다.</p>
+            )}
+            <div className="table-wrap" style={{ marginTop: 10 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>구성종목</th>
+                    <th>편입비</th>
+                    <th>선행 PER</th>
+                    <th>ROE</th>
+                    <th>EPS 조정심리 1M</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...holdings]
+                    .sort(
+                      (a, b) =>
+                        (num(b.values.weight) ?? 0) -
+                        (num(a.values.weight) ?? 0),
+                    )
+                    .map((h) => (
+                      <tr
+                        key={h.id}
+                        className={
+                          h.id === holding?.id ? "sdb-row-active" : undefined
+                        }
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setHoldingId(h.id)}
+                      >
+                        <td>
+                          <strong>{h.id}</strong>
+                        </td>
+                        <td>{fmtNum(h.values.weight)}%</td>
+                        <td>{fmtNum(h.values.per)}</td>
+                        <td>{fmtNum(h.values.roe)}%</td>
+                        <td className={toneClass(h.values.rev1m)}>
+                          {fmtPct(h.values.rev1m)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              KBAM → {selected.id}!A:B 및 각 지표 열. 상대 연도는 현재 기준
+              −1Y…−5Y. 결측은 보간하지 않습니다.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div className="geo-featured" style={{ marginBottom: 12 }}>
+            <div className="meta-soft">{selected.id}</div>
+            <h3 className="geo-section-title" style={{ marginTop: 4 }}>
+              {selected.name}
+            </h3>
+            <p className="meta-soft">
+              BM: {selected.benchmark || "미기재"}
+            </p>
+            <dl className="sdb-dl">
+              <div>
+                <dt>PER 5년 평균</dt>
+                <dd>{fmtNum(v.perAvg)}배</dd>
+              </div>
+              <div>
+                <dt>EV/EBITDA</dt>
+                <dd>{fmtNum(v.ev)}배</dd>
+              </div>
+              <div>
+                <dt>PBR</dt>
+                <dd>{fmtNum(v.pbr)}배</dd>
+              </div>
+              <div>
+                <dt>PSR</dt>
+                <dd>{fmtNum(v.psr)}배</dd>
+              </div>
+              <div>
+                <dt>PEG</dt>
+                <dd>{fmtNum(v.peg)}배</dd>
+              </div>
+              <div>
+                <dt>ROE</dt>
+                <dd>{fmtNum(v.roe)}%</dd>
+              </div>
+              <div>
+                <dt>ROE 평균 대비</dt>
+                <dd>{fmtNum(v.roeGap)}%p</dd>
+              </div>
+              <div>
+                <dt>매출 성장률</dt>
+                <dd>{fmtNum(v.salesGrowth)}%</dd>
+              </div>
+              <div>
+                <dt>매출 성장률 차이</dt>
+                <dd>{fmtNum(v.salesGap)}%p</dd>
+              </div>
+            </dl>
+            <div className="callout" style={{ marginTop: 10 }}>
+              현재·평균 지표 모두 원본을 보존했습니다. 가중평균 PER와 펀드 공시
+              PER는 계산 방식이 다를 수 있습니다. 선행 EPS 성장은 선행 EPS /
+              후행 EPS − 1을 가중한 값입니다. PEG는 원본의 성장률 정의에
+              따릅니다.
+            </div>
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              fundamental!{selected.row}:{selected.row}
+            </p>
+          </div>
+
+          <div className="geo-featured" style={{ marginBottom: 12 }}>
+            <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+              편입 집중도
+            </h3>
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              {[...holdings]
+                .sort(
+                  (a, b) =>
+                    (num(b.values.weight) ?? 0) - (num(a.values.weight) ?? 0),
+                )
+                .slice(0, 10)
+                .map((h) => {
+                  const w = num(h.values.weight) ?? 0;
+                  const pctBar =
+                    maxWeight > 0
+                      ? Math.max(0, Math.min(100, (w / maxWeight) * 100))
+                      : 0;
+                  return (
+                    <button
+                      key={h.id}
+                      type="button"
+                      className="ghost-btn"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "64px 1fr 52px",
+                        alignItems: "center",
+                        gap: 8,
+                        textAlign: "left",
+                        padding: "4px 0",
+                      }}
+                      onClick={() => setHoldingId(h.id)}
+                    >
+                      <span>{h.ticker}</span>
+                      <span
+                        style={{
+                          height: 8,
+                          background: "#1e293b",
+                          borderRadius: 4,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <i
+                          style={{
+                            display: "block",
+                            height: "100%",
+                            width: `${pctBar}%`,
+                            background: "#5eead4",
+                          }}
+                        />
+                      </span>
+                      <strong style={{ fontSize: 12 }}>
+                        {fmtNum(w)}%
+                      </strong>
+                    </button>
+                  );
+                })}
+            </div>
+            <dl className="sdb-dl" style={{ marginTop: 10 }}>
+              <div>
+                <dt>상위 10개 편입비</dt>
+                <dd>{fmtNum(selected.top10Weight)}%</dd>
+              </div>
+              <div>
+                <dt>전체 편입비 합계</dt>
+                <dd>{fmtNum(selected.weightSum)}%</dd>
+              </div>
+            </dl>
+            <div style={{ marginTop: 10 }}>
+              <div className="meta-soft">
+                {coverageKey.toUpperCase()} 유효 커버리지
+              </div>
+              <strong style={{ fontSize: 20 }}>
+                {fmtNum(coveragePct, 1)}%
+              </strong>
+              <div
+                style={{
+                  height: 8,
+                  background: "#1e293b",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  marginTop: 6,
+                }}
+              >
+                <i
+                  style={{
+                    display: "block",
+                    height: "100%",
+                    width: `${Math.min(100, coveragePct)}%`,
+                    background: "#5b9fd4",
+                  }}
+                />
+              </div>
+              <p className="meta-soft" style={{ marginTop: 4 }}>
+                유효 종목 편입비 {fmtNum(selected.coverage?.[coverageKey])}%p ÷
+                전체 {fmtNum(selected.weightSum)}%p
+              </p>
+            </div>
+          </div>
+
+          <div className="geo-featured">
+            <h3 className="geo-section-title" style={{ fontSize: 16 }}>
+              출처 · 해석
+            </h3>
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              편입비 합계가 100%와 다르더라도 임의로 재조정하지 않았습니다.
+              누락 지표의 기여분이 빠지는 원본 가중합의 특성을 커버리지와 함께
+              확인하세요.
+            </p>
+            <a
+              className="ghost-btn"
+              href={`${SAVVYDB_EXTERNAL.replace(/#.*$/, "")}/#fundamentals`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginTop: 10, display: "inline-block" }}
+            >
+              원본 열기 ↗
+            </a>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ThemesView() {
   const [rows, setRows] = useState<SavvyThemeRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1699,6 +2512,7 @@ export default function ValuationTab() {
       </div>
 
       {view === "sectors" ? <SectorsView meta={meta} /> : null}
+      {view === "fundamentals" ? <FundamentalsView /> : null}
       {view === "stocks" ? <StocksView /> : null}
       {view === "countries" ? <CountriesView /> : null}
       {view === "longval" ? <LongValView /> : null}

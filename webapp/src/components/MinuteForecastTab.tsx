@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   ResponsiveContainer,
@@ -326,58 +329,125 @@ function AssetCard({
   );
 }
 
+const REGIME_STROKE: Record<string, string> = {
+  asia: "#5b9fd4",
+  us: "#e8c547",
+  weekend: "#c97b84",
+};
+
+function RegimeVolBars({ regimes }: { regimes: RegimeStats[] }) {
+  const data = useMemo(
+    () =>
+      regimes.map((r) => ({
+        name: r.label_ko.replace(/\(.*\)/, "").trim(),
+        vol: Number(r.vol_pct.toFixed(4)),
+        fill: REGIME_STROKE[r.id] || "#8b9bb4",
+      })),
+    [regimes],
+  );
+  const maxVol = Math.max(...data.map((d) => d.vol), 1e-6);
+
+  return (
+    <div style={{ width: "100%", height: 160 }}>
+      <ResponsiveContainer>
+        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" vertical={false} />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "#8b9bb4", fontSize: 11 }}
+            axisLine={{ stroke: "#2b3648" }}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#8b9bb4", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v: number) => `${v.toFixed(2)}%`}
+            width={48}
+            domain={[0, maxVol * 1.15]}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            formatter={(v: number) => [`${v.toFixed(4)}%`, "σ"]}
+          />
+          <Bar
+            dataKey="vol"
+            name="σ"
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+          >
+            {data.map((d) => (
+              <Cell key={d.name} fill={d.fill} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function RegimeOverlayChart({
   regimes,
 }: {
   regimes: RegimeStats[];
 }) {
   const rows = useMemo(() => {
-    const map = new Map<number, Record<string, number | null>>();
-    for (const reg of regimes) {
-      for (const p of reg.density) {
-        const key = Math.round(p.x_pct * 100) / 100;
-        const row = map.get(key) || { x: key };
-        row[reg.id] = p.density;
-        map.set(key, row);
+    // Densities share one KDE axis — zip by index / identical x_pct.
+    const first = regimes.find((r) => r.density.length > 0);
+    if (!first) return [];
+    return first.density.map((p, i) => {
+      const row: Record<string, number | null> = { x: p.x_pct };
+      for (const reg of regimes) {
+        const pt = reg.density[i];
+        row[reg.id] =
+          pt && Math.abs(pt.x_pct - p.x_pct) < 1e-6
+            ? pt.density
+            : reg.density.find((d) => Math.abs(d.x_pct - p.x_pct) < 1e-6)
+                ?.density ?? null;
       }
-    }
-    return [...map.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, v]) => v);
+      return row;
+    });
   }, [regimes]);
 
-  const stroke: Record<string, string> = {
-    asia: "#5b9fd4",
-    us: "#e8c547",
-    weekend: "#c97b84",
-  };
+  if (!rows.length) {
+    return <p className="empty">분포 곡선 데이터 없음</p>;
+  }
 
   return (
-    <div style={{ width: "100%", height: 220 }}>
+    <div style={{ width: "100%", height: 240 }}>
       <ResponsiveContainer>
-        <AreaChart data={rows}>
+        <AreaChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
           <XAxis
             dataKey="x"
             tick={{ fill: "#8b9bb4", fontSize: 11 }}
-            tickFormatter={(v: number) => `${Number(v).toFixed(1)}%`}
+            tickFormatter={(v: number) => `${Number(v).toFixed(2)}%`}
+            minTickGap={28}
           />
-          <YAxis hide domain={[0, 1.05]} />
+          <YAxis hide domain={[0, 1.08]} />
           <Tooltip
             contentStyle={tooltipStyle}
-            labelFormatter={(l: number) => `수익률 ${Number(l).toFixed(2)}%`}
+            labelFormatter={(l: number) => `5m 로그수익 ${Number(l).toFixed(3)}%`}
+            formatter={(v: number, name: string) => [
+              Number(v).toFixed(3),
+              name,
+            ]}
           />
           <Legend />
           {regimes.map((r) => (
             <Area
               key={r.id}
-              type="monotone"
+              type="basis"
               dataKey={r.id}
               name={r.label_ko}
-              stroke={stroke[r.id]}
-              fill={stroke[r.id]}
-              fillOpacity={0.18}
+              stroke={REGIME_STROKE[r.id]}
+              fill={REGIME_STROKE[r.id]}
+              fillOpacity={0.12}
+              strokeWidth={2.25}
+              connectNulls
+              dot={false}
               isAnimationActive={false}
+              activeDot={{ r: 3 }}
             />
           ))}
         </AreaChart>
@@ -387,6 +457,21 @@ function RegimeOverlayChart({
 }
 
 function RegimeAssetBlock({ asset }: { asset: AssetRegimePanel }) {
+  const maxVolId = useMemo(() => {
+    let best: RegimeStats | null = null;
+    for (const r of asset.regimes) {
+      if (!best || r.vol_pct > best.vol_pct) best = r;
+    }
+    return best?.id ?? null;
+  }, [asset.regimes]);
+
+  const peerMed = useMemo(() => {
+    const vols = asset.regimes.map((r) => r.vol_pct).filter((v) => v > 0);
+    if (!vols.length) return 0;
+    const s = [...vols].sort((a, b) => a - b);
+    return s[Math.floor((s.length - 1) / 2)]!;
+  }, [asset.regimes]);
+
   if (asset.error) {
     return (
       <section className="geo-section">
@@ -397,6 +482,7 @@ function RegimeAssetBlock({ asset }: { asset: AssetRegimePanel }) {
       </section>
     );
   }
+
   return (
     <section className="geo-section">
       <h4 className="geo-section-title">
@@ -405,18 +491,35 @@ function RegimeAssetBlock({ asset }: { asset: AssetRegimePanel }) {
           {" "}
           · {asset.source}
           {asset.lookback_days != null ? ` · ${asset.lookback_days}d` : ""}
+          {asset.bars_used ? ` · ${asset.bars_used.toLocaleString()} bars` : ""}
         </span>
       </h4>
       <p className="meta-soft">{asset.summary_ko}</p>
-      <div className="table-wrap" style={{ marginBottom: 10 }}>
+
+      <div className="regime-study-charts">
+        <div>
+          <p className="meta-soft" style={{ marginTop: 0, marginBottom: 4 }}>
+            레짐별 5분 σ (%)
+          </p>
+          <RegimeVolBars regimes={asset.regimes} />
+        </div>
+        <div>
+          <p className="meta-soft" style={{ marginTop: 0, marginBottom: 4 }}>
+            수익률 PDF (공통축 KDE · 피크=1)
+          </p>
+          <RegimeOverlayChart regimes={asset.regimes} />
+        </div>
+      </div>
+
+      <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
               <th>레짐</th>
               <th>n</th>
-              <th>평균</th>
               <th>σ</th>
-              <th>|r|</th>
+              <th>σ 대비</th>
+              <th>평균</th>
               <th>P(↑)</th>
               <th>왜도</th>
               <th>첨도*</th>
@@ -425,30 +528,48 @@ function RegimeAssetBlock({ asset }: { asset: AssetRegimePanel }) {
             </tr>
           </thead>
           <tbody>
-            {asset.regimes.map((r) => (
-              <tr key={r.id}>
-                <td>
-                  <strong>{r.label_ko}</strong>
-                  <div className="meta-soft">{r.window_note}</div>
-                </td>
-                <td>{r.n_bars}</td>
-                <td>{fmtPct(r.mean_ret_pct, 4)}</td>
-                <td>{fmtNum(r.vol_pct, 4)}%</td>
-                <td>{fmtNum(r.abs_mean_pct, 4)}%</td>
-                <td>{(r.p_up * 100).toFixed(0)}%</td>
-                <td>{fmtNum(r.skew, 2)}</td>
-                <td>{fmtNum(r.kurtosis_excess, 2)}</td>
-                <td>{fmtPct(r.q05_pct, 3)}</td>
-                <td>{fmtPct(r.q95_pct, 3)}</td>
-              </tr>
-            ))}
+            {asset.regimes.map((r) => {
+              const rel = peerMed > 0 ? r.vol_pct / peerMed : 1;
+              const hot = r.id === maxVolId;
+              return (
+                <tr
+                  key={r.id}
+                  style={
+                    hot
+                      ? { background: "rgba(232, 197, 71, 0.08)" }
+                      : undefined
+                  }
+                >
+                  <td>
+                    <strong
+                      style={{
+                        borderLeft: `3px solid ${REGIME_STROKE[r.id]}`,
+                        paddingLeft: 8,
+                      }}
+                    >
+                      {r.label_ko}
+                      {hot ? " · 최고 σ" : ""}
+                    </strong>
+                  </td>
+                  <td>{r.n_bars.toLocaleString()}</td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {fmtNum(r.vol_pct, 4)}%
+                  </td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {peerMed > 0 ? `×${rel.toFixed(2)}` : "—"}
+                  </td>
+                  <td>{fmtPct(r.mean_ret_pct, 4)}</td>
+                  <td>{(r.p_up * 100).toFixed(0)}%</td>
+                  <td>{fmtNum(r.skew, 2)}</td>
+                  <td>{fmtNum(r.kurtosis_excess, 2)}</td>
+                  <td>{fmtPct(r.q05_pct, 3)}</td>
+                  <td>{fmtPct(r.q95_pct, 3)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <p className="meta-soft" style={{ marginTop: 0 }}>
-        수익률 PDF 오버레이 (5분 로그수익 %, 레짐별 정규화 밀도)
-      </p>
-      <RegimeOverlayChart regimes={asset.regimes} />
     </section>
   );
 }
@@ -457,6 +578,7 @@ function CryptoRegimeStudySection() {
   const [data, setData] = useState<CryptoRegimePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [assetId, setAssetId] = useState<"btc" | "eth">("btc");
 
   useEffect(() => {
     let cancelled = false;
@@ -481,30 +603,51 @@ function CryptoRegimeStudySection() {
     };
   }, []);
 
+  const selected =
+    data?.assets.find((a) => a.id === assetId) || data?.assets[0] || null;
+
   return (
     <section className="geo-section" style={{ marginTop: 28 }}>
       <h3 className="geo-section-title">레짐별 BTC·ETH 분포 연구</h3>
       <p className="macro-subhead">
-        아시아장 · 미국장 · 주말(정규장 휴장)에서 비트코인(BTC)과 알트 대표
-        이더리움(ETH)의 5분 수익률 분포·변동성·꼬리가 어떻게 달라지는지 요약합니다.
+        아시아장 · 미국장 · 주말에서 5분 수익률 분포·변동성이 어떻게 갈리는지
+        비교합니다. (단기예측 사이징과 동일 레짐 정의)
       </p>
       {loading ? <p className="empty">레짐 분석 불러오는 중…</p> : null}
       {error ? <p className="empty warn">{error}</p> : null}
-      {data?.headline_ko ? (
-        <p className="meta-soft" style={{ marginBottom: 12 }}>
-          {data.headline_ko}
-        </p>
-      ) : null}
-      {data?.assets.map((a) => (
-        <RegimeAssetBlock key={a.id} asset={a} />
-      ))}
-      {data?.methodology?.length ? (
-        <ul className="meta-soft" style={{ marginTop: 8, paddingLeft: 18 }}>
-          {data.methodology.map((line) => (
-            <li key={line}>{line}</li>
+
+      {!loading && data?.assets?.length ? (
+        <div className="chip-row" style={{ marginBottom: 10 }}>
+          {data.assets.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`chip ${assetId === a.id ? "active" : ""}`}
+              onClick={() => setAssetId(a.id)}
+            >
+              {a.id === "btc" ? "BTC" : "ETH"}
+            </button>
           ))}
-          <li>첨도* = 초과첨도(정규분포=0). 교육·연구용이며 투자 자문이 아닙니다.</li>
-        </ul>
+        </div>
+      ) : null}
+
+      {selected ? <RegimeAssetBlock key={selected.id} asset={selected} /> : null}
+
+      {data?.methodology?.length ? (
+        <details style={{ marginTop: 10 }}>
+          <summary className="meta-soft" style={{ cursor: "pointer" }}>
+            방법론 · 레짐 정의
+          </summary>
+          <ul className="meta-soft" style={{ marginTop: 8, paddingLeft: 18 }}>
+            {data.methodology.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li>
+              첨도* = 초과첨도(정규=0). PDF는 레짐 공통 x축 Gaussian KDE(피크
+              정규화). 교육·연구용.
+            </li>
+          </ul>
+        </details>
       ) : null}
     </section>
   );

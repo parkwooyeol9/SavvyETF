@@ -139,6 +139,58 @@ function densityHist(retsPct: number[]): Array<{ x_pct: number; density: number 
   }));
 }
 
+/** Shared x-grid so overlay PDFs align (avoids jagged per-regime histograms). */
+function sharedDensityAxis(series: number[][], points = 81): number[] {
+  const pooled = series.flat().filter((x) => Number.isFinite(x));
+  if (pooled.length < 20) return [];
+  const lo = quantile(pooled, 0.01);
+  const hi = quantile(pooled, 0.99);
+  const pad = Math.max((hi - lo) * 0.12, 0.03);
+  const start = lo - pad;
+  const end = hi + pad;
+  if (!(end > start)) return [];
+  const xs: number[] = [];
+  for (let i = 0; i < points; i++) {
+    xs.push(start + ((end - start) * i) / (points - 1));
+  }
+  return xs;
+}
+
+/** Gaussian KDE on a fixed axis; peak-normalized to 1 for shape compare. */
+function kdeOnAxis(
+  retsPct: number[],
+  xs: number[],
+): Array<{ x_pct: number; density: number }> {
+  if (retsPct.length < 10 || xs.length < 5) return [];
+  // Cap kernel sum cost on deep archives.
+  let sample = retsPct;
+  if (retsPct.length > 4_000) {
+    const step = Math.ceil(retsPct.length / 4_000);
+    sample = retsPct.filter((_, i) => i % step === 0);
+  }
+  const s = std(sample) || 1e-6;
+  // Silverman-ish bandwidth, floored so curves stay smooth on 5m noise.
+  const h = Math.max(
+    0.015,
+    1.06 * s * Math.pow(sample.length, -0.2) * 1.15,
+  );
+  const inv = 1 / (h * Math.sqrt(2 * Math.PI));
+  const dens = xs.map((x) => {
+    let acc = 0;
+    for (const r of sample) {
+      const z = (x - r) / h;
+      if (Math.abs(z) > 4) continue;
+      acc += Math.exp(-0.5 * z * z);
+    }
+    return acc * inv;
+  });
+  const peak = Math.max(...dens, 1e-12);
+  return xs.map((x, i) => ({
+    x_pct: Number(x.toFixed(4)),
+    density: Number((dens[i]! / peak).toFixed(4)),
+  }));
+}
+
 type Bar = { ts: number; close: number };
 
 function regimeOf(ts: number): CryptoRegimeId | null {
@@ -196,7 +248,11 @@ async function fetchOkx5m(
   });
 }
 
-function statsFor(rets: number[], id: CryptoRegimeId): RegimeStats {
+function statsFor(
+  rets: number[],
+  id: CryptoRegimeId,
+  density: Array<{ x_pct: number; density: number }>,
+): RegimeStats {
   const meta = REGIME_META[id];
   const pct = rets.map((r) => r * 100);
   return {
@@ -204,8 +260,8 @@ function statsFor(rets: number[], id: CryptoRegimeId): RegimeStats {
     label_ko: meta.label_ko,
     window_note: meta.window_note,
     n_bars: rets.length,
-    mean_ret_pct: Number((mean(pct)).toFixed(5)),
-    vol_pct: Number((std(pct)).toFixed(5)),
+    mean_ret_pct: Number(mean(pct).toFixed(5)),
+    vol_pct: Number(std(pct).toFixed(5)),
     skew: Number(skewness(pct).toFixed(3)),
     kurtosis_excess: Number(excessKurtosis(pct).toFixed(3)),
     abs_mean_pct: Number(mean(pct.map(Math.abs)).toFixed(5)),
@@ -215,7 +271,7 @@ function statsFor(rets: number[], id: CryptoRegimeId): RegimeStats {
     q05_pct: Number(quantile(pct, 0.05).toFixed(4)),
     q50_pct: Number(quantile(pct, 0.5).toFixed(4)),
     q95_pct: Number(quantile(pct, 0.95).toFixed(4)),
-    density: densityHist(pct),
+    density,
   };
 }
 
@@ -285,8 +341,19 @@ async function analyzeAsset(
       if (!(prev > 0 && cur > 0)) continue;
       buckets[reg].push(Math.log(cur / prev));
     }
-    const regimes = (["asia", "us", "weekend"] as CryptoRegimeId[]).map((rid) =>
-      statsFor(buckets[rid], rid),
+    const ids = ["asia", "us", "weekend"] as CryptoRegimeId[];
+    const pctBuckets = Object.fromEntries(
+      ids.map((rid) => [rid, buckets[rid].map((r) => r * 100)]),
+    ) as Record<CryptoRegimeId, number[]>;
+    const axis = sharedDensityAxis(ids.map((rid) => pctBuckets[rid]));
+    const regimes = ids.map((rid) =>
+      statsFor(
+        buckets[rid],
+        rid,
+        axis.length
+          ? kdeOnAxis(pctBuckets[rid], axis)
+          : densityHist(pctBuckets[rid]),
+      ),
     );
     const by = Object.fromEntries(regimes.map((r) => [r.id, r])) as Record<
       CryptoRegimeId,
@@ -327,7 +394,7 @@ export const CRYPTO_REGIME_METHODOLOGY: string[] = [
   "레짐 B 미국장: 평일 UTC 13:30–20:00 (NYSE RTH 근사).",
   "레짐 C 주말: 토·일 UTC — 주식·상품 정규장 휴장, 크립토만 24/7.",
   "평일 그 외 시간(유럽 단독 구간 등)은 a/b/c 비교에서 제외.",
-  "지표: 평균·σ·왜도·초과첨도·|r|평균·P(상승)·q05/50/95 · 히스토그램 밀도.",
+  "지표: 평균·σ·왜도·초과첨도·|r|평균·P(상승)·q05/50/95 · 공통축 Gaussian KDE(피크=1).",
 ];
 
 export async function computeCryptoRegimeStudy(): Promise<CryptoRegimePayload> {

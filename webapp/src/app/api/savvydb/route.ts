@@ -1,5 +1,5 @@
 import { jsonWithCdnCache, withServerCache } from "@/lib/apiCache";
-import { isSavvyDbFile, SAVVYDB_ORIGIN, type SavvyDbFile } from "@/lib/savvyDb";
+import { isSavvyDbFile, SAVVYDB_ORIGIN } from "@/lib/savvyDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,8 +8,8 @@ export const maxDuration = 60;
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
-async function fetchSavvyFile(file: SavvyDbFile): Promise<unknown> {
-  const url = `${SAVVYDB_ORIGIN}/data/${file}.json`;
+async function fetchSavvyFile(file: string): Promise<unknown> {
+  const url = `${SAVVYDB_ORIGIN}/data/${encodeURIComponent(file)}.json`;
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     cache: "no-store",

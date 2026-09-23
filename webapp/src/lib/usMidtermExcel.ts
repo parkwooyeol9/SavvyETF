@@ -22,7 +22,7 @@ import {
   type SheetSpec,
 } from "@/lib/xlsxWorkbook";
 
-const W = [14, 22, 18, 18, 18, 18, 42];
+const W = [12, 20, 16, 16, 16, 16, 48];
 
 function blank(): CellInput[] {
   return [];
@@ -41,7 +41,7 @@ function line(...cells: CellInput[]): CellInput[] {
 }
 
 function para(text: string): CellInput[] {
-  return [text];
+  return [{ v: text, t: "text" }];
 }
 
 function kv(label: string, value: CellInput): CellInput[] {

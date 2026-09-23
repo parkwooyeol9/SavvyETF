@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "crypto-regime-study",
+      "crypto-regime-study-v2",
       10 * 60_000,
       30 * 60_000,
       () => computeCryptoRegimeStudy(),
