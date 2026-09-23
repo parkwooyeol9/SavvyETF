@@ -8,9 +8,12 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 import {
@@ -330,24 +333,6 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
         </div>
       </div>
 
-      <p className="meta-soft" style={{ marginBottom: 6 }}>
-        업종 선택 · 선행 PER
-      </p>
-      <div className="sdb-heat">
-        {pool.map((x) => (
-          <button
-            key={x.id}
-            type="button"
-            className={`sdb-heat-btn${x.id === selectedId ? " selected" : ""}`}
-            onClick={() => setId(x.id)}
-          >
-            <b>{x.name}</b>
-            <span>{fmtNum(x.values.H)}배</span>
-            <small>{x.ticker}</small>
-          </button>
-        ))}
-      </div>
-
       <div className="nxt-chart-grid" style={{ marginTop: 14 }}>
         <div>
           <div className="kr-hero-actions" style={{ marginBottom: 8 }}>
@@ -504,6 +489,48 @@ function SectorsView({ meta }: { meta: SavvyMeta | null }) {
   );
 }
 
+const STOCK_FACTORS: Array<{ key: string; label: string }> = [
+  { key: "AC", label: "가치" },
+  { key: "AD", label: "사이즈" },
+  { key: "AE", label: "배당" },
+  { key: "AF", label: "성장" },
+  { key: "AG", label: "모멘텀" },
+  { key: "AH", label: "퀄리티" },
+];
+
+function FactorBars({ values }: { values: Record<string, unknown> }) {
+  return (
+    <div className="sdb-factors">
+      {STOCK_FACTORS.map(({ key, label }) => {
+        const z = num(values[key]);
+        const w = z == null ? 0 : Math.min(50, (Math.abs(z) / 3) * 50);
+        const left = z != null && z < 0 ? 50 - w : 50;
+        return (
+          <div key={key} className="sdb-factor">
+            <span>{label}</span>
+            <div className="sdb-factor-track">
+              <i
+                style={{
+                  left: `${left}%`,
+                  width: `${w}%`,
+                  background:
+                    z != null && z < 0
+                      ? "rgba(201,123,132,0.85)"
+                      : "rgba(91,159,212,0.9)",
+                }}
+              />
+            </div>
+            <b>{fmtNum(z, 2)}</b>
+          </div>
+        );
+      })}
+      <p className="meta-soft" style={{ marginTop: 8 }}>
+        원본 표준화 팩터 · 막대 범위 ±3 · 종합은 원본 가중치 적용값
+      </p>
+    </div>
+  );
+}
+
 function StocksView() {
   const [rows, setRows] = useState<SavvyStockRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -576,9 +603,9 @@ function StocksView() {
       <div className="feature-head geo-head-row">
         <div>
           <p className="eyebrow">02 / EQUITY SCREENER</p>
-          <h3 className="geo-section-title">미국 주식</h3>
+          <h3 className="geo-section-title">미국 주식, 한 종목 더 깊이</h3>
           <p className="macro-subhead">
-            {rows.length.toLocaleString()}개 원본 레코드 · 밸류·팩터 스냅샷
+            {rows.length.toLocaleString()}개 원본 레코드 · 가격·이익·팩터
           </p>
         </div>
         <div className="kr-hero-actions">
@@ -600,7 +627,7 @@ function StocksView() {
       </div>
       <div className="nxt-stat-grid">
         <div className="geo-featured">
-          <div className="meta-soft">{selected.ticker} · 원본가</div>
+          <div className="meta-soft">{selected.ticker} · 원본 현재가</div>
           <strong className="nxt-stat-val">{fmtNum(v.D)}</strong>
         </div>
         <div className="geo-featured">
@@ -612,8 +639,9 @@ function StocksView() {
           <strong className="nxt-stat-val">{fmtNum(v.AB)}배</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">팩터 종합</div>
+          <div className="meta-soft">원본 팩터 종합</div>
           <strong className="nxt-stat-val">{fmtNum(v.AI, 3)}</strong>
+          <div className="meta-soft">원본 순위 {fmtNum(v.AJ, 0)}위</div>
         </div>
       </div>
       <div className="nxt-chart-grid">
@@ -622,21 +650,32 @@ function StocksView() {
             <thead>
               <tr>
                 <th>종목</th>
-                <th>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={() => {
-                      setSortKey("E");
-                      setAsc((a) => (sortKey === "E" ? !a : false));
-                    }}
-                  >
-                    시가총액
-                  </button>
-                </th>
-                <th>PER</th>
-                <th>ROE</th>
-                <th>점수</th>
+                {(
+                  [
+                    ["E", "시가총액"],
+                    ["AA", "PER"],
+                    ["K", "ROE"],
+                    ["AI", "종합"],
+                  ] as const
+                ).map(([k, lab]) => (
+                  <th key={k}>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      style={{ padding: "0 4px", fontSize: 11 }}
+                      onClick={() => {
+                        if (sortKey === k) setAsc((a) => !a);
+                        else {
+                          setSortKey(k);
+                          setAsc(false);
+                        }
+                      }}
+                    >
+                      {lab}
+                      {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
+                    </button>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -660,33 +699,55 @@ function StocksView() {
             </tbody>
           </table>
         </div>
-        <div className="geo-featured">
-          <div className="meta-soft">{selected.ticker}</div>
-          <h3 className="geo-section-title" style={{ marginTop: 4 }}>
-            {selected.name}
-          </h3>
-          <p className="meta-soft">
-            {selected.sector}
-            {selected.industry ? ` · ${selected.industry}` : ""}
-          </p>
-          <dl className="sdb-dl">
-            <div>
-              <dt>선행 EPS</dt>
-              <dd>{fmtNum(v.I)}</dd>
-            </div>
-            <div>
-              <dt>ROE</dt>
-              <dd>{fmtNum(v.K)}%</dd>
-            </div>
-            <div>
-              <dt>배당수익률</dt>
-              <dd>{fmtNum(v.W)}%</dd>
-            </div>
-            <div>
-              <dt>부채/자기자본</dt>
-              <dd>{fmtNum(v.T)}%</dd>
-            </div>
-          </dl>
+        <div>
+          <div className="geo-featured">
+            <div className="meta-soft">종목 프로필 · {selected.ticker}</div>
+            <h3 className="geo-section-title" style={{ marginTop: 4 }}>
+              {selected.name}
+            </h3>
+            <p className="meta-soft">
+              {selected.sector}
+              {selected.industry ? ` · ${selected.industry}` : ""}
+            </p>
+            <dl className="sdb-dl">
+              <div>
+                <dt>시가총액¹</dt>
+                <dd>{fmtNum(v.E, 0)}</dd>
+              </div>
+              <div>
+                <dt>선행 EPS</dt>
+                <dd>{fmtNum(v.I)}</dd>
+              </div>
+              <div>
+                <dt>선행 PBR</dt>
+                <dd>{fmtNum(v.AB)}배</dd>
+              </div>
+              <div>
+                <dt>선행 ROE</dt>
+                <dd>{fmtNum(v.K)}%</dd>
+              </div>
+              <div>
+                <dt>배당수익률</dt>
+                <dd>{fmtNum(v.W)}%</dd>
+              </div>
+              <div>
+                <dt>부채/자기자본</dt>
+                <dd>{fmtNum(v.T)}%</dd>
+              </div>
+              <div>
+                <dt>FCF 수익률</dt>
+                <dd>{fmtNum(v.V)}%</dd>
+              </div>
+            </dl>
+            <p className="meta-soft" style={{ marginTop: 8 }}>
+              ¹ 시가총액은 MARKET VALUE 원본 단위 · UNIVERSE!
+              {selected.row ?? "—"}
+            </p>
+          </div>
+          <div className="geo-featured" style={{ marginTop: 12 }}>
+            <div className="meta-soft">팩터 점수</div>
+            <FactorBars values={v} />
+          </div>
         </div>
       </div>
     </>
@@ -1285,7 +1346,7 @@ function ThemesView() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [id, setId] = useState("SPY");
-  const [sortKey, setSortKey] = useState("overall");
+  const [sortKey, setSortKey] = useState("ret");
   const [asc, setAsc] = useState(false);
 
   useEffect(() => {
@@ -1340,6 +1401,21 @@ function ThemesView() {
 
   const selected = pool.find((r) => r.id === id) || sorted[0] || null;
 
+  const scatter = useMemo(
+    () =>
+      pool
+        .map((r) => ({
+          id: r.id,
+          ticker: r.ticker,
+          group: r.group,
+          vol: num(r.values.vol),
+          ret: num(r.values.ret),
+          selected: r.id === (selected?.id || ""),
+        }))
+        .filter((r) => r.vol != null && r.ret != null),
+    [pool, selected],
+  );
+
   if (loading) return <p className="empty">ETF 비교 불러오는 중…</p>;
   if (error) return <p className="empty warn">{error}</p>;
   if (!selected) return <p className="empty">ETF가 없습니다.</p>;
@@ -1350,9 +1426,9 @@ function ThemesView() {
       <div className="feature-head geo-head-row">
         <div>
           <p className="eyebrow">05 / ETF COMPARISON</p>
-          <h3 className="geo-section-title">ETF 비교</h3>
+          <h3 className="geo-section-title">ETF를 비교하는 다른 기준</h3>
           <p className="macro-subhead">
-            중복 제거 · {rows.length}개 ETF · 보수·평가점수
+            중복 제거 · {rows.length}개 ETF · 수익률·변동성·보수·평가점수
           </p>
         </div>
         <input
@@ -1364,81 +1440,158 @@ function ThemesView() {
       </div>
       <div className="nxt-stat-grid">
         <div className="geo-featured">
-          <div className="meta-soft">{selected.ticker} · 종합</div>
-          <strong className="nxt-stat-val">{fmtNum(v.overall, 0)}</strong>
+          <div className="meta-soft">{selected.ticker} · 1년 수익률</div>
+          <strong className={`nxt-stat-val ${toneClass(v.ret)}`}>
+            {fmtPct(v.ret)}
+          </strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">총보수</div>
+          <div className="meta-soft">연간 총보수</div>
           <strong className="nxt-stat-val">{fmtNum(v.fee)}%</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">밸류에이션 점수</div>
-          <strong className="nxt-stat-val">{fmtNum(v.valuation, 0)}</strong>
+          <div className="meta-soft">1년 변동성</div>
+          <strong className="nxt-stat-val">{fmtNum(v.vol)}%</strong>
         </div>
         <div className="geo-featured">
-          <div className="meta-soft">펀더멘털 점수</div>
-          <strong className="nxt-stat-val">{fmtNum(v.fundamental, 0)}</strong>
+          <div className="meta-soft">샤프 비율</div>
+          <strong className="nxt-stat-val">{fmtNum(v.sharpe, 3)}</strong>
         </div>
       </div>
 
       <div className="nxt-chart-grid">
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ETF</th>
-                <th>분류</th>
-                {(
-                  [
-                    ["fee", "TER"],
-                    ["overall", "종합"],
-                    ["valuation", "밸류"],
-                    ["fundamental", "펀더"],
-                    ["cost", "비용"],
-                  ] as const
-                ).map(([k, lab]) => (
-                  <th key={k}>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      style={{ padding: "0 4px", fontSize: 11 }}
-                      onClick={() => {
-                        if (sortKey === k) setAsc((a) => !a);
-                        else {
-                          setSortKey(k);
-                          setAsc(false);
-                        }
-                      }}
-                    >
-                      {lab}
-                      {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => (
-                <tr
-                  key={r.id}
-                  className={r.id === selected.id ? "sdb-row-active" : undefined}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setId(r.id)}
-                >
-                  <td>
-                    <strong>{r.ticker}</strong>{" "}
-                    <span className="meta-soft">{r.name}</span>
-                  </td>
-                  <td>{r.group}</td>
-                  <td>{fmtNum(r.values.fee)}</td>
-                  <td>{fmtNum(r.values.overall, 0)}</td>
-                  <td>{fmtNum(r.values.valuation, 0)}</td>
-                  <td>{fmtNum(r.values.fundamental, 0)}</td>
-                  <td>{fmtNum(r.values.cost, 0)}</td>
+        <div>
+          <p className="meta-soft" style={{ marginBottom: 6 }}>
+            위험과 수익률 (가로: 1Y 변동성 · 세로: 1Y 총수익률)
+          </p>
+          <div style={{ width: "100%", height: 280 }}>
+            <ResponsiveContainer>
+              <ScatterChart margin={{ top: 8, right: 12, bottom: 8, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2b3648" />
+                <XAxis
+                  type="number"
+                  dataKey="vol"
+                  name="변동성"
+                  unit="%"
+                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="ret"
+                  name="수익률"
+                  unit="%"
+                  width={44}
+                  tick={{ fill: "#8b9bb4", fontSize: 10 }}
+                />
+                <ZAxis range={[40, 40]} />
+                <Tooltip
+                  contentStyle={tip}
+                  cursor={{ strokeDasharray: "3 3" }}
+                  formatter={(value: number | string, name: string) => [
+                    typeof value === "number" ? `${value.toFixed(2)}%` : value,
+                    name === "ret"
+                      ? "1Y 수익률"
+                      : name === "vol"
+                        ? "변동성"
+                        : name,
+                  ]}
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as
+                      | { ticker?: string; group?: string }
+                      | undefined;
+                    return p
+                      ? `${p.ticker || ""}${p.group ? ` · ${p.group}` : ""}`
+                      : "";
+                  }}
+                />
+                <Scatter
+                  name="ETF"
+                  data={scatter.filter((d) => !d.selected)}
+                  fill="#5b9fd4"
+                  fillOpacity={0.55}
+                  onClick={(d) => {
+                    const row = d as { id?: string };
+                    if (row.id) setId(row.id);
+                  }}
+                />
+                <Scatter
+                  name="선택"
+                  data={scatter.filter((d) => d.selected)}
+                  fill="#e8c547"
+                  onClick={(d) => {
+                    const row = d as { id?: string };
+                    if (row.id) setId(row.id);
+                  }}
+                />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="meta-soft">
+            출처: 업종·테마·스타일 → ETF매칭 / 기타 · 점을 클릭해 ETF 선택
+          </p>
+
+          <div className="table-wrap" style={{ marginTop: 12 }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ETF</th>
+                  <th>분류</th>
+                  {(
+                    [
+                      ["fee", "TER"],
+                      ["ret", "1Y"],
+                      ["vol", "변동성"],
+                      ["sharpe", "샤프"],
+                      ["overall", "종합"],
+                    ] as const
+                  ).map(([k, lab]) => (
+                    <th key={k}>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        style={{ padding: "0 4px", fontSize: 11 }}
+                        onClick={() => {
+                          if (sortKey === k) setAsc((a) => !a);
+                          else {
+                            setSortKey(k);
+                            setAsc(false);
+                          }
+                        }}
+                      >
+                        {lab}
+                        {sortKey === k ? (asc ? " ↑" : " ↓") : ""}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sorted.map((r) => (
+                  <tr
+                    key={r.id}
+                    className={
+                      r.id === selected.id ? "sdb-row-active" : undefined
+                    }
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setId(r.id)}
+                  >
+                    <td>
+                      <strong>{r.ticker}</strong>{" "}
+                      <span className="meta-soft">{r.name}</span>
+                    </td>
+                    <td>{r.group}</td>
+                    <td>{fmtNum(r.values.fee)}</td>
+                    <td className={toneClass(r.values.ret)}>
+                      {fmtPct(r.values.ret)}
+                    </td>
+                    <td>{fmtNum(r.values.vol)}</td>
+                    <td>{fmtNum(r.values.sharpe, 3)}</td>
+                    <td>{fmtNum(r.values.overall, 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
         <div className="geo-featured">
           <div className="meta-soft">
@@ -1451,6 +1604,10 @@ function ThemesView() {
             <div>
               <dt>종합</dt>
               <dd>{fmtNum(v.overall, 0)}</dd>
+            </div>
+            <div>
+              <dt>성과</dt>
+              <dd>{fmtNum(v.performance, 0)}</dd>
             </div>
             <div>
               <dt>리스크</dt>

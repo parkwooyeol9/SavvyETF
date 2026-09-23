@@ -648,6 +648,48 @@ a.tab-btn {
   font-variant-numeric: tabular-nums;
 }
 
+.sdb-factors {
+  margin-top: 0.65rem;
+}
+
+.sdb-factor {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr 2.6rem;
+  gap: 0.55rem;
+  align-items: center;
+  font-size: 0.78rem;
+  margin: 0.55rem 0;
+}
+
+.sdb-factor-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(43, 54, 72, 0.85);
+}
+
+.sdb-factor-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  height: 14px;
+  border-left: 1px solid rgba(139, 155, 180, 0.45);
+}
+
+.sdb-factor-track i {
+  position: absolute;
+  top: 0;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.sdb-factor b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .sdb-row-active td {
   background: rgba(91, 159, 212, 0.12);
 }
