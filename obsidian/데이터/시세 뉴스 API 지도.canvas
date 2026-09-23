@@ -1,0 +1,163 @@
+{
+	"nodes": [
+		{
+			"id": "hub",
+			"type": "file",
+			"file": "데이터/06 시세 뉴스 API.md",
+			"x": 40,
+			"y": -220,
+			"width": 300,
+			"height": 80
+		},
+		{
+			"id": "g-price",
+			"type": "group",
+			"label": "시세 · 차트 (대부분 일회)",
+			"x": -80,
+			"y": -40,
+			"width": 700,
+			"height": 220,
+			"color": "4"
+		},
+		{
+			"id": "yh",
+			"type": "text",
+			"text": "**Yahoo**\n일봉·종가·환율\n차트·히트맵·NLP 주가선",
+			"x": -40,
+			"y": 20,
+			"width": 240,
+			"height": 140,
+			"color": "4"
+		},
+		{
+			"id": "fh",
+			"type": "text",
+			"text": "**Finnhub**\n프리장·캘린더\n키: FINNHUB_API_KEY",
+			"x": 240,
+			"y": 20,
+			"width": 240,
+			"height": 140
+		},
+		{
+			"id": "nvq",
+			"type": "text",
+			"text": "**네이버 호가/분봉**\n저장하지 않음",
+			"x": 520,
+			"y": 20,
+			"width": 240,
+			"height": 140
+		},
+		{
+			"id": "g-keep",
+			"type": "group",
+			"label": "가져와서 R2에 쌓음",
+			"x": -80,
+			"y": 240,
+			"width": 1180,
+			"height": 240,
+			"color": "5"
+		},
+		{
+			"id": "nvn",
+			"type": "text",
+			"text": "**네이버 뉴스**\n제목 → 점수\n`nlp_history/`",
+			"x": -40,
+			"y": 300,
+			"width": 220,
+			"height": 140,
+			"color": "5"
+		},
+		{
+			"id": "etf",
+			"type": "text",
+			"text": "**네이버 ETF**\nAUM\n`etf_db/`",
+			"x": 220,
+			"y": 300,
+			"width": 200,
+			"height": 140,
+			"color": "5"
+		},
+		{
+			"id": "fred",
+			"type": "text",
+			"text": "**FRED**\n금리·스프레드",
+			"x": 460,
+			"y": 300,
+			"width": 220,
+			"height": 140,
+			"color": "5"
+		},
+		{
+			"id": "dart",
+			"type": "text",
+			"text": "**DART**\n공시·재무",
+			"x": 720,
+			"y": 300,
+			"width": 220,
+			"height": 140
+		},
+		{
+			"id": "cftc",
+			"type": "text",
+			"text": "**CFTC**\n포지션 스냅샷",
+			"x": 980,
+			"y": 300,
+			"width": 200,
+			"height": 140,
+			"color": "5"
+		},
+		{
+			"id": "g-crypto",
+			"type": "group",
+			"label": "크립토 · 거래",
+			"x": 680,
+			"y": -40,
+			"width": 420,
+			"height": 220
+		},
+		{
+			"id": "up",
+			"type": "text",
+			"text": "**업비트**\nKRW 시세·김프",
+			"x": 720,
+			"y": 20,
+			"width": 160,
+			"height": 140
+		},
+		{
+			"id": "bn",
+			"type": "text",
+			"text": "**바이낸스**\n선물 OI·펀딩",
+			"x": 900,
+			"y": 20,
+			"width": 160,
+			"height": 140
+		},
+		{
+			"id": "r2",
+			"type": "file",
+			"file": "데이터/01 저장소.md",
+			"x": 40,
+			"y": 540,
+			"width": 240,
+			"height": 80
+		},
+		{
+			"id": "store",
+			"type": "file",
+			"file": "데이터/05 DB 벤더.md",
+			"x": 320,
+			"y": 540,
+			"width": 240,
+			"height": 80
+		}
+	],
+	"edges": [
+		{"id": "e-nvn-r2", "fromNode": "nvn", "fromSide": "bottom", "toNode": "r2", "toSide": "top", "label": "점수 시계열"},
+		{"id": "e-etf-r2", "fromNode": "etf", "fromSide": "bottom", "toNode": "r2", "toSide": "top", "label": "AUM"},
+		{"id": "e-cftc-r2", "fromNode": "cftc", "fromSide": "bottom", "toNode": "r2", "toSide": "top"},
+		{"id": "e-yh-keep", "fromNode": "yh", "fromSide": "bottom", "toNode": "r2", "toSide": "top", "label": "일부만 스냅샷"},
+		{"id": "e-r2-store", "fromNode": "r2", "fromSide": "right", "toNode": "store", "toSide": "left", "label": "어디에 쌓이나"},
+		{"id": "e-up-bn", "fromNode": "up", "fromSide": "right", "toNode": "bn", "toSide": "left", "label": "김프"}
+	]
+}

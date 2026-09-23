@@ -27,6 +27,17 @@ briefs/{tab}.json                      # legacy monolith (read/migrate only)
 Prefer deploying the webapp from **git `main`** (or a clean checkout). Avoid ad-hoc
 `vercel --prod` from a stale local tree — that can ship UI without newer tabs.
 
+Before push / deploy, catch “import exists locally but file not in git”:
+
+```bash
+cd webapp
+npm run check:imports   # also runs automatically as prebuild
+npm run build
+```
+
+GitHub Actions workflow `.github/workflows/webapp-import-check.yml` runs the same
+check (plus `tsc --noEmit`) on `webapp/**` changes to `main` / PRs.
+
 ## 1. Deploy to Vercel
 
 ```bash

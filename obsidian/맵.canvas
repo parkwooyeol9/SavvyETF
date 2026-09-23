@@ -1,6 +1,61 @@
 {
   "nodes": [
     {
+      "id": "g-mgmt",
+      "type": "group",
+      "x": -80,
+      "y": -520,
+      "width": 1480,
+      "height": 180,
+      "label": "데이터 적재 · 관리",
+      "color": "5"
+    },
+    {
+      "id": "n-store",
+      "type": "file",
+      "file": "데이터/01 저장소.md",
+      "x": -40,
+      "y": -470,
+      "width": 260,
+      "height": 90
+    },
+    {
+      "id": "n-dbv",
+      "type": "file",
+      "file": "데이터/05 DB 벤더.md",
+      "x": 260,
+      "y": -470,
+      "width": 260,
+      "height": 90
+    },
+    {
+      "id": "n-api",
+      "type": "file",
+      "file": "데이터/06 시세 뉴스 API.md",
+      "x": 560,
+      "y": -470,
+      "width": 280,
+      "height": 90
+    },
+    {
+      "id": "n-keep",
+      "type": "file",
+      "file": "데이터/02 보존 정책.md",
+      "x": 880,
+      "y": -470,
+      "width": 240,
+      "height": 90
+    },
+    {
+      "id": "n-kind",
+      "type": "file",
+      "file": "데이터/04 형태 분류.md",
+      "x": 1160,
+      "y": -470,
+      "width": 200,
+      "height": 90
+    },
+    {
       "id": "g-store",
       "type": "group",
       "x": -80,
@@ -60,7 +115,7 @@
     {
       "id": "n-kr",
       "type": "file",
-      "file": "datasets/한국 상장 ETF.md",
+      "file": "데이터/datasets/한국 상장 ETF.md",
       "x": -40,
       "y": 20,
       "width": 260,
@@ -70,7 +125,7 @@
     {
       "id": "n-us",
       "type": "file",
-      "file": "datasets/미국 상장 ETF.md",
+      "file": "데이터/datasets/미국 상장 ETF.md",
       "x": 260,
       "y": 20,
       "width": 260,
@@ -80,7 +135,7 @@
     {
       "id": "n-w",
       "type": "file",
-      "file": "datasets/ETF 편입비.md",
+      "file": "데이터/datasets/ETF 편입비.md",
       "x": 560,
       "y": 20,
       "width": 240,
@@ -90,7 +145,7 @@
     {
       "id": "n-ka",
       "type": "file",
-      "file": "datasets/코스닥 액티브 ETF.md",
+      "file": "데이터/datasets/코스닥 액티브 ETF.md",
       "x": 840,
       "y": 20,
       "width": 260,
@@ -100,7 +155,7 @@
     {
       "id": "n-co",
       "type": "file",
-      "file": "datasets/국가 ETF.md",
+      "file": "데이터/datasets/국가 ETF.md",
       "x": 1140,
       "y": 20,
       "width": 220,
@@ -120,7 +175,7 @@
     {
       "id": "n-nlp",
       "type": "file",
-      "file": "datasets/종목 뉴스 감성.md",
+      "file": "데이터/datasets/종목 뉴스 감성.md",
       "x": 40,
       "y": 300,
       "width": 360,
@@ -140,7 +195,7 @@
     {
       "id": "n-br",
       "type": "file",
-      "file": "datasets/시황 브리프.md",
+      "file": "데이터/datasets/시황 브리프.md",
       "x": 580,
       "y": 300,
       "width": 320,
@@ -160,7 +215,7 @@
     {
       "id": "n-mf",
       "type": "file",
-      "file": "datasets/글로벌 자금 흐름.md",
+      "file": "데이터/datasets/글로벌 자금 흐름.md",
       "x": -40,
       "y": 560,
       "width": 280,
@@ -170,7 +225,7 @@
     {
       "id": "n-cftc",
       "type": "file",
-      "file": "datasets/CFTC 포지션.md",
+      "file": "데이터/datasets/CFTC 포지션.md",
       "x": 280,
       "y": 560,
       "width": 240,
@@ -180,7 +235,7 @@
     {
       "id": "n-cr",
       "type": "file",
-      "file": "datasets/신용 자금.md",
+      "file": "데이터/datasets/신용 자금.md",
       "x": 560,
       "y": 560,
       "width": 240,
@@ -190,7 +245,7 @@
     {
       "id": "n-k100",
       "type": "file",
-      "file": "datasets/코스닥100.md",
+      "file": "데이터/datasets/코스닥100.md",
       "x": -40,
       "y": 700,
       "width": 240,
@@ -200,7 +255,7 @@
     {
       "id": "n-esg",
       "type": "file",
-      "file": "datasets/ESG 이벤트.md",
+      "file": "데이터/datasets/ESG 이벤트.md",
       "x": 280,
       "y": 700,
       "width": 240,
@@ -210,7 +265,7 @@
     {
       "id": "n-mid",
       "type": "file",
-      "file": "datasets/미 중간선거.md",
+      "file": "데이터/datasets/미 중간선거.md",
       "x": 560,
       "y": 700,
       "width": 240,
@@ -229,7 +284,7 @@
     {
       "id": "n-sch",
       "type": "file",
-      "file": "datasets/스케줄러.md",
+      "file": "데이터/datasets/스케줄러.md",
       "x": 1060,
       "y": 300,
       "width": 280,

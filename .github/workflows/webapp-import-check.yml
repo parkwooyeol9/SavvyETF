@@ -1,0 +1,30 @@
+name: webapp import check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webapp/**"
+      - ".github/workflows/webapp-import-check.yml"
+  pull_request:
+    paths:
+      - "webapp/**"
+      - ".github/workflows/webapp-import-check.yml"
+
+jobs:
+  import-graph:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Resolve @/ imports against checked-out tree
+        run: node scripts/check-import-graph.mjs
+      - name: Typecheck
+        run: |
+          npm ci
+          npx tsc --noEmit
