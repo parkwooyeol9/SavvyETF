@@ -273,7 +273,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["graph", "nlp", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
+    tabs: ["nlp", "graph", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
     nested: [
       {
         id: "politics",
