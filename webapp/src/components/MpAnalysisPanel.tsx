@@ -34,6 +34,7 @@ import {
   tooltipStyle,
   type Freq,
 } from "@/components/MpUi";
+import MpTrackRecord from "@/components/MpTrackRecord";
 import { useSharedMpPortfolio } from "@/components/useSharedMpPortfolio";
 import type { MpAnalysis, MpRegression, MpStyleRegression } from "@/lib/mpAnalytics";
 import type { MpNewsBlock, MpNewsLang } from "@/lib/mpNews";
@@ -312,6 +313,12 @@ export default function MpAnalysisPanel() {
         ) : null}
         {error ? <p className="empty">{error}</p> : null}
       </section>
+
+      <MpTrackRecord
+        id="MP2"
+        ext={res?.ok ? res.series.map((p) => ({ date: p.date, port: p.port, bm: p.bm })) : undefined}
+        extNote="현재 편입 구성 시뮬레이션 수익률(실제 기록 아님)"
+      />
 
       {/* ---------------- Versions ---------------- */}
       <section className="geo-section" style={{ marginTop: 12 }}>

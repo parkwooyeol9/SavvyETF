@@ -7051,6 +7051,13 @@ a.guru-idea:hover .guru-idea-title {
   white-space: nowrap;
 }
 
+.mp-year-grid td,
+.mp-year-grid th {
+  padding: 0.3rem 0.4rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 .mp-week-comment {
   margin: 0.45rem 0 0;
   padding-left: 1.1rem;

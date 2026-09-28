@@ -103,7 +103,8 @@ export function Row({ label, v, cls }: { label: string; v: string; cls?: string 
   );
 }
 
-export function MetricsTable({ p, b }: { p: MpMetricSet; b: MpMetricSet }) {
+export function MetricsTable({ p, b, longDates = false }: { p: MpMetricSet; b: MpMetricSet; longDates?: boolean }) {
+  const dt = (d?: string | null) => (d ? d.slice(longDates ? 2 : 5) : "");
   const rows: Array<[string, (x: MpMetricSet) => string, boolean?]> = [
     ["누적 수익률", (x) => fmtPct(x.total_return_pct), true],
     ["연환산 수익률", (x) => fmtPct(x.ann_return_pct), true],
@@ -111,14 +112,14 @@ export function MetricsTable({ p, b }: { p: MpMetricSet; b: MpMetricSet }) {
     ["Sharpe", (x) => fmtNum(x.sharpe)],
     ["Sortino", (x) => fmtNum(x.sortino)],
     ["MDD", (x) => fmtPct(x.mdd_pct)],
-    ["MDD 구간", (x) => (x.mdd_trough ? `${x.mdd_peak?.slice(5)}→${x.mdd_trough.slice(5)}${x.mdd_recovery ? ` (회복 ${x.mdd_recovery.slice(5)})` : " (미회복)"}` : "—")],
+    ["MDD 구간", (x) => (x.mdd_trough ? `${dt(x.mdd_peak)}→${dt(x.mdd_trough)}${x.mdd_recovery ? ` (회복 ${dt(x.mdd_recovery)})` : " (미회복)"}` : "—")],
     ["현재 낙폭", (x) => fmtPct(x.current_dd_pct)],
     ["Calmar", (x) => fmtNum(x.calmar)],
     ["VaR 95% (일)", (x) => fmtPct(x.var95_pct, 2, false)],
     ["CVaR 95% (일)", (x) => fmtPct(x.cvar95_pct, 2, false)],
     ["왜도 / 초과첨도", (x) => `${fmtNum(x.skew)} / ${fmtNum(x.kurtosis)}`],
-    ["최고의 날", (x) => `${fmtPct(x.best_day_pct)} ${x.best_day?.slice(5) || ""}`],
-    ["최악의 날", (x) => `${fmtPct(x.worst_day_pct)} ${x.worst_day?.slice(5) || ""}`],
+    ["최고의 날", (x) => `${fmtPct(x.best_day_pct)} ${dt(x.best_day)}`],
+    ["최악의 날", (x) => `${fmtPct(x.worst_day_pct)} ${dt(x.worst_day)}`],
     ["상승일 비율", (x) => fmtPct(x.win_rate_pct, 1, false)],
   ];
   return (
