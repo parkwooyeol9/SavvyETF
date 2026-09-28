@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminSession } from "@/components/AdminSession";
 import EquityChart from "@/components/EquityChart";
 import TreemapHeatmap from "@/components/TreemapHeatmap";
+import TvOperatorPanel from "@/components/TvOperatorPanel";
 import type { HeatmapCell } from "@/lib/heatmap";
 import type { SimulateResult } from "@/lib/simulate";
 
@@ -174,6 +175,12 @@ export default function MainTab() {
 
   return (
     <div className="main-tab">
+      {unlocked ? (
+        <TvOperatorPanel
+          heatmapCells={heatmap?.cells || []}
+          universeLabel={UNIVERSES.find((u) => u.id === universe)?.label || ""}
+        />
+      ) : null}
       <nav className="main-jumps" aria-label="바로가기">
         {(
           [

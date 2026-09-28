@@ -16,6 +16,10 @@ function siteAdminSecrets(): string[] {
   return out;
 }
 
+export function primarySiteAdminSecret(): string {
+  return siteAdminSecrets()[0] || "";
+}
+
 export function siteAdminConfigured(): boolean {
   return siteAdminSecrets().length > 0;
 }

@@ -11650,3 +11650,155 @@ a.chip {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Operator-only TradingView workflow (main tab, admin session) */
+.tvop {
+  border-color: rgba(77, 163, 255, 0.45);
+  margin-bottom: 1rem;
+}
+
+.tvop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tvop-title {
+  font-size: 1.25rem;
+}
+
+.tvop-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.tvop-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tvop-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+}
+
+.tvop-badge.on {
+  color: #7ee2a8;
+  border-color: rgba(126, 226, 168, 0.5);
+}
+
+.tvop-flash {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(126, 226, 168, 0.1);
+  color: #bdf0d2;
+}
+
+.tvop-flash.warn {
+  background: rgba(248, 180, 180, 0.1);
+  color: #f8b4b4;
+}
+
+.tvop-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 0.8fr 1.1fr;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.tvop-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.2rem 0.85rem 0.85rem;
+  background: rgba(10, 15, 22, 0.35);
+  min-width: 0;
+}
+
+.tvop-card .chip-row {
+  margin-bottom: 0.6rem;
+}
+
+.tvop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.tvop input,
+.tvop textarea,
+.tvop select {
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--text);
+  background: rgba(10, 15, 22, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  min-width: 0;
+}
+
+.tvop textarea {
+  resize: vertical;
+}
+
+.tvop-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.tvop-row input {
+  flex: 1 1 6rem;
+}
+
+.tvop-sub {
+  margin: 0.8rem 0 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tvop-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.84rem;
+}
+
+.tvop-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid rgba(43, 54, 72, 0.6);
+}
+
+.tvop-muted {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.tvop-tag {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  color: var(--accent);
+}
+
+@media (max-width: 1000px) {
+  .tvop-grid {
+    grid-template-columns: 1fr;
+  }
+}
