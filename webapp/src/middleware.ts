@@ -9,6 +9,8 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/us-portfolio": { limit: 12, windowMs: 60_000 },
   "/api/mp/analyze": { limit: 12, windowMs: 60_000 },
   "/api/mp/news": { limit: 12, windowMs: 60_000 },
+  "/api/mp/etf/analyze": { limit: 12, windowMs: 60_000 },
+  "/api/mp/etf/news": { limit: 12, windowMs: 60_000 },
   "/api/corridor": { limit: 12, windowMs: 60_000 },
   "/api/why-etf": { limit: 20, windowMs: 60_000 },
   "/api/heatmap": { limit: 20, windowMs: 60_000 },

@@ -189,6 +189,53 @@ async function newsForOne(
   });
 }
 
+export type MpThemeNewsBlock = {
+  key: string;
+  label: string;
+  lang: "ko" | "en";
+  query: string;
+  items: MpNewsItem[];
+  error?: string;
+};
+
+/** Macro / asset-class headlines (MP-ETF배분): one Google News query per theme. */
+export async function fetchThemeNews(
+  themes: Array<{ key: string; label: string; query: string }>,
+  lang: "ko" | "en",
+  limit = 6,
+): Promise<MpThemeNewsBlock[]> {
+  const cutoff = Date.now() - 14 * 86_400_000;
+  const out = new Array<MpThemeNewsBlock>(themes.length);
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(6, themes.length) }, async () => {
+    while (idx < themes.length) {
+      const i = idx++;
+      const th = themes[i]!;
+      const query = `${th.query} when:7d`;
+      try {
+        out[i] = await withServerCache(`mp:theme-news:${th.key}:${lang}`, 20 * 60_000, 2 * 3_600_000, async () => {
+          const items = parseRss(await fetchText(googleNewsUrl(query, lang)), "Google News");
+          const seen = new Set<string>();
+          const picked: MpNewsItem[] = [];
+          for (const it of items.sort((a, b) => b.ts - a.ts)) {
+            if (it.ts && it.ts < cutoff) continue;
+            const k = it.title.toLowerCase().replace(/[^a-z0-9가-힣\u4e00-\u9fff]+/g, "").slice(0, 80);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            picked.push(it);
+            if (picked.length >= limit) break;
+          }
+          return { key: th.key, label: th.label, lang, query, items: picked };
+        });
+      } catch (exc) {
+        out[i] = { key: th.key, label: th.label, lang, query, items: [], error: exc instanceof Error ? exc.message : String(exc) };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export async function fetchMpNews(
   items: Array<{ ticker: string; country: MpCountry }>,
   lang: MpNewsLang,

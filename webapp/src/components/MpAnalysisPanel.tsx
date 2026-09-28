@@ -18,7 +18,22 @@ import {
   YAxis,
 } from "recharts";
 
-import type { MpAnalysis, MpMetricSet, MpRegression, MpStyleRegression } from "@/lib/mpAnalytics";
+import {
+  fmtNum,
+  fmtPct,
+  fmtPrice,
+  FreqToggle,
+  heat,
+  Kpi,
+  MetricsTable,
+  Row,
+  STYLE_COLORS,
+  timeAgo,
+  tone,
+  tooltipStyle,
+  type Freq,
+} from "@/components/MpUi";
+import type { MpAnalysis, MpRegression, MpStyleRegression } from "@/lib/mpAnalytics";
 import type { MpNewsBlock, MpNewsLang } from "@/lib/mpNews";
 import {
   countryLabel,
@@ -42,57 +57,11 @@ import {
   type MpVersion,
 } from "@/lib/mpPortfolio";
 
-const tooltipStyle = {
-  background: "#141d2b",
-  border: "1px solid #2b3648",
-  borderRadius: 8,
-  color: "#e8eef5",
-  fontSize: 12,
-};
-
-const STYLE_COLORS = ["#60a5fa", "#f59e0b", "#a78bfa", "#ef4444", "#f472b6", "#94a3b8"];
-
-function fmtPct(n?: number | null, digits = 2, sign = true): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = sign && n > 0 ? "+" : "";
-  return `${s}${n.toFixed(digits)}%`;
-}
-
-function fmtNum(n?: number | null, digits = 2): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(digits);
-}
-
 function fmtCap(n?: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
   if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
   if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
   return `$${(n / 1e6).toFixed(0)}M`;
-}
-
-function fmtPrice(n?: number | null, cur?: string): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2);
-  return cur && cur !== "USD" ? `${s} ${cur}` : `$${s}`;
-}
-
-function tone(n?: number | null): string {
-  if (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-9) return "";
-  return n > 0 ? "up" : "down";
-}
-
-function heat(v: number, scale = 1): string {
-  const x = Math.max(-1, Math.min(1, v / scale));
-  return x >= 0 ? `rgba(52, 211, 153, ${0.08 + x * 0.42})` : `rgba(248, 113, 113, ${0.08 + -x * 0.42})`;
-}
-
-function timeAgo(ts: number): string {
-  if (!ts) return "";
-  const m = Math.round((Date.now() - ts) / 60_000);
-  if (m < 60) return `${Math.max(1, m)}분 전`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h}시간 전`;
-  return `${Math.round(h / 24)}일 전`;
 }
 
 const SIZE_ROWS = [
@@ -114,7 +83,6 @@ const STYLE_LABEL: Record<string, string> = {
 };
 
 type Mode = "actual" | "backtest";
-type Freq = "daily" | "weekly";
 
 export default function MpAnalysisPanel() {
   const [pf, setPf] = useState<MpPortfolio | null>(null);
@@ -275,7 +243,7 @@ export default function MpAnalysisPanel() {
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">MP 성과 분석</h2>
+            <h2 className="kr-hero-title">MP-글로벌주식 성과 분석</h2>
             {res?.ok && res.weekly ? (
               <ul className="mp-week-comment">
                 {res.weekly.comment.map((line, i) => (
@@ -1309,78 +1277,5 @@ function FragmentRow({ label, children }: { label: string; children: ReactNode }
       <div className="mp-style-box-head">{label}</div>
       {children}
     </>
-  );
-}
-
-function FreqToggle({ freq, setFreq }: { freq: Freq; setFreq: (f: Freq) => void }) {
-  return (
-    <div className="seg">
-      <button type="button" className={freq === "daily" ? "active" : ""} onClick={() => setFreq("daily")}>
-        일간
-      </button>
-      <button type="button" className={freq === "weekly" ? "active" : ""} onClick={() => setFreq("weekly")}>
-        주간
-      </button>
-    </div>
-  );
-}
-
-function Kpi({ label, v, cls }: { label: string; v: string; cls?: string }) {
-  return (
-    <div>
-      <span className="meta-soft">{label}</span>
-      <strong className={cls || ""}>{v}</strong>
-    </div>
-  );
-}
-
-function Row({ label, v, cls }: { label: string; v: string; cls?: string }) {
-  return (
-    <tr>
-      <td>{label}</td>
-      <td className={`num ${cls || ""}`}>{v}</td>
-    </tr>
-  );
-}
-
-function MetricsTable({ p, b }: { p: MpMetricSet; b: MpMetricSet }) {
-  const rows: Array<[string, (x: MpMetricSet) => string, boolean?]> = [
-    ["누적 수익률", (x) => fmtPct(x.total_return_pct), true],
-    ["연환산 수익률", (x) => fmtPct(x.ann_return_pct), true],
-    ["변동성 (연)", (x) => fmtPct(x.vol_pct, 2, false)],
-    ["Sharpe", (x) => fmtNum(x.sharpe)],
-    ["Sortino", (x) => fmtNum(x.sortino)],
-    ["MDD", (x) => fmtPct(x.mdd_pct)],
-    ["MDD 구간", (x) => (x.mdd_trough ? `${x.mdd_peak?.slice(5)}→${x.mdd_trough.slice(5)}${x.mdd_recovery ? ` (회복 ${x.mdd_recovery.slice(5)})` : " (미회복)"}` : "—")],
-    ["현재 낙폭", (x) => fmtPct(x.current_dd_pct)],
-    ["Calmar", (x) => fmtNum(x.calmar)],
-    ["VaR 95% (일)", (x) => fmtPct(x.var95_pct, 2, false)],
-    ["CVaR 95% (일)", (x) => fmtPct(x.cvar95_pct, 2, false)],
-    ["왜도 / 초과첨도", (x) => `${fmtNum(x.skew)} / ${fmtNum(x.kurtosis)}`],
-    ["최고의 날", (x) => `${fmtPct(x.best_day_pct)} ${x.best_day?.slice(5) || ""}`],
-    ["최악의 날", (x) => `${fmtPct(x.worst_day_pct)} ${x.worst_day?.slice(5) || ""}`],
-    ["상승일 비율", (x) => fmtPct(x.win_rate_pct, 1, false)],
-  ];
-  return (
-    <div className="table-wrap" style={{ marginTop: 8 }}>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>지표</th>
-            <th className="num">MP</th>
-            <th className="num">BM</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([label, f, colored]) => (
-            <tr key={label}>
-              <td>{label}</td>
-              <td className={`num ${colored ? tone(label.includes("연환산") ? p.ann_return_pct : p.total_return_pct) : ""}`}>{f(p)}</td>
-              <td className={`num ${colored ? tone(label.includes("연환산") ? b.ann_return_pct : b.total_return_pct) : ""}`}>{f(b)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

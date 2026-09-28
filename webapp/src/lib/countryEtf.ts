@@ -299,6 +299,24 @@ const COUNTRY_LABEL_KO: Record<string, string> = {
   Denmark: "덴마크",
   Belgium: "벨기에",
   "United Arab Emirates": "UAE",
+  Finland: "핀란드",
+  Norway: "노르웨이",
+  Austria: "오스트리아",
+  Ireland: "아일랜드",
+  Portugal: "포르투갈",
+  "New Zealand": "뉴질랜드",
+  Israel: "이스라엘",
+  Turkey: "튀르키예",
+  Hungary: "헝가리",
+  Greece: "그리스",
+  "Czech Republic": "체코",
+  Chile: "칠레",
+  Peru: "페루",
+  Colombia: "콜롬비아",
+  Philippines: "필리핀",
+  Qatar: "카타르",
+  Kuwait: "쿠웨이트",
+  Egypt: "이집트",
   Other: "기타",
 };
 
@@ -509,7 +527,7 @@ async function fetchYahooTopHoldings(ticker: string): Promise<YahooTopHoldings> 
   return { holdings, sectors };
 }
 
-type IsharesBreakdown = {
+export type IsharesBreakdown = {
   countries: WeightRow[];
   sectors: WeightRow[];
 };
@@ -517,7 +535,7 @@ type IsharesBreakdown = {
 const WEIGHT_CELL_RE =
   /([A-Za-z][A-Za-z0-9 &\/\-\(\)\.]+)<\/td><td class="_ws-colFund[^"]*"[^>]*>([\d.]+)%/g;
 
-async function fetchIsharesBreakdown(url: string): Promise<IsharesBreakdown> {
+export async function fetchIsharesBreakdown(url: string): Promise<IsharesBreakdown> {
   const res = await fetch(url, {
     headers: {
       "User-Agent": UA,
@@ -600,7 +618,7 @@ function compareHoldings(
   });
 }
 
-type StoredSnap = {
+export type StoredSnap = {
   ticker: string;
   as_of: string;
   holdings: Array<{ symbol: string; name: string; weight_pct: number }>;
@@ -608,7 +626,11 @@ type StoredSnap = {
   countries: WeightRow[];
 };
 
-async function loadPrevSnap(ticker: string): Promise<StoredSnap | null> {
+export function countryLabelKo(name: string): string {
+  return countryLabel(normalizeCountry(name));
+}
+
+export async function loadPrevSnap(ticker: string): Promise<StoredSnap | null> {
   if (!r2Configured()) return null;
   try {
     const text = await r2GetObjectText(`${R2_PREFIX}/${ticker}/latest.json`);

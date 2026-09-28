@@ -5,13 +5,15 @@ import { useState } from "react";
 
 const loading = () => <p className="empty">불러오는 중…</p>;
 const MpAnalysisPanel = dynamic(() => import("@/components/MpAnalysisPanel"), { loading });
+const MpEtfPanel = dynamic(() => import("@/components/MpEtfPanel"), { loading });
 const UsPortfolioTab = dynamic(() => import("@/components/UsPortfolioTab"), { loading });
 const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading });
 
-type View = "mp" | "sim" | "etf";
+type View = "mp" | "mpetf" | "sim" | "etf";
 
 const VIEWS: Array<{ id: View; label: string }> = [
-  { id: "mp", label: "MP 분석" },
+  { id: "mp", label: "MP-글로벌주식" },
+  { id: "mpetf", label: "MP-ETF배분" },
   { id: "sim", label: "시뮬레이션" },
   { id: "etf", label: "시뮬레이션-ETF" },
 ];
@@ -44,7 +46,15 @@ export default function MpTab({
           </button>
         ))}
       </div>
-      {view === "mp" ? <MpAnalysisPanel /> : view === "sim" ? <UsPortfolioTab /> : <SimulateTab />}
+      {view === "mp" ? (
+        <MpAnalysisPanel />
+      ) : view === "mpetf" ? (
+        <MpEtfPanel />
+      ) : view === "sim" ? (
+        <UsPortfolioTab />
+      ) : (
+        <SimulateTab />
+      )}
     </div>
   );
 }
