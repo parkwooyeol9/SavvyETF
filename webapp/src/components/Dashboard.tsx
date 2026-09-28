@@ -43,7 +43,7 @@ import {
   TradingSignalsTab,
   MoneyFlowTab,
   SimulateTab,
-  UsPortfolioTab,
+  MpTab,
   AiPortTab,
   MinuteForecastTab,
   StockFeatureBoardTab,
@@ -504,7 +504,7 @@ function DashboardInner({
       ) : tab === "simulate" ? (
         <SimulateTab />
       ) : tab === "usportfolio" ? (
-        <UsPortfolioTab />
+        <MpTab />
       ) : tab === "signals" ? (
         unlocked ? <TradingSignalsTab /> : null
       ) : tab === "graph" ? (

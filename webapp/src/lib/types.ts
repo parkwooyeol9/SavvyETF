@@ -175,7 +175,7 @@ export const TAB_LABELS: Record<TabId, string> = {
 export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "ETF 배분",
-  usportfolio: "미국 주식",
+  usportfolio: "MP",
   education: "ETF절세",
   research: "리서치",
   heatpick: "모의투자",
