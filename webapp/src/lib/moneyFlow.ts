@@ -15,6 +15,7 @@ import { getCftcPayload, type CftcMarketId } from "@/lib/cftc";
 import { r2Configured, r2GetObjectText, r2PutJsonDaily } from "@/lib/r2";
 import { withServerCache } from "@/lib/apiCache";
 import { buildBasketFlows, ETF_BASKETS } from "@/lib/moneyFlowEtf";
+import { isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 export const MONEY_FLOW_R2_KEY = "money_flow/latest.json";
 
@@ -204,6 +205,7 @@ function periodDays(p: MoneyFlowPeriod): number {
 }
 
 async function fetchJson<T>(url: string, timeout = 18_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },

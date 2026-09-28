@@ -9,6 +9,7 @@
 
 import { r2Configured, r2GetObjectText, r2PutObject } from "@/lib/r2";
 import { fetchCoingeckoBtcUsd } from "@/lib/binanceMarketFallback";
+import { exchangeApiEnabled, isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 export const KIMCHI_ARB_R2_KEY = "challenge/kimchi_arb_latest.json";
 export const KIMCHI_INVENTORY_R2_KEY = "challenge/kimchi_inventory_v1.json";
@@ -84,6 +85,7 @@ export type KimchiArbSignal = {
 };
 
 async function fetchJson<T>(url: string, timeout = 15_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
@@ -426,6 +428,7 @@ export async function loadKimchiArbSignal(): Promise<KimchiArbSignal | null> {
 }
 
 export async function tickKimchiArb(): Promise<KimchiArbSignal> {
+  if (!exchangeApiEnabled()) return (await loadKimchiArbSignal()) ?? evaluateKimchiArb();
   const signal = await evaluateKimchiArb();
   await maintainPaperInventory(signal);
   // Refresh inventory fields after maintenance

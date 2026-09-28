@@ -45,6 +45,11 @@ def run_challenge_cycle() -> dict[str, object]:
 
 
 def start_challenge_trading_scheduler() -> None:
+    from exchange_api import SUSPENDED_MSG, exchange_api_enabled
+
+    if not exchange_api_enabled():
+        print(f"challenge trading scheduler disabled — {SUSPENDED_MSG}")
+        return
     if os.environ.get("CHALLENGE_TRADING_SCHEDULE_ENABLED", "true").lower() in {
         "0",
         "false",

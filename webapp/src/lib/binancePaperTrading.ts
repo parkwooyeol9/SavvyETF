@@ -16,6 +16,7 @@ import {
   fetchYahooPrices,
   YAHOO_SYMBOL_BY_BINANCE,
 } from "@/lib/binanceMarketFallback";
+import { exchangeApiEnabled, isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 /** 바이낸스 페이퍼: Yahoo 폴백 복구 후 1틱에 체결 (업비트엔진은 2틱) */
 export const BINANCE_SIGNAL_DEBOUNCE_TICKS = 1;
@@ -261,6 +262,7 @@ export function defaultBinancePaperState(): BinancePaperState {
 }
 
 async function fetchJson<T>(url: string, timeout = 15_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
@@ -691,10 +693,11 @@ export async function buildBinancePaperPayload(options?: {
   const staleMs = 55 * 60 * 1000;
   const last = state.last_tick_at ? Date.parse(state.last_tick_at) : 0;
   const shouldTick =
-    options?.forceTick ||
-    !state.last_tick_at ||
-    Date.now() - last > staleMs ||
-    state.equity_curve.length === 0;
+    exchangeApiEnabled() &&
+    (options?.forceTick ||
+      !state.last_tick_at ||
+      Date.now() - last > staleMs ||
+      state.equity_curve.length === 0);
 
   if (shouldTick) {
     state = await tickBinancePaperPortfolio(state);

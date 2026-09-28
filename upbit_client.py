@@ -11,6 +11,8 @@ from urllib.parse import urlencode
 import jwt
 import requests
 
+from exchange_api import exchange_api_enabled, require_exchange_api
+
 UPBIT_API_BASE = "https://api.upbit.com/v1"
 REQUEST_TIMEOUT = 20
 
@@ -24,7 +26,7 @@ def _keys() -> tuple[str, str] | None:
 
 
 def has_upbit_keys() -> bool:
-    return _keys() is not None
+    return exchange_api_enabled() and _keys() is not None
 
 
 def _auth_headers(params: dict[str, Any] | None = None) -> dict[str, str]:
@@ -55,6 +57,7 @@ def _request(
     *,
     private: bool = True,
 ) -> Any:
+    require_exchange_api()
     url = f"{UPBIT_API_BASE}{path}"
     headers: dict[str, str] = {"Accept": "application/json"}
     if private:
@@ -129,7 +132,7 @@ def estimate_total_equity_krw(markets: list[str] | None = None) -> float:
 
 def get_ticker_prices(markets: list[str]) -> dict[str, float]:
     out: dict[str, float] = {}
-    if not markets:
+    if not markets or not exchange_api_enabled():
         return out
     chunk = 100
     for i in range(0, len(markets), chunk):

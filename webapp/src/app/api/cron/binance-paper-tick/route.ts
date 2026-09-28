@@ -8,6 +8,7 @@ import {
   persistBinancePaperState,
   tickBinancePaperPortfolio,
 } from "@/lib/binancePaperTrading";
+import { EXCHANGE_API_SUSPENDED_MSG, exchangeApiEnabled } from "@/lib/exchangeApi";
 import { tickKimchiArb } from "@/lib/kimchiArbEngine";
 import { tickKimchiStudy } from "@/lib/kimchiPremiumStudy";
 
@@ -38,6 +39,9 @@ function authorized(request: Request): boolean {
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  if (!exchangeApiEnabled()) {
+    return NextResponse.json({ ok: true, skipped: EXCHANGE_API_SUSPENDED_MSG });
   }
 
   try {

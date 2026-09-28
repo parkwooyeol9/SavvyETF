@@ -17,6 +17,7 @@ import {
   type SignalAction,
   type SignalPoint,
 } from "@/lib/tradingSignals";
+import { exchangeApiEnabled, isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 /** 업비트엔진 R2 keys (legacy crypto_paper/* still read as fallback) */
 export const UPBIT_PAPER_R2_KEY = "upbit_paper/state_v1.json";
@@ -231,6 +232,7 @@ export function defaultCryptoPaperState(): CryptoPaperState {
 }
 
 async function fetchJson<T>(url: string, timeout = 15_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
@@ -961,10 +963,11 @@ export async function buildCryptoPaperPayload(options?: {
   const staleMs = 55 * 60 * 1000;
   const last = state.last_tick_at ? Date.parse(state.last_tick_at) : 0;
   const shouldTick =
-    options?.forceTick ||
-    !state.last_tick_at ||
-    Date.now() - last > staleMs ||
-    state.equity_curve.length === 0;
+    exchangeApiEnabled() &&
+    (options?.forceTick ||
+      !state.last_tick_at ||
+      Date.now() - last > staleMs ||
+      state.equity_curve.length === 0);
 
   if (shouldTick) {
     state = await tickCryptoPaperPortfolio(state);

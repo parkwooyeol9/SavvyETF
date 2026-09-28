@@ -10,6 +10,7 @@ import {
   KIMCHI_ARB_EXIT_PCT,
   KIMCHI_ARB_STEADY_PCT,
 } from "@/lib/kimchiArbEngine";
+import { exchangeApiEnabled, isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 export const KIMCHI_STUDY_R2_KEY = "challenge/kimchi_study_latest.json";
 
@@ -57,6 +58,7 @@ export type KimchiStudyReport = {
 };
 
 async function fetchJson<T>(url: string, timeout = 20_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
@@ -371,6 +373,7 @@ export async function loadKimchiStudy(): Promise<KimchiStudyReport | null> {
 }
 
 export async function tickKimchiStudy(): Promise<KimchiStudyReport> {
+  if (!exchangeApiEnabled()) return (await loadKimchiStudy()) ?? runKimchiPremiumStudy();
   const report = await runKimchiPremiumStudy();
   await publishKimchiStudy(report);
   return report;

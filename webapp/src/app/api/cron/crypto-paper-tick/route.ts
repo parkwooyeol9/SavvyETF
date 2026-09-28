@@ -9,6 +9,7 @@ import {
   persistCryptoPaperState,
   tickCryptoPaperPortfolio,
 } from "@/lib/cryptoPaperTrading";
+import { EXCHANGE_API_SUSPENDED_MSG, exchangeApiEnabled } from "@/lib/exchangeApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,9 @@ function authorized(request: Request): boolean {
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  if (!exchangeApiEnabled()) {
+    return NextResponse.json({ ok: true, skipped: EXCHANGE_API_SUSPENDED_MSG });
   }
 
   try {

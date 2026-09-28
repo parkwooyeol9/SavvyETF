@@ -957,6 +957,11 @@ def handle_telegram_message(message, chat_id: int, user_id: int | None = None):
         )
 
         if is_challenge_control_message(normalized, chat_id):
+            from exchange_api import SUSPENDED_MSG, exchange_api_enabled
+
+            if not exchange_api_enabled():
+                clear_challenge_pending(chat_id)
+                return [{"text": SUSPENDED_MSG}]
             replies = handle_challenge_command(
                 normalized, chat_id, user_id=user_id
             )

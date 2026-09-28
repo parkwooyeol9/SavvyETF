@@ -11,6 +11,7 @@ import {
   type CryptoIndicator as SignalCryptoIndicator,
   type SignalPoint,
 } from "@/lib/tradingSignals";
+import { isBlockedExchangeUrl } from "@/lib/exchangeApi";
 
 export const CRYPTO_SCHEDULE_NOTE =
   "CoinGecko·Upbit·OKX·DefiLlama·Yahoo 공개 API · 약 1–2분 캐시 · 교육용(투자 권유 아님)";
@@ -445,6 +446,7 @@ function hourLabel(ts: number): string {
 }
 
 async function fetchJson<T>(url: string, timeoutMs = 15_000): Promise<T | null> {
+  if (isBlockedExchangeUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },

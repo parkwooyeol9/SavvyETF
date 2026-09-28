@@ -18,6 +18,8 @@ from urllib.parse import urlencode
 
 import requests
 
+from exchange_api import exchange_api_enabled, require_exchange_api
+
 REQUEST_TIMEOUT = 20
 
 _SYMBOL_FILTERS: dict[str, dict[str, float]] = {}
@@ -63,7 +65,7 @@ def _keys() -> tuple[str, str] | None:
 
 
 def has_binance_keys() -> bool:
-    return _keys() is not None
+    return exchange_api_enabled() and _keys() is not None
 
 
 def _sign(params: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +116,7 @@ def _request(
     *,
     signed: bool = False,
 ) -> Any:
+    require_exchange_api()
     url = f"{futures_api_base()}{path}"
     p = dict(params or {})
     headers = {"Accept": "application/json"}

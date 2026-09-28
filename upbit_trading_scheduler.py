@@ -51,6 +51,11 @@ def run_scheduled_upbit_executor() -> bool:
 
 
 def start_upbit_trading_scheduler() -> None:
+    from exchange_api import SUSPENDED_MSG, exchange_api_enabled
+
+    if not exchange_api_enabled():
+        print(f"upbit trading scheduler disabled — {SUSPENDED_MSG}")
+        return
     if os.environ.get("UPBIT_TRADING_SCHEDULE_ENABLED", "true").lower() in {
         "0",
         "false",
