@@ -1,4 +1,4 @@
-import { resolveSymbols } from "@/lib/tvMcp/operator";
+import { deleteAlerts, resolveSymbols, setAlertsActive } from "@/lib/tvMcp/operator";
 import { withTvSession } from "@/lib/tvMcp/session";
 
 export const runtime = "nodejs";
@@ -32,5 +32,34 @@ export async function POST(request: Request) {
       name: (body.name || `Savvy · ${symbol} ${condition} ${price}`).slice(0, 300),
     });
     return { created: true, symbol, price, condition };
+  });
+}
+
+async function readIds(request: Request): Promise<{ ids: number[]; active?: unknown }> {
+  try {
+    const body = (await request.clone().json()) as { ids?: Array<number | string>; active?: unknown };
+    const ids = (body.ids || []).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    return { ids: ids.slice(0, 50), active: body.active };
+  } catch {
+    return { ids: [] };
+  }
+}
+
+export async function DELETE(request: Request) {
+  const { ids } = await readIds(request);
+  return withTvSession(request, async (tv) => {
+    if (!ids.length) throw new Error("삭제할 알림을 선택하세요.");
+    await deleteAlerts(tv, ids);
+    return { deleted: ids.length };
+  });
+}
+
+export async function PATCH(request: Request) {
+  const { ids, active } = await readIds(request);
+  return withTvSession(request, async (tv) => {
+    if (!ids.length) throw new Error("대상 알림을 선택하세요.");
+    if (typeof active !== "boolean") throw new Error("active 값이 필요합니다.");
+    await setAlertsActive(tv, ids, active);
+    return { updated: ids.length, active };
   });
 }

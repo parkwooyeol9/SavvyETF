@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
 import type { HeatmapCell } from "@/lib/heatmap";
-import type { KosdaqActivePayload } from "@/lib/kosdaqActive";
 import type { TvAlertFire, TvAlertSummary, TvWatchlistSummary } from "@/lib/tvMcp/operator";
+import { PICK_GROUPS, PICK_SOURCES, type PickItem } from "@/lib/tvPicks";
 
 type Overview = {
   ok: boolean;
@@ -28,7 +28,22 @@ type SyncResult = {
   unresolved?: string[];
 };
 
+type BulkAlertResult = {
+  ok: boolean;
+  error?: string;
+  created?: Array<{ symbol: string; condition: string; price: number }>;
+  unresolved?: string[];
+  missing?: string[];
+  failed?: string[];
+  stopped?: boolean;
+};
+
+type SyncMode = "append" | "replace" | "remove";
 type Flash = { kind: "ok" | "warn"; text: string } | null;
+
+const MAX_SYMBOLS = 30;
+const MAX_BULK_ALERT_SYMBOLS = 10;
+const SAVVY_PREFIX = "Savvy ·";
 
 const CONDITION_LABELS: Record<string, string> = {
   cross_up: "상향 돌파",
@@ -36,12 +51,16 @@ const CONDITION_LABELS: Record<string, string> = {
   cross: "돌파(양방향)",
 };
 
+const MODE_VERB: Record<SyncMode, string> = {
+  append: "추가",
+  replace: "교체",
+  remove: "제거",
+};
+
 function todayLabel(): string {
-  return new Date().toLocaleDateString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "2-digit",
-    day: "2-digit",
-  }).replace(/\s/g, "");
+  return new Date()
+    .toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit" })
+    .replace(/\s/g, "");
 }
 
 function parseSymbols(text: string): string[] {
@@ -65,13 +84,28 @@ export default function TvOperatorPanel({
   const [flash, setFlash] = useState<Flash>(null);
   const [open, setOpen] = useState(true);
 
+  const [sourceId, setSourceId] = useState(PICK_SOURCES[0].id);
+  const [pickTicker, setPickTicker] = useState("");
+  const [pickCount, setPickCount] = useState(PICK_SOURCES[0].defaultCount);
+  const [preview, setPreview] = useState<PickItem[]>([]);
+
   const [listName, setListName] = useState("");
   const [symbolsText, setSymbolsText] = useState("");
-  const [mode, setMode] = useState<"append" | "replace">("replace");
+  const [expandedList, setExpandedList] = useState<string | null>(null);
+  const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set());
+  const [pickLabel, setPickLabel] = useState("");
+
+  const [bulkPct, setBulkPct] = useState("5");
+  const [bulkDirection, setBulkDirection] = useState<"both" | "up" | "down">("both");
 
   const [alertSymbol, setAlertSymbol] = useState("");
   const [alertPrice, setAlertPrice] = useState("");
   const [alertCondition, setAlertCondition] = useState("cross_up");
+
+  const source = useMemo(
+    () => PICK_SOURCES.find((s) => s.id === sourceId) || PICK_SOURCES[0],
+    [sourceId],
+  );
 
   const authFetch = useCallback(
     async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -119,120 +153,255 @@ export default function TvOperatorPanel({
   if (!unlocked) return null;
 
   const connected = Boolean(overview?.connected);
+  const watchlists = overview?.watchlists || [];
+  const targetExists = watchlists.some((w) => w.name.trim() === listName.trim());
 
-  async function connect() {
+  async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
+    setFlash(null);
     try {
-      const res = await authFetch<{ ok: boolean; url?: string; error?: string }>(
-        "/api/tv/oauth/start",
-        { method: "POST" },
-      );
-      if (!res.ok || !res.url) throw new Error(res.error || "연결을 시작하지 못했습니다.");
-      window.location.href = res.url;
+      return await fn();
     } catch (exc) {
-      setFlash({ kind: "warn", text: exc instanceof Error ? exc.message : "연결 실패" });
+      setFlash({ kind: "warn", text: exc instanceof Error ? exc.message : "요청 실패" });
+      return undefined;
+    } finally {
       setBusy(false);
     }
+  }
+
+  async function connect() {
+    const res = await run(() =>
+      authFetch<{ ok: boolean; url?: string; error?: string }>("/api/tv/oauth/start", {
+        method: "POST",
+      }),
+    );
+    if (!res) return;
+    if (!res.ok || !res.url) {
+      setFlash({ kind: "warn", text: res.error || "연결을 시작하지 못했습니다." });
+      return;
+    }
+    window.location.href = res.url;
   }
 
   async function disconnect() {
-    setBusy(true);
-    try {
-      await authFetch("/api/tv/disconnect", { method: "POST" });
-      setOverview({ ok: true, connected: false });
-      setFlash({ kind: "ok", text: "TradingView 연결을 해제했습니다." });
-    } finally {
-      setBusy(false);
-    }
+    await run(() => authFetch("/api/tv/disconnect", { method: "POST" }));
+    setOverview({ ok: true, connected: false });
+    setFlash({ kind: "ok", text: "TradingView 연결을 해제했습니다." });
   }
 
-  function applyPreset(label: string, symbols: string[]) {
-    setSymbolsText(symbols.join(", "));
-    setListName(`Savvy · ${label} ${todayLabel()}`);
-    setFlash(null);
+  function selectSource(id: string) {
+    const next = PICK_SOURCES.find((s) => s.id === id) || PICK_SOURCES[0];
+    setSourceId(next.id);
+    setPickCount(next.defaultCount);
+    setPreview([]);
   }
 
-  function presetHeatmap(direction: "up" | "down") {
-    const sorted = [...heatmapCells].sort((a, b) =>
-      direction === "up"
-        ? b.daily_return_pct - a.daily_return_pct
-        : a.daily_return_pct - b.daily_return_pct,
-    );
-    const picks = sorted.slice(0, 10).map((c) => c.ticker);
-    if (!picks.length) {
-      setFlash({ kind: "warn", text: "히트맵 데이터가 아직 없습니다." });
+  async function loadPicks() {
+    const ctx = {
+      count: Math.max(1, Math.min(MAX_SYMBOLS, pickCount || source.defaultCount)),
+      ticker: pickTicker,
+      heatmap: heatmapCells,
+      universeLabel,
+    };
+    const items = await run(() => source.load(ctx));
+    if (!items) return;
+    if (!items.length) {
+      setFlash({ kind: "warn", text: "조건에 맞는 종목이 없습니다." });
       return;
     }
-    applyPreset(`${universeLabel} ${direction === "up" ? "상승" : "하락"} Top10`, picks);
+    setPreview(items);
+    setSymbolsText(items.map((i) => i.symbol).join(", "));
+    setPickLabel(source.short(ctx));
+    if (!targetExists || !listName) setListName(`${SAVVY_PREFIX} ${source.short(ctx)} ${todayLabel()}`);
   }
 
-  async function presetKosdaqActive() {
-    setBusy(true);
-    try {
-      const res = await fetch("/api/kosdaq-active");
-      const data = (await res.json()) as KosdaqActivePayload;
-      const rows = [...(data.consensus || [])].sort(
-        (a, b) => b.fund_count - a.fund_count || b.avg_weight - a.avg_weight,
-      );
-      const picks = rows.slice(0, 15).map((r) => r.code);
-      if (!picks.length) throw new Error("코스닥 액티브 공통 편입 데이터가 없습니다.");
-      applyPreset("코스닥액티브 공통편입 Top15", picks);
-    } catch (exc) {
-      setFlash({ kind: "warn", text: exc instanceof Error ? exc.message : "불러오기 실패" });
-    } finally {
-      setBusy(false);
+  async function createBulkAlerts() {
+    const symbols = parseSymbols(symbolsText);
+    if (!symbols.length) {
+      setFlash({ kind: "warn", text: "대상 종목이 없습니다." });
+      return;
     }
-  }
-
-  async function sync(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setFlash(null);
-    try {
-      const res = await authFetch<SyncResult>("/api/tv/watchlist-sync", {
-        method: "POST",
-        body: JSON.stringify({ name: listName, symbols: parseSymbols(symbolsText), mode }),
+    if (symbols.length > MAX_BULK_ALERT_SYMBOLS) {
+      setFlash({
+        kind: "warn",
+        text: `일괄 알림은 최대 ${MAX_BULK_ALERT_SYMBOLS}종목까지입니다. 종목 칸을 줄이거나 개수를 낮춰 다시 불러오세요.`,
       });
-      if (!res.ok) throw new Error(res.error || "동기화 실패");
-      const missed = res.unresolved?.length ? ` · 못 찾은 종목: ${res.unresolved.join(", ")}` : "";
-      if (!res.synced) {
-        setFlash({ kind: "warn", text: `보낼 수 있는 종목이 없습니다${missed}` });
-      } else {
-        const verb = res.created ? "새로 만들었습니다" : "업데이트했습니다";
-        setFlash({
-          kind: res.unresolved?.length ? "warn" : "ok",
-          text: `‘${listName}’ 워치리스트를 ${verb} (추가 ${res.added ?? 0} · 제거 ${res.removed ?? 0})${missed}`,
-        });
-        void loadOverview();
-      }
-    } catch (exc) {
-      setFlash({ kind: "warn", text: exc instanceof Error ? exc.message : "동기화 실패" });
-    } finally {
-      setBusy(false);
+      return;
     }
+    const legs = bulkDirection === "both" ? 2 : 1;
+    const dirText = bulkDirection === "both" ? "±" : bulkDirection === "up" ? "+" : "-";
+    if (!window.confirm(`${symbols.length}종목에 ${dirText}${bulkPct}% 알림 ${symbols.length * legs}개를 만들까요?`)) {
+      return;
+    }
+    const res = await run(() =>
+      authFetch<BulkAlertResult>("/api/tv/alerts/bulk", {
+        method: "POST",
+        body: JSON.stringify({ symbols, pct: bulkPct, direction: bulkDirection, label: pickLabel }),
+      }),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || "일괄 알림 생성 실패" });
+      return;
+    }
+    const notes = [
+      res.unresolved?.length ? `못 찾은 종목: ${res.unresolved.join(", ")}` : "",
+      res.missing?.length ? `시세 없음: ${res.missing.join(", ")}` : "",
+      res.failed?.length ? `실패 ${res.failed.length}건` : "",
+      res.stopped ? "요청 한도로 중단됨" : "",
+    ].filter(Boolean);
+    setFlash({
+      kind: notes.length ? "warn" : "ok",
+      text: `알림 ${res.created?.length ?? 0}개 생성 (1회 발동 후 자동 비활성)${notes.length ? ` · ${notes.join(" · ")}` : ""}`,
+    });
+    void loadOverview();
+  }
+
+  async function sync(mode: SyncMode, symbols: string[], name: string, id?: string) {
+    const res = await run(() =>
+      authFetch<SyncResult>("/api/tv/watchlist-sync", {
+        method: "POST",
+        body: JSON.stringify({ name, id, symbols, mode }),
+      }),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || `${MODE_VERB[mode]} 실패` });
+      return;
+    }
+    const missed = res.unresolved?.length ? ` · 못 찾은 종목: ${res.unresolved.join(", ")}` : "";
+    if (!res.synced) {
+      setFlash({ kind: "warn", text: `처리할 수 있는 종목이 없습니다${missed}` });
+      return;
+    }
+    const head =
+      mode === "remove"
+        ? `‘${name}’에서 ${res.removed ?? 0}개 제거`
+        : `‘${name}’ ${res.created ? "생성" : "업데이트"} (추가 ${res.added ?? 0} · 제거 ${res.removed ?? 0})`;
+    setFlash({ kind: res.unresolved?.length ? "warn" : "ok", text: `${head}${missed}` });
+    void loadOverview();
+  }
+
+  function submitSync(mode: SyncMode) {
+    const symbols = parseSymbols(symbolsText);
+    if (!listName.trim()) {
+      setFlash({ kind: "warn", text: "워치리스트 이름을 입력하거나 선택하세요." });
+      return;
+    }
+    if (!symbols.length) {
+      setFlash({ kind: "warn", text: "대상 종목이 없습니다." });
+      return;
+    }
+    if (symbols.length > MAX_SYMBOLS) {
+      setFlash({ kind: "warn", text: `한 번에 최대 ${MAX_SYMBOLS}개까지 처리할 수 있습니다.` });
+      return;
+    }
+    if (mode === "replace" && targetExists) {
+      const ok = window.confirm(`‘${listName}’의 기존 종목을 이 목록으로 교체할까요?`);
+      if (!ok) return;
+    }
+    void sync(mode, symbols, listName.trim());
+  }
+
+  async function deleteLists(lists: TvWatchlistSummary[]) {
+    if (!lists.length) return;
+    const question =
+      lists.length === 1
+        ? `‘${lists[0].name}’ 워치리스트(${lists[0].count}종목)를 TradingView에서 삭제할까요?`
+        : `워치리스트 ${lists.length}개를 TradingView에서 삭제할까요?\n\n${lists.map((w) => `· ${w.name}`).join("\n")}`;
+    if (!window.confirm(question)) return;
+    const res = await run(() =>
+      authFetch<{ ok: boolean; error?: string; deleted?: string[]; failed?: string[] }>(
+        "/api/tv/watchlist-delete",
+        { method: "POST", body: JSON.stringify({ ids: lists.map((w) => w.id) }) },
+      ),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || "삭제 실패" });
+      return;
+    }
+    const deleted = new Set(res.deleted || []);
+    const failedText = res.failed?.length ? ` · 실패 ${res.failed.length}개 (활성 목록은 삭제되지 않을 수 있음)` : "";
+    setFlash({
+      kind: res.failed?.length ? "warn" : "ok",
+      text:
+        lists.length === 1 && deleted.size === 1
+          ? `‘${lists[0].name}’ 워치리스트를 삭제했습니다.`
+          : `워치리스트 ${deleted.size}개를 삭제했습니다${failedText}`,
+    });
+    if (expandedList && deleted.has(expandedList)) setExpandedList(null);
+    setSelectedLists(new Set());
+    void loadOverview();
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedLists((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectSavvyLists() {
+    setSelectedLists(
+      new Set(watchlists.filter((w) => w.name.startsWith(SAVVY_PREFIX) && !w.active).map((w) => w.id)),
+    );
+  }
+
+  async function setAlertActive(a: TvAlertSummary, active: boolean) {
+    const res = await run(() =>
+      authFetch<{ ok: boolean; error?: string }>("/api/tv/alerts", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: [a.id], active }),
+      }),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || "알림 상태 변경 실패" });
+      return;
+    }
+    setFlash({ kind: "ok", text: `${a.symbol} 알림을 ${active ? "재개" : "일시정지"}했습니다.` });
+    void loadOverview();
   }
 
   async function createAlert(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setFlash(null);
-    try {
-      const res = await authFetch<{ ok: boolean; error?: string; symbol?: string }>("/api/tv/alerts", {
+    const res = await run(() =>
+      authFetch<{ ok: boolean; error?: string; symbol?: string }>("/api/tv/alerts", {
         method: "POST",
         body: JSON.stringify({ symbol: alertSymbol, price: alertPrice, condition: alertCondition }),
-      });
-      if (!res.ok) throw new Error(res.error || "알림 생성 실패");
-      setFlash({
-        kind: "ok",
-        text: `${res.symbol} ${alertPrice} ${CONDITION_LABELS[alertCondition] || alertCondition} 알림을 만들었습니다.`,
-      });
-      setAlertPrice("");
-      void loadOverview();
-    } catch (exc) {
-      setFlash({ kind: "warn", text: exc instanceof Error ? exc.message : "알림 생성 실패" });
-    } finally {
-      setBusy(false);
+      }),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || "알림 생성 실패" });
+      return;
     }
+    setFlash({
+      kind: "ok",
+      text: `${res.symbol} ${alertPrice} ${CONDITION_LABELS[alertCondition] || alertCondition} 알림을 만들었습니다.`,
+    });
+    setAlertPrice("");
+    void loadOverview();
+  }
+
+  async function deleteAlert(a: TvAlertSummary) {
+    if (!window.confirm(`${a.symbol} 알림을 삭제할까요? (발동 기록도 함께 삭제됩니다)`)) return;
+    const res = await run(() =>
+      authFetch<{ ok: boolean; error?: string }>("/api/tv/alerts", {
+        method: "DELETE",
+        body: JSON.stringify({ ids: [a.id] }),
+      }),
+    );
+    if (!res) return;
+    if (!res.ok) {
+      setFlash({ kind: "warn", text: res.error || "알림 삭제 실패" });
+      return;
+    }
+    setFlash({ kind: "ok", text: `${a.symbol} 알림을 삭제했습니다.` });
+    void loadOverview();
   }
 
   return (
@@ -277,65 +446,206 @@ export default function TvOperatorPanel({
 
       {open && connected ? (
         <div className="tvop-grid">
-          <form className="tvop-card" onSubmit={(e) => void sync(e)}>
+          <div className="tvop-card">
             <h3 className="subhead">봇 픽 → 워치리스트</h3>
-            <div className="chip-row">
-              <button type="button" className="chip" onClick={() => presetHeatmap("up")}>
-                히트맵 상승 Top10
+            <div className="tvop-row">
+              <select
+                className="tvop-source"
+                value={sourceId}
+                onChange={(e) => selectSource(e.target.value)}
+                aria-label="픽 유형"
+              >
+                {PICK_GROUPS.map((group) => (
+                  <optgroup key={group} label={group}>
+                    {PICK_SOURCES.filter((s) => s.group === group).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {source.needsTicker ? (
+                <input
+                  className="tvop-ticker"
+                  placeholder={source.tickerPlaceholder}
+                  value={pickTicker}
+                  onChange={(e) => setPickTicker(e.target.value)}
+                />
+              ) : null}
+              <input
+                className="tvop-count"
+                type="number"
+                min={1}
+                max={MAX_SYMBOLS}
+                value={pickCount}
+                onChange={(e) => setPickCount(Number(e.target.value))}
+                aria-label="개수"
+              />
+              <button type="button" className="chip" onClick={() => void loadPicks()} disabled={busy}>
+                불러오기
               </button>
-              <button type="button" className="chip" onClick={() => presetHeatmap("down")}>
-                히트맵 하락 Top10
+            </div>
+
+            {preview.length ? (
+              <ul className="tvop-preview">
+                {preview.map((p) => (
+                  <li key={p.symbol}>
+                    <strong>{p.symbol}</strong>
+                    <span className="tvop-muted"> {p.name}</span>
+                    {p.note ? <span className="tvop-note-inline"> {p.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <label className="tvop-field">
+              <span>대상 워치리스트 (기존 선택 또는 새 이름)</span>
+              <input
+                list="tvop-watchlists"
+                value={listName}
+                onChange={(e) => setListName(e.target.value)}
+                maxLength={200}
+              />
+              <datalist id="tvop-watchlists">
+                {watchlists.map((w) => (
+                  <option key={w.id} value={w.name} />
+                ))}
+              </datalist>
+            </label>
+            <label className="tvop-field">
+              <span>종목 (쉼표·공백 구분, 최대 {MAX_SYMBOLS}개 · 005930, NVDA, NASDAQ:AAPL)</span>
+              <textarea value={symbolsText} onChange={(e) => setSymbolsText(e.target.value)} rows={3} />
+            </label>
+            <div className="tvop-row">
+              <button
+                type="button"
+                className="ghost-btn admin-login-btn"
+                onClick={() => submitSync("append")}
+                disabled={busy}
+              >
+                {targetExists ? "추가" : "새로 만들기"}
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => submitSync("replace")} disabled={busy}>
+                교체
               </button>
               <button
                 type="button"
-                className="chip"
-                onClick={() => void presetKosdaqActive()}
-                disabled={busy}
+                className="ghost-btn tvop-danger"
+                onClick={() => submitSync("remove")}
+                disabled={busy || !targetExists}
+                title={targetExists ? "" : "기존 워치리스트를 선택하면 사용할 수 있습니다"}
               >
-                코스닥 액티브 공통편입
+                이 종목들 제거
               </button>
             </div>
-            <label className="tvop-field">
-              <span>워치리스트 이름</span>
-              <input value={listName} onChange={(e) => setListName(e.target.value)} required maxLength={200} />
-            </label>
-            <label className="tvop-field">
-              <span>종목 (쉼표·공백 구분, 최대 30개 · 005930, NVDA, NASDAQ:AAPL)</span>
-              <textarea
-                value={symbolsText}
-                onChange={(e) => setSymbolsText(e.target.value)}
-                rows={3}
-                required
-              />
-            </label>
+
+            <h4 className="tvop-sub">이 종목들에 가격 알림 (최대 {MAX_BULK_ALERT_SYMBOLS}종목 · 현재가 기준)</h4>
             <div className="tvop-row">
-              <select value={mode} onChange={(e) => setMode(e.target.value as "append" | "replace")}>
-                <option value="replace">같은 이름이면 교체</option>
-                <option value="append">같은 이름이면 추가만</option>
+              <select
+                value={bulkDirection}
+                onChange={(e) => setBulkDirection(e.target.value as "both" | "up" | "down")}
+                aria-label="알림 방향"
+              >
+                <option value="both">± 양방향</option>
+                <option value="up">+ 상승만</option>
+                <option value="down">− 하락만</option>
               </select>
-              <button type="submit" className="ghost-btn admin-login-btn" disabled={busy}>
-                {busy ? "처리 중…" : "TradingView로 보내기"}
+              <input
+                className="tvop-count"
+                inputMode="decimal"
+                value={bulkPct}
+                onChange={(e) => setBulkPct(e.target.value)}
+                aria-label="변동폭 %"
+              />
+              <span className="tvop-muted">%</span>
+              <button type="button" className="ghost-btn" onClick={() => void createBulkAlerts()} disabled={busy}>
+                일괄 알림 만들기
               </button>
             </div>
-          </form>
+          </div>
 
           <div className="tvop-card">
             <h3 className="subhead">내 워치리스트</h3>
             <ul className="tvop-list">
-              {(overview?.watchlists || []).map((w) => (
-                <li key={w.id}>
-                  <span>
-                    {w.name}
-                    {w.active ? <span className="tvop-tag">활성</span> : null}
-                  </span>
-                  <span className="tvop-muted">{w.count}종목</span>
+              {watchlists.map((w) => (
+                <li key={w.id} className="tvop-wl">
+                  <div className="tvop-wl-row">
+                    <input
+                      type="checkbox"
+                      className="tvop-check"
+                      checked={selectedLists.has(w.id)}
+                      onChange={() => toggleSelected(w.id)}
+                      aria-label={`${w.name} 선택`}
+                    />
+                    <button
+                      type="button"
+                      className="tvop-link"
+                      onClick={() => setExpandedList(expandedList === w.id ? null : w.id)}
+                    >
+                      {w.name}
+                      {w.active ? <span className="tvop-tag">활성</span> : null}
+                      <span className="tvop-muted"> · {w.count}종목</span>
+                    </button>
+                    <span className="tvop-wl-actions">
+                      <button type="button" className="tvop-mini" onClick={() => setListName(w.name)}>
+                        대상 지정
+                      </button>
+                      <button
+                        type="button"
+                        className="tvop-mini tvop-danger"
+                        onClick={() => void deleteLists([w])}
+                        disabled={busy}
+                      >
+                        삭제
+                      </button>
+                    </span>
+                  </div>
+                  {expandedList === w.id ? (
+                    <div className="tvop-chips">
+                      {w.symbols.map((s) => (
+                        <span key={s} className="tvop-chip">
+                          {s}
+                          <button
+                            type="button"
+                            aria-label={`${s} 제거`}
+                            onClick={() => void sync("remove", [s], w.name, w.id)}
+                            disabled={busy}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {!w.symbols.length ? <span className="tvop-muted">비어 있습니다.</span> : null}
+                    </div>
+                  ) : null}
                 </li>
               ))}
-              {!overview?.watchlists?.length ? <li className="tvop-muted">워치리스트가 없습니다.</li> : null}
+              {!watchlists.length ? <li className="tvop-muted">워치리스트가 없습니다.</li> : null}
             </ul>
-            <button type="button" className="chip" onClick={() => void loadOverview()} disabled={loading}>
-              새로고침
-            </button>
+            <div className="tvop-row">
+              <button type="button" className="chip" onClick={() => void loadOverview()} disabled={loading}>
+                새로고침
+              </button>
+              <button type="button" className="chip" onClick={selectSavvyLists} disabled={busy}>
+                Savvy 목록 모두 선택
+              </button>
+              {selectedLists.size ? (
+                <>
+                  <button
+                    type="button"
+                    className="ghost-btn tvop-danger"
+                    onClick={() => void deleteLists(watchlists.filter((w) => selectedLists.has(w.id)))}
+                    disabled={busy}
+                  >
+                    선택 삭제 ({selectedLists.size})
+                  </button>
+                  <button type="button" className="tvop-mini" onClick={() => setSelectedLists(new Set())}>
+                    선택 해제
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <div className="tvop-card">
@@ -365,22 +675,42 @@ export default function TvOperatorPanel({
                 알림 만들기
               </button>
             </form>
-            <h4 className="tvop-sub">활성 알림</h4>
-            <ul className="tvop-list">
-              {(overview?.alerts || [])
-                .filter((a) => a.active)
-                .slice(0, 12)
+            <h4 className="tvop-sub">
+              내 알림 (활성 {(overview?.alerts || []).filter((a) => a.active).length} · 전체{" "}
+              {(overview?.alerts || []).length})
+            </h4>
+            <ul className="tvop-list tvop-scroll">
+              {[...(overview?.alerts || [])]
+                .sort((a, b) => Number(b.active) - Number(a.active))
+                .slice(0, 30)
                 .map((a) => (
-                  <li key={a.id}>
+                  <li key={a.id} className={a.active ? "" : "tvop-off"}>
                     <span>{a.symbol}</span>
-                    <span className="tvop-muted">
-                      {CONDITION_LABELS[a.condition] || a.condition} {a.threshold ?? ""}
+                    <span className="tvop-wl-actions">
+                      <span className="tvop-muted">
+                        {CONDITION_LABELS[a.condition] || a.condition} {a.threshold ?? ""}
+                        {a.active ? "" : " · 정지"}
+                      </span>
+                      <button
+                        type="button"
+                        className="tvop-mini"
+                        onClick={() => void setAlertActive(a, !a.active)}
+                        disabled={busy}
+                      >
+                        {a.active ? "정지" : "재개"}
+                      </button>
+                      <button
+                        type="button"
+                        className="tvop-mini tvop-danger"
+                        onClick={() => void deleteAlert(a)}
+                        disabled={busy}
+                      >
+                        삭제
+                      </button>
                     </span>
                   </li>
                 ))}
-              {!(overview?.alerts || []).some((a) => a.active) ? (
-                <li className="tvop-muted">활성 알림이 없습니다.</li>
-              ) : null}
+              {!overview?.alerts?.length ? <li className="tvop-muted">알림이 없습니다.</li> : null}
             </ul>
             <h4 className="tvop-sub">최근 7일 발동</h4>
             <ul className="tvop-list">
@@ -396,9 +726,7 @@ export default function TvOperatorPanel({
               ))}
               {!overview?.fires?.length ? <li className="tvop-muted">발동 기록이 없습니다.</li> : null}
             </ul>
-            {overview?.errors?.length ? (
-              <p className="tvop-muted">{overview.errors.join(" · ")}</p>
-            ) : null}
+            {overview?.errors?.length ? <p className="tvop-muted">{overview.errors.join(" · ")}</p> : null}
           </div>
         </div>
       ) : null}

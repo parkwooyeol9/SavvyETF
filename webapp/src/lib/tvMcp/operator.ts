@@ -8,6 +8,7 @@ export type TvWatchlistSummary = {
   name: string;
   count: number;
   active: boolean;
+  symbols: string[];
 };
 
 export type TvAlertSummary = {
@@ -71,12 +72,74 @@ async function rawWatchlists(tv: TvMcpSession): Promise<RawWatchlist[]> {
 }
 
 export async function listWatchlists(tv: TvMcpSession): Promise<TvWatchlistSummary[]> {
-  return (await rawWatchlists(tv)).map((w) => ({
-    id: str(w.id),
-    name: w.name || "(이름 없음)",
-    count: (w.symbols || []).filter((s) => !isSectionMarker(s)).length,
-    active: Boolean(w.active),
-  }));
+  return (await rawWatchlists(tv)).map((w) => {
+    const symbols = (w.symbols || []).filter((s) => !isSectionMarker(s));
+    return {
+      id: str(w.id),
+      name: w.name || "(이름 없음)",
+      count: symbols.length,
+      active: Boolean(w.active),
+      symbols,
+    };
+  });
+}
+
+export async function deleteWatchlist(tv: TvMcpSession, id: string): Promise<void> {
+  await tv.call("mcp-watchlist-delete-watchlist", { watchlist_id: id });
+}
+
+export async function removeFromWatchlist(
+  tv: TvMcpSession,
+  opts: { id?: string; name?: string; symbols: string[] },
+): Promise<{ watchlistId: string; removed: number }> {
+  const lists = await rawWatchlists(tv);
+  const target = opts.id
+    ? lists.find((w) => str(w.id) === opts.id)
+    : lists.find((w) => (w.name || "").trim() === opts.name);
+  if (!target) throw new Error(`워치리스트를 찾지 못했습니다: ${opts.name || opts.id}`);
+  const present = new Set(target.symbols || []);
+  const toRemove = opts.symbols.filter((s) => present.has(s));
+  if (toRemove.length) {
+    await tv.call("mcp-watchlist-remove-from-watchlist", {
+      watchlist_id: str(target.id),
+      symbols: toRemove,
+    });
+  }
+  return { watchlistId: str(target.id), removed: toRemove.length };
+}
+
+export async function deleteAlerts(tv: TvMcpSession, ids: number[]): Promise<void> {
+  await tv.call("mcp-tv-delete-alert", { alert_ids: ids });
+}
+
+export async function setAlertsActive(tv: TvMcpSession, ids: number[], active: boolean): Promise<void> {
+  await tv.call(active ? "mcp-tv-restart-alerts" : "mcp-tv-stop-alerts", { alert_ids: ids });
+}
+
+export type TvQuote = { close: number; currency: string };
+
+export async function getQuotes(
+  tv: TvMcpSession,
+  symbols: string[],
+): Promise<{ quotes: Record<string, TvQuote>; missing: string[] }> {
+  const res = await tv.call<{
+    data?: Record<string, { close?: unknown; currency?: unknown }>;
+    missing?: Array<{ symbol?: string }>;
+  }>("mcp-tv-get-symbol-data-batch", { symbols, columns: ["close", "currency"] });
+  const quotes: Record<string, TvQuote> = {};
+  for (const [symbol, row] of Object.entries(res.data || {})) {
+    const close = num(row?.close);
+    if (close != null && close > 0) quotes[symbol] = { close, currency: str(row?.currency) };
+  }
+  const missing = symbols.filter((s) => !quotes[s]);
+  return { quotes, missing };
+}
+
+/** KRW has no decimals; other markets keep up to 2 (or 4 below 1.0). */
+export function roundAlertPrice(price: number, currency: string): number {
+  if (currency === "KRW") return Math.round(price);
+  const digits = price < 1 ? 4 : 2;
+  return Number(price.toFixed(digits));
 }
 
 export async function listAlerts(tv: TvMcpSession): Promise<TvAlertSummary[]> {
@@ -101,7 +164,7 @@ export async function listAlertFires(tv: TvMcpSession, days = 7): Promise<TvAler
   }));
 }
 
-/** Map SavvyETF tickers (005930, 005930.KS, NVDA, BRK-B, NASDAQ:AAPL) to TradingView symbols. */
+/** Map SavvyETF tickers (005930, 0238C0, 005930.KS, NVDA, BRK-B, NASDAQ:AAPL) to TradingView symbols. */
 export async function resolveSymbols(
   tv: TvMcpSession,
   tokens: string[],
@@ -123,7 +186,7 @@ export async function resolveSymbols(
       push(token);
       continue;
     }
-    const kr = token.match(/^(\d{6})(?:\.(?:KS|KQ))?$/);
+    const kr = token.match(/^(\d[0-9A-Z]{5})(?:\.(?:KS|KQ))?$/);
     if (kr) {
       push(`KRX:${kr[1]}`);
       continue;
