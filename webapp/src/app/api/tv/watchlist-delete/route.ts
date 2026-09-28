@@ -1,4 +1,4 @@
-import { deleteWatchlist } from "@/lib/tvMcp/operator";
+import { deleteWatchlist, listWatchlists } from "@/lib/tvMcp/operator";
 import { withTvSession } from "@/lib/tvMcp/session";
 
 export const runtime = "nodejs";
@@ -34,6 +34,7 @@ export async function POST(request: Request) {
         failed.push(`${id}: ${exc instanceof Error ? exc.message : "실패"}`);
       }
     }
-    return { deleted, failed };
+    const watchlists = await listWatchlists(tv).catch(() => null);
+    return { deleted, failed, ...(watchlists ? { watchlists } : {}) };
   });
 }

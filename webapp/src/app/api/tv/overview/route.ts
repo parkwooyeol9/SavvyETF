@@ -17,6 +17,6 @@ export async function GET(request: Request) {
       errors.push(exc.message);
       return [];
     });
-    return { watchlists, alerts, fires, errors };
+    return { watchlists, alerts, fires, errors, fetchedAt: new Date().toISOString() };
   });
 }

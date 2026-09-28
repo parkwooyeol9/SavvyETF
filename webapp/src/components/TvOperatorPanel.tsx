@@ -15,6 +15,7 @@ type Overview = {
   alerts?: TvAlertSummary[];
   fires?: TvAlertFire[];
   errors?: string[];
+  fetchedAt?: string;
 };
 
 type SyncResult = {
@@ -24,8 +25,10 @@ type SyncResult = {
   created?: boolean;
   added?: number;
   removed?: number;
+  watchlistId?: string;
   resolved?: string[];
   unresolved?: string[];
+  watchlists?: TvWatchlistSummary[];
 };
 
 type BulkAlertResult = {
@@ -89,7 +92,8 @@ export default function TvOperatorPanel({
   const [pickCount, setPickCount] = useState(PICK_SOURCES[0].defaultCount);
   const [preview, setPreview] = useState<PickItem[]>([]);
 
-  const [listName, setListName] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const [newListName, setNewListName] = useState("");
   const [symbolsText, setSymbolsText] = useState("");
   const [expandedList, setExpandedList] = useState<string | null>(null);
   const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set());
@@ -117,7 +121,12 @@ export default function TvOperatorPanel({
         },
         credentials: "same-origin",
       });
-      return (await res.json()) as T;
+      const text = await res.text();
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        return { ok: false, error: `서버 응답 오류 (HTTP ${res.status})` } as T;
+      }
     },
     [secret],
   );
@@ -154,7 +163,22 @@ export default function TvOperatorPanel({
 
   const connected = Boolean(overview?.connected);
   const watchlists = overview?.watchlists || [];
-  const targetExists = watchlists.some((w) => w.name.trim() === listName.trim());
+  const target = targetId ? watchlists.find((w) => w.id === targetId) : undefined;
+  const targetExists = Boolean(target);
+  const listName = target?.name ?? newListName.trim();
+
+  function applyWatchlists(next: TvWatchlistSummary[] | undefined) {
+    if (!next) {
+      void loadOverview();
+      return;
+    }
+    setOverview((prev) => ({
+      ...(prev || { ok: true, connected: true }),
+      watchlists: next,
+      fetchedAt: new Date().toISOString(),
+    }));
+    if (targetId && !next.some((w) => w.id === targetId)) setTargetId("");
+  }
 
   async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
@@ -212,7 +236,7 @@ export default function TvOperatorPanel({
     setPreview(items);
     setSymbolsText(items.map((i) => i.symbol).join(", "));
     setPickLabel(source.short(ctx));
-    if (!targetExists || !listName) setListName(`${SAVVY_PREFIX} ${source.short(ctx)} ${todayLabel()}`);
+    if (!targetExists) setNewListName(`${SAVVY_PREFIX} ${source.short(ctx)} ${todayLabel()}`);
   }
 
   async function createBulkAlerts() {
@@ -279,12 +303,16 @@ export default function TvOperatorPanel({
         ? `‘${name}’에서 ${res.removed ?? 0}개 제거`
         : `‘${name}’ ${res.created ? "생성" : "업데이트"} (추가 ${res.added ?? 0} · 제거 ${res.removed ?? 0})`;
     setFlash({ kind: res.unresolved?.length ? "warn" : "ok", text: `${head}${missed}` });
-    void loadOverview();
+    applyWatchlists(res.watchlists);
+    if (res.watchlistId && res.watchlists?.some((w) => w.id === res.watchlistId)) {
+      setTargetId(res.watchlistId);
+      setExpandedList(res.watchlistId);
+    }
   }
 
   function submitSync(mode: SyncMode) {
     const symbols = parseSymbols(symbolsText);
-    if (!listName.trim()) {
+    if (!listName) {
       setFlash({ kind: "warn", text: "워치리스트 이름을 입력하거나 선택하세요." });
       return;
     }
@@ -300,7 +328,7 @@ export default function TvOperatorPanel({
       const ok = window.confirm(`‘${listName}’의 기존 종목을 이 목록으로 교체할까요?`);
       if (!ok) return;
     }
-    void sync(mode, symbols, listName.trim());
+    void sync(mode, symbols, listName, target?.id);
   }
 
   async function deleteLists(lists: TvWatchlistSummary[]) {
@@ -311,7 +339,13 @@ export default function TvOperatorPanel({
         : `워치리스트 ${lists.length}개를 TradingView에서 삭제할까요?\n\n${lists.map((w) => `· ${w.name}`).join("\n")}`;
     if (!window.confirm(question)) return;
     const res = await run(() =>
-      authFetch<{ ok: boolean; error?: string; deleted?: string[]; failed?: string[] }>(
+      authFetch<{
+        ok: boolean;
+        error?: string;
+        deleted?: string[];
+        failed?: string[];
+        watchlists?: TvWatchlistSummary[];
+      }>(
         "/api/tv/watchlist-delete",
         { method: "POST", body: JSON.stringify({ ids: lists.map((w) => w.id) }) },
       ),
@@ -332,7 +366,7 @@ export default function TvOperatorPanel({
     });
     if (expandedList && deleted.has(expandedList)) setExpandedList(null);
     setSelectedLists(new Set());
-    void loadOverview();
+    applyWatchlists(res.watchlists);
   }
 
   function toggleSelected(id: string) {
@@ -500,19 +534,22 @@ export default function TvOperatorPanel({
             ) : null}
 
             <label className="tvop-field">
-              <span>대상 워치리스트 (기존 선택 또는 새 이름)</span>
-              <input
-                list="tvop-watchlists"
-                value={listName}
-                onChange={(e) => setListName(e.target.value)}
-                maxLength={200}
-              />
-              <datalist id="tvop-watchlists">
+              <span>대상 워치리스트 (TradingView 목록 {watchlists.length}개)</span>
+              <select value={target ? target.id : ""} onChange={(e) => setTargetId(e.target.value)}>
+                <option value="">+ 새 워치리스트 만들기</option>
                 {watchlists.map((w) => (
-                  <option key={w.id} value={w.name} />
+                  <option key={w.id} value={w.id}>
+                    {w.name} · {w.count}종목{w.active ? " (활성)" : ""}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </label>
+            {!target ? (
+              <label className="tvop-field">
+                <span>새 워치리스트 이름</span>
+                <input value={newListName} onChange={(e) => setNewListName(e.target.value)} maxLength={200} />
+              </label>
+            ) : null}
             <label className="tvop-field">
               <span>종목 (쉼표·공백 구분, 최대 {MAX_SYMBOLS}개 · 005930, NVDA, NASDAQ:AAPL)</span>
               <textarea value={symbolsText} onChange={(e) => setSymbolsText(e.target.value)} rows={3} />
@@ -567,6 +604,15 @@ export default function TvOperatorPanel({
 
           <div className="tvop-card">
             <h3 className="subhead">내 워치리스트</h3>
+            <p className="tvop-muted tvop-status">
+              {loading
+                ? "TradingView에서 불러오는 중…"
+                : `TradingView 목록 ${watchlists.length}개${
+                    overview?.fetchedAt
+                      ? ` · ${new Date(overview.fetchedAt).toLocaleTimeString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" })} 갱신`
+                      : ""
+                  }`}
+            </p>
             <ul className="tvop-list">
               {watchlists.map((w) => (
                 <li key={w.id} className="tvop-wl">
@@ -588,7 +634,7 @@ export default function TvOperatorPanel({
                       <span className="tvop-muted"> · {w.count}종목</span>
                     </button>
                     <span className="tvop-wl-actions">
-                      <button type="button" className="tvop-mini" onClick={() => setListName(w.name)}>
+                      <button type="button" className="tvop-mini" onClick={() => setTargetId(w.id)}>
                         대상 지정
                       </button>
                       <button

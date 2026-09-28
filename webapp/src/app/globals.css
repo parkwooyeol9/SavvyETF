@@ -11889,6 +11889,10 @@ a.chip {
   border-color: rgba(248, 180, 180, 0.5);
 }
 
+.tvop-status {
+  margin: -0.3rem 0 0.4rem;
+}
+
 .tvop .tvop-check {
   flex-shrink: 0;
   padding: 0;

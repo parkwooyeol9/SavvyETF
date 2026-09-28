@@ -34,6 +34,16 @@ function isSectionMarker(symbol: string): boolean {
   return symbol.startsWith("###");
 }
 
+export function normalizeListName(name: string): string {
+  return name.normalize("NFC").replace(/\s+/g, " ").trim();
+}
+
+function findList(lists: RawWatchlist[], opts: { id?: string; name?: string }): RawWatchlist | undefined {
+  if (opts.id) return lists.find((w) => str(w.id) === opts.id);
+  const target = normalizeListName(opts.name || "");
+  return target ? lists.find((w) => normalizeListName(w.name || "") === target) : undefined;
+}
+
 function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value.filter((v) => v && typeof v === "object") as Array<Record<string, unknown>>) : [];
 }
@@ -92,10 +102,7 @@ export async function removeFromWatchlist(
   tv: TvMcpSession,
   opts: { id?: string; name?: string; symbols: string[] },
 ): Promise<{ watchlistId: string; removed: number }> {
-  const lists = await rawWatchlists(tv);
-  const target = opts.id
-    ? lists.find((w) => str(w.id) === opts.id)
-    : lists.find((w) => (w.name || "").trim() === opts.name);
+  const target = findList(await rawWatchlists(tv), opts);
   if (!target) throw new Error(`워치리스트를 찾지 못했습니다: ${opts.name || opts.id}`);
   const present = new Set(target.symbols || []);
   const toRemove = opts.symbols.filter((s) => present.has(s));
@@ -209,15 +216,18 @@ export async function resolveSymbols(
 
 export async function syncWatchlist(
   tv: TvMcpSession,
-  opts: { name: string; symbols: string[]; mode: "append" | "replace" },
+  opts: { id?: string; name: string; symbols: string[]; mode: "append" | "replace" },
 ): Promise<{ watchlistId: string; created: boolean; added: number; removed: number }> {
-  const existing = (await rawWatchlists(tv)).find((w) => (w.name || "").trim() === opts.name);
+  const existing = findList(await rawWatchlists(tv), opts);
+  if (opts.id && !existing) throw new Error("선택한 워치리스트를 찾지 못했습니다. 새로고침 후 다시 시도하세요.");
 
   if (!existing) {
-    await tv.call("mcp-watchlist-create-watchlist", { name: opts.name, symbols: opts.symbols });
-    const created = (await rawWatchlists(tv)).find((w) => (w.name || "").trim() === opts.name);
+    const res = await tv.call<{ watchlist?: RawWatchlist }>("mcp-watchlist-create-watchlist", {
+      name: normalizeListName(opts.name),
+      symbols: opts.symbols,
+    });
     return {
-      watchlistId: str(created?.id),
+      watchlistId: str(res.watchlist?.id),
       created: true,
       added: opts.symbols.length,
       removed: 0,
