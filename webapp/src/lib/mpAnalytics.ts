@@ -6,6 +6,8 @@
  */
 
 import { withServerCache } from "@/lib/apiCache";
+import { fillUsSessionCloseIfNeeded } from "@/lib/usDailyCloseFallback";
+import { unixToEtYmd } from "@/lib/usEquitySession";
 import {
   holdingKey,
   MP_BM_SECTOR_FALLBACK,
@@ -34,7 +36,7 @@ export const MP_FACTORS = [
   { key: "size", label: "규모", desc: "IWM − SPY (소형 − 대형)" },
   { key: "value", label: "가치", desc: "IVE − IVW (가치 − 성장)" },
   { key: "mom", label: "모멘텀", desc: "MTUM − SPY" },
-  { key: "qual", label: "퀄리티", desc: "QUAL − SPY" },
+  { key: "qual", label: "퀄리티", desc: "QUAL − SPY (학술 수익성 팩터 RMW와 상관이 낮아 참고용)" },
   { key: "lowvol", label: "저변동", desc: "USMV − SPY" },
   { key: "semi", label: "반도체", desc: "SOXX − SPY" },
   { key: "china", label: "중국 상대", desc: "CSI300(USD) − S&P500" },
@@ -111,6 +113,8 @@ export type MpHoldingRow = {
   local_return_since_entry_pct: number | null;
   contribution_pct: number;
   fx_contribution_pct: number;
+  week_contribution_pct: number;
+  week_return_pct: number | null;
   market_cap_usd: number | null;
   pe: number | null;
   forward_pe: number | null;
@@ -181,6 +185,34 @@ export type MpStyleRegression = {
   weights: Array<{ key: string; label: string; weight_pct: number }>;
 };
 
+export type MpWeeklyMover = { key: string; label: string; contribution_pct: number; return_pct: number | null };
+
+export type MpWeekly = {
+  from: string;
+  to: string;
+  port_pct: number;
+  bm_pct: number;
+  excess_pct: number;
+  spx_pct: number;
+  csi_pct: number;
+  countries: Array<{
+    key: MpCountry;
+    label: string;
+    port_w_pct: number;
+    bm_w_pct: number;
+    port_ret_pct: number | null;
+    bm_ret_pct: number;
+    contribution_pct: number;
+    allocation_pct: number;
+    selection_pct: number;
+  }>;
+  top: MpWeeklyMover[];
+  bottom: MpWeeklyMover[];
+  sectors: Array<{ key: string; label: string; contribution_pct: number }>;
+  intraday: string[];
+  comment: string[];
+};
+
 export type MpAnalysis = {
   ok: boolean;
   error?: string;
@@ -192,6 +224,7 @@ export type MpAnalysis = {
   rf_ann_pct: number | null;
   notes: string[];
   last_dates: Record<string, string | null>;
+  weekly: MpWeekly | null;
   series: Array<{
     date: string;
     port: number;
@@ -288,7 +321,13 @@ async function fetchDaily(symbol: string, startIso: string): Promise<Daily> {
   const payload = (await res.json()) as {
     chart?: {
       result?: Array<{
-        meta?: { currency?: string; longName?: string; shortName?: string };
+        meta?: {
+          currency?: string;
+          longName?: string;
+          shortName?: string;
+          regularMarketPrice?: number;
+          regularMarketTime?: number;
+        };
         timestamp?: number[];
         indicators?: { quote?: Array<{ close?: Array<number | null> }> };
       }>;
@@ -303,6 +342,22 @@ async function fetchDaily(symbol: string, startIso: string): Promise<Daily> {
     if (c == null || !Number.isFinite(c) || c <= 0) continue;
     map.set(new Date(ts[i]! * 1000).toISOString().slice(0, 10), c);
   }
+  if (isUsSymbol(symbol)) {
+    const px = r?.meta?.regularMarketPrice;
+    const t = r?.meta?.regularMarketTime;
+    const sessionQuote =
+      typeof px === "number" && px > 0 && typeof t === "number" && t > 0 ? { date: unixToEtYmd(t), close: px } : null;
+    try {
+      const filled = await fillUsSessionCloseIfNeeded(
+        symbol,
+        [...map.entries()].map(([date, close]) => ({ date, close })),
+        { sessionQuote },
+      );
+      if (filled.filled) for (const p of filled.points) map.set(p.date, p.close);
+    } catch {
+      /* Yahoo bars are still usable */
+    }
+  }
   const dates = [...map.keys()].sort();
   return adjustChinaSplits({
     symbol,
@@ -312,6 +367,41 @@ async function fetchDaily(symbol: string, startIso: string): Promise<Daily> {
     close: dates.map((d) => map.get(d)!),
     splits: [],
   });
+}
+
+function isUsSymbol(symbol: string): boolean {
+  return /^\^?[A-Z][A-Z0-9-]*$/.test(symbol);
+}
+
+function zoneClock(timeZone: string, at = new Date()): { ymd: string; minutes: number } {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+  return { ymd: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+}
+
+/** Yahoo's daily series carries the in-progress session as today's bar. */
+function isIntradayBar(symbol: string, lastDate: string | undefined): boolean {
+  if (!lastDate) return false;
+  if (/\.(SS|SZ)$/i.test(symbol)) {
+    const c = zoneClock("Asia/Shanghai");
+    return c.ymd === lastDate && c.minutes < 15 * 60 + 5;
+  }
+  if (isUsSymbol(symbol)) {
+    const c = zoneClock("America/New_York");
+    return c.ymd === lastDate && c.minutes < 16 * 60 + 5;
+  }
+  return false;
 }
 
 async function mapPool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -363,106 +453,113 @@ type Fundamentals = {
   div_yield_pct: number | null;
   currency: string;
   name: string | null;
+  /** Yahoo divides the ADR price by book value per ordinary share (no ADR ratio), e.g. TSM ×5. */
+  pb_dropped_adr: boolean;
 };
 
 function numOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+/** Misses throw inside the cache callback so a transient Yahoo failure is retried instead of cached. */
+async function cachedLookup<T>(
+  key: string,
+  ttlMs: number,
+  staleMs: number,
+  fn: () => Promise<T | null>,
+): Promise<T | null> {
+  try {
+    return await withServerCache(key, ttlMs, staleMs, async () => {
+      const v = await fn();
+      if (v == null) throw new Error(`${key}: no data`);
+      return v;
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function quoteSummary<T>(symbol: string, modules: string): Promise<T | null> {
+  const j = await yahooCrumb();
+  const url =
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}` +
+    `?modules=${modules}&crumb=${encodeURIComponent(j.crumb)}`;
+  const res = await fetch(url, { headers: { "User-Agent": UA, Cookie: j.cookie, Accept: "application/json" } });
+  if (!res.ok) return null;
+  const json = (await res.json()) as { quoteSummary?: { result?: T[] } };
+  return json.quoteSummary?.result?.[0] ?? null;
+}
+
 async function fetchFundamentals(symbols: string[]): Promise<Map<string, Fundamentals>> {
-  const out = new Map<string, Fundamentals>();
-  if (!symbols.length) return out;
-  return withServerCache(`mp:fund:${[...symbols].sort().join(",")}`, 3_600_000, 6 * 3_600_000, async () => {
-    try {
-      const j = await yahooCrumb();
-      const url =
-        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols.join(","))}` +
-        `&fields=marketCap,trailingPE,forwardPE,priceToBook,dividendYield,longName,currency` +
-        `&crumb=${encodeURIComponent(j.crumb)}`;
-      const res = await fetch(url, { headers: { "User-Agent": UA, Cookie: j.cookie, Accept: "application/json" } });
-      if (!res.ok) return out;
-      const json = (await res.json()) as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
-      for (const q of json.quoteResponse?.result || []) {
-        const sym = String(q.symbol || "").toUpperCase();
-        if (!sym) continue;
-        out.set(sym, {
-          market_cap: numOrNull(q.marketCap),
-          pe: numOrNull(q.trailingPE),
-          forward_pe: numOrNull(q.forwardPE),
-          pb: numOrNull(q.priceToBook),
-          div_yield_pct: numOrNull(q.dividendYield),
-          currency: String(q.currency || "USD").toUpperCase(),
-          name: typeof q.longName === "string" ? q.longName : null,
-        });
-      }
-    } catch {
-      /* fundamentals are optional */
+  if (!symbols.length) return new Map();
+  const key = `mp:fund2:${[...symbols].sort().join(",")}`;
+  const hit = await cachedLookup(key, 3_600_000, 6 * 3_600_000, async () => {
+    const j = await yahooCrumb();
+    const url =
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols.join(","))}` +
+      `&fields=marketCap,trailingPE,forwardPE,priceToBook,dividendYield,longName,currency,financialCurrency` +
+      `&crumb=${encodeURIComponent(j.crumb)}`;
+    const res = await fetch(url, { headers: { "User-Agent": UA, Cookie: j.cookie, Accept: "application/json" } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
+    const out = new Map<string, Fundamentals>();
+    for (const q of json.quoteResponse?.result || []) {
+      const sym = String(q.symbol || "").toUpperCase();
+      if (!sym) continue;
+      const currency = String(q.currency || "USD").toUpperCase();
+      const finCur = typeof q.financialCurrency === "string" ? q.financialCurrency.toUpperCase() : currency;
+      const adr = currency === "USD" && finCur !== currency;
+      out.set(sym, {
+        market_cap: numOrNull(q.marketCap),
+        pe: numOrNull(q.trailingPE),
+        forward_pe: numOrNull(q.forwardPE),
+        pb: adr ? null : numOrNull(q.priceToBook),
+        div_yield_pct: numOrNull(q.dividendYield),
+        currency,
+        name: typeof q.longName === "string" ? q.longName : null,
+        pb_dropped_adr: adr && numOrNull(q.priceToBook) != null,
+      });
     }
-    return out;
+    return out.size ? out : null;
   });
+  return hit ?? new Map();
 }
 
 type EtfProfile = { sectors: Partial<Record<MpSectorKey, number>>; pe: number | null; pb: number | null };
 
 async function fetchEtfProfile(symbol: string): Promise<EtfProfile | null> {
-  return withServerCache(`mp:etfprof:${symbol}`, 6 * 3_600_000, 24 * 3_600_000, async () => {
-    try {
-      const j = await yahooCrumb();
-      const url =
-        `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}` +
-        `?modules=topHoldings&crumb=${encodeURIComponent(j.crumb)}`;
-      const res = await fetch(url, { headers: { "User-Agent": UA, Cookie: j.cookie, Accept: "application/json" } });
-      if (!res.ok) return null;
-      const json = (await res.json()) as {
-        quoteSummary?: {
-          result?: Array<{
-            topHoldings?: {
-              sectorWeightings?: Array<Record<string, { raw?: number }>>;
-              equityHoldings?: Record<string, { raw?: number }>;
-            };
-          }>;
-        };
+  return cachedLookup(`mp:etfprof:${symbol}`, 6 * 3_600_000, 24 * 3_600_000, async () => {
+    const r = await quoteSummary<{
+      topHoldings?: {
+        sectorWeightings?: Array<Record<string, { raw?: number }>>;
+        equityHoldings?: Record<string, { raw?: number }>;
       };
-      const th = json.quoteSummary?.result?.[0]?.topHoldings;
-      if (!th?.sectorWeightings?.length) return null;
-      const sectors: Partial<Record<MpSectorKey, number>> = {};
-      for (const row of th.sectorWeightings) {
-        for (const [k, v] of Object.entries(row)) {
-          const key = k as MpSectorKey;
-          if (MP_SECTORS.some((s) => s.key === key) && v?.raw != null) sectors[key] = v.raw * 100;
-        }
+    }>(symbol, "topHoldings");
+    const th = r?.topHoldings;
+    if (!th?.sectorWeightings?.length) return null;
+    const sectors: Partial<Record<MpSectorKey, number>> = {};
+    for (const row of th.sectorWeightings) {
+      for (const [k, v] of Object.entries(row)) {
+        const key = k as MpSectorKey;
+        if (MP_SECTORS.some((s) => s.key === key) && v?.raw != null) sectors[key] = v.raw * 100;
       }
-      const pe = th.equityHoldings?.priceToEarnings?.raw;
-      const pb = th.equityHoldings?.priceToBook?.raw;
-      return {
-        sectors,
-        pe: pe && pe > 0 ? 1 / pe : null,
-        pb: pb && pb > 0 ? 1 / pb : null,
-      };
-    } catch {
-      return null;
     }
+    const pe = th.equityHoldings?.priceToEarnings?.raw;
+    const pb = th.equityHoldings?.priceToBook?.raw;
+    return {
+      sectors,
+      pe: pe && pe > 0 ? 1 / pe : null,
+      pb: pb && pb > 0 ? 1 / pb : null,
+    };
   });
 }
 
 async function fetchSectorKey(symbol: string): Promise<MpSectorKey | null> {
-  return withServerCache(`mp:sector:${symbol}`, 24 * 3_600_000, 7 * 24 * 3_600_000, async () => {
-    try {
-      const j = await yahooCrumb();
-      const url =
-        `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}` +
-        `?modules=assetProfile&crumb=${encodeURIComponent(j.crumb)}`;
-      const res = await fetch(url, { headers: { "User-Agent": UA, Cookie: j.cookie, Accept: "application/json" } });
-      if (!res.ok) return null;
-      const json = (await res.json()) as {
-        quoteSummary?: { result?: Array<{ assetProfile?: { sectorKey?: string } }> };
-      };
-      const raw = json.quoteSummary?.result?.[0]?.assetProfile?.sectorKey || "";
-      const key = raw.replace(/-/g, "_").replace("real_estate", "realestate") as MpSectorKey;
-      return MP_SECTORS.some((s) => s.key === key) ? key : null;
-    } catch {
-      return null;
-    }
+  return cachedLookup(`mp:sector:${symbol}`, 24 * 3_600_000, 7 * 24 * 3_600_000, async () => {
+    const r = await quoteSummary<{ assetProfile?: { sectorKey?: string } }>(symbol, "assetProfile");
+    const raw = r?.assetProfile?.sectorKey || "";
+    const key = raw.replace(/-/g, "_").replace("real_estate", "realestate") as MpSectorKey;
+    return MP_SECTORS.some((s) => s.key === key) ? key : null;
   });
 }
 
@@ -780,6 +877,7 @@ function emptyAnalysis(mode: MpMode, error: string, notes: string[] = []): MpAna
     rf_ann_pct: null,
     notes,
     last_dates: {},
+    weekly: null,
     series: [],
     period_returns: [],
     monthly: [],
@@ -816,6 +914,60 @@ function addDays(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+function sgn(n: number, digits = 2): string {
+  const v = Math.abs(n) < 0.5 * 10 ** -digits ? 0 : n;
+  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`;
+}
+
+function monthDay(iso: string): string {
+  return `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
+}
+
+function weeklyComment(w: MpWeekly): string[] {
+  const lines: string[] = [];
+  const ex = w.excess_pct;
+  const verdict =
+    Math.abs(ex) < 0.05
+      ? `BM(${sgn(w.bm_pct)}%)과 비슷했습니다`
+      : `BM(${sgn(w.bm_pct)}%)을 ${Math.abs(ex).toFixed(2)}%p ${ex > 0 ? "상회" : "하회"}했습니다`;
+  const spanDays = (Date.parse(`${w.to}T00:00:00Z`) - Date.parse(`${w.from}T00:00:00Z`)) / 86_400_000;
+  lines.push(
+    `${spanDays < 7 ? "설정 이후" : "최근 1주"}(${monthDay(w.from)}~${monthDay(w.to)}) MP는 ${sgn(w.port_pct)}%로 ${verdict}. ` +
+      `같은 기간 S&P500 ${sgn(w.spx_pct)}%, CSI300(달러) ${sgn(w.csi_pct)}%.`,
+  );
+
+  const mover = (m: MpWeeklyMover) => `${m.label}(${sgn(m.contribution_pct)}%p)`;
+  const legs: string[] = [];
+  if (w.top.length) legs.push(`상승 기여는 ${w.top.slice(0, 2).map(mover).join("·")}`);
+  if (w.bottom.length) legs.push(`하락 기여는 ${w.bottom.slice(0, 2).map(mover).join("·")}`);
+  const sec = w.sectors[0];
+  const secText = sec ? `업종별로는 ${sec.label}(${sgn(sec.contribution_pct)}%p) 영향이 가장 컸습니다.` : "";
+  if (legs.length || secText) lines.push(legs.length ? `${legs.join(", ")}였고, ${secText}`.trim() : secText);
+
+  const held = w.countries.filter((c) => c.key !== "CASH" && (c.port_w_pct > 0.05 || c.bm_w_pct > 0.05));
+  const cash = w.countries.find((c) => c.key === "CASH");
+  const cn = w.countries.find((c) => c.key === "CN");
+  const alloc = w.countries.reduce((s, c) => s + c.allocation_pct, 0);
+  const pos: string[] = [];
+  if (cn && (cn.port_w_pct > 0.05 || cn.bm_w_pct > 0.05)) {
+    pos.push(`중국 ${cn.port_w_pct.toFixed(1)}%(BM ${cn.bm_w_pct.toFixed(0)}%)`);
+  }
+  if (cash && cash.port_w_pct >= 0.5) pos.push(`현금 ${cash.port_w_pct.toFixed(1)}%`);
+  const sel = held
+    .filter((c) => c.port_w_pct > 0.05)
+    .map((c) => `${c.label} ${sgn(c.selection_pct)}%p`)
+    .join("·");
+  lines.push(
+    `${pos.length ? `${pos.join("·")} 비중에 따른 ` : ""}국가 배분 효과는 ${sgn(alloc)}%p` +
+      (sel ? `, 종목 선택 효과는 ${sel}였습니다.` : "였습니다."),
+  );
+  if (w.intraday.length) {
+    const when = w.intraday.map((s) => s.replace(/(\d{4}-\d{2}-\d{2})/, (d) => monthDay(d))).join(", ");
+    lines.push(`※ ${when}은 장중(지연) 가격 기준이라 마감 후 달라질 수 있습니다.`);
+  }
+  return lines;
 }
 
 export async function analyzeMp(
@@ -1004,6 +1156,15 @@ export async function analyzeMp(
   };
   const segOf = (k: string) => assets.get(k)?.country || "CASH";
 
+  const weekFrom = addDays(cal[N - 1]!, -7);
+  let wBase = 0;
+  for (let i = 0; i < N; i++) if (cal[i]! <= weekFrom) wBase = i;
+  const weekContrib = new Map<string, number>();
+  const addWeek = (k: string, pnl: number, i: number) => {
+    if (i > wBase) weekContrib.set(k, (weekContrib.get(k) || 0) + (pnl / nav[wBase]!) * 100);
+  };
+  let weekSeg: Record<string, number> = { US: 0, CN: 0, CASH: 1 };
+
   for (let i = 0; i < N; i++) {
     if (i === 0) {
       nav[0] = 100;
@@ -1022,6 +1183,7 @@ export async function analyzeMp(
         const pnl = u * (p1 - p0);
         segPnl[seg] = (segPnl[seg] || 0) + pnl;
         contrib.set(k, (contrib.get(k) || 0) + (pnl / prevNav) * link * 100);
+        addWeek(k, pnl, i);
         const l0 = pxLocal.get(k)![i - 1]!;
         const l1 = pxLocal.get(k)![i]!;
         if (isNum(l0) && isNum(l1) && l0 > 0 && p0 !== l0) {
@@ -1040,8 +1202,10 @@ export async function analyzeMp(
       if (cashCny) {
         contrib.set("CASH:CNY", (contrib.get("CASH:CNY") || 0) + ((cnyNow - cnyPrev) / prevNav) * link * 100);
         fxContrib.set("CASH:CNY", (fxContrib.get("CASH:CNY") || 0) + ((cnyNow - cnyPrev) / prevNav) * link * 100);
+        addWeek("CASH:CNY", cnyNow - cnyPrev, i);
       }
       contrib.set("CASH:USD", (contrib.get("CASH:USD") || 0) + (interest / prevNav) * link * 100);
+      addWeek("CASH:USD", interest, i);
       nav[i] = valueAt(i);
       const r: Record<string, number | null> = {};
       for (const s of ["US", "CN", "CASH"]) {
@@ -1115,6 +1279,15 @@ export async function analyzeMp(
         entryPx.delete(k);
         entryLocal.delete(k);
       }
+    }
+    if (i === wBase) {
+      const seg: Record<string, number> = { US: 0, CN: 0, CASH: 0 };
+      for (const [k, u] of units) {
+        const p = px.get(k)![i]!;
+        if (isNum(p)) seg[segOf(k)]! += (u * p) / nav[i]!;
+      }
+      seg.CASH = 1 - seg.US! - seg.CN!;
+      weekSeg = seg;
     }
   }
 
@@ -1217,6 +1390,8 @@ export async function analyzeMp(
     fetchEtfProfile("SPY"),
     fetchEtfProfile("ASHR"),
   ]);
+  const adrPb = [...fund.entries()].filter(([, f]) => f.pb_dropped_adr).map(([s]) => s);
+  if (adrPb.length) notes.push(`P/B 제외(ADR 비율 미반영 데이터): ${adrPb.join(", ")}`);
   const unknownSector = [...assets.values()].filter((x) => !tickerMeta(x.ticker));
   const sectorLookup = new Map<string, MpSectorKey | null>();
   await mapPool(unknownSector, 6, async (x) => {
@@ -1307,11 +1482,16 @@ export async function analyzeMp(
         el && isNum(lastLocal) && status !== "exited" ? (lastLocal / el - 1) * 100 : null,
       contribution_pct: contrib.get(k) || 0,
       fx_contribution_pct: fxContrib.get(k) || 0,
+      week_contribution_pct: weekContrib.get(k) || 0,
+      week_return_pct:
+        p && isNum(p[lastIdx]!) && isNum(p[wBase]!) && p[wBase]! > 0 && status !== "exited"
+          ? (p[lastIdx]! / p[wBase]! - 1) * 100
+          : null,
       market_cap_usd: mcapUsd,
       pe: f?.pe ?? null,
       forward_pe: f?.forward_pe ?? null,
       pb: f?.pb ?? null,
-      div_yield_pct: f?.div_yield_pct ?? null,
+      div_yield_pct: f ? (f.div_yield_pct ?? (isEtf ? null : 0)) : null,
       size_bucket: isCash ? "cash" : sizeBucket(mcapUsd, isEtf),
       style_bucket: isCash ? "cash" : styleBucket(x!.country, f, isEtf),
     });
@@ -1429,6 +1609,68 @@ export async function analyzeMp(
     });
     const explained = rows.reduce((s, r) => s + r.total_pct, 0);
     brinson = { rows, residual_pct: rel.excess_return_pct - explained };
+  }
+
+  // ---------------- Trailing 1-week read ----------------
+  let week: MpWeekly | null = null;
+  if (wBase < lastIdx) {
+    const chg = (lv: number[]) => (lv[lastIdx]! / lv[wBase]! - 1) * 100;
+    const portW = chg(nav);
+    const bmW = chg(bmLv);
+    const spxW = chg(spxLv);
+    const csiW = chg(csiLv);
+    let rfGrow = 1;
+    for (let t = wBase + 1; t <= lastIdx; t++) rfGrow *= 1 + rfDaily[t]!;
+    const segBmRet: Record<MpCountry, number> = { US: spxW, CN: csiW, CASH: (rfGrow - 1) * 100 };
+    const segBmW: Record<MpCountry, number> = { US: a, CN: 1 - a, CASH: 0 };
+    const weekCountries = (["US", "CN", "CASH"] as MpCountry[]).map((c) => {
+      const wp = weekSeg[c] || 0;
+      const contribution = holdings.filter((h) => h.country === c).reduce((s, h) => s + h.week_contribution_pct, 0);
+      const rp = wp > 1e-6 ? contribution / wp : null;
+      return {
+        key: c,
+        label: c === "US" ? "미국" : c === "CN" ? "중국" : "현금",
+        port_w_pct: wp * 100,
+        bm_w_pct: segBmW[c] * 100,
+        port_ret_pct: rp,
+        bm_ret_pct: segBmRet[c],
+        contribution_pct: contribution,
+        allocation_pct: (wp - segBmW[c]) * (segBmRet[c] - bmW),
+        selection_pct: rp == null ? 0 : wp * (rp - segBmRet[c]),
+      };
+    });
+    const moverLabel = (h: MpHoldingRow) =>
+      h.country === "CN" ? tickerMeta(h.ticker)?.name_ko || h.ticker : h.ticker;
+    const movers = holdings
+      .filter((h) => h.country !== "CASH" && Math.abs(h.week_contribution_pct) > 1e-6)
+      .map((h) => ({ key: h.key, label: moverLabel(h), contribution_pct: h.week_contribution_pct, return_pct: h.week_return_pct }))
+      .sort((p, q) => q.contribution_pct - p.contribution_pct);
+    const secAgg = new Map<string, number>();
+    for (const h of holdings) {
+      if (h.country === "CASH") continue;
+      secAgg.set(h.msector, (secAgg.get(h.msector) || 0) + h.week_contribution_pct);
+    }
+    const intraday: string[] = [];
+    if (isIntradayBar(SPX, bySym.get(SPX)?.dates.at(-1))) intraday.push(`미국 ${bySym.get(SPX)!.dates.at(-1)}`);
+    if (isIntradayBar(CSI, bySym.get(CSI)?.dates.at(-1))) intraday.push(`중국 ${bySym.get(CSI)!.dates.at(-1)}`);
+    week = {
+      from: cal[wBase]!,
+      to: cal[lastIdx]!,
+      port_pct: portW,
+      bm_pct: bmW,
+      excess_pct: portW - bmW,
+      spx_pct: spxW,
+      csi_pct: csiW,
+      countries: weekCountries,
+      top: movers.filter((m) => m.contribution_pct > 0).slice(0, 3),
+      bottom: movers.filter((m) => m.contribution_pct < 0).slice(-3).reverse(),
+      sectors: [...secAgg.entries()]
+        .map(([key, v]) => ({ key, label: key === "etc" ? "기타" : mpSectorLabel(key), contribution_pct: v }))
+        .sort((p, q) => Math.abs(q.contribution_pct) - Math.abs(p.contribution_pct)),
+      intraday,
+      comment: [],
+    };
+    week.comment = weeklyComment(week);
   }
 
   // ---------------- Holdings-based style ----------------
@@ -1631,6 +1873,7 @@ export async function analyzeMp(
     rf_ann_pct: rfAnn,
     notes: [...new Set(notes)],
     last_dates,
+    weekly: week,
     series,
     period_returns,
     monthly,

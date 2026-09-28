@@ -261,7 +261,7 @@ export default function CorridorTab() {
       <section className="geo-section" style={{ marginTop: 12 }}>
         <h3 className="geo-section-title">공통 설정 · 벤치마크 ETF</h3>
         <p className="meta-soft" style={{ marginTop: 6 }}>
-          ETF 배분 탭에서 상장국가=한국 · 자산군 배분일 때 고를 수 있는 주식·채권
+          MP › 시뮬레이션-ETF 탭에서 상장국가=한국 · 자산군 배분일 때 고를 수 있는 주식·채권
           ETF와 동일합니다.
         </p>
         <div className="corridor-controls corridor-bm-controls">

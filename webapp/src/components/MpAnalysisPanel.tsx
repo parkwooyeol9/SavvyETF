@@ -276,10 +276,17 @@ export default function MpAnalysisPanel() {
         <div className="kr-hero">
           <div>
             <h2 className="kr-hero-title">MP 성과 분석</h2>
-            <p className="kr-hero-sub">
-              종목·편입비·편입일을 입력하면 벤치마크({res?.bm_label || `S&P500 ${pf.bm_us_pct}% + CSI300 ${100 - pf.bm_us_pct}%`}, USD)
-              대비 업종비, 스타일, 팩터, 펀드 성과 지표와 종목별 뉴스를 한 번에 업데이트합니다. 편입비 변경은 리밸런싱 일자로 추가해 사후에도 추적합니다.
-            </p>
+            {res?.ok && res.weekly ? (
+              <ul className="mp-week-comment">
+                {res.weekly.comment.map((line, i) => (
+                  <li key={i} className={line.startsWith("※") ? "meta-soft" : undefined}>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="kr-hero-sub">{loading ? "주간 성과 분석 중…" : "편입일 이후 1주 이상 데이터가 쌓이면 주간 코멘트가 표시됩니다."}</p>
+            )}
           </div>
           <div className="kr-hero-actions">
             <button type="button" className="tab-btn" disabled={loading} onClick={onRun}>

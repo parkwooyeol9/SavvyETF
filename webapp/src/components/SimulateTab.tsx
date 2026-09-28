@@ -476,7 +476,7 @@ export default function SimulateTab() {
     <div className="sim-tab">
       <section className="feature-block">
         <div className="feature-head">
-          <h2 className="feature-title">ETF 배분</h2>
+          <h2 className="feature-title">시뮬레이션-ETF</h2>
           <p className="feature-lead">
             로그인 없이 다중 포트폴리오 저장 · 직접 편입비 · 벤치 대비 리스크·성과 분해.
             한국 상장 상품으로도 미국 포트와 유사한 구성을 만들 수 있습니다.

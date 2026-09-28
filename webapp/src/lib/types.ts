@@ -174,7 +174,7 @@ export const TAB_LABELS: Record<TabId, string> = {
 
 export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
-  simulate: "ETF 배분",
+  simulate: "시뮬레이션-ETF",
   usportfolio: "MP",
   education: "ETF절세",
   research: "리서치",
@@ -285,7 +285,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["valuation", "simulate", "usportfolio", "signals", "corridor"],
+    tabs: ["valuation", "usportfolio", "signals", "corridor"],
     nested: [
       {
         id: "derivs",
@@ -361,6 +361,7 @@ export function navPlacement(tab: ShellTabId): {
   nestedId: NavGroupId | null;
 } {
   if (tab === "kosdaq100") return { groupId: "etf", nestedId: "weights" };
+  if (tab === "simulate") return { groupId: "portfolio", nestedId: null };
   if (tab === "etfdb" || tab === "etfdbus") return { groupId: "etf", nestedId: "db" };
   if (tab === "aigov" || tab === "aiinfra") {
     return { groupId: "portfolio", nestedId: "esg" };
@@ -427,6 +428,11 @@ export function isBriefTabId(value: string): value is TabId {
 
 export function isShellTabId(value: string): value is ShellTabId {
   return (SHELL_TAB_IDS as string[]).includes(value);
+}
+
+/** Tabs rendered as a sub-view of another shell tab (its sub-nav button stays active). */
+export function subNavTab(id: ShellTabId): ShellTabId {
+  return id === "simulate" ? "usportfolio" : id;
 }
 
 export function canonicalShellTab(id: ShellTabId): ShellTabId {

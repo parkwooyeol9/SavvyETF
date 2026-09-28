@@ -7051,6 +7051,24 @@ a.guru-idea:hover .guru-idea-title {
   white-space: nowrap;
 }
 
+.mp-week-comment {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-width: 52rem;
+}
+
+.mp-week-comment li + li {
+  margin-top: 0.15rem;
+}
+
+.mp-week-comment li.meta-soft {
+  list-style: none;
+  margin-left: -1.1rem;
+  font-size: 0.8rem;
+}
+
 .mp-style-box {
   display: grid;
   grid-template-columns: 3.2rem repeat(3, minmax(0, 1fr));

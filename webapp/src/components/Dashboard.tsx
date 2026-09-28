@@ -42,7 +42,6 @@ import {
   WallStreetGurusTab,
   TradingSignalsTab,
   MoneyFlowTab,
-  SimulateTab,
   MpTab,
   AiPortTab,
   MinuteForecastTab,
@@ -82,6 +81,7 @@ import {
   navPlacement,
   canonicalShellTab,
   parseShellTab,
+  subNavTab,
   visibleShellTabs,
   visibleNestedGroups,
   type TabId,
@@ -460,7 +460,7 @@ function DashboardInner({
             <button
               key={id}
               type="button"
-              className={`tab-btn sub ${!activeNested && tab === id ? "active" : ""}`}
+              className={`tab-btn sub ${!activeNested && subNavTab(tab) === id ? "active" : ""}`}
               onClick={() => setTab(id)}
             >
               {SHELL_TAB_LABELS[id]}
@@ -501,10 +501,8 @@ function DashboardInner({
         <MainTab />
       ) : tab === "bookclub" ? (
         unlocked ? <BookClubTab /> : null
-      ) : tab === "simulate" ? (
-        <SimulateTab />
-      ) : tab === "usportfolio" ? (
-        <MpTab />
+      ) : tab === "usportfolio" || tab === "simulate" ? (
+        <MpTab etf={tab === "simulate"} onEtfChange={(etf) => setTab(etf ? "simulate" : "usportfolio")} />
       ) : tab === "signals" ? (
         unlocked ? <TradingSignalsTab /> : null
       ) : tab === "graph" ? (
