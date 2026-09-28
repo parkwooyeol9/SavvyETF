@@ -367,23 +367,24 @@ export function diffVersions(prev: MpVersion | null, next: MpVersion): MpVersion
 
 const STORAGE_KEY = "savvyetf:mp:v1";
 
-export function loadMpPortfolio(): MpPortfolio {
-  if (typeof window === "undefined") return defaultMpPortfolio();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as MpPortfolio;
-      if (p && Array.isArray(p.versions) && p.versions.length) {
-        return { ...p, bm_us_pct: Number.isFinite(p.bm_us_pct) ? p.bm_us_pct : 70 };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return defaultMpPortfolio();
+export function normalizeMpPortfolio(raw: unknown): MpPortfolio | null {
+  const p = raw as MpPortfolio | null;
+  if (!p || typeof p !== "object" || !Array.isArray(p.versions) || !p.versions.length) return null;
+  return { ...p, bm_us_pct: Number.isFinite(p.bm_us_pct) ? p.bm_us_pct : 70 };
 }
 
-export function saveMpPortfolio(p: MpPortfolio): void {
+/** Admin's local draft (pre-server edits). */
+export function loadLocalMpPortfolio(): MpPortfolio | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? normalizeMpPortfolio(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalMpPortfolio(p: MpPortfolio): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
 }

@@ -26,6 +26,7 @@ import {
   heat,
   Kpi,
   MetricsTable,
+  MpEditStatus,
   Row,
   STYLE_COLORS,
   timeAgo,
@@ -33,6 +34,7 @@ import {
   tooltipStyle,
   type Freq,
 } from "@/components/MpUi";
+import { useSharedMpPortfolio } from "@/components/useSharedMpPortfolio";
 import type { MpAnalysis, MpRegression, MpStyleRegression } from "@/lib/mpAnalytics";
 import type { MpNewsBlock, MpNewsLang } from "@/lib/mpNews";
 import {
@@ -41,12 +43,13 @@ import {
   diffVersions,
   formatMpText,
   latestVersion,
-  loadMpPortfolio,
+  loadLocalMpPortfolio,
   mpSectorLabel,
   newMpId,
+  normalizeMpPortfolio,
   normalizeTicker,
   parseMpText,
-  saveMpPortfolio,
+  saveLocalMpPortfolio,
   sortedVersions,
   tickerMeta,
   todayIso,
@@ -85,7 +88,13 @@ const STYLE_LABEL: Record<string, string> = {
 type Mode = "actual" | "backtest";
 
 export default function MpAnalysisPanel() {
-  const [pf, setPf] = useState<MpPortfolio | null>(null);
+  const { pf, update, canEdit, saveState, saveError } = useSharedMpPortfolio<MpPortfolio>({
+    kind: "mp",
+    normalize: normalizeMpPortfolio,
+    fallback: defaultMpPortfolio,
+    loadLocal: loadLocalMpPortfolio,
+    saveLocal: saveLocalMpPortfolio,
+  });
   const [selId, setSelId] = useState<string>("");
   const [mode, setMode] = useState<Mode>("actual");
   const [lookback, setLookback] = useState(365);
@@ -103,17 +112,15 @@ export default function MpAnalysisPanel() {
   const autoRan = useRef(false);
 
   useEffect(() => {
-    const p = loadMpPortfolio();
-    setPf(p);
-    setSelId(latestVersion(p)?.id || "");
-  }, []);
+    if (pf && !selId) setSelId(latestVersion(pf)?.id || "");
+  }, [pf, selId]);
 
-  const persist = useCallback((next: MpPortfolio) => {
-    const stamped = { ...next, updated_at: new Date().toISOString() };
-    setPf(stamped);
-    saveMpPortfolio(stamped);
-    setDirty(true);
-  }, []);
+  const persist = useCallback(
+    (next: MpPortfolio) => {
+      if (update({ ...next, updated_at: new Date().toISOString() })) setDirty(true);
+    },
+    [update],
+  );
 
   const versions = useMemo(() => (pf ? sortedVersions(pf) : []), [pf]);
   const sel = versions.find((v) => v.id === selId) || versions[versions.length - 1] || null;
@@ -290,6 +297,7 @@ export default function MpAnalysisPanel() {
               max={100}
               step={5}
               value={pf.bm_us_pct}
+              disabled={!canEdit}
               onChange={(e) => persist({ ...pf, bm_us_pct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
             />
           </label>
@@ -309,17 +317,21 @@ export default function MpAnalysisPanel() {
       <section className="geo-section" style={{ marginTop: 12 }}>
         <div className="geo-head-row" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <h3 className="geo-section-title">편입·리밸런싱 이력</h3>
-          <div className="us-pf-alloc-actions" style={{ marginTop: 0 }}>
-            <button type="button" className="tab-btn" onClick={addRebalance}>
-              리밸런싱 추가
-            </button>
-            <button type="button" className="ghost-btn" onClick={resetDefault}>
-              기본 MP로 초기화
-            </button>
-          </div>
+          {canEdit ? (
+            <div className="us-pf-alloc-actions" style={{ marginTop: 0 }}>
+              <button type="button" className="tab-btn" onClick={addRebalance}>
+                리밸런싱 추가
+              </button>
+              <button type="button" className="ghost-btn" onClick={resetDefault}>
+                기본 MP로 초기화
+              </button>
+            </div>
+          ) : null}
         </div>
+        <MpEditStatus canEdit={canEdit} saveState={saveState} saveError={saveError} />
         <p className="meta-soft">
-          각 일자의 종가로 해당 편입비에 맞춰 리밸런싱하고, 그 사이에는 가격 변동에 따라 비중이 자연스럽게 움직입니다. 행을 선택해 아래에서 편집하세요.
+          각 일자의 종가로 해당 편입비에 맞춰 리밸런싱하고, 그 사이에는 가격 변동에 따라 비중이 자연스럽게 움직입니다.{" "}
+          {canEdit ? "행을 선택해 아래에서 편집하세요." : "행을 선택하면 아래에 해당 시점의 구성이 표시됩니다."}
         </p>
         <div className="table-wrap" style={{ marginTop: 8 }}>
           <table className="data-table">
@@ -362,16 +374,21 @@ export default function MpAnalysisPanel() {
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <button type="button" className="ghost-btn" onClick={() => setSelId(v.id)} disabled={v.id === sel.id}>
-                        편집
-                      </button>{" "}
-                      <button
-                        type="button"
-                        className="ghost-btn"
-                        onClick={() => deleteVersion(v.id)}
-                        disabled={versions.length <= 1}
-                      >
-                        삭제
+                        {canEdit ? "편집" : "보기"}
                       </button>
+                      {canEdit ? (
+                        <>
+                          {" "}
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => deleteVersion(v.id)}
+                            disabled={versions.length <= 1}
+                          >
+                            삭제
+                          </button>
+                        </>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -387,19 +404,28 @@ export default function MpAnalysisPanel() {
           편입 종목 <span className="meta-soft">({selIdx === 0 ? "최초 편입" : `리밸런싱 #${selIdx}`})</span>
         </h3>
         <div className="us-pf-form us-pf-alloc-toolbar">
-          <label>
-            편입 일자
-            <input
-              type="date"
-              value={sel.date}
-              max={todayIso()}
-              onChange={(e) => e.target.value && updateVersion(sel.id, { date: e.target.value })}
-            />
-          </label>
-          <label>
-            메모
-            <input value={sel.note || ""} onChange={(e) => updateVersion(sel.id, { note: e.target.value })} placeholder="예: 반도체 비중 확대" />
-          </label>
+          {canEdit ? (
+            <>
+              <label>
+                편입 일자
+                <input
+                  type="date"
+                  value={sel.date}
+                  max={todayIso()}
+                  onChange={(e) => e.target.value && updateVersion(sel.id, { date: e.target.value })}
+                />
+              </label>
+              <label>
+                메모
+                <input value={sel.note || ""} onChange={(e) => updateVersion(sel.id, { note: e.target.value })} placeholder="예: 반도체 비중 확대" />
+              </label>
+            </>
+          ) : (
+            <span className="meta-soft" style={{ alignSelf: "center" }}>
+              편입 일자 <strong>{sel.date}</strong>
+              {sel.note ? ` · ${sel.note}` : ""}
+            </span>
+          )}
           <span className={`us-pf-alloc-sum ${Math.abs(total - 100) <= 0.05 ? "ok" : "warn"}`} style={{ alignSelf: "center" }}>
             미국 {byCountry("US").toFixed(1)}% · 중국 {byCountry("CN").toFixed(1)}% · 현금 {byCountry("CASH").toFixed(1)}% · 합계{" "}
             {total.toFixed(1)}%{Math.abs(total - 100) <= 0.05 ? " ✓" : total < 100 ? " (잔여는 달러 현금)" : " (100% 초과 = 차입)"}
@@ -414,7 +440,7 @@ export default function MpAnalysisPanel() {
                 <th>티커</th>
                 <th className="num">편입비(%)</th>
                 <th>종목명</th>
-                <th />
+                {canEdit ? <th /> : null}
               </tr>
             </thead>
             <tbody>
@@ -422,6 +448,27 @@ export default function MpAnalysisPanel() {
                 const t = normalizeTicker(h.ticker, h.country);
                 const meta = tickerMeta(t);
                 const row = res?.holdings.find((x) => x.key === (h.country === "CASH" ? `CASH:${t}` : t));
+                const name =
+                  h.country === "CASH"
+                    ? t === "CNY"
+                      ? "위안화 현금"
+                      : "달러 현금"
+                    : meta
+                      ? `${meta.name_ko}${meta.name_zh ? ` · ${meta.name_zh}` : ""}`
+                      : row?.name || "";
+                if (!canEdit) {
+                  return (
+                    <tr key={h.id}>
+                      <td>{countryLabel(h.country)}</td>
+                      <td>{h.sector}</td>
+                      <td>
+                        <strong>{h.ticker}</strong>
+                      </td>
+                      <td className="num">{(Number(h.weight_pct) || 0).toFixed(1)}</td>
+                      <td className="meta-soft">{name}</td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={h.id}>
                     <td>
@@ -455,15 +502,7 @@ export default function MpAnalysisPanel() {
                         aria-label="편입비"
                       />
                     </td>
-                    <td className="meta-soft">
-                      {h.country === "CASH"
-                        ? t === "CNY"
-                          ? "위안화 현금"
-                          : "달러 현금"
-                        : meta
-                          ? `${meta.name_ko}${meta.name_zh ? ` · ${meta.name_zh}` : ""}`
-                          : row?.name || ""}
-                    </td>
+                    <td className="meta-soft">{name}</td>
                     <td>
                       <button type="button" className="ghost-btn" onClick={() => removeHolding(h.id)}>
                         삭제
@@ -475,41 +514,45 @@ export default function MpAnalysisPanel() {
             </tbody>
           </table>
         </div>
-        <div className="us-pf-alloc-actions">
-          <button type="button" className="ghost-btn" onClick={() => addHolding("US")}>
-            + 미국 종목
-          </button>
-          <button type="button" className="ghost-btn" onClick={() => addHolding("CN")}>
-            + 중국 종목
-          </button>
-          <button type="button" className="ghost-btn" onClick={() => addHolding("CASH")}>
-            + 현금
-          </button>
-        </div>
-        <details style={{ marginTop: 12 }}>
-          <summary className="meta-soft" style={{ cursor: "pointer" }}>
-            텍스트로 일괄 입력 / 내보내기
-          </summary>
-          <p className="meta-soft" style={{ marginTop: 6 }}>
-            형식: <code>(미국)</code> / <code>(중국)</code> / <code>(현금)</code> 머리말 다음 줄에 <code>업종 티커 비중, 티커 비중</code>. 중국은 6자리 코드(상해 6·5로 시작 → .SS, 그 외 .SZ).
-          </p>
-          <textarea
-            className="us-pf-quick"
-            rows={8}
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder={"(미국)\nIT H/W nvda 3, tsmc 3\n(중국)\n588200 10\n(현금) 위안화 0, 달러 10"}
-          />
-          <div className="us-pf-alloc-actions">
-            <button type="button" className="tab-btn" onClick={applyBulk}>
-              선택한 편입일에 반영 (덮어쓰기)
-            </button>
-            <button type="button" className="ghost-btn" onClick={() => setBulkText(formatMpText(sel.holdings))}>
-              현재 구성 불러오기
-            </button>
-            {bulkMsg ? <span className="meta-soft">{bulkMsg}</span> : null}
-          </div>
-        </details>
+        {canEdit ? (
+          <>
+            <div className="us-pf-alloc-actions">
+              <button type="button" className="ghost-btn" onClick={() => addHolding("US")}>
+                + 미국 종목
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => addHolding("CN")}>
+                + 중국 종목
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => addHolding("CASH")}>
+                + 현금
+              </button>
+            </div>
+            <details style={{ marginTop: 12 }}>
+              <summary className="meta-soft" style={{ cursor: "pointer" }}>
+                텍스트로 일괄 입력 / 내보내기
+              </summary>
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                형식: <code>(미국)</code> / <code>(중국)</code> / <code>(현금)</code> 머리말 다음 줄에 <code>업종 티커 비중, 티커 비중</code>. 중국은 6자리 코드(상해 6·5로 시작 → .SS, 그 외 .SZ).
+              </p>
+              <textarea
+                className="us-pf-quick"
+                rows={8}
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"(미국)\nIT H/W nvda 3, tsmc 3\n(중국)\n588200 10\n(현금) 위안화 0, 달러 10"}
+              />
+              <div className="us-pf-alloc-actions">
+                <button type="button" className="tab-btn" onClick={applyBulk}>
+                  선택한 편입일에 반영 (덮어쓰기)
+                </button>
+                <button type="button" className="ghost-btn" onClick={() => setBulkText(formatMpText(sel.holdings))}>
+                  현재 구성 불러오기
+                </button>
+                {bulkMsg ? <span className="meta-soft">{bulkMsg}</span> : null}
+              </div>
+            </details>
+          </>
+        ) : null}
       </section>
 
       {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} /> : null}

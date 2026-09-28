@@ -1,5 +1,6 @@
 "use client";
 
+import type { MpSaveState } from "@/components/useSharedMpPortfolio";
 import type { MpMetricSet } from "@/lib/mpCore";
 
 export type Freq = "daily" | "weekly";
@@ -60,6 +61,27 @@ export function FreqToggle({ freq, setFreq }: { freq: Freq; setFreq: (f: Freq) =
         주간
       </button>
     </div>
+  );
+}
+
+export function MpEditStatus({
+  canEdit,
+  saveState,
+  saveError,
+}: {
+  canEdit: boolean;
+  saveState: MpSaveState;
+  saveError: string | null;
+}) {
+  if (!canEdit) {
+    return <p className="meta-soft">조회 전용 · 편입·리밸런싱은 관리자 로그인 후 수정할 수 있습니다.</p>;
+  }
+  if (saveState === "saving") return <p className="meta-soft">관리자 편집 중 · 저장 중…</p>;
+  if (saveState === "error") return <p className="down">저장 실패: {saveError || "알 수 없는 오류"} — 다시 수정하면 재시도합니다.</p>;
+  return (
+    <p className="meta-soft">
+      관리자 편집 모드 · {saveState === "saved" ? "저장됨 · " : ""}변경 사항은 서버에 저장되어 모든 사용자에게 같은 구성으로 표시됩니다.
+    </p>
   );
 }
 

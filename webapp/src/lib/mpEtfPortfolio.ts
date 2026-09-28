@@ -494,21 +494,24 @@ export function bmLabel(bm: EtfBm): string {
 
 const STORAGE_KEY = "savvyetf:mpetf:v1";
 
-export function loadEtfPortfolio(): EtfPortfolio {
-  if (typeof window === "undefined") return defaultEtfPortfolio();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as EtfPortfolio;
-      if (p && Array.isArray(p.versions) && p.versions.length) return { ...p, bm: normalizeBm(p.bm) };
-    }
-  } catch {
-    /* ignore */
-  }
-  return defaultEtfPortfolio();
+export function normalizeEtfPortfolio(raw: unknown): EtfPortfolio | null {
+  const p = raw as EtfPortfolio | null;
+  if (!p || typeof p !== "object" || !Array.isArray(p.versions) || !p.versions.length) return null;
+  return { ...p, bm: normalizeBm(p.bm) };
 }
 
-export function saveEtfPortfolio(p: EtfPortfolio): void {
+/** Admin's local draft (pre-server edits). */
+export function loadLocalEtfPortfolio(): EtfPortfolio | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? normalizeEtfPortfolio(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalEtfPortfolio(p: EtfPortfolio): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
 }

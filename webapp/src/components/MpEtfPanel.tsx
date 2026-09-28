@@ -26,6 +26,7 @@ import {
   heat,
   Kpi,
   MetricsTable,
+  MpEditStatus,
   Row,
   STYLE_COLORS,
   timeAgo,
@@ -33,6 +34,7 @@ import {
   tooltipStyle,
   type Freq,
 } from "@/components/MpUi";
+import { useSharedMpPortfolio } from "@/components/useSharedMpPortfolio";
 import type { MpRegression, MpStyleRegression } from "@/lib/mpCore";
 import type { EtfAnalysis } from "@/lib/mpEtfAnalytics";
 import {
@@ -45,11 +47,12 @@ import {
   etfWeightSum,
   formatEtfText,
   latestEtfVersion,
-  loadEtfPortfolio,
+  loadLocalEtfPortfolio,
   newMpId,
+  normalizeEtfPortfolio,
   normalizeEtfTicker,
   parseEtfText,
-  saveEtfPortfolio,
+  saveLocalEtfPortfolio,
   sortedEtfVersions,
   todayIso,
   type EtfAsset,
@@ -73,7 +76,13 @@ const BM_FIELDS: Array<{ key: keyof EtfBm; label: string; group: "top" | "alt" }
 ];
 
 export default function MpEtfPanel() {
-  const [pf, setPf] = useState<EtfPortfolio | null>(null);
+  const { pf, update, canEdit, saveState, saveError } = useSharedMpPortfolio<EtfPortfolio>({
+    kind: "etf",
+    normalize: normalizeEtfPortfolio,
+    fallback: defaultEtfPortfolio,
+    loadLocal: loadLocalEtfPortfolio,
+    saveLocal: saveLocalEtfPortfolio,
+  });
   const [selId, setSelId] = useState("");
   const [mode, setMode] = useState<Mode>("actual");
   const [lookback, setLookback] = useState(365);
@@ -91,17 +100,15 @@ export default function MpEtfPanel() {
   const autoRan = useRef(false);
 
   useEffect(() => {
-    const p = loadEtfPortfolio();
-    setPf(p);
-    setSelId(latestEtfVersion(p)?.id || "");
-  }, []);
+    if (pf && !selId) setSelId(latestEtfVersion(pf)?.id || "");
+  }, [pf, selId]);
 
-  const persist = useCallback((next: EtfPortfolio) => {
-    const stamped = { ...next, updated_at: new Date().toISOString() };
-    setPf(stamped);
-    saveEtfPortfolio(stamped);
-    setDirty(true);
-  }, []);
+  const persist = useCallback(
+    (next: EtfPortfolio) => {
+      if (update({ ...next, updated_at: new Date().toISOString() })) setDirty(true);
+    },
+    [update],
+  );
 
   const versions = useMemo(() => (pf ? sortedEtfVersions(pf) : []), [pf]);
   const sel = versions.find((v) => v.id === selId) || versions[versions.length - 1] || null;
@@ -264,7 +271,15 @@ export default function MpEtfPanel() {
           {BM_FIELDS.map((f) => (
             <label key={f.key}>
               BM {f.label} (%)
-              <input type="number" min={0} max={100} step={5} value={pf.bm[f.key]} onChange={(e) => setBm(f.key, Number(e.target.value) || 0)} />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={pf.bm[f.key]}
+                disabled={!canEdit}
+                onChange={(e) => setBm(f.key, Number(e.target.value) || 0)}
+              />
             </label>
           ))}
           <span className={`meta-soft ${Math.abs(bmTop - 100) > 0.05 || Math.abs(bmAlt - 100) > 0.05 ? "down" : ""}`} style={{ alignSelf: "center" }}>
@@ -282,16 +297,22 @@ export default function MpEtfPanel() {
       <section className="geo-section" style={{ marginTop: 12 }}>
         <div className="geo-head-row" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <h3 className="geo-section-title">편입·리밸런싱 이력</h3>
-          <div className="us-pf-alloc-actions" style={{ marginTop: 0 }}>
-            <button type="button" className="tab-btn" onClick={addRebalance}>
-              리밸런싱 추가
-            </button>
-            <button type="button" className="ghost-btn" onClick={resetDefault}>
-              기본 구성으로 초기화
-            </button>
-          </div>
+          {canEdit ? (
+            <div className="us-pf-alloc-actions" style={{ marginTop: 0 }}>
+              <button type="button" className="tab-btn" onClick={addRebalance}>
+                리밸런싱 추가
+              </button>
+              <button type="button" className="ghost-btn" onClick={resetDefault}>
+                기본 구성으로 초기화
+              </button>
+            </div>
+          ) : null}
         </div>
-        <p className="meta-soft">각 일자의 종가로 해당 편입비에 맞춰 리밸런싱하고, 그 사이에는 가격 변동에 따라 비중이 움직입니다. 행을 선택해 아래에서 편집하세요.</p>
+        <MpEditStatus canEdit={canEdit} saveState={saveState} saveError={saveError} />
+        <p className="meta-soft">
+          각 일자의 종가로 해당 편입비에 맞춰 리밸런싱하고, 그 사이에는 가격 변동에 따라 비중이 움직입니다.{" "}
+          {canEdit ? "행을 선택해 아래에서 편집하세요." : "행을 선택하면 아래에 해당 시점의 구성이 표시됩니다."}
+        </p>
         <div className="table-wrap" style={{ marginTop: 8 }}>
           <table className="data-table">
             <thead>
@@ -338,11 +359,16 @@ export default function MpEtfPanel() {
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <button type="button" className="ghost-btn" onClick={() => setSelId(v.id)} disabled={v.id === sel.id}>
-                        편집
-                      </button>{" "}
-                      <button type="button" className="ghost-btn" onClick={() => deleteVersion(v.id)} disabled={versions.length <= 1}>
-                        삭제
+                        {canEdit ? "편집" : "보기"}
                       </button>
+                      {canEdit ? (
+                        <>
+                          {" "}
+                          <button type="button" className="ghost-btn" onClick={() => deleteVersion(v.id)} disabled={versions.length <= 1}>
+                            삭제
+                          </button>
+                        </>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -357,14 +383,23 @@ export default function MpEtfPanel() {
           편입 ETF <span className="meta-soft">({selIdx === 0 ? "최초 편입" : `리밸런싱 #${selIdx}`})</span>
         </h3>
         <div className="us-pf-form us-pf-alloc-toolbar">
-          <label>
-            편입 일자
-            <input type="date" value={sel.date} max={todayIso()} onChange={(e) => e.target.value && updateVersion(sel.id, { date: e.target.value })} />
-          </label>
-          <label>
-            메모
-            <input value={sel.note || ""} onChange={(e) => updateVersion(sel.id, { note: e.target.value })} placeholder="예: 채권 듀레이션 축소" />
-          </label>
+          {canEdit ? (
+            <>
+              <label>
+                편입 일자
+                <input type="date" value={sel.date} max={todayIso()} onChange={(e) => e.target.value && updateVersion(sel.id, { date: e.target.value })} />
+              </label>
+              <label>
+                메모
+                <input value={sel.note || ""} onChange={(e) => updateVersion(sel.id, { note: e.target.value })} placeholder="예: 채권 듀레이션 축소" />
+              </label>
+            </>
+          ) : (
+            <span className="meta-soft" style={{ alignSelf: "center" }}>
+              편입 일자 <strong>{sel.date}</strong>
+              {sel.note ? ` · ${sel.note}` : ""}
+            </span>
+          )}
           <span className={`us-pf-alloc-sum ${Math.abs(total - 100) <= 0.05 ? "ok" : "warn"}`} style={{ alignSelf: "center" }}>
             주식 {byAsset("EQ").toFixed(1)}% · 채권 {byAsset("FI").toFixed(1)}% · 대체 {byAsset("ALT").toFixed(1)}%
             {byAsset("CASH") ? ` · 현금 ${byAsset("CASH").toFixed(1)}%` : ""} · 합계 {total.toFixed(1)}%
@@ -380,13 +415,27 @@ export default function MpEtfPanel() {
                 <th>티커</th>
                 <th className="num">편입비(%)</th>
                 <th>ETF명</th>
-                <th />
+                {canEdit ? <th /> : null}
               </tr>
             </thead>
             <tbody>
               {sel.holdings.map((h) => {
                 const meta = etfMeta(h.ticker);
                 const row = res?.holdings.find((x) => x.key === etfHoldingKey(h));
+                const name = h.asset === "CASH" ? "달러 현금" : meta ? `${meta.name_ko} · ${meta.name}` : row?.name || "";
+                if (!canEdit) {
+                  return (
+                    <tr key={h.id}>
+                      <td>{assetLabel(h.asset)}</td>
+                      <td>{h.group}</td>
+                      <td>
+                        <strong>{h.ticker}</strong>
+                      </td>
+                      <td className="num">{(Number(h.weight_pct) || 0).toFixed(1)}</td>
+                      <td className="meta-soft">{name}</td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={h.id}>
                     <td>
@@ -419,7 +468,7 @@ export default function MpEtfPanel() {
                         aria-label="편입비"
                       />
                     </td>
-                    <td className="meta-soft">{h.asset === "CASH" ? "달러 현금" : meta ? `${meta.name_ko} · ${meta.name}` : row?.name || ""}</td>
+                    <td className="meta-soft">{name}</td>
                     <td>
                       <button type="button" className="ghost-btn" onClick={() => removeHolding(h.id)}>
                         삭제
@@ -431,38 +480,42 @@ export default function MpEtfPanel() {
             </tbody>
           </table>
         </div>
-        <div className="us-pf-alloc-actions">
-          {ETF_ASSETS.map((a) => (
-            <button key={a.key} type="button" className="ghost-btn" onClick={() => addHolding(a.key)}>
-              + {a.label}
-            </button>
-          ))}
-        </div>
-        <details style={{ marginTop: 12 }}>
-          <summary className="meta-soft" style={{ cursor: "pointer" }}>
-            텍스트로 일괄 입력 / 내보내기
-          </summary>
-          <p className="meta-soft" style={{ marginTop: 6 }}>
-            <code>(주식)</code> / <code>(채권)</code> / <code>(대체)</code> 머리말 다음 줄에 <code>그룹 티커 비중 티커 비중</code>. 메신저 형식(
-            <code>주식 합계 60 / 선진 / 미국 spy 26.5 …</code>)도 그대로 붙여넣을 수 있습니다. 중국·홍콩은 159915.SZ · 588000.SS · 2823.HK.
-          </p>
-          <textarea
-            className="us-pf-quick"
-            rows={10}
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder={"(주식)\n선진 미국 SPY 26.5 SOXX 3\n(채권)\n미국 국채 VGIT 10.4\n(대체)\n원자재 GLD 1.5"}
-          />
-          <div className="us-pf-alloc-actions">
-            <button type="button" className="tab-btn" onClick={applyBulk}>
-              선택한 편입일에 반영 (덮어쓰기)
-            </button>
-            <button type="button" className="ghost-btn" onClick={() => setBulkText(formatEtfText(sel.holdings))}>
-              현재 구성 불러오기
-            </button>
-            {bulkMsg ? <span className="meta-soft">{bulkMsg}</span> : null}
-          </div>
-        </details>
+        {canEdit ? (
+          <>
+            <div className="us-pf-alloc-actions">
+              {ETF_ASSETS.map((a) => (
+                <button key={a.key} type="button" className="ghost-btn" onClick={() => addHolding(a.key)}>
+                  + {a.label}
+                </button>
+              ))}
+            </div>
+            <details style={{ marginTop: 12 }}>
+              <summary className="meta-soft" style={{ cursor: "pointer" }}>
+                텍스트로 일괄 입력 / 내보내기
+              </summary>
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                <code>(주식)</code> / <code>(채권)</code> / <code>(대체)</code> 머리말 다음 줄에 <code>그룹 티커 비중 티커 비중</code>. 메신저 형식(
+                <code>주식 합계 60 / 선진 / 미국 spy 26.5 …</code>)도 그대로 붙여넣을 수 있습니다. 중국·홍콩은 159915.SZ · 588000.SS · 2823.HK.
+              </p>
+              <textarea
+                className="us-pf-quick"
+                rows={10}
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"(주식)\n선진 미국 SPY 26.5 SOXX 3\n(채권)\n미국 국채 VGIT 10.4\n(대체)\n원자재 GLD 1.5"}
+              />
+              <div className="us-pf-alloc-actions">
+                <button type="button" className="tab-btn" onClick={applyBulk}>
+                  선택한 편입일에 반영 (덮어쓰기)
+                </button>
+                <button type="button" className="ghost-btn" onClick={() => setBulkText(formatEtfText(sel.holdings))}>
+                  현재 구성 불러오기
+                </button>
+                {bulkMsg ? <span className="meta-soft">{bulkMsg}</span> : null}
+              </div>
+            </details>
+          </>
+        ) : null}
       </section>
 
       {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} /> : null}
