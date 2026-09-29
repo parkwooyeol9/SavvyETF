@@ -562,7 +562,7 @@ export default function MpAnalysisPanel() {
         ) : null}
       </section>
 
-      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} /> : null}
+      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} /> : null}
 
       {/* ---------------- News ---------------- */}
       <section className="geo-section" style={{ marginTop: 16 }}>
@@ -655,7 +655,7 @@ export default function MpAnalysisPanel() {
 
 /* ================================================================== */
 
-function Results({ res, freq, setFreq }: { res: MpAnalysis; freq: Freq; setFreq: (f: Freq) => void }) {
+function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq; setFreq: (f: Freq) => void; canEdit: boolean }) {
   const m = res.metrics!;
   const chart = useMemo(
     () =>
@@ -1020,7 +1020,7 @@ function Results({ res, freq, setFreq }: { res: MpAnalysis; freq: Freq; setFreq:
                 <th>종목명</th>
                 <th className="num">목표</th>
                 <th className="num">현재</th>
-                <th>편입일</th>
+                {canEdit ? <th>편입일</th> : null}
                 <th className="num">현재가</th>
                 <th className="num" title="각 종목의 최근 거래일 기준">1일</th>
                 <th className="num">편입 후</th>
@@ -1046,7 +1046,7 @@ function Results({ res, freq, setFreq }: { res: MpAnalysis; freq: Freq; setFreq:
                   </td>
                   <td className="num">{h.target_pct.toFixed(1)}%</td>
                   <td className="num">{h.current_pct.toFixed(1)}%</td>
-                  <td className="meta-soft">{h.first_date || "—"}</td>
+                  {canEdit ? <td className="meta-soft">{h.first_date || "—"}</td> : null}
                   <td className="num">{h.country === "CASH" ? "—" : fmtPrice(h.last_price, h.currency)}</td>
                   <td className={`num ${tone(h.day_change_pct)}`}>{fmtPct(h.day_change_pct)}</td>
                   <td className={`num ${tone(h.return_since_entry_pct)}`}>

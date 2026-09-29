@@ -525,7 +525,7 @@ export default function MpEtfPanel() {
         ) : null}
       </section>
 
-      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} /> : null}
+      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} /> : null}
 
       <section className="geo-section" style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -615,7 +615,7 @@ export default function MpEtfPanel() {
 
 /* ================================================================== */
 
-function Results({ res, freq, setFreq }: { res: EtfAnalysis; freq: Freq; setFreq: (f: Freq) => void }) {
+function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq; setFreq: (f: Freq) => void; canEdit: boolean }) {
   const m = res.metrics!;
   const chart = useMemo(
     () =>
@@ -1153,7 +1153,7 @@ function Results({ res, freq, setFreq }: { res: EtfAnalysis; freq: Freq; setFreq
                 <th>ETF명</th>
                 <th className="num">목표</th>
                 <th className="num">현재</th>
-                <th>편입일</th>
+                {canEdit ? <th>편입일</th> : null}
                 <th className="num">현재가</th>
                 <th className="num" title="각 ETF의 최근 거래일 기준">1일</th>
                 <th className="num">편입 후</th>
@@ -1180,7 +1180,7 @@ function Results({ res, freq, setFreq }: { res: EtfAnalysis; freq: Freq; setFreq
                     </td>
                     <td className="num">{h.target_pct.toFixed(1)}%</td>
                     <td className="num">{h.current_pct.toFixed(2)}%</td>
-                    <td className="meta-soft">{h.first_date || "—"}</td>
+                    {canEdit ? <td className="meta-soft">{h.first_date || "—"}</td> : null}
                     <td className="num">{h.asset === "CASH" ? "—" : fmtPrice(h.last_price, h.currency)}</td>
                     <td className={`num ${tone(h.day_change_pct)}`}>{fmtPct(h.day_change_pct)}</td>
                     <td className={`num ${tone(h.return_since_entry_pct)}`}>{fmtPct(h.return_since_entry_pct)}</td>
