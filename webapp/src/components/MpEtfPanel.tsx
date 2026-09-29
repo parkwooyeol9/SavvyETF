@@ -324,7 +324,7 @@ export default function MpEtfPanel() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>편입일</th>
+                <th>{canEdit ? "편입일" : "구분"}</th>
                 <th>메모</th>
                 <th className="num">ETF</th>
                 <th className="num">주식/채권/대체</th>
@@ -353,7 +353,7 @@ export default function MpEtfPanel() {
                 return (
                   <tr key={v.id} className={v.id === sel.id ? "us-pf-row-active" : undefined}>
                     <td>
-                      <strong>{v.date}</strong>
+                      <strong>{canEdit ? v.date : i === 0 ? "최초 편입" : `리밸런싱 #${i}`}</strong>
                     </td>
                     <td className="meta-soft">{v.note || ""}</td>
                     <td className="num">{v.holdings.filter((h) => h.asset !== "CASH").length}</td>
@@ -402,10 +402,11 @@ export default function MpEtfPanel() {
               </label>
             </>
           ) : (
-            <span className="meta-soft" style={{ alignSelf: "center" }}>
-              편입 일자 <strong>{sel.date}</strong>
-              {sel.note ? ` · ${sel.note}` : ""}
-            </span>
+            sel.note ? (
+              <span className="meta-soft" style={{ alignSelf: "center" }}>
+                {sel.note}
+              </span>
+            ) : null
           )}
           <span className={`us-pf-alloc-sum ${Math.abs(total - 100) <= 0.05 ? "ok" : "warn"}`} style={{ alignSelf: "center" }}>
             주식 {byAsset("EQ").toFixed(1)}% · 채권 {byAsset("FI").toFixed(1)}% · 대체 {byAsset("ALT").toFixed(1)}%
@@ -658,7 +659,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
             성과 요약 <span className="meta-soft">· {res.mode === "actual" ? "실제 추적" : "현재 비중 백테스트"}</span>
           </h3>
           <span className="meta-soft">
-            {res.start_date} ~ {res.as_of} · Rf {fmtPct(res.rf_ann_pct, 2, false)}
+            {canEdit || res.mode === "backtest" ? `${res.start_date} ~ ${res.as_of}` : `${res.as_of} 기준`} · Rf {fmtPct(res.rf_ann_pct, 2, false)}
           </span>
         </div>
         <p className="meta-soft">BM {res.bm_label}</p>

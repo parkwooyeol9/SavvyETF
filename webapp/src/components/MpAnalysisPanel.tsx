@@ -344,7 +344,7 @@ export default function MpAnalysisPanel() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>편입일</th>
+                <th>{canEdit ? "편입일" : "구분"}</th>
                 <th>메모</th>
                 <th className="num">종목</th>
                 <th className="num">합계</th>
@@ -371,7 +371,7 @@ export default function MpAnalysisPanel() {
                 return (
                   <tr key={v.id} className={v.id === sel.id ? "us-pf-row-active" : undefined}>
                     <td>
-                      <strong>{v.date}</strong>
+                      <strong>{canEdit ? v.date : i === 0 ? "최초 편입" : `리밸런싱 #${i}`}</strong>
                     </td>
                     <td className="meta-soft">{v.note || ""}</td>
                     <td className="num">{v.holdings.filter((h) => h.country !== "CASH").length}</td>
@@ -428,10 +428,11 @@ export default function MpAnalysisPanel() {
               </label>
             </>
           ) : (
-            <span className="meta-soft" style={{ alignSelf: "center" }}>
-              편입 일자 <strong>{sel.date}</strong>
-              {sel.note ? ` · ${sel.note}` : ""}
-            </span>
+            sel.note ? (
+              <span className="meta-soft" style={{ alignSelf: "center" }}>
+                {sel.note}
+              </span>
+            ) : null
           )}
           <span className={`us-pf-alloc-sum ${Math.abs(total - 100) <= 0.05 ? "ok" : "warn"}`} style={{ alignSelf: "center" }}>
             미국 {byCountry("US").toFixed(1)}% · 중국 {byCountry("CN").toFixed(1)}% · 현금 {byCountry("CASH").toFixed(1)}% · 합계{" "}
@@ -699,7 +700,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
             성과 요약 <span className="meta-soft">· {res.mode === "actual" ? "실제 추적" : "현재 비중 백테스트"}</span>
           </h3>
           <span className="meta-soft">
-            {res.start_date} ~ {res.as_of} · BM {res.bm_label} · Rf {fmtPct(res.rf_ann_pct, 2, false)}
+            {canEdit || res.mode === "backtest" ? `${res.start_date} ~ ${res.as_of}` : `${res.as_of} 기준`} · BM {res.bm_label} · Rf {fmtPct(res.rf_ann_pct, 2, false)}
           </span>
         </div>
         <div className="us-pf-stats" style={{ marginTop: 10 }}>
