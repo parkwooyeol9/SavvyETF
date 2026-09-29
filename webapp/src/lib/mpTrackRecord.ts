@@ -28,7 +28,7 @@ export const MP_TRACK_SOURCE = "https://atlas-portfolio-lab.savvyetf.chatgpt.sit
 
 export const MP_TRACK_META: Record<MpTrackId, { label: string; bm_label: string }> = {
   MP1: { label: "MP1 · ETF배분", bm_label: "BM (원본 파일)" },
-  MP2: { label: "MP2 · 글로벌주식", bm_label: "BM (원본 파일 · S&P500 70 / CSI300 30)" },
+  MP2: { label: "MP2 · 글로벌주식", bm_label: "BM (원본 파일)" },
 };
 
 type Row = [string, number, number];
@@ -62,6 +62,8 @@ export type MpTrackRecord = {
   metrics: { port: MpMetricSet; bm: MpMetricSet; rel: MpRelativeMetrics } | null;
   rolling: Array<{ date: string; port_pct: number; bm_pct: number; excess_pct: number }>;
   rf_ann_pct: number | null;
+  /** Risk metrics (vol, Sharpe, TE, beta …) are computed on weekly returns; MDD / VaR / best-worst on daily. */
+  risk_basis: "weekly";
 };
 
 type RawSeries = { source: string; rows: Row[]; fetched_at: string; from_snapshot: boolean };
@@ -198,12 +200,71 @@ export async function loadMpTrackRecord(id: MpTrackId): Promise<MpTrackRecord> {
   const rb = toReturns(bN);
   const rfR = rf.slice(1);
   const spanDays = (Date.parse(`${dates[N - 1]}T00:00:00Z`) - Date.parse(`${dates[0]}T00:00:00Z`)) / 86_400_000;
-  const mp = metricSet(dates, pN, rp, rfR, 252, spanDays);
-  const mb = metricSet(dates, bN, rb, rfR, 252, spanDays);
-  const rel = relativeMetrics(rp, rb, rfR, 252, mp.total_return_pct, mb.total_return_pct);
+  const obsPerYear = spanDays > 0 ? ((N - 1) * 365.25) / spanDays : 252;
+  const dp = metricSet(dates, pN, rp, rfR, obsPerYear, spanDays);
+  const db = metricSet(dates, bN, rb, rfR, obsPerYear, spanDays);
+
+  // Daily rows mix valuation timings (US/China closes, holidays carried forward), which
+  // distorts daily vol / TE / beta; weekly returns are robust to one-day misalignment.
+  const wk = weeklyIndex(dates);
+  const wDates = wk.map((i) => dates[i]!);
+  const wP = wk.map((i) => pN[i]!);
+  const wB = wk.map((i) => bN[i]!);
+  const wRf = wk.slice(1).map((i, k) => {
+    let s = 0;
+    for (let j = wk[k]! + 1; j <= i; j++) s += rf[j] || 0;
+    return s;
+  });
+  const wRp = toReturns(wP);
+  const wRb = toReturns(wB);
+  const wp = metricSet(wDates, wP, wRp, wRf, 52, spanDays);
+  const wb = metricSet(wDates, wB, wRb, wRf, 52, spanDays);
+  const riskFrom = (d: MpMetricSet, w: MpMetricSet): MpMetricSet => ({ ...d, vol_pct: w.vol_pct, sharpe: w.sharpe, sortino: w.sortino });
+  const mp = riskFrom(dp, wp);
+  const mb = riskFrom(db, wb);
+  const rel = relativeMetrics(wRp, wRb, wRf, 52, mp.total_return_pct, mb.total_return_pct);
+
+  const flatRuns: string[] = [];
+  for (let i = 1; i < N - 1; ) {
+    if (p[i] === p[i - 1] && b[i] === b[i - 1]) {
+      let j = i;
+      while (j + 1 < N && p[j + 1] === p[j] && b[j + 1] === b[j]) j++;
+      if (j > i) flatRuns.push(`${dates[i]}~${dates[j]}`);
+      i = j + 1;
+    } else i++;
+  }
+  if (flatRuns.length) {
+    notes.push(`MP·BM 지수가 연속으로 동일한(미갱신 추정) 구간: ${flatRuns.join(", ")} — 누적 수익률에는 영향이 없고 다음 평가일에 몰아서 반영됩니다.`);
+  }
+
+  const corrOf = (a: number[], c: number[]) => {
+    const n = Math.min(a.length, c.length);
+    if (n < 30) return null;
+    const ma = a.slice(0, n).reduce((s, v) => s + v, 0) / n;
+    const mc = c.slice(0, n).reduce((s, v) => s + v, 0) / n;
+    let sab = 0;
+    let saa = 0;
+    let scc = 0;
+    for (let k = 0; k < n; k++) {
+      sab += (a[k]! - ma) * (c[k]! - mc);
+      saa += (a[k]! - ma) ** 2;
+      scc += (c[k]! - mc) ** 2;
+    }
+    return saa > 0 && scc > 0 ? sab / Math.sqrt(saa * scc) : null;
+  };
+  const tail = Math.min(126, rp.length - 1);
+  if (tail >= 60) {
+    const a = rp.slice(-tail);
+    const same = corrOf(a, rb.slice(-tail));
+    const prev = corrOf(a, rb.slice(-tail - 1, -1));
+    if (same != null && prev != null && prev > 0.25) {
+      notes.push(
+        `최근 6개월 MP 일간 수익률의 BM 상관이 당일 ${same.toFixed(2)} · 전일 ${prev.toFixed(2)}로, MP 평가일이 하루씩 어긋난 날이 섞여 있는 것으로 보입니다. 일간 기준 지표(최고·최저일, VaR)는 참고용이며, 위험지표는 주간 수익률로 계산했습니다.`,
+      );
+    }
+  }
 
   const rolling: MpTrackRecord["rolling"] = [];
-  const wk = weeklyIndex(dates);
   let j = 0;
   for (const i of wk) {
     const from = addDays(dates[i]!, -365);
@@ -233,5 +294,6 @@ export async function loadMpTrackRecord(id: MpTrackId): Promise<MpTrackRecord> {
     metrics: { port: mp, bm: mb, rel },
     rolling,
     rf_ann_pct: rfAnn,
+    risk_basis: "weekly",
   };
 }

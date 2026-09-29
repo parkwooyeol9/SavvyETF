@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAdminSession } from "@/components/AdminSession";
 import { fmtNum, fmtPct, heat, Kpi, MetricsTable, tone, tooltipStyle } from "@/components/MpUi";
 import type { MpTrackId, MpTrackRecord as Track } from "@/lib/mpTrackRecord";
 
@@ -51,10 +52,16 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
   const [data, setData] = useState<Track | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("all");
+  const { secret, unlocked, ready } = useAdminSession();
+  const isAdmin = ready && unlocked && !!secret;
 
   useEffect(() => {
+    if (!ready) return;
     let alive = true;
-    fetch(`/api/mp/track?series=${id}`)
+    const req = isAdmin
+      ? fetch(`/api/mp/track?series=${id}&full=1`, { headers: { Authorization: `Bearer ${secret}` }, cache: "no-store" })
+      : fetch(`/api/mp/track?series=${id}`);
+    req
       .then(async (r) => {
         const j = (await r.json()) as Track;
         if (!alive) return;
@@ -65,7 +72,7 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, ready, isAdmin, secret]);
 
   const extTail = useMemo(() => {
     if (!data || !ext?.length) return [];
@@ -272,7 +279,10 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
         </div>
         <div>
           <h3 className="geo-section-title">펀드 성과 지표 (설정 이후)</h3>
-          <p className="meta-soft">평가일 수익률 · 연 252일 · 무위험수익률 = 미 13주 T-bill (기간 평균 {fmtPct(data.rf_ann_pct, 2, false)})</p>
+          <p className="meta-soft">
+            변동성·Sharpe·Sortino·TE·IR·베타·알파·캡처는 주간 수익률(연 52주), MDD·VaR·최고/최저일은 일간 기준 · 무위험수익률 = 미 13주 T-bill (기간 평균{" "}
+            {fmtPct(data.rf_ann_pct, 2, false)})
+          </p>
           <MetricsTable p={m.port} b={m.bm} longDates />
           <div className="table-wrap" style={{ marginTop: 8 }}>
             <table className="data-table">
@@ -290,7 +300,7 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
                   </td>
                 </tr>
                 <tr>
-                  <td>BM 대비 승률 (일)</td>
+                  <td>BM 대비 승률 (주)</td>
                   <td className="num">{fmtPct(m.rel.hit_ratio_pct, 1, false)}</td>
                 </tr>
               </tbody>
@@ -299,58 +309,66 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
         </div>
       </div>
 
-      <h3 className="geo-section-title" style={{ marginTop: 16 }}>
-        연도·월별 수익률 <span className="meta-soft">· 칸 = MP 월수익률, 색 = BM 대비 초과</span>
-      </h3>
-      <div className="table-wrap" style={{ marginTop: 8 }}>
-        <table className="data-table mp-year-grid">
-          <thead>
-            <tr>
-              <th>연도</th>
-              {MONTHS.map((mm) => (
-                <th key={mm} className="num">
-                  {Number(mm)}월
-                </th>
-              ))}
-              <th className="num">MP</th>
-              <th className="num">BM</th>
-              <th className="num">초과</th>
-            </tr>
-          </thead>
-          <tbody>
-            {yearsGrid.map((y) => (
-              <tr key={y.year}>
-                <td>
-                  <strong>{y.year}</strong>
-                  {y.partial ? <span className="meta-soft">*</span> : null}
-                </td>
-                {MONTHS.map((mm) => {
-                  const c = y.months.get(mm);
-                  return (
-                    <td key={mm} className={`num ${c ? tone(c.port) : ""}`} style={c ? { background: heat(c.excess, 4) } : undefined}>
-                      {c ? c.port.toFixed(1) : ""}
+      {isAdmin && yearsGrid.length ? (
+        <>
+          <h3 className="geo-section-title" style={{ marginTop: 16 }}>
+            연도·월별 수익률 <span className="meta-soft">· 칸 = MP 월수익률, 색 = BM 대비 초과 · 관리자 전용</span>
+          </h3>
+          <div className="table-wrap" style={{ marginTop: 8 }}>
+            <table className="data-table mp-year-grid">
+              <thead>
+                <tr>
+                  <th>연도</th>
+                  {MONTHS.map((mm) => (
+                    <th key={mm} className="num">
+                      {Number(mm)}월
+                    </th>
+                  ))}
+                  <th className="num">MP</th>
+                  <th className="num">BM</th>
+                  <th className="num">초과</th>
+                </tr>
+              </thead>
+              <tbody>
+                {yearsGrid.map((y) => (
+                  <tr key={y.year}>
+                    <td>
+                      <strong>{y.year}</strong>
+                      {y.partial ? <span className="meta-soft">*</span> : null}
                     </td>
-                  );
-                })}
-                <td className={`num ${tone(y.port_pct)}`}>
-                  <strong>{fmtPct(y.port_pct, 1)}</strong>
-                </td>
-                <td className={`num ${tone(y.bm_pct)}`}>{fmtPct(y.bm_pct, 1)}</td>
-                <td className={`num ${tone(y.excess_pct)}`} style={{ background: heat(y.excess_pct, 10) }}>
-                  {fmtPct(y.excess_pct, 1)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    {MONTHS.map((mm) => {
+                      const c = y.months.get(mm);
+                      return (
+                        <td key={mm} className={`num ${c ? tone(c.port) : ""}`} style={c ? { background: heat(c.excess, 4) } : undefined}>
+                          {c ? c.port.toFixed(1) : ""}
+                        </td>
+                      );
+                    })}
+                    <td className={`num ${tone(y.port_pct)}`}>
+                      <strong>{fmtPct(y.port_pct, 1)}</strong>
+                    </td>
+                    <td className={`num ${tone(y.bm_pct)}`}>{fmtPct(y.bm_pct, 1)}</td>
+                    <td className={`num ${tone(y.excess_pct)}`} style={{ background: heat(y.excess_pct, 10) }}>
+                      {fmtPct(y.excess_pct, 1)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="meta-soft" style={{ marginTop: 6 }}>* 부분 연도(설정 연도 또는 진행 중인 연도).</p>
+        </>
+      ) : null}
       <p className="meta-soft" style={{ marginTop: 6 }}>
-        * 부분 연도(설정 연도 또는 진행 중인 연도). 데이터:{" "}
+        데이터:{" "}
         <a href={data.source_url} target="_blank" rel="noreferrer">
           Atlas portfolio-lab 공개 API ({id})
         </a>
         {data.from_snapshot ? " · 스냅샷" : ""}. BM 산식·통화는 원본에 미기재
-        {id === "MP2" ? "이나, 일간 수익률이 S&P500 70 / CSI300 30(달러) BM과 0.999 상관으로 일치합니다" : ""}.
+        {id === "MP2"
+          ? " — 일간 회귀 기준 2026년은 S&P500 70 / CSI300 30(현지통화)과 거의 일치(R² 0.998)하지만, 2020~22년은 주식 노출이 약 65%(S&P 0.55 · CSI 0.10)로 낮고 연 −2%p 안팎의 차감이 있어 기간별로 BM 구성이 달랐던 것으로 추정됩니다"
+          : " — 일간 회귀 기준 MSCI ACWI 노출 약 0.8로, 현재 설정한 60/30/10 BM과는 다른 산식입니다"}
+        .
       </p>
       {data.notes.length ? (
         <ul className="meta-soft" style={{ marginTop: 4 }}>

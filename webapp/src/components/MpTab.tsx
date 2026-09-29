@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+
 const loading = () => <p className="empty">불러오는 중…</p>;
 const MpAnalysisPanel = dynamic(() => import("@/components/MpAnalysisPanel"), { loading });
 const MpEtfPanel = dynamic(() => import("@/components/MpEtfPanel"), { loading });
@@ -11,9 +13,9 @@ const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading 
 
 type View = "mp" | "mpetf" | "sim" | "etf";
 
-const VIEWS: Array<{ id: View; label: string }> = [
+const VIEWS: Array<{ id: View; label: string; adminOnly?: boolean }> = [
   { id: "mp", label: "MP-글로벌주식" },
-  { id: "mpetf", label: "MP-ETF배분" },
+  { id: "mpetf", label: "MP-ETF배분", adminOnly: true },
   { id: "sim", label: "시뮬레이션" },
   { id: "etf", label: "시뮬레이션-ETF" },
 ];
@@ -26,8 +28,11 @@ export default function MpTab({
   etf?: boolean;
   onEtfChange?: (etf: boolean) => void;
 }) {
+  const { unlocked, ready } = useAdminSession();
+  const isAdmin = ready && unlocked;
   const [inner, setInner] = useState<Exclude<View, "etf">>("mp");
-  const view: View = etf ? "etf" : inner;
+  const innerView = inner === "mpetf" && !isAdmin ? "mp" : inner;
+  const view: View = etf ? "etf" : innerView;
   const select = (v: View) => {
     if (v !== "etf") setInner(v);
     onEtfChange?.(v === "etf");
@@ -35,14 +40,14 @@ export default function MpTab({
   return (
     <div className="panel-stack">
       <div className="seg" style={{ marginBottom: 12 }}>
-        {VIEWS.map((v) => (
+        {VIEWS.filter((v) => !v.adminOnly || isAdmin).map((v) => (
           <button
             key={v.id}
             type="button"
             className={view === v.id ? "active" : ""}
             onClick={() => select(v.id)}
           >
-            {v.label}
+            {v.adminOnly ? `${v.label} (관리자 전용)` : v.label}
           </button>
         ))}
       </div>
