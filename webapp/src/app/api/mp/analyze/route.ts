@@ -42,7 +42,7 @@ export async function POST(req: Request) {
         })),
       })),
     };
-    const key = `mp:analyze2:${mode}:${lookback}:${JSON.stringify({
+    const key = `mp:analyze3:${mode}:${lookback}:${JSON.stringify({
       bm: clean.bm_us_pct,
       v: clean.versions.map((v) => [v.date, v.holdings.map((h) => [h.country, h.ticker, h.sector, h.weight_pct])]),
     })}`;

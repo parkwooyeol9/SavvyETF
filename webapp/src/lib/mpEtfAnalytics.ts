@@ -25,6 +25,7 @@ import {
   numOrNull,
   ols,
   periodReturns,
+  periodTableStart,
   pick,
   quoteSummary,
   relativeMetrics,
@@ -37,6 +38,7 @@ import {
   weeklyIndex,
   type Daily,
   type MpMetricSet,
+  type MpMonthlyReturn,
   type MpPeriodReturn,
   type MpRegression,
   type MpRelativeMetrics,
@@ -240,6 +242,8 @@ export type EtfHoldingRow = {
   last_price: number | null;
   day_change_pct: number | null;
   return_since_entry_pct: number | null;
+  /** Trailing 1-month total return (USD) from the ETF's own price history. */
+  month_return_pct: number | null;
   contribution_pct: number;
   week_contribution_pct: number;
   week_return_pct: number | null;
@@ -323,7 +327,7 @@ export type EtfAnalysis = {
   weekly: EtfWeekly | null;
   series: Array<{ date: string; port: number; bm: number; eq: number; fi: number; alt: number; port_dd: number; bm_dd: number }>;
   period_returns: MpPeriodReturn[];
-  monthly: Array<{ month: string; port_pct: number; bm_pct: number; excess_pct: number }>;
+  monthly: MpMonthlyReturn[];
   metrics: { port: MpMetricSet; bm: MpMetricSet; rel: MpRelativeMetrics } | null;
   holdings: EtfHoldingRow[];
   assets: Array<{
@@ -1036,8 +1040,101 @@ export async function analyzeEtf(portfolio: EtfPortfolio, mode: EtfMode, lookbac
   const bmM = metricSet(cal, bmLv, rBm, rf, annF, spanDays);
   const rel = relativeMetrics(rPort, rBm, rf, annF, portM.total_return_pct, bmM.total_return_pct);
   const lastD = cal[N - 1]!;
-  const period_returns = periodReturns(cal, nav, bmLv, mode === "actual" ? "설정 이후" : "전체 구간");
-  const monthly = monthlyReturns(cal, nav, bmLv);
+
+  // Pre-inception pro-forma for the period / monthly tables: first version's weights held
+  // constant (daily rebalanced), unlisted ETFs and cash at T-bill, chain-linked backward.
+  const backfillFrom = periodTableStart(today);
+  let extCal = cal;
+  let extNav = nav;
+  let extBm = bmLv;
+  if (mode === "actual" && start > backfillFrom) {
+    const rawSet = new Set<string>();
+    for (const d of bySym.get(ACWI)!.dates) if (d < start) rawSet.add(d);
+    for (const x of assets.values()) {
+      const d = bySym.get(x.yahoo);
+      if (d && d.currency !== "USD") for (const t of d.dates) if (t < start) rawSet.add(t);
+    }
+    const raw = [...rawSet].sort();
+    let k0 = -1;
+    for (let i = 0; i < raw.length; i++) if (raw[i]! <= backfillFrom) k0 = i;
+    const preCal = k0 >= 0 ? raw.slice(k0) : [];
+    if (preCal.length) {
+      const pc = [...preCal, cal[0]!];
+      const usdP = (sym: string): number[] => {
+        const local = alignTo(pc, bySym.get(sym));
+        const cur = bySym.get(sym)?.currency || "USD";
+        if (cur === "USD" || !bySym.has(`${cur}=X`)) return local;
+        const fx = alignTo(pc, bySym.get(`${cur}=X`));
+        return local.map((p, i) => (isNum(p) && isNum(fx[i]!) && fx[i]! > 0 ? p / fx[i]! : NaN));
+      };
+      const legs: Array<{ w: number; px: number[] }> = [];
+      for (const h of versions[0]!.holdings) {
+        const w = (Number(h.weight_pct) || 0) / 100;
+        const x = h.asset === "CASH" ? undefined : assets.get(etfHoldingKey(h));
+        if (w && x && bySym.has(x.yahoo)) legs.push({ w, px: usdP(x.yahoo) });
+      }
+      const rfP = rfDailyFrom(pc, alignTo(pc, bySym.get(RF)));
+      const bmLegs: Array<[number, number[] | null]> = [
+        [wb.EQ, usdP(ACWI)],
+        [wb.FI, usdP(fiSym)],
+        [wb.cmdty, usdP(CMDTY)],
+        [wb.reit, usdP(REIT)],
+        [wb.digital, usdP(BTC)],
+        [wb.CASH, null],
+      ];
+      const ret = (s: number[], i: number) => (isNum(s[i - 1]!) && isNum(s[i]!) && s[i - 1]! > 0 ? s[i]! / s[i - 1]! - 1 : 0);
+      const preNav = new Array<number>(pc.length).fill(NaN);
+      const preBm = new Array<number>(pc.length).fill(NaN);
+      preNav[pc.length - 1] = nav[0]!;
+      preBm[pc.length - 1] = bmLv[0]!;
+      for (let i = pc.length - 1; i > 0; i--) {
+        let r = 0;
+        let invested = 0;
+        for (const l of legs) {
+          const p0 = l.px[i - 1]!;
+          const p1 = l.px[i]!;
+          if (isNum(p0) && isNum(p1) && p0 > 0) {
+            r += l.w * (p1 / p0 - 1);
+            invested += l.w;
+          }
+        }
+        r += (1 - invested) * (rfP[i] || 0);
+        const rb = bmLegs.reduce((s, [w, lv]) => s + w * (lv ? ret(lv, i) : rfP[i] || 0), 0);
+        preNav[i - 1] = preNav[i]! / (1 + r);
+        preBm[i - 1] = preBm[i]! / (1 + rb);
+      }
+      extCal = [...preCal, ...cal];
+      extNav = [...preNav.slice(0, -1), ...nav];
+      extBm = [...preBm.slice(0, -1), ...bmLv];
+    }
+  }
+  const estimatedBefore = extCal !== cal ? start : undefined;
+  const period_returns = periodReturns(extCal, extNav, extBm, mode === "actual" ? "설정 이후" : "전체 구간", {
+    allFrom: cal[0]!,
+    estimatedBefore,
+  });
+  const monthly = monthlyReturns(extCal, extNav, extBm, estimatedBefore);
+
+  const monthFrom = addDays(lastD, -30);
+  const closeAtOrBefore = (d: Daily | undefined, date: string): number => {
+    if (!d) return NaN;
+    let v = NaN;
+    for (let i = 0; i < d.dates.length && d.dates[i]! <= date; i++) v = d.close[i]!;
+    return v;
+  };
+  const monthReturn = (yahoo: string): number | null => {
+    const own = bySym.get(yahoo);
+    if (!own?.dates.length || own.dates[0]! > monthFrom) return null;
+    const l0 = closeAtOrBefore(own, monthFrom);
+    const l1 = own.close.at(-1)!;
+    if (!isNum(l0) || l0 <= 0) return null;
+    const cur = own.currency || "USD";
+    if (cur === "USD" || !bySym.has(`${cur}=X`)) return (l1 / l0 - 1) * 100;
+    const fx = bySym.get(`${cur}=X`);
+    const f0 = closeAtOrBefore(fx, monthFrom);
+    const f1 = closeAtOrBefore(fx, own.dates.at(-1)!);
+    return isNum(f0) && isNum(f1) && f1 > 0 ? ((l1 / f1) / (l0 / f0) - 1) * 100 : null;
+  };
 
   // ---------------- Holdings ----------------
   const lastIdx = N - 1;
@@ -1105,6 +1202,7 @@ export async function analyzeEtf(portfolio: EtfPortfolio, mode: EtfMode, lookbac
       last_price: pl && isNum(pl[lastIdx]!) ? pl[lastIdx]! : null,
       day_change_pct: isNum(ownLast) && isNum(ownPrev) && ownPrev > 0 ? (ownLast / ownPrev - 1) * 100 : null,
       return_since_entry_pct: ep && p && isNum(p[lastIdx]!) && status !== "exited" ? (p[lastIdx]! / ep - 1) * 100 : null,
+      month_return_pct: x && status !== "exited" ? monthReturn(x.yahoo) : null,
       contribution_pct: contrib.get(k) || 0,
       week_contribution_pct: weekContrib.get(k) || 0,
       week_return_pct:

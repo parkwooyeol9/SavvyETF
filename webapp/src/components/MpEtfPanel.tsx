@@ -743,7 +743,10 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                 <tbody>
                   {res.period_returns.map((p) => (
                     <tr key={p.key}>
-                      <td>{p.label}</td>
+                      <td>
+                        {p.label}
+                        {p.estimated ? <span className="meta-soft">*</span> : null}
+                      </td>
                       <td className={`num ${tone(p.port_pct)}`}>{fmtPct(p.port_pct)}</td>
                       <td className={`num ${tone(p.bm_pct)}`}>{fmtPct(p.bm_pct)}</td>
                       <td className={`num ${tone(p.excess_pct)}`}>{fmtPct(p.excess_pct)}</td>
@@ -768,7 +771,10 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                 <tbody>
                   {[...res.monthly].reverse().map((r) => (
                     <tr key={r.month}>
-                      <td>{r.month}</td>
+                      <td>
+                        {r.month}
+                        {r.estimated ? <span className="meta-soft">*</span> : null}
+                      </td>
                       <td className={`num ${tone(r.port_pct)}`}>{fmtPct(r.port_pct)}</td>
                       <td className={`num ${tone(r.bm_pct)}`}>{fmtPct(r.bm_pct)}</td>
                       <td className={`num ${tone(r.excess_pct)}`} style={{ background: heat(r.excess_pct, 3) }}>
@@ -779,6 +785,11 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                 </tbody>
               </table>
             </div>
+            {res.period_returns.some((p) => p.estimated) || res.monthly.some((r) => r.estimated) ? (
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                * 최초 편입 이전 구간이 포함된 수익률 — 최초 편입 비중을 매일 유지했다고 가정한 추정치입니다(당시 미상장 ETF 비중은 현금).
+              </p>
+            ) : null}
           </div>
           <div>
             <h3 className="geo-section-title">펀드 성과 지표</h3>
@@ -1157,7 +1168,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                 {canEdit ? <th>편입일</th> : null}
                 <th className="num">현재가</th>
                 <th className="num" title="각 ETF의 최근 거래일 기준">1일</th>
-                <th className="num">편입 후</th>
+                <th className="num" title="최근 1개월(30일) 총수익률, 달러 기준">1개월</th>
                 <th className="num">기여</th>
                 <th className="num">주간 기여</th>
                 <th className="num">보수</th>
@@ -1184,7 +1195,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                     {canEdit ? <td className="meta-soft">{h.first_date || "—"}</td> : null}
                     <td className="num">{h.asset === "CASH" ? "—" : fmtPrice(h.last_price, h.currency)}</td>
                     <td className={`num ${tone(h.day_change_pct)}`}>{fmtPct(h.day_change_pct)}</td>
-                    <td className={`num ${tone(h.return_since_entry_pct)}`}>{fmtPct(h.return_since_entry_pct)}</td>
+                    <td className={`num ${tone(h.month_return_pct)}`}>{fmtPct(h.month_return_pct)}</td>
                     <td className={`num ${tone(h.contribution_pct)}`}>{fmtPct(h.contribution_pct)}</td>
                     <td className={`num ${tone(h.week_contribution_pct)}`}>{fmtPct(h.week_contribution_pct)}</td>
                     <td className="num">{fmtPct(h.expense_ratio_pct, 2, false)}</td>

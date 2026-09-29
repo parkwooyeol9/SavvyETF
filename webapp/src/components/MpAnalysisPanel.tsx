@@ -779,7 +779,10 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                 <tbody>
                   {res.period_returns.map((p) => (
                     <tr key={p.key}>
-                      <td>{p.label}</td>
+                      <td>
+                        {p.label}
+                        {p.estimated ? <span className="meta-soft">*</span> : null}
+                      </td>
                       <td className={`num ${tone(p.port_pct)}`}>{fmtPct(p.port_pct)}</td>
                       <td className={`num ${tone(p.bm_pct)}`}>{fmtPct(p.bm_pct)}</td>
                       <td className={`num ${tone(p.excess_pct)}`}>{fmtPct(p.excess_pct)}</td>
@@ -804,7 +807,10 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                 <tbody>
                   {[...res.monthly].reverse().map((r) => (
                     <tr key={r.month}>
-                      <td>{r.month}</td>
+                      <td>
+                        {r.month}
+                        {r.estimated ? <span className="meta-soft">*</span> : null}
+                      </td>
                       <td className={`num ${tone(r.port_pct)}`}>{fmtPct(r.port_pct)}</td>
                       <td className={`num ${tone(r.bm_pct)}`}>{fmtPct(r.bm_pct)}</td>
                       <td className={`num ${tone(r.excess_pct)}`} style={{ background: heat(r.excess_pct, 5) }}>
@@ -815,6 +821,11 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                 </tbody>
               </table>
             </div>
+            {res.period_returns.some((p) => p.estimated) || res.monthly.some((r) => r.estimated) ? (
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                * 최초 편입 이전 구간이 포함된 수익률 — 최초 편입 비중을 매일 유지했다고 가정한 추정치입니다(당시 미상장 종목 비중은 현금).
+              </p>
+            ) : null}
           </div>
           <div>
             <h3 className="geo-section-title">펀드 성과 지표</h3>
@@ -1009,7 +1020,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
       <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
         <h3 className="geo-section-title">편입 종목 현황</h3>
         <p className="meta-soft">
-          편입 후 수익률은 USD 기준(중국은 현지통화 병기). 기여도는 설정일 NAV 대비 누적 손익(%p)으로 합계가 MP 누적수익률과 일치합니다.
+          1개월 수익률은 최근 30일 가격 수익률로 USD 기준(중국은 현지통화 병기). 기여도는 설정일 NAV 대비 누적 손익(%p)으로 합계가 MP 누적수익률과 일치합니다.
         </p>
         <div className="table-wrap" style={{ marginTop: 8 }}>
           <table className="data-table mp-hold-table">
@@ -1024,7 +1035,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                 {canEdit ? <th>편입일</th> : null}
                 <th className="num">현재가</th>
                 <th className="num" title="각 종목의 최근 거래일 기준">1일</th>
-                <th className="num">편입 후</th>
+                <th className="num" title="최근 1개월(30일) 가격 수익률, 달러 기준">1개월</th>
                 <th className="num">기여</th>
                 <th className="num">시총</th>
                 <th className="num">PER</th>
@@ -1050,10 +1061,10 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                   {canEdit ? <td className="meta-soft">{h.first_date || "—"}</td> : null}
                   <td className="num">{h.country === "CASH" ? "—" : fmtPrice(h.last_price, h.currency)}</td>
                   <td className={`num ${tone(h.day_change_pct)}`}>{fmtPct(h.day_change_pct)}</td>
-                  <td className={`num ${tone(h.return_since_entry_pct)}`}>
-                    {fmtPct(h.return_since_entry_pct)}
-                    {h.country === "CN" && h.local_return_since_entry_pct != null ? (
-                      <span className="meta-soft"> ({fmtPct(h.local_return_since_entry_pct, 1)} CNY)</span>
+                  <td className={`num ${tone(h.month_return_pct)}`}>
+                    {fmtPct(h.month_return_pct)}
+                    {h.country === "CN" && h.local_month_return_pct != null ? (
+                      <span className="meta-soft"> ({fmtPct(h.local_month_return_pct, 1)} CNY)</span>
                     ) : null}
                   </td>
                   <td className={`num ${tone(h.contribution_pct)}`}>{fmtPct(h.contribution_pct)}</td>

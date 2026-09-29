@@ -664,18 +664,30 @@ export type MpPeriodReturn = {
   port_pct: number | null;
   bm_pct: number | null;
   excess_pct: number | null;
+  /** Base date falls before `estimatedBefore` (pre-inception pro-forma levels). */
+  estimated?: boolean;
 };
 
-export function periodReturns(cal: string[], nav: number[], bmLv: number[], allLabel: string): MpPeriodReturn[] {
+export function periodReturns(
+  cal: string[],
+  nav: number[],
+  bmLv: number[],
+  allLabel: string,
+  opts: { allFrom?: string; estimatedBefore?: string } = {},
+): MpPeriodReturn[] {
   const N = cal.length;
   const lastD = cal[N - 1]!;
-  const levelAtOrBefore = (lv: number[], date: string): number | null => {
-    let v: number | null = null;
+  const idxAtOrBefore = (date: string): number => {
+    let k = -1;
     for (let i = 0; i < N; i++) {
-      if (cal[i]! <= date) v = lv[i]!;
+      if (cal[i]! <= date) k = i;
       else break;
     }
-    return v;
+    return k;
+  };
+  const levelAtOrBefore = (lv: number[], date: string): number | null => {
+    const k = idxAtOrBefore(date);
+    return k >= 0 ? lv[k]! : null;
   };
   const periods: Array<{ key: string; label: string; from: string | null }> = [
     { key: "1d", label: "1일", from: N >= 2 ? cal[N - 2]! : null },
@@ -684,7 +696,7 @@ export function periodReturns(cal: string[], nav: number[], bmLv: number[], allL
     { key: "3m", label: "3개월", from: addDays(lastD, -91) },
     { key: "6m", label: "6개월", from: addDays(lastD, -182) },
     { key: "ytd", label: "YTD", from: `${Number(lastD.slice(0, 4)) - 1}-12-31` },
-    { key: "all", label: allLabel, from: cal[0]! },
+    { key: "all", label: allLabel, from: opts.allFrom || cal[0]! },
   ];
   return periods.map((p) => {
     if (!p.from || p.from < cal[0]!) return { key: p.key, label: p.label, port_pct: null, bm_pct: null, excess_pct: null };
@@ -692,26 +704,47 @@ export function periodReturns(cal: string[], nav: number[], bmLv: number[], allL
     const b0 = levelAtOrBefore(bmLv, p.from);
     const pr = p0 ? (nav[N - 1]! / p0 - 1) * 100 : null;
     const br = b0 ? (bmLv[N - 1]! / b0 - 1) * 100 : null;
-    return { key: p.key, label: p.label, port_pct: pr, bm_pct: br, excess_pct: pr != null && br != null ? pr - br : null };
+    const baseDate = cal[idxAtOrBefore(p.from)];
+    const estimated = !!opts.estimatedBefore && !!baseDate && baseDate < opts.estimatedBefore;
+    return {
+      key: p.key,
+      label: p.label,
+      port_pct: pr,
+      bm_pct: br,
+      excess_pct: pr != null && br != null ? pr - br : null,
+      ...(estimated ? { estimated } : {}),
+    };
   });
 }
 
-export function monthlyReturns(
-  cal: string[],
-  nav: number[],
-  bmLv: number[],
-): Array<{ month: string; port_pct: number; bm_pct: number; excess_pct: number }> {
-  const out: Array<{ month: string; port_pct: number; bm_pct: number; excess_pct: number }> = [];
+/** Earliest base the period / monthly tables need: prior year-end or the month-end ~6 months back. */
+export function periodTableStart(today: string): string {
+  const sixMonths = addDays(today, -183);
+  const sixMonthEnd = addDays(`${sixMonths.slice(0, 7)}-01`, -1);
+  const priorYearEnd = `${Number(today.slice(0, 4)) - 1}-12-31`;
+  return priorYearEnd < sixMonthEnd ? priorYearEnd : sixMonthEnd;
+}
+
+export type MpMonthlyReturn = { month: string; port_pct: number; bm_pct: number; excess_pct: number; estimated?: boolean };
+
+/** Month-end to month-end returns; a series starting on a month's last day skips that empty month. */
+export function monthlyReturns(cal: string[], nav: number[], bmLv: number[], estimatedBefore?: string): MpMonthlyReturn[] {
+  const out: MpMonthlyReturn[] = [];
   let prevP = nav[0]!;
   let prevB = bmLv[0]!;
+  let prevD = cal[0]!;
   for (let i = 0; i < cal.length; i++) {
     const m = cal[i]!.slice(0, 7);
     if (i === cal.length - 1 || cal[i + 1]!.slice(0, 7) !== m) {
-      const pp = (nav[i]! / prevP - 1) * 100;
-      const bb = (bmLv[i]! / prevB - 1) * 100;
-      out.push({ month: m, port_pct: pp, bm_pct: bb, excess_pct: pp - bb });
+      if (i > 0) {
+        const pp = (nav[i]! / prevP - 1) * 100;
+        const bb = (bmLv[i]! / prevB - 1) * 100;
+        const estimated = !!estimatedBefore && prevD < estimatedBefore;
+        out.push({ month: m, port_pct: pp, bm_pct: bb, excess_pct: pp - bb, ...(estimated ? { estimated } : {}) });
+      }
       prevP = nav[i]!;
       prevB = bmLv[i]!;
+      prevD = cal[i]!;
     }
   }
   return out;

@@ -44,7 +44,7 @@ export async function POST(req: Request) {
         })),
       })),
     };
-    const key = `mp:etf:analyze2:${mode}:${lookback}:${JSON.stringify({
+    const key = `mp:etf:analyze3:${mode}:${lookback}:${JSON.stringify({
       bm: clean.bm,
       v: clean.versions.map((v) => [v.date, v.holdings.map((h) => [h.asset, h.ticker, h.group, h.weight_pct])]),
     })}`;

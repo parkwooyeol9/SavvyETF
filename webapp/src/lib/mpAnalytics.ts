@@ -23,6 +23,7 @@ import {
   numOrNull,
   ols,
   periodReturns,
+  periodTableStart,
   pick,
   quoteSummary,
   relativeMetrics,
@@ -37,6 +38,7 @@ import {
   yahooCrumb,
   type Daily,
   type MpMetricSet,
+  type MpMonthlyReturn,
   type MpRegression,
   type MpRelativeMetrics,
   type MpStyleRegression,
@@ -106,6 +108,9 @@ export type MpHoldingRow = {
   day_change_pct: number | null;
   return_since_entry_pct: number | null;
   local_return_since_entry_pct: number | null;
+  /** Trailing 1-month return (USD) from the holding's own price history. */
+  month_return_pct: number | null;
+  local_month_return_pct: number | null;
   contribution_pct: number;
   fx_contribution_pct: number;
   week_contribution_pct: number;
@@ -207,8 +212,9 @@ export type MpAnalysis = {
     port_pct: number | null;
     bm_pct: number | null;
     excess_pct: number | null;
+    estimated?: boolean;
   }>;
-  monthly: Array<{ month: string; port_pct: number; bm_pct: number; excess_pct: number }>;
+  monthly: MpMonthlyReturn[];
   metrics: { port: MpMetricSet; bm: MpMetricSet; rel: MpRelativeMetrics } | null;
   holdings: MpHoldingRow[];
   sectors: MpSectorRow[];
@@ -453,7 +459,11 @@ export async function analyzeMp(
   }
   if (assets.size > 60) return emptyAnalysis(mode, "종목은 최대 60개까지 분석합니다.");
 
-  const fetchStart = addDays(start, -14);
+  // Period / monthly tables reach back to the prior year-end (or 6 months); in actual mode the
+  // stretch before inception is filled with a pro-forma of the first version's weights.
+  const backfillFrom = periodTableStart(today);
+  const useBackfill = mode === "actual" && start > backfillFrom;
+  const fetchStart = addDays(useBackfill ? backfillFrom : start, -14);
   const aux = [SPX, CSI, RF, "CNY=X", ...FACTOR_ETFS];
   const symbols = [...new Set([...aux, ...[...assets.values()].map((x) => x.yahoo)])];
   const fetched = await mapPool(symbols, 8, async (s) => {
@@ -738,8 +748,77 @@ export async function analyzeMp(
   const rel = relativeMetrics(rPort, rBm, rf, annF, portM.total_return_pct, bmM.total_return_pct);
 
   const lastD = cal[N - 1]!;
-  const period_returns = periodReturns(cal, nav, bmLv, mode === "actual" ? "설정 이후" : "전체 구간");
-  const monthly = monthlyReturns(cal, nav, bmLv);
+
+  // Pre-inception pro-forma: first version's weights held constant (daily rebalanced), names
+  // without a price yet sit in cash at T-bill, chain-linked backward from the inception level.
+  let extCal = cal;
+  let extNav = nav;
+  let extBm = bmLv;
+  if (useBackfill) {
+    const raw = [...new Set([SPX, CSI].flatMap((s) => bySym.get(s)!.dates.filter((d) => d < start)))].sort();
+    let k0 = -1;
+    for (let i = 0; i < raw.length; i++) if (raw[i]! <= backfillFrom) k0 = i;
+    const preCal = k0 >= 0 ? raw.slice(k0) : [];
+    if (preCal.length) {
+      const pc = [...preCal, cal[0]!];
+      const alignP = (sym: string) => alignTo(pc, bySym.get(sym));
+      const cnyP = alignP("CNY=X");
+      const usdP = (sym: string): number[] => {
+        const local = alignP(sym);
+        const cur = bySym.get(sym)?.currency || "USD";
+        const fx = cur === "USD" ? null : cur === "CNY" ? cnyP : bySym.has(`${cur}=X`) ? alignP(`${cur}=X`) : null;
+        return fx ? local.map((p, i) => (isNum(p) && isNum(fx[i]!) && fx[i]! > 0 ? p / fx[i]! : NaN)) : local;
+      };
+      let cnyW = 0;
+      const legs: Array<{ w: number; px: number[] }> = [];
+      for (const h of versions[0]!.holdings) {
+        const w = (Number(h.weight_pct) || 0) / 100;
+        const key = holdingKey(h);
+        if (h.country === "CASH") {
+          if (key === "CASH:CNY") cnyW += w;
+          continue;
+        }
+        const x = assets.get(key);
+        if (w && x && bySym.has(x.yahoo)) legs.push({ w, px: usdP(x.yahoo) });
+      }
+      const rfP = rfDailyFrom(pc, alignP(RF));
+      const spxP = alignP(SPX);
+      const csiP = usdP(CSI);
+      const ret = (s: number[], i: number) => (isNum(s[i - 1]!) && isNum(s[i]!) && s[i - 1]! > 0 ? s[i]! / s[i - 1]! - 1 : 0);
+      const preNav = new Array<number>(pc.length).fill(NaN);
+      const preBm = new Array<number>(pc.length).fill(NaN);
+      preNav[pc.length - 1] = nav[0]!;
+      preBm[pc.length - 1] = bmLv[0]!;
+      for (let i = pc.length - 1; i > 0; i--) {
+        let r = 0;
+        let invested = 0;
+        for (const l of legs) {
+          const p0 = l.px[i - 1]!;
+          const p1 = l.px[i]!;
+          if (isNum(p0) && isNum(p1) && p0 > 0) {
+            r += l.w * (p1 / p0 - 1);
+            invested += l.w;
+          }
+        }
+        if (cnyW && isNum(cnyP[i - 1]!) && isNum(cnyP[i]!) && cnyP[i]! > 0) {
+          r += cnyW * (cnyP[i - 1]! / cnyP[i]! - 1);
+          invested += cnyW;
+        }
+        r += (1 - invested) * (rfP[i] || 0);
+        preNav[i - 1] = preNav[i]! / (1 + r);
+        preBm[i - 1] = preBm[i]! / (1 + a * ret(spxP, i) + (1 - a) * ret(csiP, i));
+      }
+      extCal = [...preCal, ...cal];
+      extNav = [...preNav.slice(0, -1), ...nav];
+      extBm = [...preBm.slice(0, -1), ...bmLv];
+    }
+  }
+  const estimatedBefore = extCal !== cal ? start : undefined;
+  const period_returns = periodReturns(extCal, extNav, extBm, mode === "actual" ? "설정 이후" : "전체 구간", {
+    allFrom: cal[0]!,
+    estimatedBefore,
+  });
+  const monthly = monthlyReturns(extCal, extNav, extBm, estimatedBefore);
 
   // ---------------- Holdings / fundamentals ----------------
   const lastIdx = N - 1;
@@ -797,6 +876,29 @@ export async function analyzeMp(
     return "blend";
   };
 
+  const monthFrom = addDays(lastD, -30);
+  const closeAtOrBefore = (d: Daily | undefined, date: string): number => {
+    if (!d) return NaN;
+    let v = NaN;
+    for (let i = 0; i < d.dates.length && d.dates[i]! <= date; i++) v = d.close[i]!;
+    return v;
+  };
+  const monthReturns = (yahoo: string): { usd: number | null; local: number | null } => {
+    const own = bySym.get(yahoo);
+    if (!own?.dates.length) return { usd: null, local: null };
+    const endD = own.dates.at(-1)!;
+    const l0 = closeAtOrBefore(own, monthFrom);
+    const l1 = own.close.at(-1)!;
+    if (!isNum(l0) || l0 <= 0 || own.dates[0]! > monthFrom) return { usd: null, local: null };
+    const local = (l1 / l0 - 1) * 100;
+    const cur = own.currency || "USD";
+    if (cur === "USD") return { usd: local, local };
+    const fx = bySym.get(`${cur}=X`);
+    const f0 = closeAtOrBefore(fx, monthFrom);
+    const f1 = closeAtOrBefore(fx, endD);
+    return { usd: isNum(f0) && isNum(f1) && f1 > 0 ? ((l1 / f1) / (l0 / f0) - 1) * 100 : null, local };
+  };
+
   const holdings: MpHoldingRow[] = [];
   const allKeys = new Set<string>([...assets.keys(), ...cashKeys, "CASH:USD"]);
   if (cashCny) allKeys.add("CASH:CNY");
@@ -825,6 +927,7 @@ export async function analyzeMp(
     const ownPrev = own?.close.at(-2) ?? NaN;
     const ep = entryPx.get(k);
     const el = entryLocal.get(k);
+    const m1 = x && status !== "exited" ? monthReturns(x.yahoo) : { usd: null, local: null };
     holdings.push({
       key: k,
       ticker: x ? x.ticker : k.replace("CASH:", ""),
@@ -843,6 +946,8 @@ export async function analyzeMp(
       return_since_entry_pct: ep && p && isNum(p[lastIdx]!) && status !== "exited" ? (p[lastIdx]! / ep - 1) * 100 : null,
       local_return_since_entry_pct:
         el && isNum(lastLocal) && status !== "exited" ? (lastLocal / el - 1) * 100 : null,
+      month_return_pct: m1.usd,
+      local_month_return_pct: m1.local,
       contribution_pct: contrib.get(k) || 0,
       fx_contribution_pct: fxContrib.get(k) || 0,
       week_contribution_pct: weekContrib.get(k) || 0,
