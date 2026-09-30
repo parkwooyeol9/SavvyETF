@@ -386,7 +386,7 @@ export default function MpEtfPanel() {
 
       <section className="geo-section" style={{ marginTop: 12 }}>
         <h3 className="geo-section-title">
-          편입 ETF <span className="meta-soft">({selIdx === 0 ? "최초 편입" : `리밸런싱 #${selIdx}`})</span>
+          편입 ETF {selIdx > 0 ? <span className="meta-soft">(리밸런싱 #{selIdx})</span> : null}
         </h3>
         <div className="us-pf-form us-pf-alloc-toolbar">
           {canEdit ? (

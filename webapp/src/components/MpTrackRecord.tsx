@@ -350,24 +350,6 @@ export default function MpTrackRecord({ id, ext }: { id: MpTrackId; ext?: ExtPoi
           <p className="meta-soft" style={{ marginTop: 6 }}>* 부분 연도(설정 연도 또는 진행 중인 연도).</p>
         </>
       ) : null}
-      <p className="meta-soft" style={{ marginTop: 6 }}>
-        데이터:{" "}
-        <a href={data.source_url} target="_blank" rel="noreferrer">
-          Atlas portfolio-lab 공개 API ({id})
-        </a>
-        {data.from_snapshot ? " · 스냅샷" : ""}. BM 산식·통화는 원본에 미기재
-        {id === "MP2"
-          ? " — 일간 회귀 기준 2026년은 S&P500 70 / CSI300 30(현지통화)과 거의 일치(R² 0.998)하지만, 2020~22년은 주식 노출이 약 65%(S&P 0.55 · CSI 0.10)로 낮고 연 −2%p 안팎의 차감이 있어 기간별로 BM 구성이 달랐던 것으로 추정됩니다"
-          : " — 일간 회귀 기준 MSCI ACWI 노출 약 0.8로, 현재 설정한 60/30/10 BM과는 다른 산식입니다"}
-        .
-      </p>
-      {data.notes.length ? (
-        <ul className="meta-soft" style={{ marginTop: 4 }}>
-          {data.notes.map((n) => (
-            <li key={n}>{n}</li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 }
