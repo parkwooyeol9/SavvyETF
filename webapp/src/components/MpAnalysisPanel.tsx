@@ -317,7 +317,6 @@ export default function MpAnalysisPanel() {
       <MpTrackRecord
         id="MP2"
         ext={res?.ok ? res.series.map((p) => ({ date: p.date, port: p.port, bm: p.bm })) : undefined}
-        extNote="현재 편입 구성 시뮬레이션 수익률(실제 기록 아님)"
       />
 
       {/* ---------------- Versions ---------------- */}

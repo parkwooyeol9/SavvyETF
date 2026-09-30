@@ -298,7 +298,6 @@ export default function MpEtfPanel() {
       <MpTrackRecord
         id="MP1"
         ext={res?.ok ? res.series.map((p) => ({ date: p.date, port: p.port, bm: p.bm })) : undefined}
-        extNote="현재 편입 구성 시뮬레이션 수익률"
       />
 
       <section className="geo-section" style={{ marginTop: 12 }}>

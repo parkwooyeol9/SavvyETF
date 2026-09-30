@@ -49,7 +49,7 @@ type ExtPoint = { date: string; port: number; bm: number };
  * Recorded track record. `ext` (live simulation levels) is chain-linked after the last
  * recorded date and drawn dashed as an estimate.
  */
-export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext?: ExtPoint[]; extNote?: string }) {
+export default function MpTrackRecord({ id, ext }: { id: MpTrackId; ext?: ExtPoint[] }) {
   const [data, setData] = useState<Track | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("all");
@@ -106,24 +106,13 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
     const b0 = startRow.bm;
     let pk = -Infinity;
     let bk = -Infinity;
-    const rows: Array<Record<string, number | string | null>> = rec.map((p) => {
+    return (rec.length ? [...rec, ...extTail] : rec).map((p) => {
       const mp = (p.port / p0) * 100;
       const bm = (p.bm / b0) * 100;
       pk = Math.max(pk, mp);
       bk = Math.max(bk, bm);
       return { t: p.date, MP: mp, BM: bm, 초과: (mp / bm - 1) * 100, MP_DD: (mp / pk - 1) * 100, BM_DD: (bm / bk - 1) * 100 };
     });
-    if (extTail.length && rows.length) {
-      const lastRow = rows[rows.length - 1]!;
-      lastRow["MP 추정"] = lastRow.MP;
-      lastRow["BM 추정"] = lastRow.BM;
-      for (const p of extTail) {
-        const mp = (p.port / p0) * 100;
-        const bm = (p.bm / b0) * 100;
-        rows.push({ t: p.date, MP: null, BM: null, "MP 추정": mp, "BM 추정": bm, 초과: (mp / bm - 1) * 100, MP_DD: null, BM_DD: null });
-      }
-    }
-    return rows;
   }, [data, range, extTail]);
 
   const yearsGrid = useMemo(() => {
@@ -202,23 +191,11 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
             <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => (Number.isFinite(v) ? v.toFixed(2) : "—")} />
             <Legend wrapperStyle={{ color: "#8fa3b8", fontSize: 12 }} />
             <ReferenceLine y={100} stroke="#475569" />
-            <Line type="monotone" dataKey="MP" stroke="#60a5fa" strokeWidth={2.2} dot={false} isAnimationActive={false} connectNulls={false} />
-            <Line type="monotone" dataKey="BM" stroke="#e8c547" strokeWidth={1.6} dot={false} isAnimationActive={false} connectNulls={false} />
-            {extTail.length ? (
-              <Line type="monotone" dataKey="MP 추정" stroke="#60a5fa" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-            ) : null}
-            {extTail.length ? (
-              <Line type="monotone" dataKey="BM 추정" stroke="#e8c547" strokeWidth={1.4} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-            ) : null}
+            <Line type="monotone" dataKey="MP" stroke="#60a5fa" strokeWidth={2.2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="BM" stroke="#e8c547" strokeWidth={1.6} dot={false} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      {extTail.length ? (
-        <p className="meta-soft">
-          점선: 기록 마지막일({data.last_date}) 이후 {extTail.at(-1)!.date}까지는 {extNote || "현재 편입 구성 시뮬레이션 수익률"}을 이어 붙인 추정치입니다.
-        </p>
-      ) : null}
-
       <div className="us-pf-split" style={{ marginTop: 10 }}>
         <div className="kr-chart" style={{ height: 170 }}>
           <p className="meta-soft">누적 초과수익 (MP/BM − 1, %)</p>
@@ -253,11 +230,6 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
           <h3 className="geo-section-title">
             기간 수익률 <span className="meta-soft">· {asOf} 기준</span>
           </h3>
-          {extTail.length ? (
-            <p className="meta-soft">
-              기록 마지막일({data.last_date})까지는 실제 기록, 이후 {asOf}까지는 현재 편입 구성 수익률을 이어 붙여 계산했습니다.
-            </p>
-          ) : null}
           <div className="table-wrap" style={{ marginTop: 8 }}>
             <table className="data-table">
               <thead>
