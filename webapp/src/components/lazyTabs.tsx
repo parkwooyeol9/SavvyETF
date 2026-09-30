@@ -40,6 +40,7 @@ export const GraphTab = dynamic(() => import("@/components/GraphTab"), { loading
 export const WallStreetGurusTab = dynamic(() => import("@/components/WallStreetGurusTab"), { loading });
 export const TradingSignalsTab = dynamic(() => import("@/components/TradingSignalsTab"), { loading });
 export const MoneyFlowTab = dynamic(() => import("@/components/MoneyFlowTab"), { loading });
+export const ThirteenFTab = dynamic(() => import("@/components/ThirteenFTab"), { loading });
 export const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading });
 export const UsPortfolioTab = dynamic(() => import("@/components/UsPortfolioTab"), { loading });
 export const MpTab = dynamic(() => import("@/components/MpTab"), { loading });

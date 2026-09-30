@@ -39,6 +39,7 @@ export type ShellTabId =
   | "ideas"
   | "weightopt"
   | "gurus"
+  | "thirteenf"
   | "signals"
   | "eventstudy"
   | "aiport"
@@ -123,6 +124,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "research",
   "quant",
   "gurus",
+  "thirteenf",
   "eventstudy",
   "kosdaq100",
   "moneyflow",
@@ -208,6 +210,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   ideas: "AI Pick",
   weightopt: "비중 최적화",
   gurus: "월가 구루",
+  thirteenf: "13F",
   signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
@@ -307,7 +310,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "fundmgr",
         label: "펀드매니저",
-        tabs: ["gurus", "moneyflow"],
+        tabs: ["gurus", "moneyflow", "thirteenf"],
       },
     ],
   },

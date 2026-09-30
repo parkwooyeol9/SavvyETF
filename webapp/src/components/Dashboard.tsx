@@ -42,6 +42,7 @@ import {
   WallStreetGurusTab,
   TradingSignalsTab,
   MoneyFlowTab,
+  ThirteenFTab,
   MpTab,
   AiPortTab,
   MinuteForecastTab,
@@ -361,6 +362,7 @@ function DashboardInner({
       tab === "signals" ||
       tab === "eventstudy" ||
       tab === "moneyflow" ||
+      tab === "thirteenf" ||
       tab === "etfdb" ||
       tab === "etfdbus" ||
       tab === "datacatalog" ||
@@ -597,6 +599,8 @@ function DashboardInner({
         <EventStudyTab />
       ) : tab === "moneyflow" ? (
         <MoneyFlowTab />
+      ) : tab === "thirteenf" ? (
+        <ThirteenFTab />
       ) : tab === "kr" ? (
         <>
           <KrMarketTab variant="market" />

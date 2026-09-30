@@ -12073,3 +12073,317 @@ a.chip {
     grid-template-columns: 1fr;
   }
 }
+
+/* 13F smart money */
+.thirteenf .tf-search {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.thirteenf .tf-search input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+.tf-sec {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.tf-sec-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-ticker {
+  font-size: 0.78em;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tf-cls {
+  margin-left: 0.4rem;
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.tf-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tf-badge.tf-new {
+  background: color-mix(in srgb, #4d7cff 22%, transparent);
+  color: #8fb0ff;
+}
+.tf-badge.tf-added {
+  background: color-mix(in srgb, var(--accent-2) 20%, transparent);
+  color: var(--accent-2);
+}
+.tf-badge.tf-trimmed {
+  background: color-mix(in srgb, #f87171 20%, transparent);
+  color: #f87171;
+}
+.tf-badge.tf-held {
+  background: color-mix(in srgb, var(--muted) 16%, transparent);
+  color: var(--muted);
+}
+.tf-badge.tf-exited {
+  background: color-mix(in srgb, #b91c1c 30%, transparent);
+  color: #fca5a5;
+}
+.tf-stack {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.tf-seg.tf-new,
+.tf-dot.tf-new {
+  background: #4d7cff;
+}
+.tf-seg.tf-added,
+.tf-dot.tf-added {
+  background: #1f8f5f;
+}
+.tf-seg.tf-trimmed,
+.tf-dot.tf-trimmed {
+  background: #c24141;
+}
+.tf-seg.tf-held,
+.tf-dot.tf-held {
+  background: #5d6b7e;
+}
+.tf-seg.tf-exited,
+.tf-dot.tf-exited {
+  background: #7f1d1d;
+}
+.tf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin-top: 0.55rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.tf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+}
+.tf-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.tf-title {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.tf-sub {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.tf-tags {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.tf-tag {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.tf-debt {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+}
+.tf-note {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+  font-size: 0.88rem;
+}
+.tf-about {
+  margin: 0.6rem 0 0;
+  line-height: 1.55;
+}
+.tf-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+.tf-stats > div {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.tf-stats b {
+  font-size: 1.15rem;
+}
+.tf-stats span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.tf-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+@media (max-width: 800px) {
+  .tf-two {
+    grid-template-columns: 1fr;
+  }
+}
+.tf-h4 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+.tf-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.tf-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 3.6rem;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+.tf-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.tf-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.tf-table td {
+  vertical-align: middle;
+}
+.tf-table th,
+.tf-table td.num,
+.tf-funds td {
+  white-space: nowrap;
+}
+.tf-funds .meta-soft {
+  font-size: 0.78rem;
+}
+.tf-table td.tf-chips-cell {
+  min-width: 300px;
+}
+.tf-chip-more {
+  align-self: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.tf-rank {
+  color: var(--muted);
+}
+.tf-funds tbody tr {
+  cursor: pointer;
+}
+.tf-funds tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.tf-funds tr.tf-selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.tf-stale {
+  color: var(--warn);
+}
+.tf-top3 {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.tf-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.tf-sort.on {
+  color: var(--accent);
+}
+.tf-link {
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.tf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.tf-chip {
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.tf-chip span {
+  color: var(--muted);
+}
+.tf-seg-btns {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0.5rem;
+}
+.tf-segbtn {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.tf-segbtn.on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
