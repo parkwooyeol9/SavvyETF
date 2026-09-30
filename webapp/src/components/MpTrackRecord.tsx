@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -49,25 +49,12 @@ type ExtPoint = { date: string; port: number; bm: number };
  * Recorded track record. `ext` (live simulation levels) is chain-linked after the last
  * recorded date and drawn dashed as an estimate.
  */
-export default function MpTrackRecord({
-  id,
-  ext,
-  extNote,
-  onData,
-}: {
-  id: MpTrackId;
-  ext?: ExtPoint[];
-  extNote?: string;
-  onData?: (t: Track) => void;
-}) {
+export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext?: ExtPoint[]; extNote?: string }) {
   const [data, setData] = useState<Track | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("all");
   const { secret, unlocked, ready } = useAdminSession();
   const isAdmin = ready && unlocked && !!secret;
-  const onDataRef = useRef(onData);
-  onDataRef.current = onData;
-
   useEffect(() => {
     if (!ready) return;
     let alive = true;
@@ -79,10 +66,7 @@ export default function MpTrackRecord({
         const j = (await r.json()) as Track;
         if (!alive) return;
         if (!j.ok) setErr(j.error || "기록 성과를 불러오지 못했습니다.");
-        else {
-          setData(j);
-          onDataRef.current?.(j);
-        }
+        else setData(j);
       })
       .catch((e: unknown) => alive && setErr(e instanceof Error ? e.message : String(e)));
     return () => {

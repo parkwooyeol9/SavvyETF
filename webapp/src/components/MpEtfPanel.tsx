@@ -35,8 +35,6 @@ import {
   type Freq,
 } from "@/components/MpUi";
 import MpTrackRecord from "@/components/MpTrackRecord";
-import { withRecordedMonths, type MpMonthRow } from "@/lib/mpPeriods";
-import type { MpTrackRecord as TrackData } from "@/lib/mpTrackRecord";
 import { useSharedMpPortfolio } from "@/components/useSharedMpPortfolio";
 import type { MpRegression, MpStyleRegression } from "@/lib/mpCore";
 import type { EtfAnalysis } from "@/lib/mpEtfAnalytics";
@@ -67,8 +65,6 @@ import {
 } from "@/lib/mpEtfPortfolio";
 import type { MpThemeNewsBlock } from "@/lib/mpNews";
 
-type TrackSeries = TrackData["series"];
-
 type Mode = "actual" | "backtest";
 
 const BM_FIELDS: Array<{ key: keyof EtfBm; label: string; group: "top" | "alt" }> = [
@@ -92,7 +88,6 @@ export default function MpEtfPanel() {
   const [mode, setMode] = useState<Mode>("actual");
   const [lookback, setLookback] = useState(365);
   const [res, setRes] = useState<EtfAnalysis | null>(null);
-  const [trackSeries, setTrackSeries] = useState<TrackSeries | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -301,7 +296,6 @@ export default function MpEtfPanel() {
       </section>
 
       <MpTrackRecord
-        onData={(t) => setTrackSeries(t.series)}
         id="MP1"
         ext={res?.ok ? res.series.map((p) => ({ date: p.date, port: p.port, bm: p.bm })) : undefined}
         extNote="현재 편입 구성 시뮬레이션 수익률"
@@ -532,7 +526,7 @@ export default function MpEtfPanel() {
         ) : null}
       </section>
 
-      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} track={trackSeries} /> : null}
+      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} /> : null}
 
       <section className="geo-section" style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -627,20 +621,12 @@ function Results({
   freq,
   setFreq,
   canEdit,
-  track,
 }: {
   res: EtfAnalysis;
   freq: Freq;
   setFreq: (f: Freq) => void;
   canEdit: boolean;
-  track: TrackSeries | null;
 }) {
-  const recordThrough = (res.start_date ?? "").slice(0, 7);
-  const monthly = useMemo<MpMonthRow[]>(
-    () => (res.mode === "actual" ? withRecordedMonths(res.monthly, track, recordThrough) : res.monthly),
-    [res.mode, res.monthly, track, recordThrough],
-  );
-  const recordedMonths = monthly.filter((r) => r.recorded).map((r) => r.month);
   const m = res.metrics!;
   const chart = useMemo(
     () =>
@@ -751,53 +737,12 @@ function Results({
       </section>
 
       <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
-        <div className="us-pf-split">
+        <h3 className="geo-section-title">펀드 성과 지표</h3>
+        <p className="meta-soft">일간 총수익률(분배금 재투자) · 연환산 {res.ann_factor.toFixed(0)}일 · 무위험수익률 = 미 13주 T-bill</p>
+        <div className="us-pf-split" style={{ marginTop: 8 }}>
+          <MetricsTable p={m.port} b={m.bm} part="core" />
           <div>
-            <h3 className="geo-section-title">월별 수익률</h3>
             <div className="table-wrap" style={{ marginTop: 8 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>월</th>
-                    <th className="num">MP</th>
-                    <th className="num">BM</th>
-                    <th className="num">초과</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...monthly].reverse().map((r) => (
-                    <tr key={r.month}>
-                      <td>
-                        {r.month}
-                        {r.estimated ? <span className="meta-soft">*</span> : null}
-                      </td>
-                      <td className={`num ${tone(r.port_pct)}`}>{fmtPct(r.port_pct)}</td>
-                      <td className={`num ${tone(r.bm_pct)}`}>{fmtPct(r.bm_pct)}</td>
-                      <td className={`num ${tone(r.excess_pct)}`} style={{ background: heat(r.excess_pct, 3) }}>
-                        {fmtPct(r.excess_pct)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {recordedMonths.length ? (
-              <p className="meta-soft" style={{ marginTop: 6 }}>
-                {recordedMonths[0]} ~ {recordedMonths[recordedMonths.length - 1]}은 실제 운용 기록 수익률, 이후는 현재 편입
-                구성 기준 수익률입니다.
-              </p>
-            ) : null}
-            {monthly.some((r) => r.estimated) ? (
-              <p className="meta-soft" style={{ marginTop: 6 }}>
-                * 최초 편입 이전 구간이 포함된 수익률 — 최초 편입 비중을 매일 유지했다고 가정한 추정치입니다(당시 미상장 ETF 비중은 현금).
-              </p>
-            ) : null}
-          </div>
-          <div>
-            <h3 className="geo-section-title">펀드 성과 지표</h3>
-            <p className="meta-soft">일간 총수익률(분배금 재투자) · 연환산 {res.ann_factor.toFixed(0)}일 · 무위험수익률 = 미 13주 T-bill</p>
-            <MetricsTable p={m.port} b={m.bm} />
-            <div className="table-wrap" style={{ marginTop: 10 }}>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -817,6 +762,7 @@ function Results({
                 </tbody>
               </table>
             </div>
+            <MetricsTable p={m.port} b={m.bm} part="daily" />
           </div>
         </div>
       </section>

@@ -9,59 +9,6 @@ export type MpTrackPeriod = {
   annualized?: boolean;
 };
 
-export type MpMonthRow = {
-  month: string;
-  port_pct: number;
-  bm_pct: number;
-  excess_pct: number;
-  estimated?: boolean;
-  recorded?: boolean;
-};
-
-/** Calendar-month returns from month-end levels (first month uses the series start as base). */
-export function monthlyFromLevels(
-  dates: string[],
-  p: number[],
-  b: number[],
-): Map<string, { port_pct: number; bm_pct: number }> {
-  const out = new Map<string, { port_pct: number; bm_pct: number }>();
-  let i0 = 0;
-  for (let i = 0; i < dates.length; i++) {
-    const m = dates[i]!.slice(0, 7);
-    if (i === dates.length - 1 || dates[i + 1]!.slice(0, 7) !== m) {
-      out.set(m, { port_pct: (p[i]! / p[i0]! - 1) * 100, bm_pct: (b[i]! / b[i0]! - 1) * 100 });
-      i0 = i;
-    }
-  }
-  return out;
-}
-
-/** Replace live monthly rows up to `throughMonth` (inclusive) with recorded track months. */
-export function withRecordedMonths<T extends MpMonthRow>(
-  live: T[],
-  track: Array<{ date: string; port: number; bm: number }> | null | undefined,
-  throughMonth: string,
-): MpMonthRow[] {
-  if (!track?.length) return live;
-  const rec = monthlyFromLevels(
-    track.map((r) => r.date),
-    track.map((r) => r.port),
-    track.map((r) => r.bm),
-  );
-  const first = track[0]!.date.slice(0, 7);
-  return live.map((r) => {
-    const m = rec.get(r.month);
-    if (r.month > throughMonth || r.month <= first || !m) return r;
-    return {
-      month: r.month,
-      port_pct: m.port_pct,
-      bm_pct: m.bm_pct,
-      excess_pct: m.port_pct - m.bm_pct,
-      recorded: true,
-    };
-  });
-}
-
 function shiftDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);

@@ -103,9 +103,20 @@ export function Row({ label, v, cls }: { label: string; v: string; cls?: string 
   );
 }
 
-export function MetricsTable({ p, b, longDates = false }: { p: MpMetricSet; b: MpMetricSet; longDates?: boolean }) {
+export function MetricsTable({
+  p,
+  b,
+  longDates = false,
+  part = "all",
+}: {
+  p: MpMetricSet;
+  b: MpMetricSet;
+  longDates?: boolean;
+  /** "core" = return/risk rows, "daily" = best/worst day + up-day ratio. */
+  part?: "all" | "core" | "daily";
+}) {
   const dt = (d?: string | null) => (d ? d.slice(longDates ? 2 : 5) : "");
-  const rows: Array<[string, (x: MpMetricSet) => string, boolean?]> = [
+  const allRows: Array<[string, (x: MpMetricSet) => string, boolean?]> = [
     ["누적 수익률", (x) => fmtPct(x.total_return_pct), true],
     ["연환산 수익률", (x) => fmtPct(x.ann_return_pct), true],
     ["변동성 (연)", (x) => fmtPct(x.vol_pct, 2, false)],
@@ -122,12 +133,13 @@ export function MetricsTable({ p, b, longDates = false }: { p: MpMetricSet; b: M
     ["최악의 날", (x) => `${fmtPct(x.worst_day_pct)} ${dt(x.worst_day)}`],
     ["상승일 비율", (x) => fmtPct(x.win_rate_pct, 1, false)],
   ];
+  const rows = part === "core" ? allRows.slice(0, -3) : part === "daily" ? allRows.slice(-3) : allRows;
   return (
     <div className="table-wrap" style={{ marginTop: 8 }}>
       <table className="data-table">
         <thead>
           <tr>
-            <th>지표</th>
+            <th>{part === "daily" ? "일간 수익률 분포" : "지표"}</th>
             <th className="num">MP</th>
             <th className="num">BM</th>
           </tr>
