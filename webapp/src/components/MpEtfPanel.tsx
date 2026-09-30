@@ -729,35 +729,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
       <section className="geo-section geo-featured" style={{ marginTop: 16 }}>
         <div className="us-pf-split">
           <div>
-            <h3 className="geo-section-title">기간 수익률</h3>
-            <div className="table-wrap" style={{ marginTop: 8 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>기간</th>
-                    <th className="num">MP</th>
-                    <th className="num">BM</th>
-                    <th className="num">초과</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {res.period_returns.map((p) => (
-                    <tr key={p.key}>
-                      <td>
-                        {p.label}
-                        {p.estimated ? <span className="meta-soft">*</span> : null}
-                      </td>
-                      <td className={`num ${tone(p.port_pct)}`}>{fmtPct(p.port_pct)}</td>
-                      <td className={`num ${tone(p.bm_pct)}`}>{fmtPct(p.bm_pct)}</td>
-                      <td className={`num ${tone(p.excess_pct)}`}>{fmtPct(p.excess_pct)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <h3 className="geo-section-title" style={{ marginTop: 14 }}>
-              월별 수익률
-            </h3>
+            <h3 className="geo-section-title">월별 수익률</h3>
             <div className="table-wrap" style={{ marginTop: 8 }}>
               <table className="data-table">
                 <thead>
@@ -785,7 +757,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: EtfAnalysis; freq: Freq
                 </tbody>
               </table>
             </div>
-            {res.period_returns.some((p) => p.estimated) || res.monthly.some((r) => r.estimated) ? (
+            {res.monthly.some((r) => r.estimated) ? (
               <p className="meta-soft" style={{ marginTop: 6 }}>
                 * 최초 편입 이전 구간이 포함된 수익률 — 최초 편입 비중을 매일 유지했다고 가정한 추정치입니다(당시 미상장 ETF 비중은 현금).
               </p>

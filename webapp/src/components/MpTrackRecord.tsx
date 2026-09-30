@@ -17,6 +17,7 @@ import {
 
 import { useAdminSession } from "@/components/AdminSession";
 import { fmtNum, fmtPct, heat, Kpi, MetricsTable, tone, tooltipStyle } from "@/components/MpUi";
+import { trackPeriodTable } from "@/lib/mpPeriods";
 import type { MpTrackId, MpTrackRecord as Track } from "@/lib/mpTrackRecord";
 
 type Range = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "all";
@@ -85,6 +86,17 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
       .map((p) => ({ date: p.date, port: (last.port * p.port) / base!.port, bm: (last.bm * p.bm) / base!.bm }));
   }, [data, ext]);
 
+  const periods = useMemo(() => {
+    if (!data) return [];
+    if (!extTail.length) return data.periods;
+    const rows = [...data.series, ...extTail];
+    return trackPeriodTable(
+      rows.map((r) => r.date),
+      rows.map((r) => r.port),
+      rows.map((r) => r.bm),
+    );
+  }, [data, extTail]);
+
   const chart = useMemo(() => {
     if (!data) return [];
     const last = data.series[data.series.length - 1]!;
@@ -147,8 +159,9 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
   }
 
   const m = data.metrics;
-  const per = (k: string) => data.periods.find((p) => p.key === k);
+  const per = (k: string) => periods.find((p) => p.key === k);
   const incAnn = per("all_ann");
+  const asOf = extTail.at(-1)?.date || data.last_date;
   const ytick = (v: string) => (range === "all" || range === "3y" ? v.slice(2, 7) : v.slice(5));
 
   return (
@@ -169,8 +182,8 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
         실제 운용 기록 지수(원본: {data.source || "MP1·MP2 입력 데이터"}) · {data.bm_label} · 평가일 기준
       </p>
       <div className="us-pf-stats" style={{ marginTop: 10 }}>
-        <Kpi label="설정 이후 MP" v={fmtPct(m.port.total_return_pct, 1)} cls={tone(m.port.total_return_pct)} />
-        <Kpi label="설정 이후 BM" v={fmtPct(m.bm.total_return_pct, 1)} cls={tone(m.bm.total_return_pct)} />
+        <Kpi label="설정 이후 MP" v={fmtPct(per("all")?.port_pct, 1)} cls={tone(per("all")?.port_pct)} />
+        <Kpi label="설정 이후 BM" v={fmtPct(per("all")?.bm_pct, 1)} cls={tone(per("all")?.bm_pct)} />
         <Kpi label="연환산 MP / BM" v={`${fmtPct(incAnn?.port_pct, 1)} / ${fmtPct(incAnn?.bm_pct, 1)}`} cls={tone(incAnn?.excess_pct)} />
         <Kpi label="연환산 초과" v={fmtPct(incAnn?.excess_pct, 1)} cls={tone(incAnn?.excess_pct)} />
         <Kpi label="YTD MP / BM" v={`${fmtPct(per("ytd")?.port_pct, 1)} / ${fmtPct(per("ytd")?.bm_pct, 1)}`} cls={tone(per("ytd")?.excess_pct)} />
@@ -238,7 +251,14 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
 
       <div className="us-pf-split" style={{ marginTop: 14 }}>
         <div>
-          <h3 className="geo-section-title">기간 수익률 (기록)</h3>
+          <h3 className="geo-section-title">
+            기간 수익률 <span className="meta-soft">· {asOf} 기준</span>
+          </h3>
+          {extTail.length ? (
+            <p className="meta-soft">
+              기록 마지막일({data.last_date})까지는 실제 기록, 이후 {asOf}까지는 현재 편입 구성 수익률을 이어 붙여 계산했습니다.
+            </p>
+          ) : null}
           <div className="table-wrap" style={{ marginTop: 8 }}>
             <table className="data-table">
               <thead>
@@ -250,7 +270,7 @@ export default function MpTrackRecord({ id, ext, extNote }: { id: MpTrackId; ext
                 </tr>
               </thead>
               <tbody>
-                {data.periods.map((p) => (
+                {periods.map((p) => (
                   <tr key={p.key}>
                     <td>{p.label}</td>
                     <td className={`num ${tone(p.port_pct)}`}>{fmtPct(p.port_pct)}</td>

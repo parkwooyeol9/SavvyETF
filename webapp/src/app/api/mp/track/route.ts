@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   }
   const wantFull = url.searchParams.get("full") === "1";
   try {
-    const data = await withServerCache(`mp:track:v2:${id}`, 30 * 60_000, 6 * 3600_000, () => loadMpTrackRecord(id as MpTrackId));
+    const data = await withServerCache(`mp:track:v3:${id}`, 30 * 60_000, 6 * 3600_000, () => loadMpTrackRecord(id as MpTrackId));
     if (wantFull) {
       const full = siteAdminAuthorized(request);
       return NextResponse.json(full ? data : { ...data, monthly: [], years: [] }, { headers: { "Cache-Control": "private, no-store" } });

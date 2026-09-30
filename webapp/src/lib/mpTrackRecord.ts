@@ -20,6 +20,7 @@ import {
   type MpMetricSet,
   type MpRelativeMetrics,
 } from "@/lib/mpCore";
+import { trackPeriodTable, type MpTrackPeriod } from "@/lib/mpPeriods";
 import snapshot from "@/lib/mpTrackSnapshot.json";
 
 export type MpTrackId = "MP1" | "MP2";
@@ -33,14 +34,7 @@ export const MP_TRACK_META: Record<MpTrackId, { label: string; bm_label: string 
 
 type Row = [string, number, number];
 
-export type MpTrackPeriod = {
-  key: string;
-  label: string;
-  port_pct: number | null;
-  bm_pct: number | null;
-  excess_pct: number | null;
-  annualized?: boolean;
-};
+export type { MpTrackPeriod };
 
 export type MpTrackRecord = {
   ok: boolean;
@@ -102,43 +96,6 @@ function fromSnapshot(id: MpTrackId): RawSeries {
 async function loadRaw(id: MpTrackId): Promise<RawSeries> {
   const live = await cachedLookup(`mp:track:raw1:${id}`, 3 * 3600_000, 24 * 3600_000, () => fetchRemote(id));
   return live ?? fromSnapshot(id);
-}
-
-function periodTable(dates: string[], p: number[], b: number[]): MpTrackPeriod[] {
-  const N = dates.length;
-  const last = dates[N - 1]!;
-  const at = (lv: number[], d: string) => {
-    let v: number | null = null;
-    for (let i = 0; i < N && dates[i]! <= d; i++) v = lv[i]!;
-    return v;
-  };
-  const spanYears = (from: string) => (Date.parse(`${last}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / (365.25 * 86_400_000);
-  const defs: Array<{ key: string; label: string; from: string; ann?: boolean }> = [
-    { key: "1w", label: "1주", from: addDays(last, -7) },
-    { key: "1m", label: "1개월", from: addDays(last, -30) },
-    { key: "3m", label: "3개월", from: addDays(last, -91) },
-    { key: "6m", label: "6개월", from: addDays(last, -182) },
-    { key: "ytd", label: "YTD", from: `${Number(last.slice(0, 4)) - 1}-12-31` },
-    { key: "1y", label: "1년", from: addDays(last, -365) },
-    { key: "3y", label: "3년 (연)", from: addDays(last, -1096), ann: true },
-    { key: "5y", label: "5년 (연)", from: addDays(last, -1826), ann: true },
-    { key: "all", label: "설정 이후 누적", from: dates[0]! },
-    { key: "all_ann", label: "설정 이후 (연)", from: dates[0]!, ann: true },
-  ];
-  return defs.map((d) => {
-    if (d.from < dates[0]!) return { key: d.key, label: d.label, port_pct: null, bm_pct: null, excess_pct: null, annualized: d.ann };
-    const p0 = at(p, d.from);
-    const b0 = at(b, d.from);
-    const yrs = spanYears(d.key.startsWith("all") ? dates[0]! : d.from);
-    const conv = (end: number, start: number | null) => {
-      if (!start) return null;
-      const g = end / start;
-      return (d.ann ? Math.pow(g, 1 / Math.max(yrs, 1e-9)) - 1 : g - 1) * 100;
-    };
-    const pr = conv(p[N - 1]!, p0);
-    const br = conv(b[N - 1]!, b0);
-    return { key: d.key, label: d.label, port_pct: pr, bm_pct: br, excess_pct: pr != null && br != null ? pr - br : null, annualized: d.ann };
-  });
 }
 
 function yearTable(dates: string[], p: number[], b: number[]) {
@@ -288,7 +245,7 @@ export async function loadMpTrackRecord(id: MpTrackId): Promise<MpTrackRecord> {
     last_date: dates[N - 1]!,
     notes,
     series: dates.map((d, i) => ({ date: d, port: pN[i]!, bm: bN[i]!, port_dd: pdd[i]!, bm_dd: bdd[i]! })),
-    periods: periodTable(dates, pN, bN),
+    periods: trackPeriodTable(dates, pN, bN),
     years: yearTable(dates, pN, bN),
     monthly: monthlyReturns(dates, pN, bN),
     metrics: { port: mp, bm: mb, rel },
