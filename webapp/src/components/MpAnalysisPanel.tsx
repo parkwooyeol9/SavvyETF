@@ -35,6 +35,8 @@ import {
   type Freq,
 } from "@/components/MpUi";
 import MpTrackRecord from "@/components/MpTrackRecord";
+import { withRecordedMonths, type MpMonthRow } from "@/lib/mpPeriods";
+import type { MpTrackRecord as TrackData } from "@/lib/mpTrackRecord";
 import { useSharedMpPortfolio } from "@/components/useSharedMpPortfolio";
 import type { MpAnalysis, MpRegression, MpStyleRegression } from "@/lib/mpAnalytics";
 import type { MpNewsBlock, MpNewsLang } from "@/lib/mpNews";
@@ -68,6 +70,8 @@ function fmtCap(n?: number | null): string {
   return `$${(n / 1e6).toFixed(0)}M`;
 }
 
+type TrackSeries = TrackData["series"];
+
 const SIZE_ROWS = [
   { key: "large", label: "대형" },
   { key: "mid", label: "중형" },
@@ -100,6 +104,7 @@ export default function MpAnalysisPanel() {
   const [mode, setMode] = useState<Mode>("actual");
   const [lookback, setLookback] = useState(365);
   const [res, setRes] = useState<MpAnalysis | null>(null);
+  const [trackSeries, setTrackSeries] = useState<TrackSeries | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -315,6 +320,7 @@ export default function MpAnalysisPanel() {
       </section>
 
       <MpTrackRecord
+        onData={(t) => setTrackSeries(t.series)}
         id="MP2"
         ext={res?.ok ? res.series.map((p) => ({ date: p.date, port: p.port, bm: p.bm })) : undefined}
         extNote="현재 편입 구성 시뮬레이션 수익률(실제 기록 아님)"
@@ -563,7 +569,7 @@ export default function MpAnalysisPanel() {
         ) : null}
       </section>
 
-      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} /> : null}
+      {res?.ok ? <Results res={res} freq={freq} setFreq={setFreq} canEdit={canEdit} track={trackSeries} /> : null}
 
       {/* ---------------- News ---------------- */}
       <section className="geo-section" style={{ marginTop: 16 }}>
@@ -656,7 +662,25 @@ export default function MpAnalysisPanel() {
 
 /* ================================================================== */
 
-function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq; setFreq: (f: Freq) => void; canEdit: boolean }) {
+function Results({
+  res,
+  freq,
+  setFreq,
+  canEdit,
+  track,
+}: {
+  res: MpAnalysis;
+  freq: Freq;
+  setFreq: (f: Freq) => void;
+  canEdit: boolean;
+  track: TrackSeries | null;
+}) {
+  const recordThrough = (res.start_date ?? "").slice(0, 7);
+  const monthly = useMemo<MpMonthRow[]>(
+    () => (res.mode === "actual" ? withRecordedMonths(res.monthly, track, recordThrough) : res.monthly),
+    [res.mode, res.monthly, track, recordThrough],
+  );
+  const recordedMonths = monthly.filter((r) => r.recorded).map((r) => r.month);
   const m = res.metrics!;
   const chart = useMemo(
     () =>
@@ -777,7 +801,7 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                   </tr>
                 </thead>
                 <tbody>
-                  {[...res.monthly].reverse().map((r) => (
+                  {[...monthly].reverse().map((r) => (
                     <tr key={r.month}>
                       <td>
                         {r.month}
@@ -793,7 +817,13 @@ function Results({ res, freq, setFreq, canEdit }: { res: MpAnalysis; freq: Freq;
                 </tbody>
               </table>
             </div>
-            {res.monthly.some((r) => r.estimated) ? (
+            {recordedMonths.length ? (
+              <p className="meta-soft" style={{ marginTop: 6 }}>
+                {recordedMonths[0]} ~ {recordedMonths[recordedMonths.length - 1]}은 실제 운용 기록 수익률, 이후는 현재 편입
+                구성 기준 수익률입니다.
+              </p>
+            ) : null}
+            {monthly.some((r) => r.estimated) ? (
               <p className="meta-soft" style={{ marginTop: 6 }}>
                 * 최초 편입 이전 구간이 포함된 수익률 — 최초 편입 비중을 매일 유지했다고 가정한 추정치입니다(당시 미상장 종목 비중은 현금).
               </p>
