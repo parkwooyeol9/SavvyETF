@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETF 리밸런싱 모니터 · SavvyETF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Instrument+Serif&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* SavvyETF webapp/src/app/globals.css 토큰과 같은 값 */
+  :root {
+    --bg: #0b1018; --panel: #141d2b; --panel-2: #1a2538; --text: #e8eef5; --muted: #8fa3b8;
+    --accent: #4da3ff; --accent-2: #3dd68c; --warn: #fbbf24; --border: #2b3648; --radius: 12px;
+    --sell: #ff6b6b; --buy: #3dd68c; --sans: "DM Sans", "Noto Sans KR", system-ui, sans-serif;
+    --display: "Instrument Serif", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: var(--sans); color: var(--text); background: var(--bg); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mesh { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse 70% 50% at 10% -5%, rgba(77,163,255,.14), transparent 55%),
+                radial-gradient(ellipse 50% 40% at 95% 5%, rgba(61,214,140,.08), transparent 50%); }
+  .shell { width: min(1480px, calc(100% - 32px)); margin: 0 auto; padding: 20px 0 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 18px; }
+  h1 { font-family: var(--display); font-weight: 400; font-size: clamp(28px, 4vw, 40px); margin: 0; letter-spacing: .2px; }
+  h1 em { color: var(--accent); font-style: italic; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .panel { background: rgba(20,29,43,.82); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px 18px; }
+  .panel h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+  .panel .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+  .grid { display: grid; gap: 14px; }
+  .kpis { grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: 14px; }
+  .kpi .label { color: var(--muted); font-size: 12px; }
+  .kpi .value { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .two { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); margin-top: 14px; }
+  @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } .two { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .shell { width: calc(100% - 24px); } .bars { grid-template-columns: 84px 1fr 1fr 52px; } .kpi .value { font-size: 20px; } header .meta { font-size: 12px; } }
+
+  /* timeline */
+  .timeline { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+  .day { flex: 0 0 150px; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; color: var(--text); cursor: pointer; font: inherit; }
+  .day:hover { border-color: #3f5170; }
+  .day.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .day.past { opacity: .5; }
+  .day .d { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .day .w { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .day .n { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .day .bar { height: 5px; background: #24324a; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .day .bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; min-height: 18px; }
+  .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .tag.exp { color: var(--warn); border-color: rgba(251,191,36,.45); }
+  .tag.idx { color: var(--accent); border-color: rgba(77,163,255,.45); }
+  .tag.dd { color: var(--accent-2); border-color: rgba(61,214,140,.45); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 7px 8px; border-bottom: 1px solid rgba(43,54,72,.6); vertical-align: top; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tw { overflow-x: auto; }
+  .tw table { min-width: 560px; }
+  .grid > * { min-width: 0; }
+  .etfname { font-weight: 600; }
+  .small { color: var(--muted); font-size: 11.5px; }
+  .chip { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .chip.ok { background: rgba(61,214,140,.15); color: var(--accent-2); }
+  .chip.wait { background: rgba(251,191,36,.12); color: var(--warn); }
+  .chip.off { background: rgba(143,163,184,.12); color: var(--muted); }
+
+  /* diverging bars */
+  .bars { display: grid; grid-template-columns: 112px 1fr 1fr 74px; align-items: center; column-gap: 0; row-gap: 6px; font-size: 13px; }
+  .bars .hd { color: var(--muted); font-size: 11.5px; padding-bottom: 4px; }
+  .bars .nm { padding-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .bars .neg { display: flex; justify-content: flex-end; border-right: 1px solid #3a4a63; }
+  .bars .pos { display: flex; justify-content: flex-start; }
+  .bars .b { height: 14px; border-radius: 3px; position: relative; min-width: 2px; }
+  .bars .neg .b { background: var(--sell); border-radius: 3px 0 0 3px; }
+  .bars .pos .b { background: var(--buy); border-radius: 0 3px 3px 0; }
+  .bars .v { font-size: 11.5px; font-variant-numeric: tabular-nums; padding: 0 6px; white-space: nowrap; }
+  .bars .lvl { text-align: right; }
+  .lvl-high { color: var(--sell); font-weight: 700; } .lvl-mid { color: var(--warn); } .lvl-low { color: var(--accent-2); } .lvl-unknown { color: var(--muted); }
+  .breakdown { grid-column: 1 / -1; background: var(--panel-2); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--muted); }
+  .scen { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 0 0 12px; font-size: 12.5px; }
+  .scen label { cursor: pointer; } .scen input { accent-color: var(--accent); }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+  details { margin-top: 14px; } summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  ul.notes { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; }
+  .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="mesh"></div>
+<div class="shell">
+  <header>
+    <h1>ETF <em>리밸런싱</em> 모니터</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section class="grid kpis" id="kpis"></section>
+
+  <section class="panel">
+    <h2>매매일 캘린더</h2>
+    <p class="sub">정기변경 효력일 직전 영업일 종가가 매매일입니다. 막대는 그날 정기변경하는 ETF 순자산 합계. 날짜를 누르면 아래 표가 바뀝니다.</p>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <section class="grid two">
+    <div class="panel">
+      <h2 id="impactTitle">종목별 예상 순매매</h2>
+      <p class="sub">보유비중이 수집되고 규칙이 확인된 ETF만 합산. 막대를 누르면 ETF별 내역. 오른쪽은 20일 평균 거래대금 대비 비율.</p>
+      <div class="scen" id="scen"></div>
+      <div id="impact"></div>
+    </div>
+    <div class="panel">
+      <h2 id="etfTitle">정기변경 ETF</h2>
+      <p class="sub">계산 상태: <span class="chip ok">계산</span> 비중·규칙 있음 · <span class="chip wait">비중 필요</span> fetch 실행 필요 · <span class="chip off">규칙 미확인</span></p>
+      <div id="etfs"></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top:14px">
+    <h2>ETF별 목표비중과 예상 매매</h2>
+    <p class="sub">현재 비중 → 정기변경 후 목표 비중. 금액 = 순자산 × 비중 변화.</p>
+    <div id="flows"></div>
+    <details>
+      <summary>가정·출처·규칙</summary>
+      <ul class="notes" id="assumptions"></ul>
+    </details>
+  </section>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  const D = window.REBALANCE_DATA;
+  if (!D) { document.body.innerHTML = '<p style="padding:24px">data.js 가 없습니다. <code>python -m Claude_Work.rebalance.build</code> 를 먼저 실행하세요.</p>'; return; }
+  const WD = ['일','월','화','수','목','금','토'];
+  const fmt = (v, d = 0) => v == null ? '–' : Number(v).toLocaleString('ko-KR', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const eok = v => v == null ? '–' : (Math.abs(v) >= 10000 ? fmt(v / 10000, 2) + '조' : fmt(v) + '억');
+  const sgn = v => (v > 0 ? '+' : '') + fmt(v);
+  const day = s => { const d = new Date(s + 'T00:00:00'); return { md: `${d.getMonth() + 1}/${d.getDate()}`, w: WD[d.getDay()] }; };
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const asOf = new Date(D.as_of + 'T00:00:00');
+  const dday = s => Math.round((new Date(s + 'T00:00:00') - asOf) / 864e5);
+
+  const expirySet = new Set(D.expiries.map(e => e.expiry));
+  const etfByCode = Object.fromEntries(D.etfs.map(e => [e.code, e]));
+  const upcoming = D.trade_days.filter(d => d.status === 'upcoming');
+  let selected = (upcoming.slice().sort((a, b) => b.aum_eok - a.aum_eok)[0] || D.trade_days[0] || {}).trade_date;
+  if (upcoming.length) selected = upcoming.find(d => d.trade_date === selected) ? selected : upcoming[0].trade_date;
+  const scenChoice = {};  // etf_code -> scenario_id
+  D.flows.filter(f => f.primary).forEach(f => scenChoice[f.etf_code] = f.scenario_id);
+
+  document.getElementById('meta').textContent = `기준일 ${D.as_of} · 생성 ${D.generated_at.replace('T', ' ').slice(0, 16)} · 거래대금 ${D.adv_as_of || '미수집'}`;
+
+  function impactRows(date) {
+    const flows = D.flows.filter(f => f.trade_date === date && scenChoice[f.etf_code] === f.scenario_id);
+    const map = {};
+    flows.forEach(f => f.trades.forEach(t => {
+      const r = map[t.code] || (map[t.code] = { code: t.code, name: t.name, net: 0, by: [] });
+      r.net += t.amount_eok; r.by.push({ etf: f.etf_name, amt: t.amount_eok, sc: f.scenario_id });
+    }));
+    const adv = {}; D.impact.forEach(r => { if (r.adv_eok) adv[r.code] = r.adv_eok; });
+    return Object.values(map).map(r => {
+      const a = adv[r.code]; const ratio = a ? Math.abs(r.net) / a : null;
+      return { ...r, adv: a, ratio, level: ratio == null ? 'unknown' : ratio >= .1 ? 'high' : ratio >= .03 ? 'mid' : 'low' };
+    }).sort((x, y) => Math.abs(y.net) - Math.abs(x.net));
+  }
+
+  function renderKpis() {
+    const next = upcoming[0];
+    const big = upcoming.slice().sort((a, b) => b.aum_eok - a.aum_eok)[0];
+    const rows = impactRows(selected);
+    const top = rows[0];
+    const computed = new Set(D.flows.map(f => f.etf_code)).size;
+    const total = D.etfs.filter(e => e.kind === 'etf').length;
+    const cards = [
+      ['다음 매매일', next ? `${day(next.trade_date).md} (${day(next.trade_date).w})` : '–', next ? `D-${dday(next.trade_date)} · ETF ${next.etfs.length}개` : ''],
+      ['최대 매매일', big ? `${day(big.trade_date).md}` : '–', big ? `정기변경 ETF 순자산 ${eok(big.aum_eok)}` : ''],
+      ['선택일 최대 순매매', top ? top.name : '–', top ? `${sgn(Math.round(top.net))}억원` : '계산된 ETF 없음'],
+      ['계산 커버리지', `${computed} / ${total}`, '규칙·비중이 있는 ETF 수'],
+    ];
+    document.getElementById('kpis').innerHTML = cards.map(([l, v, n]) =>
+      `<div class="panel kpi"><div class="label">${l}</div><div class="value">${esc(v)}</div><div class="note">${esc(n)}</div></div>`).join('');
+  }
+
+  function renderTimeline() {
+    const max = Math.max(1, ...D.trade_days.map(d => d.aum_eok));
+    document.getElementById('timeline').innerHTML = D.trade_days.map(d => {
+      const x = day(d.trade_date);
+      const tags = [];
+      if (expirySet.has(d.trade_date)) tags.push('<span class="tag exp">옵션만기</span>');
+      if (d.has_index) tags.push('<span class="tag idx">지수 정기변경</span>');
+      if (d.status === 'upcoming') tags.push(`<span class="tag dd">D-${dday(d.trade_date)}</span>`);
+      return `<button class="day ${d.trade_date === selected ? 'active' : ''} ${d.status === 'past' ? 'past' : ''}" data-d="${d.trade_date}">
+        <span class="d">${x.md}</span><span class="w">${x.w}</span>
+        <div class="n">ETF ${d.etfs.length}개 · ${d.aum_eok ? eok(d.aum_eok) : (d.has_index ? '지수 추종 전체' : '–')}</div>
+        <div class="bar"><span style="width:${(d.aum_eok / max * 100).toFixed(1)}%"></span></div>
+        <div class="tags">${tags.join('')}</div></button>`;
+    }).join('');
+    document.querySelectorAll('.day').forEach(b => b.onclick = () => { selected = b.dataset.d; renderAll(); });
+  }
+
+  function renderEtfs() {
+    const evs = D.events.filter(e => e.trade_date === selected);
+    const x = day(selected);
+    document.getElementById('etfTitle').textContent = `정기변경 ETF · ${x.md}(${x.w}) 매매`;
+    if (!evs.length) { document.getElementById('etfs').innerHTML = '<p class="empty">이 날 정기변경하는 ETF가 없습니다.</p>'; return; }
+    const chip = s => s === 'ok' ? '<span class="chip ok">계산</span>' : s === 'no_holdings' ? '<span class="chip wait">비중 필요</span>' : '<span class="chip off">규칙 미확인</span>';
+    document.getElementById('etfs').innerHTML = `<div class="tw"><table><thead><tr><th>ETF</th><th class="num">순자산</th><th>규칙 · 효력일</th><th class="num">Cap</th><th>상태</th></tr></thead><tbody>` +
+      evs.map(e => { const m = etfByCode[e.etf_code] || {}; const ef = day(e.effective);
+        const notes = (m.notes || []).map(n => `<div class="small">· ${esc(n)}</div>`).join('');
+        return `<tr><td><div class="etfname">${esc(e.etf_name)}</div><div class="small">${esc(e.etf_code)} · ${esc(e.issuer || '')}${m.theme ? ' · ' + esc(m.theme) : ''}</div>${notes}</td>
+          <td class="num">${eok(e.aum_eok)}</td><td>${esc(e.rule)} <span class="small">${esc(e.rule_label)}</span><div class="small">효력 ${ef.md}(${ef.w})</div></td>
+          <td class="num">${m.cap_pct ? m.cap_pct + '%' : '–'}</td><td>${e.kind === 'index' ? '<span class="chip off">지수</span>' : chip(m.flow_status)}</td></tr>`; }).join('') + '</tbody></table></div>';
+  }
+
+  function renderScenarios() {
+    const groups = {};
+    D.flows.filter(f => f.trade_date === selected).forEach(f => (groups[f.etf_code] = groups[f.etf_code] || []).push(f));
+    const multi = Object.entries(groups).filter(([, fs]) => fs.length > 1);
+    document.getElementById('scen').innerHTML = multi.map(([code, fs]) =>
+      `<span><b style="font-weight:600">${esc(fs[0].etf_name)}</b>&nbsp; ` + fs.map(f =>
+        `<label><input type="radio" name="sc-${code}" value="${f.scenario_id}" ${scenChoice[code] === f.scenario_id ? 'checked' : ''}> ${esc(f.scenario_label)}</label>`).join(' &nbsp; ') + '</span>').join('');
+    document.querySelectorAll('.scen input').forEach(i => i.onchange = () => { scenChoice[i.name.slice(3)] = i.value; renderAll(); });
+  }
+
+  function renderImpact() {
+    const rows = impactRows(selected);
+    const x = day(selected);
+    document.getElementById('impactTitle').textContent = `종목별 예상 순매매 · ${x.md}(${x.w})`;
+    if (!rows.length) { document.getElementById('impact').innerHTML = '<p class="empty">계산할 수 있는 ETF가 없습니다. <code>python -m Claude_Work.rebalance.fetch --build</code> 로 보유비중을 수집하세요.</p>'; return; }
+    const max = Math.max(...rows.map(r => Math.abs(r.net)));
+    let html = '<div class="bars"><div class="hd">종목</div><div class="hd" style="text-align:right;padding-right:6px">매도</div><div class="hd" style="padding-left:6px">매수 (억원)</div><div class="hd" style="text-align:right">거래대금비</div>';
+    rows.forEach((r, i) => {
+      const w = (Math.abs(r.net) / max * 100).toFixed(1);
+      const bar = `<div class="b" style="width:${w}%"></div>`;
+      const val = `<span class="v">${sgn(Math.round(r.net))}</span>`;
+      html += `<div class="nm" data-i="${i}" title="${esc(r.code)}">${esc(r.name)}</div>` +
+        `<div class="neg">${r.net < 0 ? val + bar : ''}</div><div class="pos">${r.net >= 0 ? bar + val : ''}</div>` +
+        `<div class="lvl lvl-${r.level}">${r.ratio == null ? '–' : (r.ratio * 100).toFixed(1) + '%'}</div>` +
+        `<div class="breakdown" id="bd-${i}" hidden>${r.by.map(b => `${esc(b.etf)} (${esc(b.sc)}) ${sgn(Math.round(b.amt))}억`).join(' · ')}${r.adv ? ` · 20일 평균 거래대금 ${fmt(r.adv)}억` : ''}</div>`;
+    });
+    html += '</div>';
+    document.getElementById('impact').innerHTML = html;
+    document.querySelectorAll('.bars .nm').forEach(n => n.onclick = () => { const el = document.getElementById('bd-' + n.dataset.i); el.hidden = !el.hidden; });
+  }
+
+  function renderFlows() {
+    const fs = D.flows.filter(f => f.trade_date === selected && scenChoice[f.etf_code] === f.scenario_id);
+    if (!fs.length) { document.getElementById('flows').innerHTML = '<p class="empty">선택한 날짜에 계산된 ETF가 없습니다.</p>'; return; }
+    document.getElementById('flows').innerHTML = fs.map(f => {
+      const warn = f.coverage_pct < 95 ? ` · <span class="warn">비중 합계 ${f.coverage_pct}% (상위 종목만 수집)</span>` : '';
+      return `<h3 style="font-size:14px;margin:14px 0 2px">${esc(f.etf_name)} <span class="small">${esc(f.scenario_label)}</span></h3>
+      <div class="small" style="margin-bottom:6px">순자산 ${eok(f.aum_eok)} · 비중 기준일 ${esc(f.holdings_as_of)} · 매수 ${sgn(Math.round(f.buy_eok))}억 / 매도 ${sgn(Math.round(f.sell_eok))}억 · ${esc(f.scenario_note)}${warn}</div>
+      <div class="tw"><table><thead><tr><th>종목</th><th class="num">현재</th><th class="num">목표</th><th class="num">변화</th><th class="num">예상 매매(억원)</th></tr></thead><tbody>` +
+      f.trades.map(t => `<tr><td>${esc(t.name)} <span class="small">${esc(t.code)}</span></td><td class="num">${t.current_pct.toFixed(2)}%</td><td class="num">${t.target_pct.toFixed(2)}%</td>
+        <td class="num">${(t.delta_pct > 0 ? '+' : '') + t.delta_pct.toFixed(2)}%p</td><td class="num" style="color:${t.amount_eok >= 0 ? 'var(--buy)' : 'var(--sell)'}">${sgn(Math.round(t.amount_eok))}</td></tr>`).join('') +
+      `</tbody></table></div><div class="small" style="margin-top:4px">출처: ${esc(f.holdings_source || '')}</div>`;
+    }).join('');
+  }
+
+  document.getElementById('assumptions').innerHTML =
+    D.assumptions.map(a => `<li>${esc(a)}</li>`).join('') +
+    D.sources.map(s => `<li>출처 · ${esc(s)}</li>`).join('') +
+    `<li>규칙 · ${Object.entries(D.rule_legend).map(([k, v]) => `${k} ${v}`).join(' / ')}</li>` +
+    `<li>옵션 만기일 · ${D.expiries.map(e => e.expiry).join(', ')}</li>`;
+
+  function renderAll() { renderKpis(); renderTimeline(); renderScenarios(); renderImpact(); renderEtfs(); renderFlows(); }
+  renderAll();
+})();
+</script>
+</body>
+</html>

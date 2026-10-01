@@ -111,6 +111,18 @@ export const DATA_CATALOG: DatasetSpec[] = [
     viewTab: "kosdaqactive",
   },
   {
+    id: "rebalance",
+    label: "ETF 리밸런싱",
+    group: "etf",
+    kind: "timeseries",
+    prefixes: ["rebalance/latest.json", "rebalance/snapshots/"],
+    hotWindow: "latest + 빌드일 스냅샷",
+    archive: "스냅샷 전량 유지",
+    volatile: false,
+    insight: "정기변경 일정·예상 매매(추정). 목표비중은 가정 기반이며 실제 체결 수급이 아님",
+    viewTab: "rebalance",
+  },
+  {
     id: "country_etf",
     label: "국가 ETF",
     group: "etf",

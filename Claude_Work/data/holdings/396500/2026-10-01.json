@@ -1,0 +1,60 @@
+{
+ "etf_code": "396500",
+ "as_of": "2026-10-01",
+ "aum_eok": 102124,
+ "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
+ "coverage_pct": 99.41,
+ "fetched_at": "2026-10-01T14:09:02+09:00",
+ "holdings": [
+  {
+   "code": "005930",
+   "name": "삼성전자",
+   "weight": 27.14
+  },
+  {
+   "code": "000660",
+   "name": "SK하이닉스",
+   "weight": 22.97
+  },
+  {
+   "code": "402340",
+   "name": "SK스퀘어",
+   "weight": 20.56
+  },
+  {
+   "code": "042700",
+   "name": "한미반도체",
+   "weight": 6.63
+  },
+  {
+   "code": "036930",
+   "name": "주성엔지니어링",
+   "weight": 5.75
+  },
+  {
+   "code": "007660",
+   "name": "이수페타시스",
+   "weight": 4.62
+  },
+  {
+   "code": "240810",
+   "name": "원익IPS",
+   "weight": 3.17
+  },
+  {
+   "code": "039030",
+   "name": "이오테크닉스",
+   "weight": 3.14
+  },
+  {
+   "code": "000990",
+   "name": "DB하이텍",
+   "weight": 3.03
+  },
+  {
+   "code": "058470",
+   "name": "리노공업",
+   "weight": 2.4
+  }
+ ]
+}

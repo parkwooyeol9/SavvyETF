@@ -40,6 +40,7 @@ from credit_monitor_scheduler import start_credit_monitor_scheduler
 from challenge_trading_scheduler import start_challenge_trading_scheduler
 from etf_weight_monitor_scheduler import start_etf_weight_monitor_scheduler
 from kosdaq_active_scheduler import start_kosdaq_active_scheduler
+from rebalance_scheduler import start_rebalance_scheduler
 from kosdaq100_scheduler import start_kosdaq100_scheduler
 from kospi200_panel_scheduler import start_kospi200_panel_scheduler
 from nlp_history import start_nlp_history_scheduler
@@ -3719,6 +3720,7 @@ if __name__ == "__main__":
     start_credit_monitor_scheduler()
     start_etf_weight_monitor_scheduler()
     start_kosdaq_active_scheduler()
+    start_rebalance_scheduler()
     start_kosdaq100_scheduler()
     start_kospi200_panel_scheduler()
     start_nlp_history_scheduler()

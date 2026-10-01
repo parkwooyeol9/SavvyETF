@@ -1,0 +1,60 @@
+{
+ "etf_code": "0148J0",
+ "as_of": "2026-10-01",
+ "aum_eok": 6374,
+ "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
+ "coverage_pct": 84.83,
+ "fetched_at": "2026-10-01T14:09:03+09:00",
+ "holdings": [
+  {
+   "code": "108490",
+   "name": "로보티즈",
+   "weight": 17.29
+  },
+  {
+   "code": "277810",
+   "name": "레인보우로보틱스",
+   "weight": 12.86
+  },
+  {
+   "code": "454910",
+   "name": "두산로보틱스",
+   "weight": 11.3
+  },
+  {
+   "code": "160190",
+   "name": "하이젠알앤엠",
+   "weight": 9.54
+  },
+  {
+   "code": "058610",
+   "name": "에스피지",
+   "weight": 8.61
+  },
+  {
+   "code": "090360",
+   "name": "로보스타",
+   "weight": 5.31
+  },
+  {
+   "code": "064400",
+   "name": "LG씨엔에스",
+   "weight": 5.18
+  },
+  {
+   "code": "348340",
+   "name": "뉴로메카",
+   "weight": 5.14
+  },
+  {
+   "code": "319400",
+   "name": "현대무벡스",
+   "weight": 5.1
+  },
+  {
+   "code": "307950",
+   "name": "현대오토에버",
+   "weight": 4.5
+  }
+ ]
+}

@@ -19,6 +19,7 @@ export type ShellTabId =
   | "etfweights"
   | "etfholdings"
   | "kosdaqactive"
+  | "rebalance"
   | "countryetf"
   | "kosdaq100"
   | "moneyflow"
@@ -71,7 +72,8 @@ export type NavGroupId =
   | "weights"
   | "derivs"
   | "learn"
-  | "db";
+  | "db"
+  | "rebal";
 
 export type BriefSection = {
   heading?: string;
@@ -151,6 +153,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "etfweights",
   "etfholdings",
   "kosdaqactive",
+  "rebalance",
   "countryetf",
   "esg",
   "geo",
@@ -191,6 +194,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfweights: "편입비 모니터",
   etfholdings: "비교",
   kosdaqactive: "코스닥액티브 ETF",
+  rebalance: "리밸런싱",
   countryetf: "국가 ETF",
   geo: "지정학",
   infra: "인프라",
@@ -270,6 +274,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: "db",
         label: "DB",
         tabs: ["etfdb", "etfdbus", "datacatalog"],
+      },
+      {
+        id: "rebal",
+        label: "리밸런싱",
+        tabs: ["rebalance"],
       },
     ],
   },
@@ -483,6 +492,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (v === "aietf" || v === "ai-etf" || v === "ai_etf") return "aietf";
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
+  if (v === "rebal" || v === "rebalancing" || v === "리밸런싱") return "rebalance";
   if (
     v === "datacatalog" ||
     v === "data-catalog" ||

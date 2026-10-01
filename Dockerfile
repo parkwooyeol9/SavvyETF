@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy every Python module so new features are not dropped from the image.
 COPY *.py ./
+COPY Claude_Work/ Claude_Work/
 COPY assets/ assets/
 COPY colab/ colab/
 COPY data/universes/ data/universes/

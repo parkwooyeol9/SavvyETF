@@ -6213,6 +6213,296 @@ button.community-post-title {
   }
 }
 
+/* ETF 리밸런싱 (정기변경 예상 수급) */
+.rb-root .geo-section {
+  margin-top: 0.9rem;
+}
+.rb-root > .geo-section:first-child {
+  margin-top: 0;
+}
+.rb-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+.rb-kpi-label,
+.rb-kpi-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.rb-kpi-value {
+  margin-top: 2px;
+  font-size: 1.55rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-timeline {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.rb-day {
+  flex: 0 0 150px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rb-day:hover {
+  border-color: #3f5170;
+}
+.rb-day.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.rb-day.past {
+  opacity: 0.5;
+}
+.rb-day-d {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rb-day-w {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.rb-day-n {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.rb-day-bar {
+  height: 5px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #24324a;
+}
+.rb-day-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.rb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 18px;
+  margin-top: 7px;
+}
+.rb-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+.rb-tag.exp {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.rb-tag.idx {
+  color: var(--accent);
+  border-color: rgba(77, 163, 255, 0.45);
+}
+.rb-tag.dd {
+  color: var(--accent-2);
+  border-color: rgba(61, 214, 140, 0.45);
+}
+.rb-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 0.85rem;
+}
+.rb-two > .geo-section {
+  margin-top: 0.9rem;
+}
+.rb-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.rb-chip.ok {
+  background: rgba(61, 214, 140, 0.15);
+  color: var(--accent-2);
+}
+.rb-chip.wait {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--warn);
+}
+.rb-chip.off {
+  background: rgba(143, 163, 184, 0.12);
+  color: var(--muted);
+}
+.rb-scen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+}
+.rb-scen strong {
+  margin-right: 8px;
+  font-weight: 600;
+}
+.rb-scen label {
+  margin-right: 12px;
+  cursor: pointer;
+}
+.rb-scen input {
+  accent-color: var(--accent);
+}
+.rb-bars {
+  display: grid;
+  grid-template-columns: 112px 1fr 1fr 74px;
+  align-items: center;
+  row-gap: 6px;
+  font-size: 0.82rem;
+}
+.rb-bars-row {
+  display: contents;
+}
+.rb-bars-hd {
+  padding-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.rb-bar-name {
+  padding: 0 8px 0 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rb-bar-neg {
+  display: flex;
+  justify-content: flex-end;
+  border-right: 1px solid #3a4a63;
+}
+.rb-bar-pos {
+  display: flex;
+  justify-content: flex-start;
+}
+.rb-bar {
+  flex-shrink: 0;
+  min-width: 2px;
+  height: 14px;
+}
+.rb-bar-neg .rb-bar {
+  border-radius: 3px 0 0 3px;
+  background: #ff6b6b;
+}
+.rb-bar-pos .rb-bar {
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-2);
+}
+.rb-bar-v {
+  padding: 0 6px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rb-lvl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rb-lvl-high {
+  color: #ff6b6b;
+  font-weight: 700;
+}
+.rb-lvl-mid {
+  color: var(--warn);
+}
+.rb-lvl-low {
+  color: var(--accent-2);
+}
+.rb-lvl-unknown {
+  color: var(--muted);
+}
+.rb-breakdown {
+  grid-column: 1 / -1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.rb-etf-table td:nth-child(2),
+.rb-etf-table td:nth-child(4),
+.rb-num-table td:nth-child(n + 2),
+.rb-num-table th:nth-child(n + 2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rb-note {
+  margin-top: 2px;
+}
+.rb-note,
+.rb-flow-meta {
+  font-size: 0.72rem;
+}
+.rb-flow h4 {
+  margin: 14px 0 2px;
+  font-size: 0.9rem;
+}
+.rb-flow-meta {
+  margin: 0 0 6px;
+}
+.rb-warn {
+  color: var(--warn);
+}
+.rb-details {
+  margin-top: 14px;
+}
+.rb-details summary {
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.rb-notes {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+@media (max-width: 1000px) {
+  .rb-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rb-two {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .rb-bars {
+    grid-template-columns: 84px 1fr 1fr 52px;
+  }
+  .rb-kpi-value {
+    font-size: 1.2rem;
+  }
+}
+
 /* KOSDAQ 100 monitor */
 .kq-hero {
   display: flex;

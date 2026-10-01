@@ -1,0 +1,9 @@
+{
+ "description": "kr_calendar.py에 없는 KRX 휴장일 보충 (새해 공표 시 추가)",
+ "holidays": [
+  {
+   "date": "2027-01-01",
+   "name": "신정"
+  }
+ ]
+}
