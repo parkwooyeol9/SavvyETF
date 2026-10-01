@@ -4,6 +4,7 @@ export type ShellTabId =
   | "main"
   | "simulate"
   | "usportfolio"
+  | "operationsnotes"
   | "education"
   | "geo"
   | "infra"
@@ -130,6 +131,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "eventstudy",
   "kosdaq100",
   "moneyflow",
+  "operationsnotes",
   "education",
   "simulate",
   "usportfolio",
@@ -181,6 +183,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   main: "메인",
   simulate: "시뮬레이션-ETF",
   usportfolio: "MP",
+  operationsnotes: "운영 노트",
   education: "ETF절세",
   research: "리서치",
   heatpick: "모의투자",
@@ -314,7 +317,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "learn",
     label: "교육",
-    tabs: ["cardnews", "bookclub", "heatpick", "education", "research"],
+    tabs: ["cardnews", "bookclub", "heatpick", "education", "research", "operationsnotes"],
     nested: [
       {
         id: "fundmgr",
@@ -327,6 +330,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
+  "operationsnotes",
   "aiport",
   "bookclub",
   "bookclubboard",

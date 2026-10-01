@@ -11,6 +11,7 @@ import {
   GreenMineralsTab,
   BookClubTab,
   EducationTab,
+  OperationsNotesTab,
   ResearchTab,
   CardNewsTab,
   ChartTradeTab,
@@ -338,6 +339,7 @@ function DashboardInner({
       tab === "main" ||
       tab === "simulate" ||
       tab === "usportfolio" ||
+      tab === "operationsnotes" ||
       tab === "education" ||
       tab === "research" ||
       tab === "heatpick" ||
@@ -460,7 +462,7 @@ function DashboardInner({
           className={`tabs tabs-secondary ${showTertiary ? "has-tertiary" : ""}`}
           aria-label={`${activeGroup.label} 하위 탭`}
         >
-          {visibleGroupTabs.map((id) => (
+          {visibleGroupTabs.filter((id) => id !== "operationsnotes").map((id) => (
             <button
               key={id}
               type="button"
@@ -480,6 +482,9 @@ function DashboardInner({
               {nested.label}
             </button>
           ))}
+          {visibleGroupTabs.includes("operationsnotes") ? (
+            <button type="button" className={`tab-btn sub ${tab === "operationsnotes" ? "active" : ""}`} onClick={() => setTab("operationsnotes")}>운영 노트</button>
+          ) : null}
         </nav>
       ) : null}
 
@@ -537,6 +542,8 @@ function DashboardInner({
         unlocked ? <ChartTradeTab /> : null
       ) : tab === "cardnews" ? (
         <CardNewsTab />
+      ) : tab === "operationsnotes" ? (
+        unlocked ? <OperationsNotesTab /> : null
       ) : tab === "education" ? (
         <EducationTab />
       ) : tab === "research" ? (
