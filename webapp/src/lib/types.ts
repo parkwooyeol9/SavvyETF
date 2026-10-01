@@ -57,6 +57,7 @@ export type ShellTabId =
   | "themeetf"
   | "bookclub"
   | "bookclubboard"
+  | "vault"
   | TabId;
 
 export type NavGroupId =
@@ -72,6 +73,7 @@ export type NavGroupId =
   | "weights"
   | "derivs"
   | "learn"
+  | "vault"
   | "db"
   | "rebal";
 
@@ -168,6 +170,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "themeetf",
   "bookclub",
   "bookclubboard",
+  "vault",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -234,6 +237,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aietf: "AI ETF",
   bookclub: "북클럽",
   bookclubboard: "Contact",
+  vault: "비밀 게시판",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -321,6 +325,8 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "펀드매니저",
         tabs: ["gurus", "moneyflow", "thirteenf"],
       },
+      // Single-tab nested group so it renders after 펀드매니저 (rightmost).
+      { id: "vault", label: "비밀 게시판", tabs: ["vault"] },
     ],
   },
 ];
@@ -337,6 +343,7 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "round",
   "signals",
   "stockboard",
+  "vault",
   "weightopt",
 ];
 

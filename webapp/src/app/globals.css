@@ -11845,6 +11845,54 @@ a.chip {
   gap: 0.4rem;
 }
 
+.vault-title {
+  margin: 0;
+  cursor: default;
+}
+
+.vault-title:hover {
+  color: var(--text);
+}
+
+.vault-memo {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vault-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.45rem 0 0.6rem;
+}
+
+.vault-file-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.vault-x {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+}
+
+.vault-x:hover {
+  color: var(--text);
+}
+
+.vault-removing > span:first-child {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
 .research-lightbox {
   position: fixed;
   inset: 0;

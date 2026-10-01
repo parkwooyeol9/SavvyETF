@@ -59,6 +59,7 @@ import {
   EtfDbTab,
   EtfDbUsTab,
   DataCatalogTab,
+  AdminVaultTab,
 } from "@/components/lazyTabs";
 import {
   AdminLoginControl,
@@ -387,7 +388,8 @@ function DashboardInner({
       tab === "polithemes" ||
       tab === "themeetf" ||
       tab === "bookclub" ||
-      tab === "bookclubboard"
+      tab === "bookclubboard" ||
+      tab === "vault"
     ) {
       return error
         ? `시황 동기화 참고: ${error}`
@@ -541,6 +543,8 @@ function DashboardInner({
         <EducationTab />
       ) : tab === "research" ? (
         <ResearchTab />
+      ) : tab === "vault" ? (
+        unlocked ? <AdminVaultTab /> : null
       ) : tab === "etfdb" ? (
         <EtfDbTab />
       ) : tab === "etfdbus" ? (

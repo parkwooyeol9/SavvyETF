@@ -292,6 +292,26 @@ export async function r2PresignPut(
   );
 }
 
+export async function r2PresignGet(
+  key: string,
+  opts?: { contentDisposition?: string; expiresIn?: number },
+): Promise<string> {
+  const cfg = getR2Config();
+  if (!cfg) throw new Error("R2 is not configured");
+  const client = clientFor(cfg);
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({
+      Bucket: cfg.bucket,
+      Key: key,
+      ...(opts?.contentDisposition
+        ? { ResponseContentDisposition: opts.contentDisposition }
+        : {}),
+    }),
+    { expiresIn: opts?.expiresIn ?? 300 },
+  );
+}
+
 export async function ensureR2UploadCors(): Promise<void> {
   const cfg = getR2Config();
   if (!cfg) return;

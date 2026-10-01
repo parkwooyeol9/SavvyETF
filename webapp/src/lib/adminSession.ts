@@ -29,3 +29,8 @@ export function clearAdminSecret() {
     window.sessionStorage.removeItem(key);
   }
 }
+
+/** `Authorization` header for admin-only API routes (see `lib/adminGuard.ts`). */
+export function adminAuthHeaders(secret: string): Record<string, string> {
+  return secret ? { Authorization: `Bearer ${secret}` } : {};
+}
