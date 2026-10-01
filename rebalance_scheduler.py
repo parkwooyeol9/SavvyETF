@@ -22,6 +22,8 @@ R2_KEY = "rebalance/latest.json"
 DEFAULT_HOUR_KST = 18
 DEFAULT_MINUTE_KST = 10
 DEFAULT_POLL_SECONDS = 60
+BOOTSTRAP_RETRY_SECONDS = 600
+BOOTSTRAP_MAX_ATTEMPTS = 6
 
 
 def _schedule_time_kst() -> tuple[int, int]:
@@ -67,8 +69,10 @@ def _published_as_of() -> str | None:
 def run_scheduled_rebalance() -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
+    update_scheduler_state(last_rebalance_attempt_at=datetime.now(KST).isoformat())
     if not begin_heavy_work_blocking("scheduled-rebalance", timeout=300):
         print(f"Scheduled rebalance skipped: heavy work still busy ({heavy_work_status()})")
+        update_scheduler_state(last_rebalance_error=f"heavy work busy ({heavy_work_status()})")
         return False
     try:
         from Claude_Work.rebalance import build, fetch
@@ -83,7 +87,13 @@ def run_scheduled_rebalance() -> bool:
             f"Scheduled rebalance: as_of={result['as_of']} computed_etfs={computed} "
             f"events={len(result['events'])} r2={'ok' if ok else 'skipped'}"
         )
-        if not ok:
+        if ok:
+            update_scheduler_state(
+                last_rebalance_ok_at=datetime.now(KST).isoformat(),
+                last_rebalance_as_of=result["as_of"],
+                last_rebalance_error=None,
+            )
+        else:
             update_scheduler_state(last_rebalance_error="R2 not configured or upload failed")
         return ok
     except Exception as exc:
@@ -107,7 +117,9 @@ def start_rebalance_scheduler() -> None:
 
     def loop() -> None:
         last_slot = _load_state().get("last_rebalance_slot")
-        bootstrapped = False
+        bootstrap_attempts = 0
+        bootstrap_done = False
+        next_bootstrap_at = 0.0
         print(f"rebalance scheduler active — trading days {hour:02d}:{minute:02d} KST ({catchup_minutes}m catch-up)")
 
         while True:
@@ -117,13 +129,17 @@ def start_rebalance_scheduler() -> None:
                     continue
 
                 now = datetime.now(KST)
-                if not bootstrapped:
-                    bootstrapped = True
+                if not bootstrap_done and time.monotonic() >= next_bootstrap_at:
                     published = _published_as_of()
                     expected = _expected_as_of(now, hour, minute)
-                    if not published or published < expected:
-                        print(f"rebalance bootstrap: R2 as_of={published} < {expected}")
-                        run_scheduled_rebalance()
+                    if published and published >= expected:
+                        bootstrap_done = True
+                    else:
+                        bootstrap_attempts += 1
+                        print(f"rebalance bootstrap #{bootstrap_attempts}: R2 as_of={published} < {expected}")
+                        ok = run_scheduled_rebalance()
+                        bootstrap_done = ok or bootstrap_attempts >= BOOTSTRAP_MAX_ATTEMPTS
+                        next_bootstrap_at = time.monotonic() + BOOTSTRAP_RETRY_SECONDS
 
                 update_scheduler_state(rebalance_scheduler_heartbeat=now.isoformat())
                 slot = None
