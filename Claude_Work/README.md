@@ -12,7 +12,7 @@ Claude_Work/
 │   └── build.py     위를 묶어 out/rebalance.json + web/data.js 생성 (--publish 로 R2 적재)
 ├── data/
 │   ├── universe.json           ETF 23개(지수 2 포함): 정기변경 월 · 규칙 · Cap · 시나리오
-│   ├── holdings/{코드}/{날짜}.json  보유비중 스냅샷 (현재 SOL AI반도체TOP2플러스 9/30)
+│   ├── holdings/{코드}/{날짜}.json  보유비중 스냅샷 (봇이 거래일마다 갱신)
 │   ├── adv.json                종목별 20일 평균 거래대금(억원) — fetch 가 채움
 │   └── holidays.json           kr_calendar.py 에 없는 휴장일 보충 (2027-01-01)
 ├── web/
@@ -66,7 +66,7 @@ python -m unittest discover -s Claude_Work/tests -t .
 매매일은 효력일 직전 영업일 종가로 봅니다. `D+3`, `E+10` 은 정의를 확인하지 못해 일정 계산에서 뺐습니다.
 
 **매매 규모.**
-1. `fixed` 종목은 그 비중으로 맞춥니다. 예: SOL AI반도체TOP2플러스의 삼성전자·SK하이닉스 25%.
+1. `fixed` 종목은 그 비중으로 맞춥니다. 예: SOL AI반도체TOP2플러스의 삼성전자·SK하이닉스 25% (나머지 종목은 `cap` 15%).
 2. 현금 비중은 유지합니다.
 3. 나머지 종목은 현재 비중에 비례해 나누고, Cap 초과분은 다시 비례 배분합니다.
 4. 금액은 순자산 × (목표 − 현재) 비중입니다.

@@ -1,5 +1,5 @@
 window.REBALANCE_DATA = {
- "generated_at": "2026-10-01T14:09:43+09:00",
+ "generated_at": "2026-10-01T15:57:57+09:00",
  "as_of": "2026-10-01",
  "window": [
   "2026-10",
@@ -712,7 +712,7 @@ window.REBALANCE_DATA = {
    ],
    "rule": "D+2",
    "rule_label": "만기 다음 주 첫 영업일",
-   "cap_pct": 25,
+   "cap_pct": 15,
    "aum_eok": 57791,
    "aum_as_of": "2026-10-01",
    "holdings_as_of": "2026-10-01",
@@ -720,7 +720,7 @@ window.REBALANCE_DATA = {
    "next_effective": "2026-10-12",
    "flow_status": "ok",
    "notes": [
-    "정기변경일마다 삼성전자·SK하이닉스 각 25%로 조정 (신한자산운용 공지)",
+    "정기변경일마다 삼성전자·SK하이닉스 각 25%로 조정, 나머지 종목은 편입비 상한 15% (신한자산운용 공지)",
     "운용사 보도자료 표현은 '만기일 이후 2영업일'. 10월은 연휴로 이 해석이면 10/13 효력·10/12 매매가 될 수 있어 확인 필요"
    ]
   },
@@ -1333,9 +1333,9 @@ window.REBALANCE_DATA = {
    "etf_name": "SOL AI반도체TOP2플러스",
    "trade_date": "2026-10-08",
    "effective": "2026-10-12",
-   "scenario_id": "A",
-   "scenario_label": "A · 25% 리셋만 반영",
-   "scenario_note": "나머지 종목은 현재 비중 비례",
+   "scenario_id": "reset",
+   "scenario_label": "25% 리셋 · 기타 상한 15%",
+   "scenario_note": "삼성전자·SK하이닉스 25% 리셋, 나머지는 15% 초과분을 비례 배분",
    "primary": true,
    "aum_eok": 57791,
    "holdings_as_of": "2026-10-01",
@@ -1423,104 +1423,6 @@ window.REBALANCE_DATA = {
      "target_pct": 1.4754,
      "delta_pct": -0.1046,
      "amount_eok": -60.4
-    }
-   ]
-  },
-  {
-   "etf_code": "0167A0",
-   "etf_name": "SOL AI반도체TOP2플러스",
-   "trade_date": "2026-10-08",
-   "effective": "2026-10-12",
-   "scenario_id": "B",
-   "scenario_label": "B · SK스퀘어·삼성전기 15% 고정 가정",
-   "scenario_note": "상장 당시 SK스퀘어 15% 편입을 근거로 한 가정",
-   "primary": false,
-   "aum_eok": 57791,
-   "holdings_as_of": "2026-10-01",
-   "holdings_source": "Koscom ETF CHECK getEtfPdfRankListWeight",
-   "coverage_pct": 99.37,
-   "buy_eok": 2826.0,
-   "sell_eok": -2826.0,
-   "trades": [
-    {
-     "code": "000660",
-     "name": "SK하이닉스",
-     "current_pct": 21.98,
-     "target_pct": 25,
-     "delta_pct": 3.02,
-     "amount_eok": 1745.3
-    },
-    {
-     "code": "402340",
-     "name": "SK스퀘어",
-     "current_pct": 13.61,
-     "target_pct": 15,
-     "delta_pct": 1.39,
-     "amount_eok": 803.3
-    },
-    {
-     "code": "007660",
-     "name": "이수페타시스",
-     "current_pct": 7.07,
-     "target_pct": 5.7613,
-     "delta_pct": -1.3087,
-     "amount_eok": -756.3
-    },
-    {
-     "code": "353200",
-     "name": "대덕전자",
-     "current_pct": 4.96,
-     "target_pct": 4.0419,
-     "delta_pct": -0.9181,
-     "amount_eok": -530.6
-    },
-    {
-     "code": "240810",
-     "name": "원익IPS",
-     "current_pct": 4.74,
-     "target_pct": 3.8626,
-     "delta_pct": -0.8774,
-     "amount_eok": -507.1
-    },
-    {
-     "code": "319660",
-     "name": "피에스케이",
-     "current_pct": 3.26,
-     "target_pct": 2.6566,
-     "delta_pct": -0.6034,
-     "amount_eok": -348.7
-    },
-    {
-     "code": "009150",
-     "name": "삼성전기",
-     "current_pct": 15.49,
-     "target_pct": 15,
-     "delta_pct": -0.49,
-     "amount_eok": -283.2
-    },
-    {
-     "code": "005930",
-     "name": "삼성전자",
-     "current_pct": 24.52,
-     "target_pct": 25,
-     "delta_pct": 0.48,
-     "amount_eok": 277.4
-    },
-    {
-     "code": "095610",
-     "name": "테스",
-     "current_pct": 2.16,
-     "target_pct": 1.7602,
-     "delta_pct": -0.3998,
-     "amount_eok": -231.1
-    },
-    {
-     "code": "089970",
-     "name": "브이엠",
-     "current_pct": 1.58,
-     "target_pct": 1.2875,
-     "delta_pct": -0.2925,
-     "amount_eok": -169.0
     }
    ]
   },

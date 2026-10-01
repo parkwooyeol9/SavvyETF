@@ -45,19 +45,25 @@ class CalendarTest(unittest.TestCase):
 
 
 class EngineTest(unittest.TestCase):
-    def test_sol_top2_reset_scenario_a(self):
-        sc = engine.Scenario("A", "A", {"005930": 25, "000660": 25}, cap=25)
+    def test_sol_top2_reset_with_15pct_cap(self):
+        sc = engine.Scenario("reset", "reset", {"005930": 25, "000660": 25}, cap=15)
         rows = {r["code"]: r for r in engine.trades(holdings(), sc, 57790)}
         self.assertAlmostEqual(rows["000660"]["amount_eok"], 1745.3, places=1)
         self.assertAlmostEqual(rows["005930"]["amount_eok"], 277.4, places=1)
+        self.assertAlmostEqual(rows["009150"]["amount_eok"], -592.6, places=1)
+        others = [r["target_pct"] for c, r in rows.items() if c not in ("005930", "000660")]
+        self.assertLessEqual(max(others), 15 + 1e-9)
         total = sum(r["amount_eok"] for r in rows.values())
         self.assertLess(abs(total), 1.0)  # 매수 합 ≈ 매도 합
 
-    def test_sol_top2_scenario_b_flips_sk_square(self):
-        sc = engine.Scenario("B", "B", {"005930": 25, "000660": 25, "402340": 15, "009150": 15}, cap=25)
-        rows = {r["code"]: r for r in engine.trades(holdings(), sc, 57790)}
-        self.assertAlmostEqual(rows["402340"]["amount_eok"], 803.3, places=1)
-        self.assertAlmostEqual(rows["007660"]["amount_eok"], -753.9, places=1)
+    def test_cap_binds_on_non_fixed_names(self):
+        hs = [engine.Holding("S", "S", 20), engine.Holding("H", "H", 20), engine.Holding("A", "A", 24),
+              engine.Holding("B", "B", 12), engine.Holding("C", "C", 12), engine.Holding("D", "D", 12)]
+        tgt = engine.target_weights(hs, engine.Scenario("r", "r", {"S": 25, "H": 25}, cap=15), cash=0)
+        self.assertAlmostEqual(tgt["S"], 25)
+        self.assertAlmostEqual(tgt["A"], 15)
+        self.assertAlmostEqual(tgt["B"], 35 / 3)
+        self.assertAlmostEqual(sum(tgt.values()), 100)
 
     def test_cap_redistributes_excess(self):
         hs = [engine.Holding("A", "A", 30), engine.Holding("B", "B", 40), engine.Holding("C", "C", 30)]
