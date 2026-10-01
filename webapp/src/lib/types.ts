@@ -237,7 +237,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aietf: "AI ETF",
   bookclub: "북클럽",
   bookclubboard: "Contact",
-  vault: "비밀 게시판",
+  vault: "자료실",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
 };
@@ -326,7 +326,7 @@ export const NAV_GROUPS: NavGroup[] = [
         tabs: ["gurus", "moneyflow", "thirteenf"],
       },
       // Single-tab nested group so it renders after 펀드매니저 (rightmost).
-      { id: "vault", label: "비밀 게시판", tabs: ["vault"] },
+      { id: "vault", label: "자료실", tabs: ["vault"] },
     ],
   },
 ];

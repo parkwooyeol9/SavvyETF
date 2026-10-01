@@ -398,7 +398,7 @@ export default function AdminVaultTab() {
       <section className="feature-block">
         <div className="cardnews-head">
           <div>
-            <h1 className="feature-title">비밀 게시판</h1>
+            <h1 className="feature-title">자료실</h1>
             <p className="meta-soft">
               관리자만 보고 받을 수 있는 자료 보관함입니다. 다운로드 링크는 5분 뒤 만료됩니다.
             </p>
