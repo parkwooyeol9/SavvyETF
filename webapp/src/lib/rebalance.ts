@@ -69,6 +69,7 @@ export type RebalanceFlow = {
   scenario_id: string;
   scenario_label: string;
   scenario_note?: string;
+  capped_by_mcap?: string[];
   primary: boolean;
   aum_eok: number;
   holdings_as_of?: string | null;
@@ -92,6 +93,39 @@ export type RebalanceImpact = {
   by_etf: { etf_code: string; etf_name: string; amount_eok: number }[];
 };
 
+export type EventStudyRow = {
+  event_id: string;
+  label: string;
+  trade_date: string;
+  confidence: string;
+  code: string;
+  name: string;
+  market: string;
+  side: "buy" | "sell";
+  flow_eok: number | null;
+  adv_eok: number | null;
+  impact_ratio?: number;
+  car_pre: number | null;
+  ar_0: number | null;
+  car_post: number | null;
+  car_path: number[];
+};
+
+type SideStats = {
+  n: number;
+  car_pre: number | null;
+  ar_0: number | null;
+  car_post: number | null;
+};
+
+export type EventStudy = {
+  generated_at: string;
+  params: { pre: number; hold: number; path_from: number; path_to: number; model: string; price_source: string };
+  summary: { n: number; n_events: number; by_side: { buy: SideStats; sell: SideStats } };
+  paths: { t: number; buy: number | null; sell: number | null }[];
+  rows: EventStudyRow[];
+};
+
 export type RebalancePayload = {
   generated_at: string;
   as_of: string;
@@ -106,6 +140,7 @@ export type RebalancePayload = {
   assumptions: string[];
   sources: string[];
   rule_legend: Record<string, string>;
+  event_study?: EventStudy | null;
 };
 
 export type RebalanceResponse =

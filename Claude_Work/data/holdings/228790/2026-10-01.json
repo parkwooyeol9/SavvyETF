@@ -4,57 +4,68 @@
  "aum_eok": 2367,
  "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
  "coverage_pct": 90.33,
- "fetched_at": "2026-10-01T14:09:04+09:00",
+ "fetched_at": "2026-10-01T16:20:45+09:00",
  "holdings": [
   {
    "code": "192820",
    "name": "코스맥스",
-   "weight": 13.47
+   "weight": 13.47,
+   "mcap_jo": 3.14
   },
   {
    "code": "161890",
    "name": "한국콜마",
-   "weight": 11.69
+   "weight": 11.69,
+   "mcap_jo": 3.42
   },
   {
    "code": "257720",
    "name": "실리콘투",
-   "weight": 9.53
+   "weight": 9.53,
+   "mcap_jo": 2.51
   },
   {
    "code": "090430",
    "name": "아모레퍼시픽",
-   "weight": 9.42
+   "weight": 9.42,
+   "mcap_jo": 7.94
   },
   {
    "code": "278470",
    "name": "에이피알",
-   "weight": 9.38
+   "weight": 9.38,
+   "mcap_jo": 13.68
   },
   {
    "code": "051900",
    "name": "LG생활건강",
-   "weight": 9.05
+   "weight": 9.05,
+   "mcap_jo": 4.07
   },
   {
    "code": "214450",
    "name": "파마리서치",
-   "weight": 8.45
+   "weight": 8.45,
+   "mcap_jo": 3.26
   },
   {
    "code": "241710",
    "name": "코스메카코리아",
-   "weight": 8.38
+   "weight": 8.38,
+   "mcap_jo": 1.23
   },
   {
    "code": "483650",
    "name": "달바글로벌",
-   "weight": 7.77
+   "weight": 7.77,
+   "mcap_jo": 2.3
   },
   {
    "code": "251970",
    "name": "펌텍코리아",
-   "weight": 3.19
+   "weight": 3.19,
+   "mcap_jo": 0.78
   }
- ]
+ ],
+ "mcap_source": "네이버 금융 실시간 시세 시가총액"
 }

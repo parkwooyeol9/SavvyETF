@@ -1,9 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import {
   impactLevel,
+  type EventStudy,
   type FlowStatus,
   type RebalanceFlow,
   type RebalancePayload,
@@ -38,6 +50,15 @@ function fmtEok(v: number | null | undefined): string {
 function fmtSigned(v: number): string {
   const r = Math.round(v);
   return `${r > 0 ? "+" : ""}${fmtNum(r)}`;
+}
+
+function fmtPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+}
+
+function toneOf(v: number | null | undefined): string {
+  return v == null ? "" : v > 0 ? "tone-up" : v < 0 ? "tone-down" : "";
 }
 
 function StatusChip({ status, kind }: { status: FlowStatus; kind: "etf" | "index" }) {
@@ -131,6 +152,8 @@ function ImpactBars({ rows }: { rows: ImpactRow[] }) {
 }
 
 function FlowDetail({ flow }: { flow: RebalanceFlow }) {
+  const capped = new Set(flow.capped_by_mcap || []);
+  const cappedNames = flow.trades.filter((t) => capped.has(t.code)).map((t) => t.name);
   return (
     <div className="rb-flow">
       <h4>
@@ -144,6 +167,11 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
           <span className="rb-warn"> · 비중 합계 {flow.coverage_pct}% (상위 종목만 수집)</span>
         ) : null}
       </p>
+      {cappedNames.length ? (
+        <p className="meta-soft rb-flow-meta">
+          상한 적용 · {cappedNames.join(", ")} (시가총액 비중이 종목당 상한을 넘어 상한으로 맞춤)
+        </p>
+      ) : null}
       <div className="table-wrap">
         <table className="data-table rb-num-table">
           <thead>
@@ -160,6 +188,7 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
               <tr key={t.code}>
                 <td>
                   {t.name} <span className="meta-soft">{t.code}</span>
+                  {capped.has(t.code) ? <span className="rb-tag dd rb-cap-tag">상한</span> : null}
                 </td>
                 <td>{t.current_pct.toFixed(2)}%</td>
                 <td>{t.target_pct.toFixed(2)}%</td>
@@ -177,6 +206,102 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
       </div>
       {flow.holdings_source ? <p className="meta-soft">출처: {flow.holdings_source}</p> : null}
     </div>
+  );
+}
+
+const SIDE_LABEL = { buy: "ETF 매수", sell: "ETF 매도" } as const;
+
+function EventStudySection({ study }: { study: EventStudy }) {
+  const { summary, params } = study;
+  const chart = study.paths.map((p) => ({
+    t: p.t,
+    buy: p.buy == null ? null : p.buy * 100,
+    sell: p.sell == null ? null : p.sell * 100,
+  }));
+  const pre = `T${params.pre}~T-1`;
+  const post = `T+1~T+${params.hold}`;
+  return (
+    <section className="geo-section geo-featured">
+      <h3 className="geo-section-title">과거 정기변경 전후 주가</h3>
+      <p className="geo-thesis">
+        지난 정기변경에서 ETF가 사고판 종목의 시장(KOSPI·KOSDAQ) 대비 초과수익. T는 매매일 종가. 선은 T
+        {params.path_from}부터 누적한 평균입니다.
+      </p>
+      <div className="rb-es-stats">
+        {(["sell", "buy"] as const).map((side) => {
+          const s = summary.by_side[side];
+          return (
+            <div key={side} className="rb-es-stat">
+              <strong className={side === "sell" ? "tone-down" : "tone-up"}>
+                {SIDE_LABEL[side]} {s.n}건
+              </strong>
+              <span>
+                {pre} <b className={toneOf(s.car_pre)}>{fmtPct(s.car_pre)}</b>
+              </span>
+              <span>
+                T일 <b className={toneOf(s.ar_0)}>{fmtPct(s.ar_0)}</b>
+              </span>
+              <span>
+                {post} <b className={toneOf(s.car_post)}>{fmtPct(s.car_post)}</b>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="rb-es-chart">
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={chart} margin={{ top: 8, right: 16, bottom: 0, left: -8 }}>
+            <CartesianGrid stroke="#2b3648" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="t" tickFormatter={(t: number) => (t === 0 ? "T" : `T${t > 0 ? "+" : ""}${t}`)} />
+            <YAxis tickFormatter={(v: number) => `${v.toFixed(0)}%`} width={48} />
+            <ReferenceLine x={0} stroke="#8fa3b8" strokeDasharray="4 4" />
+            <ReferenceLine y={0} stroke="#8fa3b8" />
+            <Tooltip
+              formatter={(v: number, key: string) => [`${v.toFixed(1)}%`, key === "sell" ? "ETF 매도 종목" : "ETF 매수 종목"]}
+              labelFormatter={(t: number) => (t === 0 ? "T (매매일)" : `T${t > 0 ? "+" : ""}${t}`)}
+              contentStyle={{ background: "#141c27", border: "1px solid #2b3648" }}
+            />
+            <Legend formatter={(key: string) => (key === "sell" ? "ETF 매도 종목" : "ETF 매수 종목")} />
+            <Line type="monotone" dataKey="sell" stroke="#ff6b6b" strokeWidth={2} dot={false} connectNulls />
+            <Line type="monotone" dataKey="buy" stroke="#3dd68c" strokeWidth={2} dot={false} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="table-wrap">
+        <table className="data-table rb-num-table">
+          <thead>
+            <tr>
+              <th>매매일 · 종목</th>
+              <th>방향</th>
+              <th>{pre}</th>
+              <th>T일</th>
+              <th>{post}</th>
+              <th>평균 거래대금</th>
+            </tr>
+          </thead>
+          <tbody>
+            {study.rows.map((r) => (
+              <tr key={`${r.event_id}-${r.code}`} title={r.label}>
+                <td>
+                  {r.trade_date.slice(5).replace("-", "/")} · {r.name}{" "}
+                  <span className="meta-soft">{r.code}</span>
+                </td>
+                <td className={r.side === "sell" ? "tone-down" : "tone-up"}>{r.side === "sell" ? "매도" : "매수"}</td>
+                <td className={toneOf(r.car_pre)}>{fmtPct(r.car_pre)}</td>
+                <td className={toneOf(r.ar_0)}>{fmtPct(r.ar_0)}</td>
+                <td className={toneOf(r.car_post)}>{fmtPct(r.car_post)}</td>
+                <td>{r.adv_eok ? `${fmtNum(r.adv_eok)}억` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="meta-soft">
+        정기변경 {summary.n_events}회 · 종목 {summary.n}건으로 표본이 작고, 같은 날 시장 급변이 섞여 있어
+        일반화하기 어렵습니다. 매매일이 확실한 이벤트만 넣었고, 평균 거래대금은 매매일 직전 20거래일 기준. 가격은
+        네이버 일봉 종가(수정주가 아님). 과거 결과이며 투자 권유가 아닙니다.
+      </p>
+    </section>
   );
 }
 
@@ -447,6 +572,11 @@ export default function RebalanceTab() {
         ) : (
           <p className="empty">선택한 날짜에 계산된 ETF가 없습니다.</p>
         )}
+      </section>
+
+      {data.event_study?.rows.length ? <EventStudySection study={data.event_study} /> : null}
+
+      <section className="geo-section geo-featured">
         <details className="rb-details">
           <summary>가정·출처·규칙</summary>
           <ul className="rb-notes">

@@ -4,7 +4,8 @@
   - ETF CHECK 일별 PDF 비중: ``etfcheck_client.fetch_kr_pdf_weights`` (코스닥 액티브 모니터와 같은 경로)
   - 실패 시 네이버 금융 구성자산: ``dart_etf_memb.fetch_etf_holdings``
   - 순자산: ``dart_etf_memb.fetch_etf_meta`` (네이버 모바일 API)
-  - 20일 평균 거래대금: yfinance (``.KS`` → ``.KQ`` 순서로 시도)
+  - 종목 시가총액: 네이버 실시간 시세 (15% 상한 판정용, ``mcap_jo``)
+  - 20일 평균 거래대금: 네이버 일봉, 실패 시 yfinance (``.KS`` → ``.KQ``)
 
 실행 (저장소 루트, .venv 활성화 상태)::
 
@@ -114,6 +115,46 @@ def fetch_holdings(etf_code: str) -> dict[str, Any]:
     }
 
 
+def fetch_mcap_jo(codes: list[str]) -> dict[str, float]:
+    """종목별 시가총액(조원). 네이버 실시간 시세 ``marketValueFullRaw``."""
+    import requests
+
+    codes = [c for c in codes if re.fullmatch(r"[0-9A-Z]{6}", c)]
+    out: dict[str, float] = {}
+    for i in range(0, len(codes), 40):
+        chunk = codes[i:i + 40]
+        try:
+            r = requests.get(
+                f"https://polling.finance.naver.com/api/realtime/domestic/stock/{','.join(chunk)}",
+                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com/"},
+                timeout=20,
+            )
+            r.raise_for_status()
+            rows = r.json().get("datas") or []
+        except Exception as exc:  # noqa: BLE001
+            print(f"  시가총액 조회 실패: {exc}")
+            continue
+        for row in rows:
+            raw = str(row.get("marketValueFullRaw") or "").replace(",", "")
+            try:
+                value = float(raw)
+            except ValueError:
+                continue
+            if row.get("itemCode") and value > 0:
+                out[str(row["itemCode"])] = round(value / 1e12, 2)
+    return out
+
+
+def attach_mcap(snap: dict[str, Any]) -> int:
+    mcap = fetch_mcap_jo([h["code"] for h in snap["holdings"]])
+    for h in snap["holdings"]:
+        if h["code"] in mcap:
+            h["mcap_jo"] = mcap[h["code"]]
+    if mcap:
+        snap["mcap_source"] = "네이버 금융 실시간 시세 시가총액"
+    return len(mcap)
+
+
 def save_holdings(snap: dict[str, Any]) -> Path:
     folder = DATA / "holdings" / snap["etf_code"]
     folder.mkdir(parents=True, exist_ok=True)
@@ -123,13 +164,24 @@ def save_holdings(snap: dict[str, Any]) -> Path:
 
 
 def fetch_adv(codes: list[str], days: int = 20) -> dict[str, float]:
-    """종목별 최근 ``days`` 거래일 평균 거래대금(억원)."""
+    """종목별 최근 ``days`` 거래일 평균 거래대금(억원). 네이버 일봉 → yfinance 순서."""
+    from datetime import timedelta
+
+    from . import naver
+
+    codes = [c for c in codes if re.fullmatch(r"[0-9A-Z]{6}", c)]
+    today = datetime.now(KST).date()
+    out: dict[str, float] = {}
+    for code, df in naver.many(codes, today - timedelta(days=60), today).items():
+        if len(df) >= 5:
+            out[code] = round(float((df["close"] * df["volume"]).tail(days).mean() / 1e8), 1)
+    missing = [c for c in codes if c not in out]
+    if not missing:
+        return out
+
     import yfinance as yf
 
-    out: dict[str, float] = {}
-    for code in codes:
-        if not re.fullmatch(r"[0-9A-Z]{6}", code):
-            continue
+    for code in missing:
         for suffix in (".KS", ".KQ"):
             try:
                 hist = yf.Ticker(code + suffix).history(period="3mo", auto_adjust=False)
@@ -175,9 +227,11 @@ def main(argv: list[str] | None = None) -> None:
         if not snap["holdings"]:
             print("  종목 없음 — 저장 생략")
             continue
+        n_mcap = attach_mcap(snap)
         path = save_holdings(snap)
         members.update(h["code"] for h in snap["holdings"])
-        print(f"  {len(snap['holdings'])}종목 · 합계 {snap['coverage_pct']}% · AUM {snap['aum_eok']}억 → {path.name}")
+        print(f"  {len(snap['holdings'])}종목 · 합계 {snap['coverage_pct']}% · AUM {snap['aum_eok']}억 "
+              f"· 시가총액 {n_mcap}종목 → {path.name}")
 
     if not args.no_adv and members:
         print(f"거래대금 수집: {len(members)}종목")

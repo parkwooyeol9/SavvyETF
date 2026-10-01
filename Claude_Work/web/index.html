@@ -254,7 +254,7 @@
     document.getElementById('flows').innerHTML = fs.map(f => {
       const warn = f.coverage_pct < 95 ? ` · <span class="warn">비중 합계 ${f.coverage_pct}% (상위 종목만 수집)</span>` : '';
       return `<h3 style="font-size:14px;margin:14px 0 2px">${esc(f.etf_name)} <span class="small">${esc(f.scenario_label)}</span></h3>
-      <div class="small" style="margin-bottom:6px">순자산 ${eok(f.aum_eok)} · 비중 기준일 ${esc(f.holdings_as_of)} · 매수 ${sgn(Math.round(f.buy_eok))}억 / 매도 ${sgn(Math.round(f.sell_eok))}억 · ${esc(f.scenario_note)}${warn}</div>
+      <div class="small" style="margin-bottom:6px">순자산 ${eok(f.aum_eok)} · 비중 기준일 ${esc(f.holdings_as_of)} · 매수 ${sgn(Math.round(f.buy_eok))}억 / 매도 ${sgn(Math.round(f.sell_eok))}억 · ${esc(f.scenario_note)}${(f.capped_by_mcap||[]).length ? ' · 상한 적용: ' + f.capped_by_mcap.map(c => esc((f.trades.find(t => t.code === c)||{}).name || c)).join(', ') : ''}${warn}</div>
       <div class="tw"><table><thead><tr><th>종목</th><th class="num">현재</th><th class="num">목표</th><th class="num">변화</th><th class="num">예상 매매(억원)</th></tr></thead><tbody>` +
       f.trades.map(t => `<tr><td>${esc(t.name)} <span class="small">${esc(t.code)}</span></td><td class="num">${t.current_pct.toFixed(2)}%</td><td class="num">${t.target_pct.toFixed(2)}%</td>
         <td class="num">${(t.delta_pct > 0 ? '+' : '') + t.delta_pct.toFixed(2)}%p</td><td class="num" style="color:${t.amount_eok >= 0 ? 'var(--buy)' : 'var(--sell)'}">${sgn(Math.round(t.amount_eok))}</td></tr>`).join('') +

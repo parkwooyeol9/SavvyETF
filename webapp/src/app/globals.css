@@ -6473,7 +6473,34 @@ button.community-post-title {
   color: var(--warn);
 }
 .rb-details {
-  margin-top: 14px;
+  margin-top: 0;
+}
+.rb-cap-tag {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+.rb-es-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.rb-es-stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.rb-es-stat b {
+  font-variant-numeric: tabular-nums;
+}
+.rb-es-chart {
+  margin: 4px 0 12px;
 }
 .rb-details summary {
   color: var(--muted);
@@ -6490,7 +6517,8 @@ button.community-post-title {
   .rb-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .rb-two {
+  .rb-two,
+  .rb-es-stats {
     grid-template-columns: 1fr;
   }
 }

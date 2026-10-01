@@ -4,57 +4,68 @@
  "aum_eok": 6374,
  "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
  "coverage_pct": 84.83,
- "fetched_at": "2026-10-01T14:09:03+09:00",
+ "fetched_at": "2026-10-01T16:20:44+09:00",
  "holdings": [
   {
    "code": "108490",
    "name": "로보티즈",
-   "weight": 17.29
+   "weight": 17.29,
+   "mcap_jo": 4.3
   },
   {
    "code": "277810",
    "name": "레인보우로보틱스",
-   "weight": 12.86
+   "weight": 12.86,
+   "mcap_jo": 8.4
   },
   {
    "code": "454910",
    "name": "두산로보틱스",
-   "weight": 11.3
+   "weight": 11.3,
+   "mcap_jo": 4.62
   },
   {
    "code": "160190",
    "name": "하이젠알앤엠",
-   "weight": 9.54
+   "weight": 9.54,
+   "mcap_jo": 0.88
   },
   {
    "code": "058610",
    "name": "에스피지",
-   "weight": 8.61
+   "weight": 8.61,
+   "mcap_jo": 2.21
   },
   {
    "code": "090360",
    "name": "로보스타",
-   "weight": 5.31
+   "weight": 5.31,
+   "mcap_jo": 0.76
   },
   {
    "code": "064400",
    "name": "LG씨엔에스",
-   "weight": 5.18
+   "weight": 5.18,
+   "mcap_jo": 6.82
   },
   {
    "code": "348340",
    "name": "뉴로메카",
-   "weight": 5.14
+   "weight": 5.14,
+   "mcap_jo": 0.49
   },
   {
    "code": "319400",
    "name": "현대무벡스",
-   "weight": 5.1
+   "weight": 5.1,
+   "mcap_jo": 2.3
   },
   {
    "code": "307950",
    "name": "현대오토에버",
-   "weight": 4.5
+   "weight": 4.5,
+   "mcap_jo": 10.37
   }
- ]
+ ],
+ "mcap_source": "네이버 금융 실시간 시세 시가총액"
 }

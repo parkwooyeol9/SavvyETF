@@ -5,11 +5,15 @@
 1. ``fixed`` 에 적힌 종목은 그 비중으로 맞춘다 (예: SOL AI반도체TOP2플러스의
    삼성전자·SK하이닉스 25% 리셋).
 2. 현금 비중은 현재 값을 유지한다.
-3. 나머지 종목은 현재 비중에 비례해 남은 비중을 나눠 갖는다.
-4. 종목당 상한(``cap``)을 넘는 종목은 상한으로 자르고, 초과분을 상한 미만
+3. ``basis="mcap"`` 이면 시가총액(``mcap_jo``)이 주어진 종목을 시가총액 비중으로
+   평가한다. 그 비중이 상한을 넘으면 상한으로 맞추고, 남은 비중·분모로 다시 본다
+   (예: SOL AI반도체TOP2플러스의 SK스퀘어·삼성전기 15% 상한).
+   시가총액을 모르는 종목이 있으면 그 합계로 ``rest_mcap_jo`` (추정치)를 쓴다.
+4. 나머지 종목은 현재 비중에 비례해 남은 비중을 나눠 갖는다.
+5. 종목당 상한(``cap``)을 넘는 종목은 상한으로 자르고, 초과분을 상한 미만
    종목에 비례 배분한다 (반복).
 
-3번은 가정이다. 실제 지수는 시가총액·스코어 등 방법론에 따라 다시 가중하고,
+4번은 가정이다. 실제 지수는 시가총액·스코어 등 방법론에 따라 다시 가중하고,
 종목 편출입도 있을 수 있다. 그래서 결과는 '추정'이며 화면에 가정을 같이 보인다.
 """
 
@@ -35,6 +39,9 @@ class Scenario:
     fixed: dict[str, float] = field(default_factory=dict)  # code -> 목표 %
     cap: float | None = None  # 종목당 상한 %
     note: str = ""
+    basis: str = "current"  # "current" | "mcap"
+    mcap_jo: dict[str, float] = field(default_factory=dict)  # 종목 시가총액(조원)
+    rest_mcap_jo: float = 0.0  # mcap_jo 가 없는 종목들의 시가총액 합계(조원, 추정)
 
 
 def _cap_redistribute(weights: dict[str, float], budget: float, cap: float | None,
@@ -62,14 +69,44 @@ def _cap_redistribute(weights: dict[str, float], budget: float, cap: float | Non
     return out
 
 
-def target_weights(holdings: list[Holding], scenario: Scenario, cash: float) -> dict[str, float]:
+def _split(holdings: list[Holding], scenario: Scenario, cash: float):
     current = {h.code: h.weight for h in holdings}
     fixed = {k: v for k, v in scenario.fixed.items() if k in current}
     budget = 100.0 - cash - sum(fixed.values())
     free = {k: v for k, v in current.items() if k not in fixed}
-    out = _cap_redistribute(free, budget, scenario.cap)
+    return fixed, budget, free
+
+
+def _mcap_capped(free: dict[str, float], budget: float, scenario: Scenario) -> list[str]:
+    if scenario.basis != "mcap" or scenario.cap is None or not scenario.mcap_jo:
+        return []
+    known = {k: v for k, v in scenario.mcap_jo.items() if k in free and v > 0}
+    unknown_mcap = max(scenario.rest_mcap_jo, 0.0) if any(k not in known for k in free) else 0.0
+    capped: list[str] = []
+    while True:
+        pool = {k: v for k, v in known.items() if k not in capped}
+        denom = sum(pool.values()) + unknown_mcap
+        left = budget - scenario.cap * len(capped)
+        over = [k for k, m in pool.items() if denom > EPS and m / denom * left > scenario.cap + EPS]
+        if not over:
+            return capped
+        capped.extend(sorted(over, key=lambda k: -known[k]))
+
+
+def target_weights(holdings: list[Holding], scenario: Scenario, cash: float) -> dict[str, float]:
+    fixed, budget, free = _split(holdings, scenario, cash)
+    at_cap = {k: scenario.cap for k in _mcap_capped(free, budget, scenario)}
+    rest = {k: v for k, v in free.items() if k not in at_cap}
+    out = _cap_redistribute(rest, budget - sum(at_cap.values()), scenario.cap)
+    out.update(at_cap)
     out.update(fixed)
     return out
+
+
+def capped_by_mcap(holdings: list[Holding], scenario: Scenario, cash: float) -> list[str]:
+    """시가총액 기준으로 상한에 걸린 종목 코드 (화면 설명용)."""
+    _, budget, free = _split(holdings, scenario, cash)
+    return _mcap_capped(free, budget, scenario)
 
 
 def trades(holdings: list[Holding], scenario: Scenario, aum_eok: float,

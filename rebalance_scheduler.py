@@ -79,7 +79,13 @@ def run_scheduled_rebalance() -> bool:
         from r2_data import put_json_daily
 
         fetch.main([])
-        result = build.build(datetime.now(KST).date())
+        result = build.build(datetime.now(KST).date(), with_event_study=True)
+        if not result.get("event_study"):
+            from r2_data import get_json
+
+            prev = get_json(R2_KEY)
+            if isinstance(prev, dict) and prev.get("event_study"):
+                result["event_study"] = prev["event_study"]
         build.write(result)
         ok = put_json_daily(R2_KEY, result, day=result["as_of"])
         computed = len({f["etf_code"] for f in result["flows"]})

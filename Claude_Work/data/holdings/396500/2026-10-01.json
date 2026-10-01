@@ -4,57 +4,68 @@
  "aum_eok": 102124,
  "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
  "coverage_pct": 99.41,
- "fetched_at": "2026-10-01T14:09:02+09:00",
+ "fetched_at": "2026-10-01T16:20:42+09:00",
  "holdings": [
   {
    "code": "005930",
    "name": "삼성전자",
-   "weight": 27.14
+   "weight": 27.14,
+   "mcap_jo": 1601.88
   },
   {
    "code": "000660",
    "name": "SK하이닉스",
-   "weight": 22.97
+   "weight": 22.97,
+   "mcap_jo": 1328.77
   },
   {
    "code": "402340",
    "name": "SK스퀘어",
-   "weight": 20.56
+   "weight": 20.56,
+   "mcap_jo": 151.18
   },
   {
    "code": "042700",
    "name": "한미반도체",
-   "weight": 6.63
+   "weight": 6.63,
+   "mcap_jo": 25.45
   },
   {
    "code": "036930",
    "name": "주성엔지니어링",
-   "weight": 5.75
+   "weight": 5.75,
+   "mcap_jo": 11.09
   },
   {
    "code": "007660",
    "name": "이수페타시스",
-   "weight": 4.62
+   "weight": 4.62,
+   "mcap_jo": 8.96
   },
   {
    "code": "240810",
    "name": "원익IPS",
-   "weight": 3.17
+   "weight": 3.17,
+   "mcap_jo": 6.95
   },
   {
    "code": "039030",
    "name": "이오테크닉스",
-   "weight": 3.14
+   "weight": 3.14,
+   "mcap_jo": 6.89
   },
   {
    "code": "000990",
    "name": "DB하이텍",
-   "weight": 3.03
+   "weight": 3.03,
+   "mcap_jo": 6.13
   },
   {
    "code": "058470",
    "name": "리노공업",
-   "weight": 2.4
+   "weight": 2.4,
+   "mcap_jo": 6.17
   }
- ]
+ ],
+ "mcap_source": "네이버 금융 실시간 시세 시가총액"
 }
