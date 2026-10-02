@@ -272,6 +272,7 @@ export default function IndexMonitorTab() {
           {unlocked && hasMsci ? " · 관리자: MSCI 포함" : ""}
         </p>
         {error ? <p className="empty">{error}</p> : null}
+        {data?.error ? <p className="im-warn">{data.error}</p> : null}
         {!data && !error ? <p className="empty">불러오는 중…</p> : null}
         <div className="chip-row im-views" role="tablist">
           {views.map((v) => (

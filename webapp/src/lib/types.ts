@@ -52,6 +52,7 @@ export type ShellTabId =
   | "graph"
   | "valuation"
   | "corridor"
+  | "acwi"
   | "usmidterm"
   | "midtermstudy"
   | "polithemes"
@@ -148,6 +149,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "graph",
   "valuation",
   "corridor",
+  "acwi",
   "etf",
   "leverage",
   "etfdb",
@@ -236,6 +238,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   graph: "밸류체인",
   valuation: "밸류에이션",
   corridor: "비중조절전략",
+  acwi: "ACWI",
   usmidterm: "미 중간선거",
   midtermstudy: "중간선거 스터디",
   polithemes: "정치테마상품",
@@ -307,7 +310,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["valuation", "usportfolio", "signals", "corridor"],
+    tabs: ["acwi", "valuation", "usportfolio", "signals", "corridor"],
     nested: [
       {
         id: "derivs",
@@ -339,6 +342,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
+  "acwi",
   "aiport",
   "bookclub",
   "bookclubboard",
@@ -506,6 +510,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
   if (v === "rebal" || v === "rebalancing" || v === "리밸런싱") return "rebalance";
+  if (v === "acwi-analyzer" || v === "acwi_analyzer" || v === "acwianalyzer") return "acwi";
   if (v === "index-monitor" || v === "index_monitor" || v === "indexmon") return "indexmonitor";
   if (
     v === "datacatalog" ||

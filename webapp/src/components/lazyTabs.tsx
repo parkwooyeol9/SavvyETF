@@ -61,6 +61,7 @@ export const ValuationTab = dynamic(
   { loading },
 );
 export const CorridorTab = dynamic(() => import("@/components/CorridorTab"), { loading });
+export const AcwiAnalyzerTab = dynamic(() => import("@/components/AcwiAnalyzerTab"), { loading });
 export const UsMarketTab = dynamic(() => import("@/components/UsMarketTab"), { loading });
 export const UsMidtermTab = dynamic(() => import("@/components/UsMidtermTab"), { loading });
 export const MidtermStudyTab = dynamic(() => import("@/components/MidtermStudyTab"), { loading });

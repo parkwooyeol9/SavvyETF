@@ -13373,3 +13373,186 @@ a.chip {
   text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
   text-underline-offset: 3px;
 }
+
+/* ── ACWI 종목 분석기 (포트폴리오 › ACWI) ── */
+.acwi {
+  --aa-pos: #ff6b6b;
+  --aa-neg: #5b9dff;
+  --aa-c3: #b592e8;
+  --aa-c4: #4fc38a;
+  min-width: 0;
+}
+.acwi .aa-pos { color: var(--aa-pos); }
+.acwi .aa-neg { color: var(--aa-neg); }
+.aa-head { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.aa-eyebrow { margin: 0; font-size: 0.72rem; letter-spacing: 0.04em; color: var(--muted); }
+.aa-title { margin: 0.15rem 0 0.35rem; font-size: 1.35rem; }
+.aa-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.55rem;
+  margin: 0.9rem 0;
+}
+.aa-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.aa-fact span { font-size: 0.72rem; color: var(--muted); }
+.aa-fact b { font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+.aa-tabs, .aa-seg { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.aa-seg { margin-bottom: 0.5rem; }
+.aa-view { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; min-width: 0; }
+.aa-grid { display: grid; gap: 1rem; min-width: 0; }
+.aa-grid > * { min-width: 0; }
+.aa-g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.aa-g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.aa-card {
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.aa-h { margin: 0 0 0.2rem; font-size: 0.95rem; }
+.aa-h4 { margin: 0.9rem 0 0.4rem; font-size: 0.85rem; color: var(--muted); }
+.aa-sub { margin: 0 0 0.6rem; font-size: 0.76rem; color: var(--muted); }
+.aa-mt { margin-top: 0.6rem; }
+.aa-big { margin: 0.25rem 0; font-size: 1.3rem; font-weight: 700; }
+.aa-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.aa-small { font-size: 0.76rem; }
+.aa-empty { padding: 1.2rem 0; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.aa-note { margin: 0; padding-left: 1.1rem; font-size: 0.8rem; line-height: 1.6; color: var(--muted); }
+p.aa-note { padding-left: 0; }
+.aa-note b { color: var(--text); }
+.aa-scroll { max-height: 640px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.aa-scroll.aa-short { max-height: 380px; }
+.aa-tbl { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.aa-tbl th, .aa-tbl td { padding: 0.42rem 0.55rem; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.aa-tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.aa-tbl .n { text-align: right; font-variant-numeric: tabular-nums; }
+.aa-tbl tr.aa-click { cursor: pointer; }
+.aa-tbl tr.aa-click:hover td, .aa-tbl tr.aa-click:focus-visible td { background: var(--panel-2); }
+.aa-tbl.aa-mini th { position: static; cursor: default; }
+.aa-name { max-width: 15rem; overflow: hidden; text-overflow: ellipsis; }
+.aa-name small { display: block; font-size: 0.7rem; color: var(--muted); }
+.aa-more { padding: 0.6rem; text-align: center; }
+.aa-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.aa-b-on { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 45%, transparent); }
+.aa-b-del { color: var(--aa-pos); border-color: color-mix(in srgb, var(--aa-pos) 45%, transparent); }
+.aa-b-w { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.aa-badges { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.aa-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.aa-chart { position: relative; width: 100%; }
+.aa-chart svg { display: block; width: 100%; }
+.aa-tip {
+  position: absolute;
+  top: 6px;
+  min-width: 120px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  font-size: 0.72rem;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.aa-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.4rem; font-size: 0.72rem; color: var(--muted); }
+.aa-legend i { display: inline-block; width: 14px; height: 3px; margin-right: 0.3rem; vertical-align: middle; border-radius: 2px; }
+.aa-screener { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.aa-ctl { display: flex; flex-direction: column; gap: 1rem; }
+.aa-fields { display: flex; flex-direction: column; gap: 0.7rem; }
+.aa-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.78rem; color: var(--muted); }
+.aa-field input[type="search"], .aa-pick input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+.aa-field .im-select { width: 100%; }
+.aa-wrow { display: grid; grid-template-columns: 4rem minmax(0, 1fr) 1.8rem; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.aa-wrow output { text-align: right; font-variant-numeric: tabular-nums; }
+.aa-tablebox { min-width: 0; }
+.aa-tablehead { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.aa-tablehead .aa-seg { margin: 0; }
+.aa-pick { position: relative; }
+.aa-pick input { width: 100%; box-sizing: border-box; }
+.aa-sugg {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.aa-sugg button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.aa-sugg button:hover, .aa-sugg button.act { background: var(--panel-2); }
+.aa-detail-head { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.aa-rank { text-align: right; }
+.aa-rank-n { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.aa-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+.aa-kpi { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.5rem 0.65rem; border-radius: 8px; background: var(--panel-2); min-width: 0; }
+.aa-kpi span { font-size: 0.7rem; color: var(--muted); }
+.aa-kpi b { font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+.aa-kpi small { font-size: 0.7rem; color: var(--muted); }
+.aa-range { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--aa-neg), var(--aa-pos)); opacity: 0.85; }
+.aa-range i { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--text); }
+.aa-range-lab { display: flex; justify-content: space-between; margin-top: 0.3rem; font-size: 0.74rem; }
+.aa-bars { display: flex; flex-direction: column; gap: 0.35rem; }
+.aa-bar { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) 3rem; align-items: center; gap: 0.5rem; font-size: 0.78rem; }
+.aa-bar .aa-mono { text-align: right; }
+.aa-track { position: relative; height: 8px; border-radius: 4px; background: var(--panel-2); }
+.aa-track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
+.aa-fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+@media (max-width: 1100px) {
+  .aa-lists, .aa-g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .aa-g2, .aa-g3, .aa-lists, .aa-screener { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .aa-card { padding: 0.75rem; }
+  .aa-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aa-rank { text-align: left; }
+}

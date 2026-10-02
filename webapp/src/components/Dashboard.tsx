@@ -52,6 +52,7 @@ import {
   StockFeatureBoardTab,
   ValuationTab,
   CorridorTab,
+  AcwiAnalyzerTab,
   UsMarketTab,
   UsMidtermTab,
   MidtermStudyTab,
@@ -387,6 +388,7 @@ function DashboardInner({
       tab === "graph" ||
       tab === "valuation" ||
       tab === "corridor" ||
+      tab === "acwi" ||
       tab === "usmidterm" ||
       tab === "midtermstudy" ||
       tab === "polithemes" ||
@@ -533,6 +535,8 @@ function DashboardInner({
         unlocked ? <StockFeatureBoardTab /> : null
       ) : tab === "corridor" ? (
         unlocked ? <CorridorTab /> : null
+      ) : tab === "acwi" ? (
+        unlocked ? <AcwiAnalyzerTab /> : null
       ) : tab === "usmidterm" ? (
         <UsMidtermTab />
       ) : tab === "midtermstudy" ? (

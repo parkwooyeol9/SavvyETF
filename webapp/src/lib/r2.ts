@@ -299,6 +299,7 @@ export async function r2PresignPut(
   key: string,
   contentType: string,
   expiresIn = 900,
+  cacheControl = "public, max-age=31536000",
 ): Promise<string> {
   const cfg = getR2Config();
   if (!cfg) throw new Error("R2 is not configured");
@@ -309,7 +310,7 @@ export async function r2PresignPut(
       Bucket: cfg.bucket,
       Key: key,
       ContentType: contentType,
-      CacheControl: "public, max-age=31536000",
+      CacheControl: cacheControl,
     }),
     { expiresIn },
   );
