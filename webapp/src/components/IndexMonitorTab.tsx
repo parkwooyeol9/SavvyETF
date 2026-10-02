@@ -102,6 +102,13 @@ function EventCard({ event, query }: { event: IndexEvent; query: string }) {
   );
 }
 
+const BAR_COUNTRIES: { label: string; ids: string[] }[] = [
+  { label: "한국", ids: ["KOSPI200", "KOSDAQ150", "MSCI_KOREA"] },
+  { label: "미국", ids: ["SP500", "SP100", "NDX"] },
+  { label: "일본", ids: ["NIKKEI225"] },
+  { label: "기타 국가", ids: ["MSCI_OTHER"] },
+];
+
 function CountBars({ rows }: { rows: IndexChangeRow[] }) {
   const bars = useMemo(() => {
     const otherMsci = new Set<string>();
@@ -114,31 +121,43 @@ function CountBars({ rows }: { rows: IndexChangeRow[] }) {
       v[r.action] += 1;
       agg.set(g, v);
     }
-    const list = [...agg.entries()]
-      .map(([g, v]) => ({
+    const bar = (g: string) => {
+      const v = agg.get(g)!;
+      return {
         g,
-        label: g === "MSCI_OTHER" ? `MSCI 기타 ${otherMsci.size}개국` : indexName(g),
+        label: g === "MSCI_OTHER" ? `MSCI ${otherMsci.size}개국` : indexName(g),
         v,
         total: v.ADD + v.DEL + v.WEIGHT,
-      }))
-      .sort((a, b) => b.total - a.total);
-    const max = Math.max(1, ...list.map((b) => b.total));
-    return { list, max };
+      };
+    };
+    const known = new Set(BAR_COUNTRIES.flatMap((c) => c.ids));
+    const unlisted = [...agg.keys()].filter((g) => !known.has(g));
+    const countries = [
+      ...BAR_COUNTRIES.map((c) => ({ label: c.label, bars: c.ids.filter((g) => agg.has(g)).map(bar) })),
+      { label: "기타 지수", bars: unlisted.map(bar) },
+    ].filter((c) => c.bars.length);
+    const max = Math.max(1, ...countries.flatMap((c) => c.bars.map((b) => b.total)));
+    return { countries, max };
   }, [rows]);
 
   return (
     <div className="im-bars">
-      {bars.list.map(({ g, label, v }) => (
-        <div key={g} className="im-bar">
-          <span>{label}</span>
-          <span className="im-track" title={`편입 ${v.ADD} · 편출 ${v.DEL}`}>
-            <i className="im-a" style={{ width: `${(v.ADD / bars.max) * 100}%` }} />
-            <i className="im-x" style={{ width: `${(v.DEL / bars.max) * 100}%` }} />
-            <i className="im-w" style={{ width: `${(v.WEIGHT / bars.max) * 100}%` }} />
-          </span>
-          <span className="im-num">
-            {v.ADD}/{v.DEL}
-          </span>
+      {bars.countries.map((c) => (
+        <div key={c.label} className="im-bar-group">
+          <span className="im-bar-country">{c.label}</span>
+          {c.bars.map(({ g, label, v }) => (
+            <div key={g} className="im-bar">
+              <span>{label}</span>
+              <span className="im-track" title={`편입 ${v.ADD} · 편출 ${v.DEL}`}>
+                <i className="im-a" style={{ width: `${(v.ADD / bars.max) * 100}%` }} />
+                <i className="im-x" style={{ width: `${(v.DEL / bars.max) * 100}%` }} />
+                <i className="im-w" style={{ width: `${(v.WEIGHT / bars.max) * 100}%` }} />
+              </span>
+              <span className="im-num">
+                {v.ADD}/{v.DEL}
+              </span>
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -213,14 +232,6 @@ export default function IndexMonitorTab() {
     ...(unlocked ? [{ id: "data" as View, label: "데이터 적재" }] : []),
   ];
 
-  const msciNotice =
-    data && data.msciHidden > 0 ? (
-      <p className="meta-soft">
-        MSCI 국가별 편출입 {data.msciHidden.toLocaleString()}행은 MSCI 공개 리스트의 이용 조건(데이터베이스 생성 금지)
-        때문에 관리자 로그인 시에만 표시합니다. MSCI 일정과 방법론은 공개합니다.
-      </p>
-    ) : null;
-
   return (
     <div className="panel-stack index-monitor">
       <section className="geo-section geo-featured">
@@ -288,7 +299,6 @@ export default function IndexMonitorTab() {
                 <span className="im-k-del">■ 편출</span> <span className="im-k-w">■ 비중변경</span>
               </p>
               <CountBars rows={rows} />
-              {msciNotice}
             </section>
           </div>
           <section className="geo-section panel">
@@ -327,7 +337,6 @@ export default function IndexMonitorTab() {
             />
             <span className="im-num">{filtered.length}건</span>
           </div>
-          {msciNotice}
           <div className="im-events">
             {filtered.length ? (
               filtered.map((e) => <EventCard key={e.key} event={e} query={q} />)

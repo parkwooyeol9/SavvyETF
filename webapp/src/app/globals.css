@@ -13334,3 +13334,17 @@ a.chip {
   margin: 0.35rem 0 0;
   font-size: 0.84rem;
 }
+.im-bar-group {
+  display: grid;
+  gap: 0.4rem;
+}
+.im-bar-group + .im-bar-group {
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+.im-bar-country {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--muted);
+}
