@@ -8,3 +8,4 @@ node_modules
 next-env.d.ts
 .env*
 data/*.json
+public/pdfjs

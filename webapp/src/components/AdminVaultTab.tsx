@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
+import VaultPdfViewer from "@/components/VaultPdfViewer";
 import { adminAuthHeaders } from "@/lib/adminSession";
 import {
   VAULT_CHUNK_BYTES,
@@ -11,8 +12,11 @@ import {
   VAULT_MAX_MEMO,
   VAULT_MAX_TITLE,
   formatVaultSize,
+  isVaultPdf,
   type VaultPostView,
 } from "@/lib/adminVaultMeta";
+
+type ViewingFile = { postId: string; file: VaultPostView["files"][number] };
 
 type UploadRef = { upload_id: string; filename: string; parts: number };
 
@@ -198,6 +202,8 @@ export default function AdminVaultTab() {
   const [editMemo, setEditMemo] = useState("");
   const [editRemove, setEditRemove] = useState<string[]>([]);
   const [editAdd, setEditAdd] = useState<File[]>([]);
+  const [viewing, setViewing] = useState<ViewingFile | null>(null);
+  const closeViewer = useCallback(() => setViewing(null), []);
 
   const authed = useCallback(
     (extra?: Record<string, string>) => ({ ...adminAuthHeaders(secret), ...extra }),
@@ -400,7 +406,8 @@ export default function AdminVaultTab() {
           <div>
             <h1 className="feature-title">자료실</h1>
             <p className="meta-soft">
-              관리자만 보고 받을 수 있는 자료 보관함입니다. 다운로드 링크는 5분 뒤 만료됩니다.
+              관리자만 보고 받을 수 있는 자료 보관함입니다. PDF는 눌러서 화면에서 바로 보고, 쪽마다
+              PNG로 저장할 수 있습니다. 다운로드 링크는 5분 뒤 만료됩니다.
             </p>
           </div>
         </div>
@@ -556,17 +563,29 @@ export default function AdminVaultTab() {
                     {post.memo ? <p className="research-item-summary vault-memo">{post.memo}</p> : null}
                     {post.files.length ? (
                       <div className="vault-files">
-                        {post.files.map((f) => (
-                          <button
-                            key={f.id}
-                            type="button"
-                            className="chip"
-                            title={`${f.filename} 다운로드`}
-                            onClick={() => void onDownload(post.id, f.id)}
-                          >
-                            ⬇ {f.filename} · {formatVaultSize(f.size)}
-                          </button>
-                        ))}
+                        {post.files.map((f) =>
+                          isVaultPdf(f) ? (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className="chip"
+                              title={`${f.filename} 화면에서 보기`}
+                              onClick={() => setViewing({ postId: post.id, file: f })}
+                            >
+                              📄 {f.filename} · {formatVaultSize(f.size)}
+                            </button>
+                          ) : (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className="chip"
+                              title={`${f.filename} 다운로드`}
+                              onClick={() => void onDownload(post.id, f.id)}
+                            >
+                              ⬇ {f.filename} · {formatVaultSize(f.size)}
+                            </button>
+                          ),
+                        )}
                       </div>
                     ) : null}
                     <div className="research-item-actions">
@@ -602,6 +621,17 @@ export default function AdminVaultTab() {
           </p>
         ) : null}
       </section>
+
+      {viewing ? (
+        <VaultPdfViewer
+          key={`${viewing.postId}:${viewing.file.id}`}
+          postId={viewing.postId}
+          file={viewing.file}
+          secret={secret}
+          onClose={closeViewer}
+          onDownload={() => void onDownload(viewing.postId, viewing.file.id)}
+        />
+      ) : null}
     </div>
   );
 }

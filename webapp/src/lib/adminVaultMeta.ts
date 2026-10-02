@@ -30,6 +30,10 @@ export type VaultPostView = Omit<VaultPost, "files"> & {
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function isVaultPdf(file: { filename: string; contentType?: string }): boolean {
+  return /\.pdf$/i.test(file.filename) || file.contentType === "application/pdf";
+}
+
 export function formatVaultSize(bytes: number): string {
   if (!bytes) return "0KB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;

@@ -76,7 +76,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/research/chunk": { limit: 200, windowMs: 60_000 },
   "/api/admin-vault": { limit: 40, windowMs: 60_000 },
   "/api/admin-vault/chunk": { limit: 240, windowMs: 60_000 },
-  "/api/admin-vault/file": { limit: 60, windowMs: 60_000 },
+  "/api/admin-vault/file": { limit: 120, windowMs: 60_000 },
   "/api/stock-features": { limit: 20, windowMs: 60_000 },
   "/api/nextrade": { limit: 20, windowMs: 60_000 },
   "/api/nextrade/excel": { limit: 8, windowMs: 60_000 },

@@ -14,6 +14,7 @@ import {
 import {
   r2DeleteKeys,
   r2GetObjectBytes,
+  r2GetObjectRange,
   r2GetObjectText,
   r2ListKeys,
   r2PresignGet,
@@ -298,4 +299,29 @@ export async function vaultDownloadUrl(postId: string, fileId: string): Promise<
     contentDisposition: contentDisposition(file.filename),
     expiresIn: 300,
   });
+}
+
+/**
+ * One VAULT_CHUNK_BYTES slice of a stored file, streamed through the function
+ * (kept under the response cap) so the in-page viewer needs no bucket CORS.
+ */
+export async function vaultFileChunk(
+  postId: string,
+  fileId: string,
+  part: number,
+): Promise<{ body: Uint8Array; size: number; parts: number }> {
+  const store = await loadStore();
+  const file = store.items
+    .find((p) => p.id === postId)
+    ?.files.find((f) => f.id === fileId);
+  if (!file) throw new Error("파일을 찾을 수 없습니다.");
+  const parts = Math.max(1, Math.ceil(file.size / VAULT_CHUNK_BYTES));
+  if (!Number.isInteger(part) || part < 0 || part >= parts) {
+    throw new Error("잘못된 범위입니다.");
+  }
+  const start = part * VAULT_CHUNK_BYTES;
+  const end = Math.min(file.size, start + VAULT_CHUNK_BYTES) - 1;
+  const body = await r2GetObjectRange(file.key, start, end);
+  if (!body) throw new Error("파일을 찾을 수 없습니다.");
+  return { body, size: file.size, parts };
 }

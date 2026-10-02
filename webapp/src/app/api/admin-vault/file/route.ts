@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
-import { vaultDownloadUrl } from "@/lib/adminVault";
+import { vaultDownloadUrl, vaultFileChunk } from "@/lib/adminVault";
 import { r2Configured } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Returns a short-lived presigned R2 URL; bytes never pass through the function. */
+/**
+ * Without `part`: a short-lived presigned R2 URL (download bytes never pass
+ * through the function). With `part=N`: that chunk's raw bytes, for the viewer.
+ */
 export async function GET(request: Request) {
   const denied = requireSiteAdmin(request);
   if (denied) return denied;
@@ -18,11 +21,21 @@ export async function GET(request: Request) {
     );
   }
   const params = new URL(request.url).searchParams;
+  const postId = String(params.get("post") || "");
+  const fileId = String(params.get("file") || "");
   try {
-    const url = await vaultDownloadUrl(
-      String(params.get("post") || ""),
-      String(params.get("file") || ""),
-    );
+    if (params.has("part")) {
+      const chunk = await vaultFileChunk(postId, fileId, Number(params.get("part")));
+      return new NextResponse(Buffer.from(chunk.body), {
+        headers: {
+          ...PRIVATE_NO_STORE,
+          "Content-Type": "application/octet-stream",
+          "X-Vault-Size": String(chunk.size),
+          "X-Vault-Parts": String(chunk.parts),
+        },
+      });
+    }
+    const url = await vaultDownloadUrl(postId, fileId);
     return NextResponse.json({ ok: true, url }, { headers: PRIVATE_NO_STORE });
   } catch (exc) {
     return NextResponse.json(

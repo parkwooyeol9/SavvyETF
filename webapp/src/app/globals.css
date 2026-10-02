@@ -11924,6 +11924,45 @@ a.chip {
   margin: 0 0.55rem 0 0.4rem;
 }
 
+.vault-viewer .research-lightbox-inner {
+  min-height: 0;
+}
+
+.vault-pages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.vault-page {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.vault-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.vault-page figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .research-frame {
   flex: 1;
   min-height: min(72vh, 780px);

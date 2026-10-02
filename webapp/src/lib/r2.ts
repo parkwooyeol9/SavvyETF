@@ -272,6 +272,29 @@ export async function r2GetObjectPrefix(
   }
 }
 
+export async function r2GetObjectRange(
+  key: string,
+  start: number,
+  end: number,
+): Promise<Uint8Array | null> {
+  const cfg = getR2Config();
+  if (!cfg) return null;
+  const client = clientFor(cfg);
+  try {
+    const res = await client.send(
+      new GetObjectCommand({ Bucket: cfg.bucket, Key: key, Range: `bytes=${start}-${end}` }),
+    );
+    if (!res.Body) return null;
+    return await res.Body.transformToByteArray();
+  } catch (exc) {
+    const name = exc instanceof Error ? exc.name : "";
+    if (name === "NoSuchKey" || name === "NotFound") return null;
+    const msg = exc instanceof Error ? exc.message : String(exc);
+    if (/NoSuchKey|NotFound|404/i.test(msg)) return null;
+    throw exc;
+  }
+}
+
 export async function r2PresignPut(
   key: string,
   contentType: string,
