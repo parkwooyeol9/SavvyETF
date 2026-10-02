@@ -841,7 +841,7 @@ export async function getInsiderSummary(): Promise<InsiderSummary> {
 
 // --- Ticker lookup (live EDGAR) -------------------------------------------------
 
-async function tickerMap(): Promise<Map<string, { cik: string; title: string }>> {
+export async function tickerMap(): Promise<Map<string, { cik: string; title: string }>> {
   return withServerCache("insider:tickers", 24 * 3_600_000, 72 * 3_600_000, async () => {
     const raw = await secFetch("https://www.sec.gov/files/company_tickers.json");
     const d = JSON.parse(raw || "{}") as Record<string, { cik_str: number; ticker: string; title: string }>;
@@ -851,6 +851,29 @@ async function tickerMap(): Promise<Map<string, { cik: string; title: string }>>
     }
     return map;
   });
+}
+
+/** Form 4 filings for one issuer since `sinceDay` (from EDGAR submissions; one request). */
+export async function recentForm4(
+  cik: string,
+  sinceDay: string,
+): Promise<{ count: number; last: string | null }> {
+  const raw = await secFetch(`https://data.sec.gov/submissions/CIK${cik.padStart(10, "0")}.json`);
+  const recent =
+    (JSON.parse(raw || "{}") as { filings?: { recent?: Record<string, string[]> } }).filings?.recent || {};
+  let count = 0;
+  let last: string | null = null;
+  (recent.form || []).forEach((form, i) => {
+    const filed = recent.filingDate?.[i] || "";
+    if (form !== "4" || filed < sinceDay) return;
+    count += 1;
+    if (!last || filed > last) last = filed;
+  });
+  return { count, last };
+}
+
+export function etToday(): string {
+  return etDate();
 }
 
 const LOOKUP_DAYS = 365;

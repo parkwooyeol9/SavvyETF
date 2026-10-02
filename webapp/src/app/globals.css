@@ -12881,6 +12881,88 @@ a.chip {
   font-size: 0.9rem;
 }
 
+.ins-spot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.ins-spot {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.ins-spot:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.ins-spot.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+.ins-spot-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.ins-spot-head b {
+  font-size: 1rem;
+}
+.ins-spot-issuer {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ins-spot-title {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ins-spot-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.ins-spot-tags:empty {
+  display: none;
+}
+.ins-spot-meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.tf-tag.ins-side-buy {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, var(--border));
+}
+.tf-tag.ins-side-sell {
+  color: #f87171;
+  border-color: color-mix(in srgb, #f87171 45%, var(--border));
+}
+.ins-spot-news {
+  margin-top: 0.8rem;
+  font-size: 0.88rem;
+}
+.ins-spot-news ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  line-height: 1.7;
+}
+
 .ins-table .tf-tag.ins-13f {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));

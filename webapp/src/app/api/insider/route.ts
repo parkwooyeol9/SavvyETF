@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getInsiderSpotlight } from "@/lib/insiderNews";
 import { getInsiderSummary, lookupInsiderTicker } from "@/lib/insiderServer";
 
 export const runtime = "nodejs";
@@ -7,8 +8,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const ticker = (new URL(request.url).searchParams.get("ticker") || "").trim().slice(0, 12);
+  const params = new URL(request.url).searchParams;
+  const ticker = (params.get("ticker") || "").trim().slice(0, 12);
   try {
+    if (params.has("spotlight")) {
+      const data = await getInsiderSpotlight();
+      return NextResponse.json(data, {
+        headers: data.items.length
+          ? { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=3600" }
+          : {},
+      });
+    }
     if (ticker) {
       const data = await lookupInsiderTicker(ticker);
       return NextResponse.json(data, {

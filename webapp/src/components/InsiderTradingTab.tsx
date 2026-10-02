@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fmtPct,
@@ -14,6 +14,8 @@ import {
   type InsiderLookup,
   type InsiderNetRow,
   type InsiderPriced,
+  type InsiderSpotlight,
+  type InsiderSpotlightItem,
   type InsiderSummary,
   type InsiderTx,
 } from "@/lib/insiderTrading";
@@ -317,6 +319,98 @@ function SentimentChart({ days }: { days: InsiderSummary["sentiment"]["days"] })
   );
 }
 
+const SIDE_LABEL: Record<InsiderSpotlightItem["side"], string> = {
+  buy: "매수",
+  sell: "매도",
+  mixed: "매수·매도",
+};
+
+function newsDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+}
+
+function SpotlightPanel({
+  data,
+  error,
+  active,
+  onPick,
+}: {
+  data: InsiderSpotlight | null;
+  error: string | null;
+  active: string | null;
+  onPick: (t: string) => void;
+}) {
+  const current = data?.items.find((it) => it.ticker === active) || null;
+  return (
+    <section className="geo-section" style={{ marginTop: 16 }}>
+      <h3 className="geo-section-title">최근 뉴스로 본 주목할 내부자 거래</h3>
+      <p className="meta-soft">
+        최근 7일 Google News 헤드라인
+        {data?.headlines ? ` ${data.headlines.toLocaleString()}건` : ""}에서 내부자 거래 종목을 뽑아, 최근 14일 SEC
+        Form 4 공시가 실제로 있는 종목만 남겼습니다. 매수·경영진·금액·여러 명 동시 매수에 가중치를 둡니다. 카드를
+        누르면 그 종목의 1년 Form 4 이력을 아래에 띄웁니다.
+      </p>
+      {error ? <p className="empty">{error}</p> : null}
+      {!data && !error ? <p className="empty">뉴스에서 주목 종목을 찾는 중…</p> : null}
+      {data && !data.items.length ? (
+        <p className="empty">{data.error || "최근 7일 뉴스에서 확인된 내부자 거래 종목이 없습니다."}</p>
+      ) : null}
+      {data?.items.length ? (
+        <div className="ins-spot-grid">
+          {data.items.map((it) => (
+            <button
+              key={it.ticker}
+              type="button"
+              className={`ins-spot${it.ticker === active ? " on" : ""}`}
+              onClick={() => onPick(it.ticker)}
+            >
+              <span className="ins-spot-head">
+                <b>{it.ticker}</b>
+                <span className={`tf-tag ins-side-${it.side}`}>{SIDE_LABEL[it.side]}</span>
+                <ThirteenFBadge ticker={it.ticker} />
+              </span>
+              <span className="ins-spot-issuer">{it.issuer}</span>
+              <span className="ins-spot-title">{it.news[0]?.title}</span>
+              <span className="ins-spot-tags">
+                {it.c_suite ? <span className="tf-tag ins-csuite">경영진</span> : null}
+                {it.multi_insider || (it.in_cluster ?? 0) >= 2 ? (
+                  <span className="tf-tag">{it.in_cluster ? `클러스터 ${it.in_cluster}명` : "여러 명"}</span>
+                ) : null}
+                {it.max_amount && it.max_amount >= 10_000 ? (
+                  <span className="tf-tag">{fmtUsdShort(it.max_amount)}</span>
+                ) : null}
+              </span>
+              <span className="ins-spot-meta">
+                {it.news[0]?.source} · {newsDate(it.news[0]?.published ?? null)} · 기사 {it.news_count}건 · Form 4{" "}
+                {it.form4_14d}건
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {current ? (
+        <div className="ins-spot-news">
+          <b>{current.ticker} 관련 뉴스</b>
+          <ul>
+            {current.news.map((n) => (
+              <li key={n.url || n.title}>
+                <a href={n.url} target="_blank" rel="noreferrer">
+                  {n.title}
+                </a>{" "}
+                <span className="meta-soft">
+                  — {n.source} · {newsDate(n.published)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function LookupPanel({
   data,
   onPick,
@@ -429,6 +523,11 @@ export default function InsiderTradingTab() {
   const [holders, setHolders] = useState<Insider13FMap>({});
   const [cluster3, setCluster3] = useState(false);
   const [hidePlan, setHidePlan] = useState(true);
+  const [spotlight, setSpotlight] = useState<InsiderSpotlight | null>(null);
+  const [spotlightError, setSpotlightError] = useState<string | null>(null);
+  const [lookupTicker, setLookupTicker] = useState<string | null>(null);
+  const userPicked = useRef(false);
+  const lookupSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -448,14 +547,15 @@ export default function InsiderTradingTab() {
   }, []);
 
   useEffect(() => {
-    if (!summary) return;
+    if (!summary && !spotlight) return;
     const tickers = [
       ...new Set([
-        ...summary.clusters.map((c) => c.ticker),
-        ...summary.c_suite_buys.map((r) => r.ticker),
-        ...summary.top_buys.map((r) => r.ticker),
-        ...summary.net_buyers.map((r) => r.ticker),
-        ...summary.latest_buys.map((r) => r.ticker),
+        ...(spotlight?.items.map((it) => it.ticker) || []),
+        ...(summary?.clusters.map((c) => c.ticker) || []),
+        ...(summary?.c_suite_buys.map((r) => r.ticker) || []),
+        ...(summary?.top_buys.map((r) => r.ticker) || []),
+        ...(summary?.net_buyers.map((r) => r.ticker) || []),
+        ...(summary?.latest_buys.map((r) => r.ticker) || []),
       ]),
     ].slice(0, 150);
     if (!tickers.length) return;
@@ -473,29 +573,56 @@ export default function InsiderTradingTab() {
     return () => {
       alive = false;
     };
-  }, [summary]);
+  }, [summary, spotlight]);
 
-  const runLookup = useCallback(async (raw: string) => {
+  const runLookup = useCallback(async (raw: string, auto = false) => {
     const t = raw.trim().toUpperCase();
     if (!t) return;
+    if (!auto) userPicked.current = true;
+    const seq = ++lookupSeq.current;
     setQuery(t);
+    setLookupTicker(t);
     setLookupLoading(true);
     setLookupError(null);
     try {
       const r = await fetch(`/api/insider?ticker=${encodeURIComponent(t)}`);
       const j = (await r.json()) as InsiderLookup;
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      if (seq !== lookupSeq.current) return;
       setLookup(j);
-      requestAnimationFrame(() =>
-        document.getElementById("ins-lookup")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
+      if (!auto) {
+        requestAnimationFrame(() =>
+          document.getElementById("ins-lookup")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        );
+      }
     } catch (e) {
+      if (seq !== lookupSeq.current) return;
       setLookup(null);
       setLookupError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLookupLoading(false);
+      if (seq === lookupSeq.current) setLookupLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch("/api/insider?spotlight=1");
+        const j = (await r.json()) as InsiderSpotlight;
+        if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        if (!alive) return;
+        setSpotlight(j);
+        const first = j.items[0]?.ticker;
+        if (first && !userPicked.current) void runLookup(first, true);
+      } catch (e) {
+        if (alive) setSpotlightError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [runLookup]);
 
   const s = summary?.sentiment;
   const viewMeta = VIEWS.find((v) => v[0] === view)!;
@@ -552,9 +679,28 @@ export default function InsiderTradingTab() {
         {!summary && !error ? <p className="empty">불러오는 중…</p> : null}
       </section>
 
+      <SpotlightPanel
+        data={spotlight}
+        error={spotlightError}
+        active={lookupTicker}
+        onPick={(t) => void runLookup(t)}
+      />
+
       <div id="ins-lookup" />
+      {lookupLoading && lookupTicker && lookup?.ticker !== lookupTicker ? (
+        <section className="geo-section" style={{ marginTop: 16 }}>
+          <p className="empty">{lookupTicker} 내부자 거래를 SEC에서 불러오는 중…</p>
+        </section>
+      ) : null}
       {lookup ? (
-        <LookupPanel data={lookup} onPick={(t) => void runLookup(t)} onClose={() => setLookup(null)} />
+        <LookupPanel
+          data={lookup}
+          onPick={(t) => void runLookup(t)}
+          onClose={() => {
+            setLookup(null);
+            setLookupTicker(null);
+          }}
+        />
       ) : null}
 
       {s && s.days.length ? (

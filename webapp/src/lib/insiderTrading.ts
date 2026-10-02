@@ -123,6 +123,40 @@ export type InsiderLookup = {
   error?: string;
 };
 
+export type InsiderNewsItem = {
+  title: string;
+  source: string;
+  url: string;
+  published: string | null;
+};
+
+/** A ticker surfaced by recent insider-trading headlines, confirmed by SEC Form 4 filings. */
+export type InsiderSpotlightItem = {
+  ticker: string;
+  issuer: string;
+  side: "buy" | "sell" | "mixed";
+  score: number;
+  /** Largest dollar amount quoted in a headline. */
+  max_amount: number | null;
+  c_suite: boolean;
+  multi_insider: boolean;
+  form4_14d: number;
+  last_form4: string | null;
+  news_count: number;
+  news: InsiderNewsItem[];
+  /** From the ingested 30-day summary, when the ticker shows up there. */
+  in_cluster: number | null;
+  net_value: number | null;
+};
+
+export type InsiderSpotlight = {
+  ok: boolean;
+  updated_at: string;
+  headlines: number;
+  items: InsiderSpotlightItem[];
+  error?: string;
+};
+
 export const TX_CODE_LABEL: Record<string, string> = {
   P: "장내 매수",
   S: "장내 매도",
