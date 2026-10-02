@@ -20,6 +20,7 @@ export type ShellTabId =
   | "etfholdings"
   | "kosdaqactive"
   | "rebalance"
+  | "indexmonitor"
   | "countryetf"
   | "kosdaq100"
   | "moneyflow"
@@ -157,6 +158,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "etfholdings",
   "kosdaqactive",
   "rebalance",
+  "indexmonitor",
   "countryetf",
   "esg",
   "geo",
@@ -200,6 +202,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   etfholdings: "비교",
   kosdaqactive: "코스닥액티브 ETF",
   rebalance: "리밸런싱",
+  indexmonitor: "Index Monitor",
   countryetf: "국가 ETF",
   geo: "지정학",
   infra: "인프라",
@@ -285,7 +288,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "rebal",
         label: "리밸런싱",
-        tabs: ["rebalance"],
+        tabs: ["rebalance", "indexmonitor"],
       },
     ],
   },
@@ -503,6 +506,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
   if (v === "rebal" || v === "rebalancing" || v === "리밸런싱") return "rebalance";
+  if (v === "index-monitor" || v === "index_monitor" || v === "indexmon") return "indexmonitor";
   if (
     v === "datacatalog" ||
     v === "data-catalog" ||

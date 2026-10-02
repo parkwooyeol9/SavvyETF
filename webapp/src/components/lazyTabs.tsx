@@ -21,6 +21,7 @@ export const EtfSupplyPanel = dynamic(() => import("@/components/EtfSupplyPanel"
 export const EtfWeightMonitorTab = dynamic(() => import("@/components/EtfWeightMonitorTab"), { loading });
 export const KosdaqActiveTab = dynamic(() => import("@/components/KosdaqActiveTab"), { loading });
 export const RebalanceTab = dynamic(() => import("@/components/RebalanceTab"), { loading });
+export const IndexMonitorTab = dynamic(() => import("@/components/IndexMonitorTab"), { loading });
 export const CountryEtfTab = dynamic(() => import("@/components/CountryEtfTab"), { loading });
 export const GeoTab = dynamic(() => import("@/components/GeoTab"), { loading });
 export const KrMarketTab = dynamic(() => import("@/components/KrMarketTab"), { loading });
