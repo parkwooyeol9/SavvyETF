@@ -5,10 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useAdminSession } from "@/components/AdminSession";
 import { adminAuthHeaders } from "@/lib/adminSession";
 import {
-  HIGHLIGHT_EVENTS,
   INDEX_DATA_SOURCES,
   INDEX_GROUPS,
   INDEX_METHODOLOGY,
+  INDEX_ORDER,
   METHODOLOGY_LINKS,
   REBALANCE_CALENDAR,
   SOURCE_TIER_LABEL,
@@ -16,6 +16,7 @@ import {
   indexGroup,
   indexName,
   isMsciIndex,
+  latestEventPerRegion,
   type IndexChangeRow,
   type IndexEvent,
   type IndexGroup,
@@ -33,11 +34,16 @@ function calendarSortKey(date: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : `${date.slice(0, 7)}-31`;
 }
 
+function daysUntil(iso: string, today: string): number {
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
 function rowMatches(r: IndexChangeRow, q: string): boolean {
   return `${r.security_name} ${r.code} ${r.note}`.toLowerCase().includes(q);
 }
 
-function EventCard({ event, query }: { event: IndexEvent; query: string }) {
+function EventCard({ event, query, today }: { event: IndexEvent; query: string; today: string }) {
+  const pending = !event.effective || event.effective > today;
   const adds = event.rows.filter((r) => r.action === "ADD");
   const dels = event.rows.filter((r) => r.action === "DEL");
   const weights = event.rows.filter((r) => r.action === "WEIGHT");
@@ -66,6 +72,7 @@ function EventCard({ event, query }: { event: IndexEvent; query: string }) {
           {indexName(event.index_id)} <span className="im-review">{event.review}</span>
         </h3>
         <span className="im-meta">
+          {pending ? <span className="im-pill im-p-est">반영 예정</span> : null}
           {event.announce ? `발표 ${event.announce} · ` : ""}반영 {event.effective || "미정"}
         </span>
       </header>
@@ -102,13 +109,6 @@ function EventCard({ event, query }: { event: IndexEvent; query: string }) {
   );
 }
 
-const BAR_COUNTRIES: { label: string; ids: string[] }[] = [
-  { label: "한국", ids: ["KOSPI200", "KOSDAQ150", "MSCI_KOREA"] },
-  { label: "미국", ids: ["SP500", "SP100", "NDX"] },
-  { label: "일본", ids: ["NIKKEI225"] },
-  { label: "기타 국가", ids: ["MSCI_OTHER"] },
-];
-
 function CountBars({ rows }: { rows: IndexChangeRow[] }) {
   const bars = useMemo(() => {
     const otherMsci = new Set<string>();
@@ -130,11 +130,13 @@ function CountBars({ rows }: { rows: IndexChangeRow[] }) {
         total: v.ADD + v.DEL + v.WEIGHT,
       };
     };
-    const known = new Set(BAR_COUNTRIES.flatMap((c) => c.ids));
+    const regionLabel = (g: IndexGroup) => INDEX_GROUPS.find((x) => x.id === g)?.label ?? g;
+    const known = new Set(["MSCI_OTHER", ...INDEX_ORDER.flatMap((o) => o.ids)]);
     const unlisted = [...agg.keys()].filter((g) => !known.has(g));
     const countries = [
-      ...BAR_COUNTRIES.map((c) => ({ label: c.label, bars: c.ids.filter((g) => agg.has(g)).map(bar) })),
+      ...INDEX_ORDER.map((o) => ({ label: regionLabel(o.group), bars: o.ids.filter((g) => agg.has(g)).map(bar) })),
       { label: "기타 지수", bars: unlisted.map(bar) },
+      { label: "기타 국가", bars: agg.has("MSCI_OTHER") ? [bar("MSCI_OTHER")] : [] },
     ].filter((c) => c.bars.length);
     const max = Math.max(1, ...countries.flatMap((c) => c.bars.map((b) => b.total)));
     return { countries, max };
@@ -171,6 +173,8 @@ export default function IndexMonitorTab() {
   const [view, setView] = useState<View>("overview");
   const [group, setGroup] = useState<IndexGroup>("ALL");
   const [query, setQuery] = useState("");
+  const [indexId, setIndexId] = useState("ALL");
+  const today = useMemo(() => kstToday(), []);
 
   useEffect(() => {
     if (!ready) return;
@@ -203,15 +207,33 @@ export default function IndexMonitorTab() {
   const events = useMemo(() => groupEvents(rows), [rows]);
   const hasMsci = useMemo(() => rows.some((r) => isMsciIndex(r.index_id)), [rows]);
 
-  const highlights = useMemo(() => {
-    const byKey = new Map(events.map((e) => [e.key, e]));
-    return HIGHLIGHT_EVENTS.map((k) => byKey.get(k)).filter((e): e is IndexEvent => Boolean(e));
-  }, [events]);
+  const highlights = useMemo(() => latestEventPerRegion(events), [events]);
 
-  const upcoming = useMemo(() => {
-    const today = kstToday();
-    return REBALANCE_CALENDAR.filter((c) => calendarSortKey(c.date) >= today);
-  }, []);
+  const upcoming = useMemo(
+    () =>
+      REBALANCE_CALENDAR.filter((c) => calendarSortKey(c.date) >= today).sort((a, b) =>
+        calendarSortKey(a.date).localeCompare(calendarSortKey(b.date)),
+      ),
+    [today],
+  );
+
+  const indexIds = useMemo(() => {
+    const present = new Set(rows.map((r) => r.index_id));
+    const ordered = INDEX_ORDER.flatMap((o) => o.ids).filter((id) => present.has(id));
+    const rest = [...present].filter((id) => !ordered.includes(id)).sort();
+    return [...ordered, ...rest];
+  }, [rows]);
+
+  const trackedLabel = useMemo(() => {
+    const otherMsci = indexIds.filter((id) => isMsciIndex(id) && id !== "MSCI_KOREA").length;
+    const core = indexIds.length - otherMsci;
+    return otherMsci ? `추적 지수 ${core}개 + MSCI ${otherMsci}개국` : `추적 지수 ${core}개`;
+  }, [indexIds]);
+
+  const announceRange = useMemo(() => {
+    const months = rows.map((r) => r.announce_date.slice(0, 7)).filter(Boolean).sort();
+    return months.length ? `${months[0]} ~ ${months[months.length - 1]}` : "";
+  }, [rows]);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
@@ -219,9 +241,10 @@ export default function IndexMonitorTab() {
       events.filter(
         (e) =>
           (group === "ALL" || indexGroup(e.index_id) === group) &&
+          (indexId === "ALL" || e.index_id === indexId) &&
           (!q || e.rows.some((r) => rowMatches(r, q))),
       ),
-    [events, group, q],
+    [events, group, indexId, q],
   );
 
   const groups = INDEX_GROUPS.filter((g) => g.id !== "MSCI" || hasMsci);
@@ -245,7 +268,7 @@ export default function IndexMonitorTab() {
           </div>
         </div>
         <p className="meta-soft">
-          {data ? `기준일 ${data.asOf} · 이벤트 ${events.length}건 · 변경 ${rows.length}행` : ""}
+          {data ? `기준일 ${data.asOf} · ${trackedLabel} · 이벤트 ${events.length}건 · 변경 ${rows.length}행` : ""}
           {unlocked && hasMsci ? " · 관리자: MSCI 포함" : ""}
         </p>
         {error ? <p className="empty">{error}</p> : null}
@@ -276,11 +299,28 @@ export default function IndexMonitorTab() {
                 <ul className="im-cal">
                   {upcoming.map((c) => (
                     <li key={`${c.date}-${c.title}`}>
-                      <span className="im-d">{c.date}</span>
+                      <span className="im-d">
+                        {c.date}
+                        {/^\d{4}-\d{2}-\d{2}$/.test(c.date) ? (
+                          <span className="im-dday">
+                            {daysUntil(c.date, today) === 0 ? "D-Day" : `D-${daysUntil(c.date, today)}`}
+                          </span>
+                        ) : null}
+                      </span>
                       <span>
                         <b>{c.title}</b>
                         <br />
-                        <span className="meta-soft">{c.sub}</span>
+                        <span className="meta-soft">
+                          {c.sub}
+                          {c.url ? (
+                            <>
+                              {" · "}
+                              <a href={c.url} target="_blank" rel="noopener noreferrer">
+                                근거
+                              </a>
+                            </>
+                          ) : null}
+                        </span>
                       </span>
                       <span className={`im-pill ${c.confirmed ? "im-p-fix" : "im-p-est"}`}>
                         {c.confirmed ? "확정" : "예상"}
@@ -295,18 +335,18 @@ export default function IndexMonitorTab() {
             <section className="geo-section panel">
               <h3 className="im-h">지수별 수집 변경 건수</h3>
               <p className="meta-soft">
-                2025-12 ~ 2026-09 공지 기준. <span className="im-k-add">■ 편입</span>{" "}
+                {announceRange ? `${announceRange} 공지 기준.` : ""} <span className="im-k-add">■ 편입</span>{" "}
                 <span className="im-k-del">■ 편출</span> <span className="im-k-w">■ 비중변경</span>
               </p>
               <CountBars rows={rows} />
             </section>
           </div>
           <section className="geo-section panel">
-            <h3 className="im-h">최근 주요 이벤트</h3>
-            <p className="meta-soft">국내 투자자 관점에서 영향이 큰 이벤트만 골랐습니다. 전체는 편출입 히스토리에 있습니다.</p>
+            <h3 className="im-h">지역별 최근 이벤트</h3>
+            <p className="meta-soft">지역마다 가장 최근에 발표된 변경입니다. 전체는 편출입 히스토리에 있습니다.</p>
             <div className="im-events">
               {highlights.map((e) => (
-                <EventCard key={e.key} event={e} query="" />
+                <EventCard key={e.key} event={e} query="" today={today} />
               ))}
             </div>
           </section>
@@ -322,11 +362,29 @@ export default function IndexMonitorTab() {
                 type="button"
                 className={`chip${group === g.id ? " active" : ""}`}
                 aria-pressed={group === g.id}
-                onClick={() => setGroup(g.id)}
+                onClick={() => {
+                  setGroup(g.id);
+                  setIndexId("ALL");
+                }}
               >
                 {g.label}
               </button>
             ))}
+            <select
+              className="im-select"
+              value={indexId}
+              onChange={(e) => setIndexId(e.target.value)}
+              aria-label="지수 선택"
+            >
+              <option value="ALL">모든 지수</option>
+              {indexIds
+                .filter((id) => group === "ALL" || indexGroup(id) === group)
+                .map((id) => (
+                  <option key={id} value={id}>
+                    {indexName(id)}
+                  </option>
+                ))}
+            </select>
             <input
               type="search"
               className="im-search"
@@ -339,7 +397,7 @@ export default function IndexMonitorTab() {
           </div>
           <div className="im-events">
             {filtered.length ? (
-              filtered.map((e) => <EventCard key={e.key} event={e} query={q} />)
+              filtered.map((e) => <EventCard key={e.key} event={e} query={q} today={today} />)
             ) : (
               <p className="empty">검색 결과가 없습니다. 다른 이름이나 6자리 코드로 찾아보세요.</p>
             )}
@@ -352,7 +410,8 @@ export default function IndexMonitorTab() {
           <section className="geo-section panel">
             <h3 className="im-h">주요 주가지수와 방법론 요약</h3>
             <p className="meta-soft">
-              추종 자금 규모와 국내 수급 영향 기준으로 12개를 골랐습니다. 2026년에 규칙이 바뀐 지수는 마지막 열에 적었습니다.
+              추종 자금 규모와 국내 수급 영향 기준으로 {INDEX_METHODOLOGY.length}개를 골랐습니다. 지수 이름을 누르면 공식 방법론
+              문서로 이동합니다.
             </p>
             <div className="im-tbl">
               <table>
@@ -370,7 +429,13 @@ export default function IndexMonitorTab() {
                   {INDEX_METHODOLOGY.map((m) => (
                     <tr key={m.name}>
                       <td className="im-idx">
-                        {m.name}
+                        {m.url ? (
+                          <a href={m.url} target="_blank" rel="noopener noreferrer">
+                            {m.name}
+                          </a>
+                        ) : (
+                          m.name
+                        )}
                         <span className="im-sub">{m.provider}</span>
                       </td>
                       <td>{m.universe}</td>
@@ -483,7 +548,9 @@ export default function IndexMonitorTab() {
               <div className="im-step">
                 <span className="meta-soft">P0 · 지금</span>
                 <h4>시드 이력</h4>
-                <p>공식 공지·보도 기반 2025-12~2026-09 이벤트, 변경 {rows.length}행. 출처 등급을 행마다 기록.</p>
+                <p>
+                  공식 공지·보도 기반 {announceRange} 이벤트 {events.length}건, 변경 {rows.length}행. 출처 등급을 행마다 기록.
+                </p>
               </div>
               <div className="im-step">
                 <span className="meta-soft">P1 · 2–3주</span>

@@ -13348,3 +13348,28 @@ a.chip {
   font-weight: 600;
   color: var(--muted);
 }
+.im-dday {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.im-meta .im-pill {
+  margin-right: 0.4rem;
+}
+.im-select {
+  padding: 0.38rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+.im-idx a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  text-underline-offset: 3px;
+}
