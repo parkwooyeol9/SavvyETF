@@ -42,6 +42,7 @@ export const WallStreetGurusTab = dynamic(() => import("@/components/WallStreetG
 export const TradingSignalsTab = dynamic(() => import("@/components/TradingSignalsTab"), { loading });
 export const MoneyFlowTab = dynamic(() => import("@/components/MoneyFlowTab"), { loading });
 export const ThirteenFTab = dynamic(() => import("@/components/ThirteenFTab"), { loading });
+export const InsiderTradingTab = dynamic(() => import("@/components/InsiderTradingTab"), { loading });
 export const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading });
 export const UsPortfolioTab = dynamic(() => import("@/components/UsPortfolioTab"), { loading });
 export const MpTab = dynamic(() => import("@/components/MpTab"), { loading });

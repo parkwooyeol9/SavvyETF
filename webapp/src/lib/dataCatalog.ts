@@ -147,6 +147,18 @@ export const DATA_CATALOG: DatasetSpec[] = [
     viewTab: "moneyflow",
   },
   {
+    id: "insider_us",
+    label: "미국 내부자 매매 (SEC Form 4)",
+    group: "monitor",
+    kind: "rolling",
+    prefixes: ["insider/us/summary.json", "insider/us/state.json", "insider/us/days/"],
+    hotWindow: "공시일별 장내 매수·매도(P/S) 샤드, 요약은 최근 30일",
+    archive: "days/ 샤드는 삭제하지 않음 (하루 수십 KB). 30일 밖은 요약에서만 제외",
+    volatile: false,
+    insight: "매수만 신호로 볼 것. 매도는 10b5-1 계획 매도 제외 후 해석. 공시는 거래 후 최대 2영업일 지연",
+    viewTab: "insider",
+  },
+  {
     id: "cftc",
     label: "CFTC 포지션",
     group: "monitor",

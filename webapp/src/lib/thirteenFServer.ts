@@ -583,3 +583,39 @@ export async function lookupHolders(query: string): Promise<ThirteenFLookup> {
   rows.sort((a, b) => b.holding.weight_pct - a.holding.weight_pct);
   return { query: query.trim(), rows: rows.slice(0, 80) };
 }
+
+// --- Cross-check for other tabs (내부자 매매) ---------------------------------
+
+const normTicker = (t: string) => t.toUpperCase().trim().replace(/[/\-\s]+/g, ".");
+
+export type ThirteenFHoldersByTicker = {
+  period: string | null;
+  holders: Record<string, { id: string; name_ko: string; weight_pct: number; change: ThirteenFChange }[]>;
+};
+
+/** Which tracked funds held each ticker in their latest (non-stale) 13F. */
+export async function holdersByTickers(tickers: string[]): Promise<ThirteenFHoldersByTicker> {
+  const want = new Map<string, string>();
+  for (const t of tickers) if (t) want.set(normTicker(t), t.toUpperCase());
+  const all = await allFunds();
+  const holders: ThirteenFHoldersByTicker["holders"] = {};
+  let period: string | null = null;
+  for (const x of all) {
+    const d = x.detail;
+    if (!d || d.stale) continue;
+    if (!period || d.filing.period > period) period = d.filing.period;
+    for (const h of d.holdings) {
+      if (h.is_debt || !h.ticker) continue;
+      const key = want.get(normTicker(h.ticker));
+      if (!key) continue;
+      (holders[key] ||= []).push({
+        id: d.investor.id,
+        name_ko: d.investor.name_ko,
+        weight_pct: h.weight_pct,
+        change: h.change,
+      });
+    }
+  }
+  for (const list of Object.values(holders)) list.sort((a, b) => b.weight_pct - a.weight_pct);
+  return { period, holders };
+}

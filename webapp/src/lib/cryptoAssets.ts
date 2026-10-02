@@ -1541,7 +1541,7 @@ export async function buildCryptoAssetsPayload(opts?: {
     etf: {
       rows: etfRows,
       note:
-        "현물 ETF AUM·일봉%는 Yahoo. 일별 creations/redemptions 공식 API는 무료로 제한적 — 추정 Flow는 펀드매니저→Money Flow 탭 참고",
+        "현물 ETF AUM·일봉%는 Yahoo. 일별 creations/redemptions 공식 API는 무료로 제한적 — 추정 Flow는 월가 구루→자금 흐름 탭 참고",
     },
     headlines,
   };

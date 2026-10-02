@@ -119,7 +119,7 @@ export default function WallStreetGurusTab() {
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">월가 구루</h2>
+            <h2 className="kr-hero-title">펀드 매니저</h2>
             <p className="kr-hero-sub">
               한국시간 매일 아침 7시 기준으로, 유명 구루·헷지펀드 매니저의 공개
               투자 아이디어·발언 중 트래픽·주목도가 높은 보도를 한눈에 정리합니다.

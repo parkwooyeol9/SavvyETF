@@ -58,6 +58,7 @@ export type ShellTabId =
   | "bookclub"
   | "bookclubboard"
   | "vault"
+  | "insider"
   | TabId;
 
 export type NavGroupId =
@@ -171,6 +172,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "bookclub",
   "bookclubboard",
   "vault",
+  "insider",
 ];
 
 export const TAB_LABELS: Record<TabId, string> = {
@@ -216,8 +218,9 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   quant: "기술적분석",
   ideas: "AI Pick",
   weightopt: "비중 최적화",
-  gurus: "월가 구루",
+  gurus: "펀드 매니저",
   thirteenf: "13F",
+  insider: "내부자 매매",
   signals: "트레이딩 시그널",
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
@@ -322,10 +325,10 @@ export const NAV_GROUPS: NavGroup[] = [
     nested: [
       {
         id: "fundmgr",
-        label: "펀드매니저",
-        tabs: ["gurus", "moneyflow", "thirteenf"],
+        label: "월가 구루",
+        tabs: ["gurus", "moneyflow", "thirteenf", "insider"],
       },
-      // Single-tab nested group so it renders after 펀드매니저 (rightmost).
+      // Single-tab nested group so it renders after 월가 구루 (rightmost).
       { id: "vault", label: "자료실", tabs: ["vault"] },
     ],
   },

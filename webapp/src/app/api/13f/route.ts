@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getFundDetail, getOverview, lookupHolders } from "@/lib/thirteenFServer";
+import { getFundDetail, getOverview, holdersByTickers, lookupHolders } from "@/lib/thirteenFServer";
 import { findInvestor } from "@/lib/thirteenF";
 
 export const runtime = "nodejs";
@@ -12,7 +12,16 @@ export async function GET(request: Request) {
   const sp = new URL(request.url).searchParams;
   const fund = (sp.get("fund") || "").trim();
   const q = (sp.get("q") || "").trim().slice(0, 40);
+  // tickers=A,B,C → holders per ticker (내부자 매매 탭 13F 교차 배지)
+  const tickers = (sp.get("tickers") || "")
+    .split(",")
+    .map((t) => t.trim().toUpperCase().replace(/[^A-Z0-9./-]/g, ""))
+    .filter(Boolean)
+    .slice(0, 150);
   try {
+    if (tickers.length) {
+      return NextResponse.json(await holdersByTickers(tickers), { headers: { "Cache-Control": CDN } });
+    }
     if (fund) {
       if (!findInvestor(fund)) {
         return NextResponse.json({ error: "unknown fund" }, { status: 404 });
