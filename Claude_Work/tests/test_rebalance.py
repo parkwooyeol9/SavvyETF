@@ -113,11 +113,11 @@ class BuildTest(unittest.TestCase):
     def test_build_october(self):
         res = build(date(2026, 10, 1), 4)
         day = next(d for d in res["trade_days"] if d["trade_date"] == "2026-10-08")
-        self.assertIn("0167A0", day["etfs"])
-        self.assertGreaterEqual(len(day["etfs"]), 10)
+        self.assertNotIn("0167A0", day["etfs"])
+        self.assertGreaterEqual(len(day["etfs"]), 8)
         prim = [f for f in res["flows"] if f["etf_code"] == "0167A0" and f["primary"]]
-        self.assertEqual(prim[0]["trade_date"], "2026-10-08")
-        hynix = next(r for r in res["impact"] if r["code"] == "000660")
+        self.assertEqual(prim[0]["trade_date"], "2026-10-12")  # FnGuide 공지 10/13 개편
+        hynix = next(r for r in res["impact"] if r["code"] == "000660" and r["trade_date"] == "2026-10-12")
         self.assertGreater(hynix["net_eok"], 1700)
         self.assertNotIn("event_study", res)
 
@@ -125,6 +125,7 @@ class BuildTest(unittest.TestCase):
         res = build(date(2026, 10, 1), 4)
         prim = next(f for f in res["flows"] if f["etf_code"] == "0167A0" and f["primary"])
         self.assertEqual(sorted(prim["capped_by_mcap"]), ["009150", "402340"])
+        self.assertEqual(prim["trade_date"], "2026-10-12")
         sksq = next(t for t in prim["trades"] if t["code"] == "402340")
         self.assertAlmostEqual(sksq["target_pct"], 15.0)
 
@@ -192,17 +193,26 @@ class ReviewFixesTest(unittest.TestCase):
     def test_sol_top2_has_alt_trade_date(self):
         res = build(date(2026, 10, 1), 4)
         row = next(e for e in res["etfs"] if e["code"] == "0167A0")
-        self.assertEqual(row["next_trade_date"], "2026-10-08")
-        self.assertEqual(row["next_trade_date_alt"], "2026-10-12")
-        self.assertEqual(row["next_effective_alt"], "2026-10-13")
+        self.assertEqual(row["next_trade_date"], "2026-10-12")
+        self.assertEqual(row["next_effective"], "2026-10-13")
+        self.assertEqual(row["next_trade_date_alt"], "2026-10-08")
         prim = next(f for f in res["flows"] if f["etf_code"] == "0167A0" and f["primary"])
-        self.assertEqual(prim["alt_trade_date"], "2026-10-12")
+        self.assertEqual(prim["alt_trade_date"], "2026-10-08")
+
+    def test_fnguide_notice_dates(self):
+        self.assertEqual(kcal.effective_date("D+3B", 2026, 10), date(2026, 10, 14))
+        res = build(date(2026, 10, 1), 4)
+        rows = {e["code"]: e for e in res["etfs"]}
+        self.assertEqual(rows["396500"]["next_effective"], "2026-10-12")
+        for c in ("0093A0", "484880", "0008T0"):
+            self.assertEqual(rows[c]["next_effective"], "2026-10-13")
+        self.assertEqual(rows["462010"]["next_effective"], "2026-10-14")
 
     def test_trade_day_coverage(self):
         res = build(date(2026, 10, 1), 4)
         day = next(d for d in res["trade_days"] if d["trade_date"] == "2026-10-08")
         self.assertGreater(day["n_etfs"], len(day["computed_etfs"]))
-        self.assertIn("0167A0", day["computed_etfs"])
+        self.assertIn("396500", day["computed_etfs"])
         self.assertTrue(0 < day["coverage_aum_pct"] <= 100)
         dec = next(d for d in res["trade_days"] if d["trade_date"] == "2026-12-10")
         self.assertEqual(dec["n_etfs"], len([c for c in dec["etfs"] if c not in ("KOSPI200", "KOSDAQ150")]))

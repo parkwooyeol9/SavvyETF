@@ -69,6 +69,7 @@ const UNVERIFIED_LABEL: Record<string, string> = {
   weighting: "가중 방식",
   effective_date: "효력일 해석",
   constituents: "편출입",
+  multi_day: "다영업일 분할 개편",
 };
 
 function unverifiedText(keys: string[] | undefined): string {

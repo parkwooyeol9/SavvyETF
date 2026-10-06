@@ -10,7 +10,10 @@ D    선물·옵션 만기일 당일 변경
 D+1  만기일 익영업일 변경
 D+2  만기일 다음 주 첫 영업일 변경 (FnGuide 방법론 '만기일 익주 첫 영업일')
 D+2B 만기일 이후 2번째 영업일 변경 (운용사 보도자료 표현 '만기일 이후 2영업일').
-     금요일이 휴장인 달(예: 2026-10, 10/9 한글날)에만 D+2 와 하루 갈린다 → 대안 날짜로만 쓴다
+     금요일이 휴장인 달(예: 2026-10, 10/9 한글날)에만 D+2 와 하루 갈린다.
+     FnGuide 2026-10-02 공지: AI반도체TOP2플러스·AI반도체TOP10·금융지주플러스고배당·화장품TOP3플러스 10/13 개편
+D+3B 만기일 이후 3번째 영업일 (FnGuide 2차전지소재 10/14 개편)
+     ※ FnGuide 는 여러 영업일에 걸친 개편을 '마지막 개편일'로 공지 → 앞선 날에 일부 매매가 있을 수 있음
 S    해당 월 첫 영업일 변경
 E    해당 월 마지막 영업일 변경
 
@@ -31,6 +34,7 @@ RULE_LABELS = {
     "D+1": "만기 익영업일",
     "D+2": "만기 다음 주 첫 영업일",
     "D+2B": "만기 후 2영업일",
+    "D+3B": "만기 후 3영업일",
     "S": "해당 월 첫 영업일",
     "E": "해당 월 마지막 영업일",
 }
@@ -121,8 +125,11 @@ def effective_date(rule: str, year: int, month: int) -> date:
         return exp
     if rule == "D+1":
         return next_trading_day(exp)
-    if rule == "D+2B":
-        return next_trading_day(next_trading_day(exp))
+    if rule in ("D+2B", "D+3B"):
+        d = exp
+        for _ in range(int(rule[2])):
+            d = next_trading_day(d)
+        return d
     if rule == "D+2":
         monday = exp + timedelta(days=7 - exp.weekday())
         d = monday
