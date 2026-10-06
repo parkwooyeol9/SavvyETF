@@ -1,6 +1,6 @@
 window.REBALANCE_DATA = {
- "generated_at": "2026-10-06T14:34:59+09:00",
- "as_of": "2026-10-06",
+ "generated_at": "2026-10-07T07:03:55+09:00",
+ "as_of": "2026-10-07",
  "window": [
   "2026-10",
   "2026-11",
@@ -65,32 +65,59 @@ window.REBALANCE_DATA = {
    "status": "upcoming",
    "etfs": [
     "396500",
-    "0167A0",
     "305540",
     "0177R0",
     "0148J0",
     "488080",
     "0091P0",
-    "462010",
     "463250",
-    "484880",
     "228790",
-    "0093A0",
-    "471760",
-    "0008T0"
+    "471760"
    ],
-   "aum_eok": 222782,
+   "aum_eok": 151110,
    "has_index": false,
    "expiry_same_day": true,
-   "n_etfs": 14,
+   "n_etfs": 9,
    "computed_etfs": [
     "0148J0",
-    "0167A0",
     "228790",
     "396500"
    ],
-   "computed_aum_eok": 174720,
-   "coverage_aum_pct": 78.4
+   "computed_aum_eok": 114858,
+   "coverage_aum_pct": 76.0
+  },
+  {
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "etfs": [
+    "0167A0",
+    "484880",
+    "0093A0",
+    "0008T0"
+   ],
+   "aum_eok": 66580,
+   "has_index": false,
+   "expiry_same_day": false,
+   "n_etfs": 4,
+   "computed_etfs": [
+    "0167A0"
+   ],
+   "computed_aum_eok": 59862,
+   "coverage_aum_pct": 89.9
+  },
+  {
+   "trade_date": "2026-10-13",
+   "status": "upcoming",
+   "etfs": [
+    "462010"
+   ],
+   "aum_eok": 5092,
+   "has_index": false,
+   "expiry_same_day": false,
+   "n_etfs": 1,
+   "computed_etfs": [],
+   "computed_aum_eok": 0,
+   "coverage_aum_pct": 0.0
   },
   {
    "trade_date": "2026-12-10",
@@ -178,16 +205,29 @@ window.REBALANCE_DATA = {
    "etfs": [
     "0167A0",
     "0091P0",
-    "462010",
     "463250",
     "0093A0",
     "471760",
     "0008T0"
    ],
-   "aum_eok": 80304,
+   "aum_eok": 75212,
    "has_index": false,
    "expiry_same_day": false,
-   "n_etfs": 7,
+   "n_etfs": 6,
+   "computed_etfs": [],
+   "computed_aum_eok": 0,
+   "coverage_aum_pct": 0.0
+  },
+  {
+   "trade_date": "2027-01-18",
+   "status": "upcoming",
+   "etfs": [
+    "462010"
+   ],
+   "aum_eok": 5092,
+   "has_index": false,
+   "expiry_same_day": false,
+   "n_etfs": 1,
    "computed_etfs": [],
    "computed_aum_eok": 0,
    "coverage_aum_pct": 0.0
@@ -261,21 +301,6 @@ window.REBALANCE_DATA = {
    "kind": "etf",
    "theme": "반도체",
    "aum_eok": 105742,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
-   "expiry": "2026-10-08",
-   "effective": "2026-10-12",
-   "trade_date": "2026-10-08",
-   "status": "upcoming",
-   "holiday_list_ok": true
-  },
-  {
-   "etf_code": "0167A0",
-   "etf_name": "SOL AI반도체TOP2플러스",
-   "issuer": "신한자산운용",
-   "kind": "etf",
-   "theme": "반도체",
-   "aum_eok": 59862,
    "rule": "D+2",
    "rule_label": "만기 다음 주 첫 영업일",
    "expiry": "2026-10-08",
@@ -360,42 +385,12 @@ window.REBALANCE_DATA = {
    "holiday_list_ok": true
   },
   {
-   "etf_code": "462010",
-   "etf_name": "TIGER 2차전지소재Fn",
-   "issuer": "미래에셋자산운용",
-   "kind": "etf",
-   "theme": "2차전지",
-   "aum_eok": 5092,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
-   "expiry": "2026-10-08",
-   "effective": "2026-10-12",
-   "trade_date": "2026-10-08",
-   "status": "upcoming",
-   "holiday_list_ok": true
-  },
-  {
    "etf_code": "463250",
    "etf_name": "TIGER K방산&우주",
    "issuer": "미래에셋자산운용",
    "kind": "etf",
    "theme": "방산",
    "aum_eok": 4792,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
-   "expiry": "2026-10-08",
-   "effective": "2026-10-12",
-   "trade_date": "2026-10-08",
-   "status": "upcoming",
-   "holiday_list_ok": true
-  },
-  {
-   "etf_code": "484880",
-   "etf_name": "SOL 금융지주플러스고배당",
-   "issuer": "신한자산운용",
-   "kind": "etf",
-   "theme": "금융",
-   "aum_eok": 3713,
    "rule": "D+2",
    "rule_label": "만기 다음 주 첫 영업일",
    "expiry": "2026-10-08",
@@ -420,21 +415,6 @@ window.REBALANCE_DATA = {
    "holiday_list_ok": true
   },
   {
-   "etf_code": "0093A0",
-   "etf_name": "RISE AI반도체TOP10",
-   "issuer": "KB자산운용",
-   "kind": "etf",
-   "theme": "반도체",
-   "aum_eok": 1993,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
-   "expiry": "2026-10-08",
-   "effective": "2026-10-12",
-   "trade_date": "2026-10-08",
-   "status": "upcoming",
-   "holiday_list_ok": true
-  },
-  {
    "etf_code": "471760",
    "etf_name": "TIGER AI반도체핵심공정",
    "issuer": "미래에셋자산운용",
@@ -450,17 +430,77 @@ window.REBALANCE_DATA = {
    "holiday_list_ok": true
   },
   {
+   "etf_code": "0167A0",
+   "etf_name": "SOL AI반도체TOP2플러스",
+   "issuer": "신한자산운용",
+   "kind": "etf",
+   "theme": "반도체",
+   "aum_eok": 59862,
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
+   "expiry": "2026-10-08",
+   "effective": "2026-10-13",
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "holiday_list_ok": true
+  },
+  {
+   "etf_code": "484880",
+   "etf_name": "SOL 금융지주플러스고배당",
+   "issuer": "신한자산운용",
+   "kind": "etf",
+   "theme": "금융",
+   "aum_eok": 3713,
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
+   "expiry": "2026-10-08",
+   "effective": "2026-10-13",
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "holiday_list_ok": true
+  },
+  {
+   "etf_code": "0093A0",
+   "etf_name": "RISE AI반도체TOP10",
+   "issuer": "KB자산운용",
+   "kind": "etf",
+   "theme": "반도체",
+   "aum_eok": 1993,
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
+   "expiry": "2026-10-08",
+   "effective": "2026-10-13",
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "holiday_list_ok": true
+  },
+  {
    "etf_code": "0008T0",
    "etf_name": "SOL 화장품TOP3플러스",
    "issuer": "신한자산운용",
    "kind": "etf",
    "theme": "화장품",
    "aum_eok": 1012,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "expiry": "2026-10-08",
-   "effective": "2026-10-12",
-   "trade_date": "2026-10-08",
+   "effective": "2026-10-13",
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "holiday_list_ok": true
+  },
+  {
+   "etf_code": "462010",
+   "etf_name": "TIGER 2차전지소재Fn",
+   "issuer": "미래에셋자산운용",
+   "kind": "etf",
+   "theme": "2차전지",
+   "aum_eok": 5092,
+   "rule": "D+3B",
+   "rule_label": "만기 후 3영업일",
+   "expiry": "2026-10-08",
+   "effective": "2026-10-14",
+   "trade_date": "2026-10-13",
    "status": "upcoming",
    "holiday_list_ok": true
   },
@@ -651,8 +691,8 @@ window.REBALANCE_DATA = {
    "kind": "etf",
    "theme": "반도체",
    "aum_eok": 59862,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "expiry": "2027-01-14",
    "effective": "2027-01-18",
    "trade_date": "2027-01-15",
@@ -666,21 +706,6 @@ window.REBALANCE_DATA = {
    "kind": "etf",
    "theme": "원자력",
    "aum_eok": 6055,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
-   "expiry": "2027-01-14",
-   "effective": "2027-01-18",
-   "trade_date": "2027-01-15",
-   "status": "upcoming",
-   "holiday_list_ok": true
-  },
-  {
-   "etf_code": "462010",
-   "etf_name": "TIGER 2차전지소재Fn",
-   "issuer": "미래에셋자산운용",
-   "kind": "etf",
-   "theme": "2차전지",
-   "aum_eok": 5092,
    "rule": "D+2",
    "rule_label": "만기 다음 주 첫 영업일",
    "expiry": "2027-01-14",
@@ -711,8 +736,8 @@ window.REBALANCE_DATA = {
    "kind": "etf",
    "theme": "반도체",
    "aum_eok": 1993,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "expiry": "2027-01-14",
    "effective": "2027-01-18",
    "trade_date": "2027-01-15",
@@ -741,11 +766,26 @@ window.REBALANCE_DATA = {
    "kind": "etf",
    "theme": "화장품",
    "aum_eok": 1012,
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "expiry": "2027-01-14",
    "effective": "2027-01-18",
    "trade_date": "2027-01-15",
+   "status": "upcoming",
+   "holiday_list_ok": true
+  },
+  {
+   "etf_code": "462010",
+   "etf_name": "TIGER 2차전지소재Fn",
+   "issuer": "미래에셋자산운용",
+   "kind": "etf",
+   "theme": "2차전지",
+   "aum_eok": 5092,
+   "rule": "D+3B",
+   "rule_label": "만기 후 3영업일",
+   "expiry": "2027-01-14",
+   "effective": "2027-01-19",
+   "trade_date": "2027-01-18",
    "status": "upcoming",
    "holiday_list_ok": true
   }
@@ -772,7 +812,8 @@ window.REBALANCE_DATA = {
    "next_effective": "2026-10-12",
    "flow_status": "ok",
    "notes": [
-    "FnGuide 반도체TOP10 방법론: 시총 상위 2종목 각 25%, 나머지 8종목은 유동시가총액 가중으로 50% (Methodology Book v1.0, 2024-05). 최신판에서 SK스퀘어 등 상한 추가 여부 확인 필요"
+    "FnGuide 반도체TOP10 방법론: 시총 상위 2종목 각 25%, 나머지 8종목은 유동시가총액 가중으로 50% (Methodology Book v1.0, 2024-05). 최신판에서 SK스퀘어 등 상한 추가 여부 확인 필요",
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 반도체TOP10 개편일 10/12 확인 → 10/8 종가 매매"
    ],
    "unverified": [],
    "alt_rule": null,
@@ -825,28 +866,28 @@ window.REBALANCE_DATA = {
     7,
     10
    ],
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "cap_pct": 15,
    "aum_eok": 59862,
    "aum_as_of": "2026-10-06",
    "holdings_as_of": "2026-10-06",
-   "next_trade_date": "2026-10-08",
-   "next_effective": "2026-10-12",
+   "next_trade_date": "2026-10-12",
+   "next_effective": "2026-10-13",
    "flow_status": "ok",
    "notes": [
     "정기변경일마다 삼성전자·SK하이닉스 각 25%로 조정 (신한자산운용 공지)",
     "그 외 종목은 종목당 15% 상한. SK스퀘어·삼성전기는 시가총액 비중이 상한을 넘어 15%로 잘림 (상장·4월·7월 정기변경 후 비중으로 확인, 특정 종목 고정 규칙 아님)",
-    "효력일 해석 2가지: FnGuide 방법론 '만기일 익주 첫 영업일'(기본, 10/12 효력·10/8 매매) / 신한 보도자료 '만기일 이후 2영업일'(대안, 10/13 효력·10/12 매매)"
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 → 10/12 종가 매매가 기본 (운용사 '만기일 이후 2영업일'과 일치). 다영업일 개편이면 10/8 에 일부 매매 가능 → 대안 날짜로 표시"
    ],
    "unverified": [
-    "effective_date",
-    "constituents"
+    "constituents",
+    "multi_day"
    ],
-   "alt_rule": "D+2B",
-   "alt_rule_label": "만기 후 2영업일",
-   "next_trade_date_alt": "2026-10-12",
-   "next_effective_alt": "2026-10-13"
+   "alt_rule": "D+2",
+   "alt_rule_label": "만기 다음 주 첫 영업일",
+   "next_trade_date_alt": "2026-10-08",
+   "next_effective_alt": "2026-10-12"
   },
   {
    "code": "395160",
@@ -1077,17 +1118,21 @@ window.REBALANCE_DATA = {
     7,
     10
    ],
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+3B",
+   "rule_label": "만기 후 3영업일",
    "cap_pct": null,
    "aum_eok": 5092,
    "aum_as_of": "2026-09-29",
    "holdings_as_of": null,
-   "next_trade_date": "2026-10-08",
-   "next_effective": "2026-10-12",
+   "next_trade_date": "2026-10-13",
+   "next_effective": "2026-10-14",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/14 (다영업일이면 마지막 날 기준)"
+   ],
+   "unverified": [
+    "multi_day"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1167,17 +1212,21 @@ window.REBALANCE_DATA = {
     4,
     10
    ],
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "cap_pct": null,
    "aum_eok": 3713,
    "aum_as_of": "2026-09-29",
    "holdings_as_of": null,
-   "next_trade_date": "2026-10-08",
-   "next_effective": "2026-10-12",
+   "next_trade_date": "2026-10-12",
+   "next_effective": "2026-10-13",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 (다영업일이면 마지막 날 기준)"
+   ],
+   "unverified": [
+    "multi_day"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1254,17 +1303,21 @@ window.REBALANCE_DATA = {
     7,
     10
    ],
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "cap_pct": null,
    "aum_eok": 1993,
    "aum_as_of": "2026-09-29",
    "holdings_as_of": null,
-   "next_trade_date": "2026-10-08",
-   "next_effective": "2026-10-12",
+   "next_trade_date": "2026-10-12",
+   "next_effective": "2026-10-13",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 (다영업일이면 마지막 날 기준)"
+   ],
+   "unverified": [
+    "multi_day"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1431,17 +1484,21 @@ window.REBALANCE_DATA = {
     7,
     10
    ],
-   "rule": "D+2",
-   "rule_label": "만기 다음 주 첫 영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "cap_pct": null,
    "aum_eok": 1012,
    "aum_as_of": "2026-09-29",
    "holdings_as_of": null,
-   "next_trade_date": "2026-10-08",
-   "next_effective": "2026-10-12",
+   "next_trade_date": "2026-10-12",
+   "next_effective": "2026-10-13",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 (다영업일이면 마지막 날 기준)"
+   ],
+   "unverified": [
+    "multi_day"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1710,9 +1767,9 @@ window.REBALANCE_DATA = {
   {
    "etf_code": "0167A0",
    "etf_name": "SOL AI반도체TOP2플러스",
-   "trade_date": "2026-10-08",
-   "effective": "2026-10-12",
-   "alt_trade_date": "2026-10-12",
+   "trade_date": "2026-10-12",
+   "effective": "2026-10-13",
+   "alt_trade_date": "2026-10-08",
    "scenario_id": "base",
    "scenario_label": "25% 리셋 + 15% 상한",
    "scenario_note": "삼성전자·SK하이닉스 25%. 나머지는 시가총액 기준 15% 상한(SK스퀘어·삼성전기가 상한에 걸림), 남은 비중은 소형 6종목에 현재 비중 비례. 편출입은 반영 안 함",
@@ -2206,208 +2263,39 @@ window.REBALANCE_DATA = {
  "impact": [
   {
    "trade_date": "2026-10-08",
-   "code": "000660",
-   "name": "SK하이닉스",
-   "buy_eok": 3937.4,
-   "sell_eok": 0.0,
-   "net_eok": 3937.4,
-   "by_etf": [
-    {
-     "etf_code": "396500",
-     "etf_name": "TIGER 반도체TOP10",
-     "amount_eok": 2093.7
-    },
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": 1843.7
-    }
-   ],
-   "adv_eok": 56565.4,
-   "impact_ratio": 0.0696,
-   "impact_level": "mid"
-  },
-  {
-   "trade_date": "2026-10-08",
    "code": "005930",
    "name": "삼성전자",
-   "buy_eok": 443.0,
+   "buy_eok": 0.0,
    "sell_eok": -2093.7,
-   "net_eok": -1650.7,
+   "net_eok": -2093.7,
    "by_etf": [
     {
      "etf_code": "396500",
      "etf_name": "TIGER 반도체TOP10",
      "amount_eok": -2093.7
-    },
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": 443.0
     }
    ],
    "adv_eok": 43942.8,
-   "impact_ratio": 0.0376,
+   "impact_ratio": 0.0476,
    "impact_level": "mid"
   },
   {
    "trade_date": "2026-10-08",
-   "code": "402340",
-   "name": "SK스퀘어",
-   "buy_eok": 993.7,
+   "code": "000660",
+   "name": "SK하이닉스",
+   "buy_eok": 2093.7,
    "sell_eok": 0.0,
-   "net_eok": 993.7,
+   "net_eok": 2093.7,
    "by_etf": [
     {
      "etf_code": "396500",
      "etf_name": "TIGER 반도체TOP10",
-     "amount_eok": -0.0
-    },
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": 993.7
+     "amount_eok": 2093.7
     }
    ],
-   "adv_eok": 5591.1,
-   "impact_ratio": 0.1777,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "007660",
-   "name": "이수페타시스",
-   "buy_eok": 0.0,
-   "sell_eok": -865.0,
-   "net_eok": -865.0,
-   "by_etf": [
-    {
-     "etf_code": "396500",
-     "etf_name": "TIGER 반도체TOP10",
-     "amount_eok": -0.0
-    },
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -865.0
-    }
-   ],
-   "adv_eok": 810.8,
-   "impact_ratio": 1.0668,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "353200",
-   "name": "대덕전자",
-   "buy_eok": 0.0,
-   "sell_eok": -642.7,
-   "net_eok": -642.7,
-   "by_etf": [
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -642.7
-    }
-   ],
-   "adv_eok": 1271.2,
-   "impact_ratio": 0.5056,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "240810",
-   "name": "원익IPS",
-   "buy_eok": 0.0,
-   "sell_eok": -578.7,
-   "net_eok": -578.7,
-   "by_etf": [
-    {
-     "etf_code": "396500",
-     "etf_name": "TIGER 반도체TOP10",
-     "amount_eok": -0.0
-    },
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -578.7
-    }
-   ],
-   "adv_eok": 1453.9,
-   "impact_ratio": 0.398,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "319660",
-   "name": "피에스케이",
-   "buy_eok": 0.0,
-   "sell_eok": -387.8,
-   "net_eok": -387.8,
-   "by_etf": [
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -387.8
-    }
-   ],
-   "adv_eok": 479.6,
-   "impact_ratio": 0.8086,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "009150",
-   "name": "삼성전기",
-   "buy_eok": 0.0,
-   "sell_eok": -347.2,
-   "net_eok": -347.2,
-   "by_etf": [
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -347.2
-    }
-   ],
-   "adv_eok": 8357.5,
-   "impact_ratio": 0.0415,
+   "adv_eok": 56565.4,
+   "impact_ratio": 0.037,
    "impact_level": "mid"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "095610",
-   "name": "테스",
-   "buy_eok": 0.0,
-   "sell_eok": -265.8,
-   "net_eok": -265.8,
-   "by_etf": [
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -265.8
-    }
-   ],
-   "adv_eok": 580.1,
-   "impact_ratio": 0.4582,
-   "impact_level": "high"
-  },
-  {
-   "trade_date": "2026-10-08",
-   "code": "089970",
-   "name": "브이엠",
-   "buy_eok": 0.0,
-   "sell_eok": -193.3,
-   "net_eok": -193.3,
-   "by_etf": [
-    {
-     "etf_code": "0167A0",
-     "etf_name": "SOL AI반도체TOP2플러스",
-     "amount_eok": -193.3
-    }
-   ],
-   "adv_eok": 390.7,
-   "impact_ratio": 0.4948,
-   "impact_level": "high"
   },
   {
    "trade_date": "2026-10-08",
@@ -2771,6 +2659,24 @@ window.REBALANCE_DATA = {
   },
   {
    "trade_date": "2026-10-08",
+   "code": "402340",
+   "name": "SK스퀘어",
+   "buy_eok": 0.0,
+   "sell_eok": 0.0,
+   "net_eok": 0.0,
+   "by_etf": [
+    {
+     "etf_code": "396500",
+     "etf_name": "TIGER 반도체TOP10",
+     "amount_eok": -0.0
+    }
+   ],
+   "adv_eok": 5591.1,
+   "impact_ratio": 0.0,
+   "impact_level": "low"
+  },
+  {
+   "trade_date": "2026-10-08",
    "code": "042700",
    "name": "한미반도체",
    "buy_eok": 0.0,
@@ -2802,6 +2708,42 @@ window.REBALANCE_DATA = {
     }
    ],
    "adv_eok": 3232.0,
+   "impact_ratio": 0.0,
+   "impact_level": "low"
+  },
+  {
+   "trade_date": "2026-10-08",
+   "code": "007660",
+   "name": "이수페타시스",
+   "buy_eok": 0.0,
+   "sell_eok": 0.0,
+   "net_eok": 0.0,
+   "by_etf": [
+    {
+     "etf_code": "396500",
+     "etf_name": "TIGER 반도체TOP10",
+     "amount_eok": -0.0
+    }
+   ],
+   "adv_eok": 810.8,
+   "impact_ratio": 0.0,
+   "impact_level": "low"
+  },
+  {
+   "trade_date": "2026-10-08",
+   "code": "240810",
+   "name": "원익IPS",
+   "buy_eok": 0.0,
+   "sell_eok": 0.0,
+   "net_eok": 0.0,
+   "by_etf": [
+    {
+     "etf_code": "396500",
+     "etf_name": "TIGER 반도체TOP10",
+     "amount_eok": -0.0
+    }
+   ],
+   "adv_eok": 1453.9,
    "impact_ratio": 0.0,
    "impact_level": "low"
   },
@@ -2858,6 +2800,186 @@ window.REBALANCE_DATA = {
    "adv_eok": 673.9,
    "impact_ratio": 0.0,
    "impact_level": "low"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "000660",
+   "name": "SK하이닉스",
+   "buy_eok": 1843.7,
+   "sell_eok": 0.0,
+   "net_eok": 1843.7,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": 1843.7
+    }
+   ],
+   "adv_eok": 56565.4,
+   "impact_ratio": 0.0326,
+   "impact_level": "mid"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "402340",
+   "name": "SK스퀘어",
+   "buy_eok": 993.7,
+   "sell_eok": 0.0,
+   "net_eok": 993.7,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": 993.7
+    }
+   ],
+   "adv_eok": 5591.1,
+   "impact_ratio": 0.1777,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "007660",
+   "name": "이수페타시스",
+   "buy_eok": 0.0,
+   "sell_eok": -865.0,
+   "net_eok": -865.0,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -865.0
+    }
+   ],
+   "adv_eok": 810.8,
+   "impact_ratio": 1.0668,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "353200",
+   "name": "대덕전자",
+   "buy_eok": 0.0,
+   "sell_eok": -642.7,
+   "net_eok": -642.7,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -642.7
+    }
+   ],
+   "adv_eok": 1271.2,
+   "impact_ratio": 0.5056,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "240810",
+   "name": "원익IPS",
+   "buy_eok": 0.0,
+   "sell_eok": -578.7,
+   "net_eok": -578.7,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -578.7
+    }
+   ],
+   "adv_eok": 1453.9,
+   "impact_ratio": 0.398,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "005930",
+   "name": "삼성전자",
+   "buy_eok": 443.0,
+   "sell_eok": 0.0,
+   "net_eok": 443.0,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": 443.0
+    }
+   ],
+   "adv_eok": 43942.8,
+   "impact_ratio": 0.0101,
+   "impact_level": "low"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "319660",
+   "name": "피에스케이",
+   "buy_eok": 0.0,
+   "sell_eok": -387.8,
+   "net_eok": -387.8,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -387.8
+    }
+   ],
+   "adv_eok": 479.6,
+   "impact_ratio": 0.8086,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "009150",
+   "name": "삼성전기",
+   "buy_eok": 0.0,
+   "sell_eok": -347.2,
+   "net_eok": -347.2,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -347.2
+    }
+   ],
+   "adv_eok": 8357.5,
+   "impact_ratio": 0.0415,
+   "impact_level": "mid"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "095610",
+   "name": "테스",
+   "buy_eok": 0.0,
+   "sell_eok": -265.8,
+   "net_eok": -265.8,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -265.8
+    }
+   ],
+   "adv_eok": 580.1,
+   "impact_ratio": 0.4582,
+   "impact_level": "high"
+  },
+  {
+   "trade_date": "2026-10-12",
+   "code": "089970",
+   "name": "브이엠",
+   "buy_eok": 0.0,
+   "sell_eok": -193.3,
+   "net_eok": -193.3,
+   "by_etf": [
+    {
+     "etf_code": "0167A0",
+     "etf_name": "SOL AI반도체TOP2플러스",
+     "amount_eok": -193.3
+    }
+   ],
+   "adv_eok": 390.7,
+   "impact_ratio": 0.4948,
+   "impact_level": "high"
   },
   {
    "trade_date": "2026-12-11",
@@ -3166,13 +3288,15 @@ window.REBALANCE_DATA = {
   "SOL AI반도체소부장 정기변경·Cap: 신한자산운용 보도자료",
   "보유비중: Koscom ETF CHECK · 순자산·시가총액·거래대금·과거 주가: 네이버 금융 (매일 갱신)",
   "TIGER 반도체TOP10 가중: FnGuide Semiconductor TOP10 Index Methodology Book v1.0 (2024-05, 키움 ETN 자료 수록)",
-  "KODEX AI반도체TOP2플러스: 삼성자산운용 리뉴얼(2026-05-13)·정기변경(2026-06-16) 보도"
+  "KODEX AI반도체TOP2플러스: 삼성자산운용 리뉴얼(2026-05-13)·정기변경(2026-06-16) 보도",
+  "FnGuide 2026-10-02 '10월 상반기 정기변경 안내' (testfnindex.fnguide.com/about/noticeview/1/432): 다영업일 개편은 마지막 개편일로 공지"
  ],
  "rule_legend": {
   "D": "만기일 당일",
   "D+1": "만기 익영업일",
   "D+2": "만기 다음 주 첫 영업일",
   "D+2B": "만기 후 2영업일",
+  "D+3B": "만기 후 3영업일",
   "S": "해당 월 첫 영업일",
   "E": "해당 월 마지막 영업일"
  }
