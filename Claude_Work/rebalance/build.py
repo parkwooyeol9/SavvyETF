@@ -228,6 +228,12 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
                     })
 
         alt = _alt_event(etf, next_event)
+        sel_d = wfix_d = None
+        if next_event:
+            eff_d = date.fromisoformat(next_event["effective"])
+            ym = date.fromisoformat(next_event["expiry"])
+            sel_d = kcal.selection_date(etf.get("selection"), ym.year, ym.month)
+            wfix_d = kcal.weight_fix_date(etf.get("weight_fix"), ym.year, ym.month, eff_d)
         etf_rows.append({
             "code": etf["code"], "name": etf["name"], "issuer": etf.get("issuer"),
             "kind": etf.get("kind", "etf"), "theme": etf.get("theme"), "index": etf.get("index"),
@@ -240,6 +246,9 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
             "next_effective": next_event["effective"] if next_event else None,
             "flow_status": flow_status, "notes": etf.get("notes", []),
             "unverified": etf.get("unverified", []),
+            "selection_date": sel_d.isoformat() if sel_d else None,
+            "weight_fix_date": wfix_d.isoformat() if wfix_d else None,
+            "method_source": etf.get("method_source"),
             "alt_rule": alt["rule"] if alt else None,
             "alt_rule_label": alt["rule_label"] if alt else None,
             "next_trade_date_alt": alt["trade_date"] if alt else None,
@@ -289,6 +298,7 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
         "assumptions": ASSUMPTIONS,
         "sources": universe.get("sources", []),
         "rule_legend": kcal.RULE_LABELS,
+        "broker_estimates": _load_json(DATA / "broker_estimates.json", {}).get("estimates", []),
     }
     if with_event_study:
         result["event_study"] = event_study_block()

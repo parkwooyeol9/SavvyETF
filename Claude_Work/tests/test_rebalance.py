@@ -257,5 +257,20 @@ class MethodologyFeaturesTest(unittest.TestCase):
         self.assertIn("462010", days["2026-10-13"]["etfs"])
 
 
+class ScheduleStagesTest(unittest.TestCase):
+    def test_selection_and_weight_fix_dates(self):
+        self.assertEqual(kcal.selection_date("PM_END", 2026, 10), date(2026, 9, 30))
+        self.assertEqual(kcal.selection_date("D-10", 2026, 10), date(2026, 9, 21))
+        self.assertEqual(kcal.weight_fix_date("D-1", 2026, 10, date(2026, 10, 13)), date(2026, 10, 7))
+        self.assertEqual(kcal.weight_fix_date("D", 2026, 10, date(2026, 10, 13)), date(2026, 10, 8))
+        self.assertEqual(kcal.weight_fix_date("EFF-2", 2026, 10, date(2026, 10, 12)), date(2026, 10, 7))
+        res = build(date(2026, 10, 6), 4)
+        rows = {e["code"]: e for e in res["etfs"]}
+        self.assertEqual(rows["0167A0"]["weight_fix_date"], "2026-10-07")
+        self.assertEqual(rows["396500"]["weight_fix_date"], "2026-10-07")
+        self.assertEqual(rows["0093A0"]["weight_fix_date"], "2026-10-08")
+        self.assertTrue(res["broker_estimates"][0]["items"])
+
+
 if __name__ == "__main__":
     unittest.main()

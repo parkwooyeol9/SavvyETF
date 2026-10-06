@@ -1,4 +1,5 @@
 import type { RebalancePayload } from "./rebalance";
+import { buildFlowMatrix, nextCycleRange } from "./rebalanceMatrix";
 import { buildXlsxWithCharts, downloadXlsx, kstStamp, type Cell, type XlsxSheet } from "./xlsxCharts";
 
 export type RebalanceExportRow = {
@@ -17,8 +18,116 @@ const tLabel = (t: number) => (t === 0 ? "T" : `T${t > 0 ? "+" : ""}${t}`);
 const SIDE = { buy: "매수", sell: "매도" } as const;
 const LEVEL: Record<string, string> = { high: "높음(10%↑)", mid: "중간(3%↑)", low: "낮음", unknown: "거래대금 없음" };
 
-function rebalanceSheets(data: RebalancePayload, selected: string | null, rows: RebalanceExportRow[]): XlsxSheet[] {
+/** 일자 × ETF × 종목 수급 시트 (화면 RebalanceFlowMatrix 와 같은 계산). */
+function matrixSheets(data: RebalancePayload, choice: Record<string, string>, today: string): XlsxSheet[] {
+  const m = buildFlowMatrix(data, choice, { from: today });
+  if (!m.dates.length) return [];
+  // 증권사 비교는 이번 정기변경 범위만 (다음 회차 일정과 섞지 않음)
+  const cyc = nextCycleRange(data, today);
+  const mc = cyc ? buildFlowMatrix(data, choice, cyc) : m;
+  const out: XlsxSheet[] = [];
+  const broker = data.broker_estimates?.[0];
+  const dcols = m.dates.length;
+
+  const head = ["종목코드", "종목명", ...m.dates.map((d) => `${d} 매매(억원)`), "합계(억원)", "매수 합(억원)", "매도 합(억원)",
+    "20일 평균 거래대금(억원)", "최대 충격(거래대금비)", broker ? `증권사 추정(억원, ${broker.date})` : "", "ETF별 내역"];
+  const body = m.stocks.map((s) => [
+    s.code, s.name, ...m.dates.map((d) => (s.byDate[d] ? Math.round(s.byDate[d] * 10) / 10 : null)),
+    s.total, s.buy, s.sell, s.adv, s.maxRatio, broker ? s.broker : null,
+    Object.entries(s.byEtf).map(([c, v]) => `${c} ${v.toFixed(1)}`).join(" · "),
+  ]);
+  const topN = Math.min(20, body.length);
+  const fmts: Record<number, string> = {};
+  for (let i = 0; i < dcols + 3; i++) fmts[2 + i] = EOK;
+  fmts[2 + dcols + 3] = EOK;
+  fmts[2 + dcols + 4] = PCT;
+  fmts[2 + dcols + 5] = EOK;
+  out.push({
+    name: "수급_종목x일자",
+    rows: [head, ...body],
+    widths: [9, 16, ...m.dates.map(() => 16), 12, 12, 12, 18, 16, 18, 60],
+    formats: fmts,
+    charts: [{
+      type: "bar", title: `종목별 예상 순매매 — 매매일별 (억원, 상위 ${topN})`, cat: 1,
+      series: m.dates.map((_, i) => 2 + i), lastRow: topN, yFormat: "#,##0",
+      at: { col: head.length + 1, row: 0 }, size: { cols: 12, rows: 24 },
+    }],
+  });
+
+  out.push({
+    name: "수급_ETFx일자",
+    rows: [
+      ["매매일", "효력일", "ETF코드", "ETF명", "시나리오", "분할", "순자산(억원)", "보유비중 기준일", "매수(억원)", "매도(억원)", "1%p 민감도(억원)"],
+      ...m.etfs.map((e) => [e.date, e.effective, e.code, e.name, e.scenario, e.split ?? "", e.aum, e.holdingsAsOf ?? "",
+        Math.round(e.buy * 10) / 10, Math.round(e.sell * 10) / 10, e.aum / 100]),
+      [],
+      ["매매일", "계산 ETF 수", "매수 합(억원)", "매도 합(억원)"],
+      ...m.dates.map((d) => [d, m.totalsByDate[d].etfs, m.totalsByDate[d].buy, m.totalsByDate[d].sell]),
+    ],
+    widths: [11, 11, 9, 28, 22, 6, 12, 13, 12, 12, 14],
+    formats: { 6: "#,##0", 8: EOK, 9: EOK, 10: EOK },
+    charts: [{ type: "bar", title: "ETF별 예상 매수·매도(억원)", cat: 3, series: [8, 9], lastRow: m.etfs.length, yFormat: "#,##0",
+      at: { col: 12, row: 0 }, size: { cols: 10, rows: 18 } }],
+  });
+
+  out.push({
+    name: "수급_원자료",
+    rows: [
+      ["매매일", "효력일", "ETF코드", "ETF명", "시나리오", "분할", "종목코드", "종목명", "현재(%)", "목표(%)", "변화(%p)", "예상 매매(억원)"],
+      ...m.long.map((r) => [r.date, r.effective, r.etfCode, r.etfName, r.scenario, r.split ?? "", r.code, r.name, r.current, r.target, r.delta, r.amount]),
+    ],
+    widths: [11, 11, 9, 28, 22, 6, 9, 16, 9, 9, 9, 13],
+    formats: { 8: "0.00", 9: "0.00", 10: "0.00", 11: EOK },
+  });
+
+  out.push({
+    name: "일정단계_근거",
+    rows: [
+      ["ETF코드", "ETF명", "순자산(억원)", "종목 선정일", "비중 확정일", "매매일(종가)", "개편(효력)일", "대안 매매일", "규칙", "확인 필요", "방법론 근거", "URL", "메모"],
+      ...data.etfs.filter((e) => e.kind === "etf" && e.next_trade_date && e.next_trade_date >= today).map((e) => [
+        e.code, e.name, e.aum_eok, e.selection_date ?? "", e.weight_fix_date ?? "", e.next_trade_date, e.next_effective ?? "",
+        e.next_trade_date_alt ?? "", `${e.rule ?? ""} ${e.rule_label}`, (e.unverified || []).join(", "),
+        e.method_source?.label ?? "", e.method_source?.url ?? "", (e.notes || []).join(" / "),
+      ]),
+    ],
+    widths: [9, 28, 12, 11, 11, 11, 11, 11, 22, 18, 30, 40, 100],
+    formats: { 2: "#,##0" },
+  });
+
+  if (broker) {
+    out.push({
+      name: "증권사비교",
+      rows: [
+        ["출처", `${broker.source} (${broker.date})`],
+        ["기준", broker.basis ?? ""],
+        [],
+        ["종목코드", "종목명", "증권사 추정(억원)", "우리 추정 합계(억원)", "차이(억원)", "증권사 메모"],
+        ...broker.items.map((b) => {
+          const ours = mc.stocks.find((s) => s.code === b.code)?.total ?? null;
+          return [b.code, b.name, b.amount_eok, ours, ours == null ? null : ours - b.amount_eok, b.note ?? ""];
+        }),
+        [],
+        [`우리 추정 = 이번 정기변경(${mc.dates.join(", ")}) 합계, 선택 시나리오. 증권사 자료는 재배포 금지 — 수치만 인용.`],
+      ],
+      widths: [9, 16, 16, 18, 12, 40],
+      formats: { 2: EOK, 3: EOK, 4: EOK },
+      headerRow: 3,
+      charts: [{ type: "bar", title: "증권사 추정 vs 우리 추정(억원)", cat: 1, series: [2, 3], headerRow: 3, lastRow: 3 + broker.items.length,
+        yFormat: "#,##0", at: { col: 7, row: 0 }, size: { cols: 10, rows: 20 } }],
+    });
+  }
+  return out;
+}
+
+function rebalanceSheets(
+  data: RebalancePayload,
+  selected: string | null,
+  rows: RebalanceExportRow[],
+  choice: Record<string, string> = {},
+  today = "",
+): XlsxSheet[] {
   const sheets: XlsxSheet[] = [];
+  const matrix = matrixSheets(data, choice, today);
   const es = data.event_study;
   const guide: Cell[][] = [
     ["ETF 리밸런싱 · SavvyETF"],
@@ -39,6 +148,15 @@ function rebalanceSheets(data: RebalancePayload, selected: string | null, rows: 
       ["이벤트_종목별", "이벤트 종목별 초과수익·거래대금"],
     );
   }
+  if (matrix.length) {
+    list.push(
+      ["수급_종목x일자", "종목 × 매매일 예상 순매매 · 합계 · 거래대금 대비 · 증권사 추정 · 막대 차트"],
+      ["수급_ETFx일자", "ETF·매매일별 예상 매수/매도 · 1%p 민감도 · 매매일 합계 · 막대 차트"],
+      ["수급_원자료", "매매일·ETF·종목 단위 현재/목표 비중과 예상 매매 (피벗용)"],
+      ["일정단계_근거", "ETF별 종목 선정일·비중 확정일·매매일·개편일·방법론 원문 링크"],
+    );
+    if (data.broker_estimates?.length) list.push(["증권사비교", "증권사 공개 추정치와 우리 추정 비교 · 막대 차트"]);
+  }
   list.push(
     ["매매일정", "매매일별 정기변경 ETF 순자산 · 막대 차트"],
     ["정기변경ETF", "ETF별 규칙·효력일·상태"],
@@ -52,6 +170,7 @@ function rebalanceSheets(data: RebalancePayload, selected: string | null, rows: 
   for (const s of data.sources) guide.push(["출처", s]);
   guide.push([], ["추정치·과거 결과이며 투자 권유가 아닙니다."]);
   sheets.push({ name: "안내", rows: guide, widths: [16, 90] });
+  sheets.push(...matrix);
 
   if (es?.rows.length) {
     const { params, summary } = es;
@@ -185,7 +304,16 @@ function rebalanceSheets(data: RebalancePayload, selected: string | null, rows: 
   return sheets;
 }
 
-export async function downloadRebalanceExcel(data: RebalancePayload, selected: string | null, rows: RebalanceExportRow[]) {
+export async function downloadRebalanceExcel(
+  data: RebalancePayload,
+  selected: string | null,
+  rows: RebalanceExportRow[],
+  choice: Record<string, string> = {},
+  today = "",
+) {
   const XLSX = await import("xlsx");
-  downloadXlsx(buildXlsxWithCharts(XLSX, rebalanceSheets(data, selected, rows)), `SavvyETF_리밸런싱_${kstStamp()}.xlsx`);
+  downloadXlsx(
+    buildXlsxWithCharts(XLSX, rebalanceSheets(data, selected, rows, choice, today)),
+    `SavvyETF_리밸런싱_${kstStamp()}.xlsx`,
+  );
 }

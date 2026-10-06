@@ -64,6 +64,10 @@ export type RebalanceEtf = {
   alt_rule_label?: string | null;
   next_trade_date_alt?: string | null;
   next_effective_alt?: string | null;
+  /** 종목 선정 기준일 · 목표 비중 확정일 (지수 방법론 원문 기준, 없으면 미확인) */
+  selection_date?: string | null;
+  weight_fix_date?: string | null;
+  method_source?: { label: string; url: string } | null;
 };
 
 export type RebalanceTrade = {
@@ -143,6 +147,13 @@ export type EventStudy = {
   rows: EventStudyRow[];
 };
 
+export type BrokerEstimate = {
+  source: string;
+  date: string;
+  basis?: string;
+  items: { code: string; name: string; amount_eok: number; note?: string }[];
+};
+
 export type RebalancePayload = {
   generated_at: string;
   as_of: string;
@@ -158,6 +169,7 @@ export type RebalancePayload = {
   sources: string[];
   rule_legend: Record<string, string>;
   event_study?: EventStudy | null;
+  broker_estimates?: BrokerEstimate[];
 };
 
 export type RebalanceResponse =
@@ -165,6 +177,21 @@ export type RebalanceResponse =
   | { ok: false; error: string };
 
 export const REBALANCE_R2_KEY = "rebalance/latest.json";
+
+export const UNVERIFIED_LABEL: Record<string, string> = {
+  months: "주기",
+  rule: "변경일 규칙",
+  weighting: "가중 방식",
+  weighting_inputs: "가중 입력값",
+  effective_date: "효력일 해석",
+  constituents: "편출입",
+  multi_day: "다영업일 분할 개편",
+  execution: "현물 집행(재량·파생)",
+};
+
+export function unverifiedText(keys: string[] | undefined | null): string {
+  return (keys || []).map((k) => UNVERIFIED_LABEL[k] || k).join("·");
+}
 
 export function impactLevel(ratio: number | null): RebalanceImpact["impact_level"] {
   if (ratio == null) return "unknown";

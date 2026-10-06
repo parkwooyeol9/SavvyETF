@@ -15,6 +15,7 @@ import {
 
 import {
   impactLevel,
+  unverifiedText,
   type EventStudy,
   type FlowStatus,
   type RebalanceFlow,
@@ -22,6 +23,7 @@ import {
   type RebalanceResponse,
 } from "@/lib/rebalance";
 import ExcelButton from "@/components/ExcelButton";
+import RebalanceFlowMatrix from "@/components/RebalanceFlowMatrix";
 import { downloadRebalanceExcel } from "@/lib/rebalanceExcel";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -61,20 +63,6 @@ function fmtPct(v: number | null | undefined): string {
 
 function toneOf(v: number | null | undefined): string {
   return v == null ? "" : v > 0 ? "tone-up" : v < 0 ? "tone-down" : "";
-}
-
-const UNVERIFIED_LABEL: Record<string, string> = {
-  months: "주기",
-  rule: "변경일 규칙",
-  weighting: "가중 방식",
-  effective_date: "효력일 해석",
-  constituents: "편출입",
-  multi_day: "다영업일 분할 개편",
-  execution: "현물 집행",
-};
-
-function unverifiedText(keys: string[] | undefined): string {
-  return (keys || []).map((k) => UNVERIFIED_LABEL[k] || k).join("·");
 }
 
 function StatusChip({ status, kind }: { status: FlowStatus; kind: "etf" | "index" }) {
@@ -408,7 +396,7 @@ export default function RebalanceTab() {
   for (const f of dayFlows) scenarioGroups.set(f.etf_code, [...(scenarioGroups.get(f.etf_code) || []), f]);
   const multiScenario = [...scenarioGroups.entries()].filter(([, fs]) => fs.length > 1);
   const top = rows[0];
-  const excel = () => downloadRebalanceExcel(data, selected, rows);
+  const excel = () => downloadRebalanceExcel(data, selected, rows, choice, today);
 
   const kpis: [string, string, string][] = [
     [
@@ -501,6 +489,8 @@ export default function RebalanceTab() {
           })}
         </div>
       </section>
+
+      <RebalanceFlowMatrix data={data} choice={choice} today={today} onExcel={excel} />
 
       <div className="rb-two">
         <section className="geo-section geo-featured">

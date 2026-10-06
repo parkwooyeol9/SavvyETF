@@ -152,3 +152,32 @@ def months_ahead(start: date, count: int) -> list[tuple[int, int]]:
         out.append((y, m))
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
     return out
+
+
+def selection_date(code: str | None, year: int, month: int) -> date | None:
+    """종목 선정 기준일. PM_END = 정기변경 전월 마지막 영업일, D-10 = 만기일 10영업일 전."""
+    if not code:
+        return None
+    if code == "PM_END":
+        y, m = (year - 1, 12) if month == 1 else (year, month - 1)
+        return last_trading_day(y, m)
+    if code.startswith("D-"):
+        d = expiry_date(year, month)
+        for _ in range(int(code[2:])):
+            d = prev_trading_day(d)
+        return d
+    raise ValueError(f"알 수 없는 선정일 규칙: {code}")
+
+
+def weight_fix_date(code: str | None, year: int, month: int, effective: date) -> date | None:
+    """비중 확정일. D = 만기일 종가, D-1 = 만기 직전 영업일, EFF-2 = 효력일 2영업일 전."""
+    if not code:
+        return None
+    if code == "D":
+        return expiry_date(year, month)
+    if code == "D-1":
+        return prev_trading_day(expiry_date(year, month))
+    if code == "EFF-2":
+        return prev_trading_day(prev_trading_day(effective))
+    raise ValueError(f"알 수 없는 비중 확정 규칙: {code}")
+

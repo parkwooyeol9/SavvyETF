@@ -1,5 +1,5 @@
 window.REBALANCE_DATA = {
- "generated_at": "2026-10-07T07:27:26+09:00",
+ "generated_at": "2026-10-07T07:52:29+09:00",
  "as_of": "2026-10-07",
  "window": [
   "2026-10",
@@ -853,6 +853,12 @@ window.REBALANCE_DATA = {
     "같은 문서: '상위 2종목에 대해 각각 25%의 비중을, 하위 8종목에 대해서는 나머지 50%에 유동시가총액 가중 방식' (나머지 8종목 상한 문구 없음)"
    ],
    "unverified": [],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "FnGuide 반도체TOP10 방법론 v1.1",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.MSE"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -885,6 +891,9 @@ window.REBALANCE_DATA = {
     "months",
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -920,6 +929,12 @@ window.REBALANCE_DATA = {
    "unverified": [
     "constituents"
    ],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "FnGuide AI반도체TOP2플러스 방법론 v1.2",
+    "url": "https://file.fnguide.com/fnindex/files/FnGuide%20AI%20Semiconductor%20TOP2%20Plus%20Index_Methodology_Book_(20260102)_v1.2(1).pdf"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -956,6 +971,9 @@ window.REBALANCE_DATA = {
     "rule",
     "weighting"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -985,6 +1003,9 @@ window.REBALANCE_DATA = {
     "연 2회(6·12월) 정기변경"
    ],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1019,6 +1040,12 @@ window.REBALANCE_DATA = {
    "unverified": [
     "constituents"
    ],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": null,
+   "method_source": {
+    "label": "WISE 2차전지 테마 지수 방법론",
+    "url": "https://www.wiseindex.com/konannas/files/WISE%202%EC%B0%A8%EC%A0%84%EC%A7%80%20%ED%85%8C%EB%A7%88%20%EC%A7%80%EC%88%98%20Methodology.pdf"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1052,6 +1079,12 @@ window.REBALANCE_DATA = {
    "unverified": [
     "execution"
    ],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "미래에셋 상품 설명 (반도체 TOP10 Capped)",
+    "url": "https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR70177R0000"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1085,6 +1118,12 @@ window.REBALANCE_DATA = {
    "unverified": [
     "execution"
    ],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "FnGuide 반도체TOP10 계열",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.MSE"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1119,6 +1158,12 @@ window.REBALANCE_DATA = {
    "unverified": [
     "weighting"
    ],
+   "selection_date": "2026-09-21",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "KEDI 코리아휴머노이드로봇산업 방법론(2025-09)",
+    "url": "https://hkservicefile.hankyung.com/pdf/datacenter/202512/711a9b0803f5cd4d2ebfcd1afb88253645d498f22649bcb8ee4a17ed528eaaf6.pdf"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1152,6 +1197,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1183,6 +1231,12 @@ window.REBALANCE_DATA = {
     "방법론 v1.3 2.4: '매년 1, 4, 7, 10월 옵션 만기일(D)을 기준으로 2영업일째(D+2)에 2영업일에 걸쳐 정기 변경을 수행합니다. 이때, 지수의 비중 확정은 옵션 만기일(D)의 종가를 이용합니다.' → 10/13·10/14 2일 분할 개편 = 10/12·10/13 종가에 나눠 매매 (기본=첫날, 대안=둘째 날)"
    ],
    "unverified": [],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-08",
+   "method_source": {
+    "label": "FnGuide 2차전지소재 방법론 v1.3",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.SBM"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1216,6 +1270,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1250,6 +1307,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1279,6 +1339,12 @@ window.REBALANCE_DATA = {
     "방법론 v1.1(2024-04) 2.4: '매년 4, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일 직전 영업일(D-1)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/7 종가"
    ],
    "unverified": [],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-07",
+   "method_source": {
+    "label": "FnGuide 금융지주플러스고배당 방법론 v1.1",
+    "url": "https://www.fnindex.co.kr/overview/detail/C/FI00.WLT.FHV"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1308,6 +1374,9 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1339,6 +1408,12 @@ window.REBALANCE_DATA = {
     "WISE 화장품 방법론: '매 1, 4, 7, 10월 옵션 만기일 익일에 지수의 정기변경을 실시한다', '각 종목 별로 최대 10%의 실링을 적용하며 실링은 매 정기변경 시점에 재적용한다'"
    ],
    "unverified": [],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": null,
+   "method_source": {
+    "label": "WISE 화장품 지수 방법론",
+    "url": "https://www.wiseindex.com/konannas/files/WISE%20%ED%99%94%EC%9E%A5%ED%92%88%20%EC%A7%80%EC%88%98%20Methodology.pdf"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1370,6 +1445,12 @@ window.REBALANCE_DATA = {
     "방법론 v1.0(2025-06) 2.4: '매년 1, 4, 7, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일(D)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/8 종가"
    ],
    "unverified": [],
+   "selection_date": "2026-09-30",
+   "weight_fix_date": "2026-10-08",
+   "method_source": {
+    "label": "FnGuide AI반도체TOP10 방법론 v1.0",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.KBA"
+   },
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1399,6 +1480,9 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1432,6 +1516,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1464,6 +1551,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "rule"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1493,6 +1583,9 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1522,6 +1615,9 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1555,6 +1651,9 @@ window.REBALANCE_DATA = {
    "unverified": [
     "multi_day"
    ],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1584,6 +1683,9 @@ window.REBALANCE_DATA = {
     "지수 정기변경: 추종 ETF·인덱스펀드 전체가 같은 날 매매"
    ],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1613,6 +1715,9 @@ window.REBALANCE_DATA = {
     "지수 정기변경: 추종 ETF·인덱스펀드 전체가 같은 날 매매"
    ],
    "unverified": [],
+   "selection_date": null,
+   "weight_fix_date": null,
+   "method_source": null,
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -3369,5 +3474,92 @@ window.REBALANCE_DATA = {
   "D+3B": "만기 후 3영업일",
   "S": "해당 월 첫 영업일",
   "E": "해당 월 마지막 영업일"
- }
+ },
+ "broker_estimates": [
+  {
+   "source": "삼성증권 ETP전략팀 Index Note「10월 국내 주식형 ETF 리밸런싱 점검」",
+   "date": "2026-10-01",
+   "basis": "보고서 기준 비중·가격, 여러 ETF 합계, '내외' 표현의 근사치. 보고서는 10/8 집중으로 서술(상품별 날짜 미구분)",
+   "items": [
+    {
+     "code": "005930",
+     "name": "삼성전자",
+     "amount_eok": -2000,
+     "note": "반도체 ETF 종목당 Cap 초과분 매도"
+    },
+    {
+     "code": "000660",
+     "name": "SK하이닉스",
+     "amount_eok": 900,
+     "note": "Cap 미달 — 삼성전자 매도분 일부 흡수"
+    },
+    {
+     "code": "402340",
+     "name": "SK스퀘어",
+     "amount_eok": 800,
+     "note": "삼성전자 비중 축소에 상응"
+    },
+    {
+     "code": "042700",
+     "name": "한미반도체",
+     "amount_eok": 200,
+     "note": "소부장 재배분"
+    },
+    {
+     "code": "036930",
+     "name": "주성엔지니어링",
+     "amount_eok": 200,
+     "note": "소부장 재배분"
+    },
+    {
+     "code": "007660",
+     "name": "이수페타시스",
+     "amount_eok": 200,
+     "note": "소부장 재배분"
+    },
+    {
+     "code": "240810",
+     "name": "원익IPS",
+     "amount_eok": 200,
+     "note": "소부장 재배분"
+    },
+    {
+     "code": "006400",
+     "name": "삼성SDI",
+     "amount_eok": -150,
+     "note": "2차전지 ETF Cap 초과"
+    },
+    {
+     "code": "003670",
+     "name": "포스코퓨처엠",
+     "amount_eok": -150,
+     "note": "2차전지 ETF Cap 초과"
+    },
+    {
+     "code": "108490",
+     "name": "로보티즈",
+     "amount_eok": -150,
+     "note": "휴머노이드 17.3%→15%"
+    },
+    {
+     "code": "012450",
+     "name": "한화에어로스페이스",
+     "amount_eok": -100,
+     "note": "K방산&우주 Cap 약 2%p 초과"
+    },
+    {
+     "code": "192820",
+     "name": "코스맥스",
+     "amount_eok": -80,
+     "note": "화장품 ETF Cap 10%"
+    },
+    {
+     "code": "161890",
+     "name": "한국콜마",
+     "amount_eok": -70,
+     "note": "화장품 ETF Cap 10%"
+    }
+   ]
+  }
+ ]
 };

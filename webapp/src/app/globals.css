@@ -6499,6 +6499,22 @@ button.community-post-title {
 .rb-es-stat b {
   font-variant-numeric: tabular-nums;
 }
+.rb-matrix .rb-sub {
+  margin: 18px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rb-matrix-chart {
+  width: 100%;
+  min-width: 0;
+}
+.rb-matrix-ctl select {
+  margin-left: 4px;
+}
+.rb-matrix-table td,
+.rb-matrix-table th {
+  white-space: nowrap;
+}
 .rb-es-chart {
   margin: 4px 0 12px;
 }

@@ -55,7 +55,13 @@
      "cap": 25,
      "note": "25% 초과분만 잘라 나머지에 비례 배분 — SK하이닉스 25% 리셋을 놓쳐 과소추정"
     }
-   ]
+   ],
+   "selection": "PM_END",
+   "weight_fix": "EFF-2",
+   "method_source": {
+    "label": "FnGuide 반도체TOP10 방법론 v1.1",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.MSE"
+   }
   },
   {
    "code": "091160",
@@ -117,7 +123,13 @@
    ],
    "unverified": [
     "constituents"
-   ]
+   ],
+   "selection": "PM_END",
+   "weight_fix": "D-1",
+   "method_source": {
+    "label": "FnGuide AI반도체TOP2플러스 방법론 v1.2",
+    "url": "https://file.fnguide.com/fnindex/files/FnGuide%20AI%20Semiconductor%20TOP2%20Plus%20Index_Methodology_Book_(20260102)_v1.2(1).pdf"
+   }
   },
   {
    "code": "395160",
@@ -223,7 +235,12 @@
      "basis": "mcap_full",
      "note": "WISE 방법론: 시가총액 상위 4종목 15%, 나머지 단순시가총액 가중(15% 상한). 시총은 네이버 최근값, 실제는 선정일(9월 말) 기준. 편출입 미반영"
     }
-   ]
+   ],
+   "selection": "PM_END",
+   "method_source": {
+    "label": "WISE 2차전지 테마 지수 방법론",
+    "url": "https://www.wiseindex.com/konannas/files/WISE%202%EC%B0%A8%EC%A0%84%EC%A7%80%20%ED%85%8C%EB%A7%88%20%EC%A7%80%EC%88%98%20Methodology.pdf"
+   }
   },
   {
    "code": "0177R0",
@@ -247,7 +264,13 @@
    ],
    "unverified": [
     "execution"
-   ]
+   ],
+   "selection": "PM_END",
+   "weight_fix": "EFF-2",
+   "method_source": {
+    "label": "미래에셋 상품 설명 (반도체 TOP10 Capped)",
+    "url": "https://investments.miraeasset.com/tigeretf/ko/product/search/detail/index.do?ksdFund=KR70177R0000"
+   }
   },
   {
    "code": "488080",
@@ -271,7 +294,13 @@
    ],
    "unverified": [
     "execution"
-   ]
+   ],
+   "selection": "PM_END",
+   "weight_fix": "EFF-2",
+   "method_source": {
+    "label": "FnGuide 반도체TOP10 계열",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.MSE"
+   }
   },
   {
    "code": "0148J0",
@@ -305,7 +334,13 @@
    ],
    "unverified": [
     "weighting"
-   ]
+   ],
+   "selection": "D-10",
+   "weight_fix": "D-1",
+   "method_source": {
+    "label": "KEDI 코리아휴머노이드로봇산업 방법론(2025-09)",
+    "url": "https://hkservicefile.hankyung.com/pdf/datacenter/202512/711a9b0803f5cd4d2ebfcd1afb88253645d498f22649bcb8ee4a17ed528eaaf6.pdf"
+   }
   },
   {
    "code": "0091P0",
@@ -355,7 +390,13 @@
    "split_rules": [
     "D+2B",
     "D+3B"
-   ]
+   ],
+   "selection": "PM_END",
+   "weight_fix": "D",
+   "method_source": {
+    "label": "FnGuide 2차전지소재 방법론 v1.3",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.SBM"
+   }
   },
   {
    "code": "463250",
@@ -424,7 +465,13 @@
    "notes": [
     "방법론 v1.1(2024-04) 2.4: '매년 4, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일 직전 영업일(D-1)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/7 종가"
    ],
-   "unverified": []
+   "unverified": [],
+   "selection": "PM_END",
+   "weight_fix": "D-1",
+   "method_source": {
+    "label": "FnGuide 금융지주플러스고배당 방법론 v1.1",
+    "url": "https://www.fnindex.co.kr/overview/detail/C/FI00.WLT.FHV"
+   }
   },
   {
    "code": "0182R0",
@@ -474,7 +521,12 @@
      "note": "초과분을 나머지 종목에 비례 배분"
     }
    ],
-   "unverified": []
+   "unverified": [],
+   "selection": "PM_END",
+   "method_source": {
+    "label": "WISE 화장품 지수 방법론",
+    "url": "https://www.wiseindex.com/konannas/files/WISE%20%ED%99%94%EC%9E%A5%ED%92%88%20%EC%A7%80%EC%88%98%20Methodology.pdf"
+   }
   },
   {
    "code": "0093A0",
@@ -496,7 +548,13 @@
    "notes": [
     "방법론 v1.0(2025-06) 2.4: '매년 1, 4, 7, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일(D)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/8 종가"
    ],
-   "unverified": []
+   "unverified": [],
+   "selection": "PM_END",
+   "weight_fix": "D",
+   "method_source": {
+    "label": "FnGuide AI반도체TOP10 방법론 v1.0",
+    "url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.KBA"
+   }
   },
   {
    "code": "461950",
