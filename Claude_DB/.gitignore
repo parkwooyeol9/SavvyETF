@@ -1,0 +1,12 @@
+# 벤더(Datastream/Refinitiv) 원자료와 파생 데이터 — 공개 저장소 금지
+data/
+excel/*.xlsx
+# MSCI 공개 리스트 원문·파생(psv)·iShares 보유종목·생성 HTML — 저장소가 공개라 제외
+index_monitor/data/
+index_monitor/web/index_monitor.html
+out/
+web/data.js
+__pycache__/
+web/analyzer_data.js
+web/backtest_data.js
+.env.local

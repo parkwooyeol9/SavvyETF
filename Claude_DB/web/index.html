@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ACWI 팩터 스코어보드</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@600;700&display=swap">
+<style>
+/* 레이아웃: 상단 요약 띠 → 탭(스크리너 / 섹터·국가 / 검증 / 방법론). 스크리너는 좌측 조건·가중치, 우측 표, 종목 클릭 시 상세 패널 */
+:root {
+  --bg: #eef2f1; --surface: #ffffff; --surface-2: #f6f8f8; --ink: #14212a; --muted: #5a6a72; --line: #d6dfdf;
+  --accent: #0d5c63; --accent-ink: #ffffff; --pos: #c4162f; --neg: #1f5fbf; --warn: #a86400;
+  --f-display: "Noto Serif KR", "Apple SD Gothic Neo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1315; --surface: #141c1f; --surface-2: #19232a; --ink: #e3eaea; --muted: #8fa0a6; --line: #26343a;
+  --accent: #52b5b0; --accent-ink: #06201f; --pos: #ff6f6f; --neg: #72a9ff; --warn: #e7a43a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d1315; --surface: #141c1f; --surface-2: #19232a; --ink: #e3eaea; --muted: #8fa0a6; --line: #26343a;
+  --accent: #52b5b0; --accent-ink: #06201f; --pos: #ff6f6f; --neg: #72a9ff; --warn: #e7a43a; color-scheme: dark }
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); margin: 0 }
+.wrap { max-width: 1480px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 48px }
+@media (max-width: 600px) { .wrap { padding-inline: 16px } }
+h1, h2, h3 { text-wrap: balance; margin: 0 }
+h1 { font: 700 26px/1.2 var(--f-display); letter-spacing: -0.01em }
+h2 { font: 600 17px/1.3 var(--f-body) }
+h3 { font: 600 14px/1.3 var(--f-body) }
+.num, td.n, .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+
+header.top { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--line) }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 24px }
+.fact { display: grid; gap: 2px }
+.fact b { font: 500 18px/1.1 var(--f-mono); font-variant-numeric: tabular-nums }
+.fact b.alert { color: var(--pos) }
+
+nav.tabs { display: flex; gap: 4px; margin-block: 16px; overflow-x: auto }
+nav.tabs button { font: 600 14px var(--f-body); color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; cursor: pointer; white-space: nowrap }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
+button:focus-visible, input:focus-visible, select:focus-visible, tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.screener { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 960px) { .screener { grid-template-columns: minmax(0, 1fr) } }
+aside.ctl { display: grid; gap: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px) }
+@media (max-width: 960px) { aside.ctl { position: static } }
+.field { display: grid; gap: 6px }
+.field label { font-size: 12px; color: var(--muted); font-weight: 600 }
+input[type="search"], select { width: 100%; font: 14px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 9px }
+.wrow { display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; gap: 8px; align-items: center; font-size: 13px }
+.wrow input { width: 100%; accent-color: var(--accent) }
+.wrow output { font: 12px var(--f-mono); text-align: right; color: var(--muted) }
+.btn { font: 600 13px var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--r); padding: 6px 10px; cursor: pointer }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.seg { display: flex; flex-wrap: wrap; gap: 6px }
+.seg button { font: 12px var(--f-body); border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 3px 10px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+
+.tablebox { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0 }
+.tablehead { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line) }
+.scroll { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 13px }
+th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap }
+th { font-size: 11px; font-weight: 600; color: var(--muted); position: sticky; top: 0; background: var(--surface); cursor: pointer; user-select: none }
+th.n, td.n { text-align: right }
+th[data-dir="desc"]::after { content: " ▼"; font-size: 9px }
+th[data-dir="asc"]::after { content: " ▲"; font-size: 9px }
+tbody tr { cursor: pointer }
+tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent) }
+tbody tr.sel { background: color-mix(in srgb, var(--accent) 14%, transparent) }
+td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis }
+td.name small { display: block; color: var(--muted); font: 11px var(--f-mono) }
+.chip { display: inline-block; min-width: 42px; text-align: right; padding: 1px 6px; border-radius: 4px; font: 12px var(--f-mono); font-variant-numeric: tabular-nums }
+.flag { display: inline-block; font-size: 10px; font-weight: 600; color: var(--warn); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 1px }
+.more { display: flex; justify-content: center; padding: 12px }
+
+.detail { position: fixed; inset: 0 0 0 auto; width: min(460px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.12); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px calc(env(safe-area-inset-bottom, 0px) + 24px); z-index: 10; display: grid; gap: 18px; align-content: start }
+.detail .close { position: absolute; right: 14px; top: calc(env(safe-area-inset-top, 0px) + 14px) }
+.kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px }
+.kv div { display: grid; gap: 1px }
+.kv span { font-size: 11px; color: var(--muted) }
+.kv b { font: 500 14px var(--f-mono); font-variant-numeric: tabular-nums }
+.note { font-size: 12px; color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: var(--r); padding: 8px 10px }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px }
+@media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr) } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 12px; min-width: 0; align-content: start }
+.bar { height: 8px; background: var(--accent); border-radius: 2px }
+.issues { display: grid; gap: 10px }
+.issue { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px }
+.sev { font-size: 12px; font-weight: 700; align-self: start; text-align: center; border-radius: 4px; padding: 2px 0 }
+.sev.치명 { color: #fff; background: var(--pos) }
+.sev.높음 { color: var(--pos); border: 1px solid var(--pos) }
+.sev.중간 { color: var(--warn); border: 1px solid var(--warn) }
+.sev.낮음, .sev.참고 { color: var(--muted); border: 1px solid var(--line) }
+.issue p { margin: 4px 0 0; max-width: 90ch }
+.issue .where { font: 12px var(--f-mono); color: var(--muted) }
+.issue .fix { color: var(--accent); font-weight: 500 }
+.prose { max-width: 78ch; display: grid; gap: 12px }
+.prose p, .prose li { margin: 0 }
+.prose ol, .prose ul { margin: 0; padding-left: 20px; display: grid; gap: 6px }
+code { font: 12.5px var(--f-mono); background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 1px 4px; border-radius: 3px }
+svg text { fill: var(--muted); font: 11px var(--f-body) }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted) }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px }
+@media (prefers-reduced-motion: no-preference) { tbody tr { transition: background .12s } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div style="display:grid;gap:6px">
+      <span class="eyebrow">MSCI ACWI 구성종목 · 멀티팩터</span>
+      <h1>ACWI 팩터 스코어보드</h1>
+      <span class="muted" id="sub"></span>
+    </div>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="screen" aria-selected="true">스크리너</button>
+    <button role="tab" data-tab="sector" aria-selected="false">섹터 · 국가</button>
+    <button role="tab" data-tab="audit" aria-selected="false">엑셀 검증 결과</button>
+    <button role="tab" data-tab="method" aria-selected="false">방법론</button>
+  </nav>
+
+  <section id="tab-screen" class="screener">
+    <aside class="ctl">
+      <div class="field"><label for="q">종목 검색</label><input type="search" id="q" placeholder="이름 또는 코드 (예: NVDA, 삼성)"></div>
+      <div class="field"><label for="fsec">섹터</label><select id="fsec"></select></div>
+      <div class="field"><label>지역</label><div class="seg" id="freg"></div></div>
+      <div class="field"><label for="fct">국가</label><select id="fct"></select></div>
+      <div class="field">
+        <label>팩터 가중치</label>
+        <div id="weights" style="display:grid;gap:6px"></div>
+        <div style="display:flex;gap:6px;margin-top:4px"><button class="btn" id="wreset">동일가중</button></div>
+      </div>
+      <p class="muted" style="margin:0;font-size:12px">가중치를 바꾸면 종합점수·순위가 바로 다시 계산됩니다. 팩터 점수는 섹터×지역 내 표준화된 Z(±3)입니다.</p>
+    </aside>
+    <div class="tablebox">
+      <div class="tablehead"><h2 id="tcount"></h2><span class="legend"><span><span class="sw" style="background:var(--pos)"></span>그룹 대비 우위(+Z)</span><span><span class="sw" style="background:var(--neg)"></span>열위(−Z)</span><span><span class="flag" style="margin:0">단위보정</span> 통화·호가단위 보정 종목</span></span></div>
+      <div class="scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+      <div class="more"><button class="btn" id="morebtn">100개 더 보기</button></div>
+    </div>
+  </section>
+
+  <section id="tab-sector" hidden>
+    <div class="grid2">
+      <div class="panel"><h2>섹터별 밸류에이션 (중앙값)</h2><div class="scroll"><table id="sectbl"></table></div></div>
+      <div class="panel"><h2>국가별 비중과 평균 종합점수</h2><div class="scroll" style="max-height:520px;overflow-y:auto"><table id="ctbl"></table></div></div>
+      <div class="panel" style="grid-column:1/-1"><h2>섹터별 종합 상위 5</h2><div id="sectop" class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px"></div></div>
+    </div>
+  </section>
+
+  <section id="tab-audit" hidden>
+    <div style="display:grid;gap:20px">
+      <div class="grid2">
+        <div class="panel">
+          <span class="eyebrow">요약</span>
+          <h2 id="auditHead"></h2>
+          <p style="margin:0" id="auditText"></p>
+        </div>
+        <div class="panel">
+          <h2>엑셀 순위 vs 수정 순위</h2>
+          <canvas id="scatter" width="560" height="300" style="width:100%;height:auto;max-width:100%" aria-label="원본 순위와 수정 순위 산점도"></canvas>
+          <span class="muted" style="font-size:12px" id="scatterNote"></span>
+        </div>
+      </div>
+      <div class="issues" id="issues"></div>
+    </div>
+  </section>
+
+  <section id="tab-method" hidden>
+    <div class="grid2">
+      <div class="panel prose" id="methodText"></div>
+      <div class="panel"><h2>팩터 간 순위상관 (Spearman)</h2><div id="corr"></div><p class="muted" style="margin:0;font-size:12px">|ρ| 가 0.3 미만이면 팩터들이 서로 다른 정보를 담고 있다는 뜻입니다. 가치–배당(+), 가치–성장(−)은 일반적인 관계입니다.</p></div>
+    </div>
+  </section>
+</div>
+
+<div class="detail" id="detail" hidden></div>
+
+<script src="data.js"></script>
+<script>
+(() => {
+const D = window.ACWI;
+const S = D.stocks;
+const FK = ["value","size","dividend","growth","momentum","quality"];
+const FL = {value:"가치",size:"사이즈",dividend:"배당",growth:"성장",momentum:"모멘텀",quality:"퀄리티"};
+const FS = {value:"fv",size:"fs",dividend:"fd",growth:"fg",momentum:"fm",quality:"fq"};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (v, d = 1) => v == null || isNaN(v) ? "–" : Number(v).toLocaleString("ko-KR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const capB = v => v == null ? "–" : v >= 1e5 ? fmt(v/1e3, 0) : fmt(v/1e3, 1);
+function chip(z) {
+  if (z == null) return '<span class="chip muted">–</span>';
+  const a = Math.min(Math.abs(z) / 3, 1), col = z >= 0 ? "var(--pos)" : "var(--neg)";
+  const strong = a > .55;
+  return `<span class="chip" style="background:color-mix(in srgb, ${col} ${Math.round(a*70)}%, transparent);color:${strong ? "#fff" : "var(--ink)"}">${z >= 0 ? "+" : ""}${z.toFixed(2)}</span>`;
+}
+
+// ── 상단 요약 ──
+const m = D.meta;
+$("#sub").textContent = `데이터 기준 ${m.as_of} · 원천 ${m.source} · 섹터×지역 중립 Z · 윈저 ${m.winsor[0]*100}/${m.winsor[1]*100}%`;
+const isFix = s => !!(s.fxm || s.pxf);
+const nFx = S.filter(isFix).length;
+const usdMode = !!(m.usd && m.usd.fund);
+const countries = new Set(S.map(s => s.ct)).size;
+$("#facts").innerHTML = [
+  ["분석 종목", fmt(m.n_universe, 0)], ["국가", countries], [usdMode ? "추정치 통화" : "통화 보정", usdMode ? "USD (~U$)" : nFx + "종목"],
+  ["엑셀 W·X 수식 행", `<b class="alert">${m.original_scored_in_excel}</b>`, true], ["엑셀 대비 순위상관", fmt(m.spearman_vs_original, 2)],
+].map(([k, v, raw]) => `<div class="fact"><span class="eyebrow">${k}</span>${raw ? v : `<b>${v}</b>`}</div>`).join("");
+
+// ── 탭 ──
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["screen","sector","audit","method"].forEach(t => $("#tab-" + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === "audit") drawScatter();
+  try { localStorage.setItem("acwi_tab", b.dataset.tab) } catch (e) {}
+}));
+
+// ── 가중치 · 종합점수 재계산 ──
+const W = Object.fromEntries(FK.map(k => [k, 1]));
+function recompute() {
+  const tw = FK.reduce((a, k) => a + W[k], 0) || 1;
+  const raw = S.map(s => FK.reduce((a, k) => a + (s[FS[k]] ?? 0) * W[k], 0) / tw);
+  const mu = raw.reduce((a, b) => a + b, 0) / raw.length;
+  const sd = Math.sqrt(raw.reduce((a, b) => a + (b - mu) ** 2, 0) / (raw.length - 1)) || 1;
+  S.forEach((s, i) => s._z = (raw[i] - mu) / sd);
+  [...S].sort((a, b) => b._z - a._z).forEach((s, i) => s._rk = i + 1);
+}
+$("#weights").innerHTML = FK.map(k => `<div class="wrow"><label for="w_${k}">${FL[k]}</label><input type="range" id="w_${k}" min="0" max="3" step="0.5" value="1"><output id="o_${k}">1.0</output></div>`).join("");
+FK.forEach(k => $("#w_" + k).addEventListener("input", e => { W[k] = +e.target.value; $("#o_" + k).textContent = W[k].toFixed(1); recompute(); render(); }));
+$("#wreset").addEventListener("click", () => { FK.forEach(k => { W[k] = 1; $("#w_" + k).value = 1; $("#o_" + k).textContent = "1.0"; }); recompute(); render(); });
+
+// ── 필터 ──
+const sectors = [...new Set(S.map(s => s.s))].sort((a, b) => a.localeCompare(b, "ko"));
+$("#fsec").innerHTML = `<option value="">전체 섹터</option>` + sectors.map(s => `<option>${esc(s)}</option>`).join("");
+const ctry = Object.entries(S.reduce((a, s) => (a[s.ct] = (a[s.ct] || 0) + 1, a), {})).sort((a, b) => b[1] - a[1]);
+$("#fct").innerHTML = `<option value="">전체 국가</option>` + ctry.map(([c, n]) => `<option value="${esc(c)}">${esc(c)} (${n})</option>`).join("");
+const REG = ["전체", "미국", "선진(미국 외)", "신흥"];
+let fReg = "전체";
+$("#freg").innerHTML = REG.map(r => `<button aria-pressed="${r === fReg}" data-r="${r}">${r}</button>`).join("");
+$("#freg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; fReg = b.dataset.r; $("#freg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); limit = 100; render(); });
+["#q", "#fsec", "#fct"].forEach(id => $(id).addEventListener("input", () => { limit = 100; render(); }));
+
+// ── 표 ──
+const COLS = [
+  {k: "_rk", h: "순위", n: 1, f: s => s._rk},
+  {k: "n", h: "종목", f: s => `${esc(s.n)}${isFix(s) ? '<span class="flag" title="' + (s.fxm ? '보고통화 ' + esc(s.rc) + ' → 거래통화 보정' : '주가 호가단위 보정') + '">단위보정</span>' : ""}<small>${esc(s.c)}</small>`, cls: "name"},
+  {k: "s", h: "섹터", f: s => esc(s.s)},
+  {k: "ct", h: "국가", f: s => esc(s.ct)},
+  {k: "cap", h: "시가총액 $bn", n: 1, f: s => capB(s.cap)},
+  {k: "pe", h: "PER", n: 1, f: s => fmt(s.pe)},
+  {k: "pb", h: "PBR", n: 1, f: s => fmt(s.pb)},
+  {k: "roe", h: "ROE %", n: 1, f: s => fmt(s.roe)},
+  {k: "dy", h: "배당 %", n: 1, f: s => fmt(s.dy)},
+  {k: "eg27", h: "EPS 27 %", n: 1, f: s => s.ef ? `<span class="muted">${s.ef}</span>` : fmt(s.eg27)},
+  {k: "mom", h: "12-1M %", n: 1, f: s => fmt(s.mom)},
+  ...FK.map(k => ({k: FS[k], h: FL[k], n: 1, f: s => chip(s[FS[k]])})),
+  {k: "_z", h: "종합 Z", n: 1, f: s => `<b>${chip(s._z)}</b>`},
+  {k: "ork", h: "엑셀순위", n: 1, f: s => `<span class="muted">${s.ork ?? "–"}</span>`},
+];
+let sortK = "_rk", sortDir = "asc", limit = 100, selCode = null;
+$("#tbl thead").innerHTML = "<tr>" + COLS.map(c => `<th class="${c.n ? "n" : ""}" data-k="${c.k}">${c.h}</th>`).join("") + "</tr>";
+$("#tbl thead").addEventListener("click", e => {
+  const th = e.target.closest("th"); if (!th) return;
+  const k = th.dataset.k;
+  if (sortK === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else { sortK = k; sortDir = ["_rk", "n", "s", "ct", "ork", "pe", "pb"].includes(k) ? "asc" : "desc"; }
+  render();
+});
+function filtered() {
+  const q = $("#q").value.trim().toLowerCase(), sec = $("#fsec").value, ct = $("#fct").value;
+  return S.filter(s => (!sec || s.s === sec) && (!ct || s.ct === ct) && (fReg === "전체" || s.rg === fReg)
+    && (!q || s.n.toLowerCase().includes(q) || s.c.toLowerCase().includes(q) || (KO[s.c] || "").includes(q)));
+}
+function render() {
+  const rows = filtered();
+  const dir = sortDir === "asc" ? 1 : -1;
+  rows.sort((a, b) => {
+    const x = a[sortK], y = b[sortK];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return typeof x === "string" ? dir * x.localeCompare(y, "ko") : dir * (x - y);
+  });
+  document.querySelectorAll("#tbl th").forEach(th => th.dataset.dir = th.dataset.k === sortK ? sortDir : "");
+  $("#tcount").textContent = `${fmt(rows.length, 0)}종목`;
+  $("#tbl tbody").innerHTML = rows.slice(0, limit).map(s => `<tr tabindex="0" data-c="${esc(s.c)}" class="${s.c === selCode ? "sel" : ""}">` +
+    COLS.map(c => `<td class="${c.n ? "n" : ""} ${c.cls || ""}">${c.f(s)}</td>`).join("") + "</tr>").join("");
+  $("#morebtn").hidden = rows.length <= limit;
+}
+$("#morebtn").addEventListener("click", () => { limit += 100; render(); });
+const openRow = e => { const tr = e.target.closest("tr[data-c]"); if (tr) showDetail(tr.dataset.c); };
+$("#tbl tbody").addEventListener("click", openRow);
+$("#tbl tbody").addEventListener("keydown", e => { if (e.key === "Enter") openRow(e); });
+// 한글 검색 보조 (자주 찾는 종목)
+const KO = {"005930.KS":"삼성전자","005935.KS":"삼성전자우","000660.KS":"sk하이닉스 하이닉스","2330.TW":"tsmc 대만반도체","NVDA.OQ":"엔비디아","AAPL.OQ":"애플","MSFT.OQ":"마이크로소프트","AMZN.OQ":"아마존","GOOGL.OQ":"구글 알파벳","META.OQ":"메타","TSLA.OQ":"테슬라","AVGO.OQ":"브로드컴","7203.T":"도요타","0700.HK":"텐센트","005380.KS":"현대차"};
+
+// ── 상세 ──
+function bars(s) {
+  const w = 400, rh = 26, h = FK.length * rh + 24, x0 = 72, cx = x0 + (w - x0 - 40) / 2, sc = (w - x0 - 40) / 6;
+  let g = `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="팩터 점수">`;
+  [-3, -1.5, 0, 1.5, 3].forEach(t => { const x = cx + t * sc; g += `<line x1="${x}" x2="${x}" y1="4" y2="${h - 18}" stroke="var(--line)" ${t ? 'stroke-dasharray="2 3"' : ""}/><text x="${x}" y="${h - 4}" text-anchor="middle">${t > 0 ? "+" : ""}${t}</text>`; });
+  FK.forEach((k, i) => {
+    const z = s[FS[k]] ?? 0, y = 8 + i * rh, x = z >= 0 ? cx : cx + z * sc;
+    g += `<text x="0" y="${y + 13}" style="fill:var(--ink)">${FL[k]}</text>`;
+    g += `<rect x="${x}" y="${y + 2}" width="${Math.max(Math.abs(z) * sc, 1)}" height="14" rx="2" fill="${z >= 0 ? "var(--pos)" : "var(--neg)"}"/>`;
+    g += `<text x="${z >= 0 ? cx + z * sc + 4 : cx + z * sc - 4}" y="${y + 13}" text-anchor="${z >= 0 ? "start" : "end"}" style="font-family:var(--f-mono)">${z.toFixed(2)}</text>`;
+  });
+  return g + "</svg>";
+}
+function showDetail(code) {
+  const s = S.find(x => x.c === code); if (!s) return;
+  selCode = code; render();
+  const peers = S.filter(x => x.s === s.s && x.rg === s.rg).sort((a, b) => b._z - a._z);
+  const pr = peers.findIndex(x => x.c === code) + 1;
+  const el = $("#detail");
+  el.innerHTML = `
+    <button class="btn close" id="dclose" aria-label="닫기">닫기</button>
+    <div style="display:grid;gap:4px;padding-right:60px">
+      <span class="eyebrow">${esc(s.s)} · ${esc(s.ind || "")}</span>
+      <h2 style="font:700 20px/1.25 var(--f-display)">${esc(s.n)}</h2>
+      <span class="mono muted">${esc(s.c)} · ${esc(s.ct)} · ${esc(s.cur)}${s.ac && s.ac !== "Ordinary Share" ? " · " + esc(s.ac) : ""}</span>
+    </div>
+    <div class="kv">
+      <div><span>종합 순위</span><b>${s._rk} / ${S.length}</b></div>
+      <div><span>종합 Z</span><b>${s._z.toFixed(2)}</b></div>
+      <div><span>${esc(s.s)}·${esc(s.rg)} 내</span><b>${pr} / ${peers.length}</b></div>
+      <div><span>엑셀 순위</span><b>${s.ork ?? "–"}</b></div>
+      <div><span>ACWI 비중</span><b>${s.w >= 0.001 ? fmt(s.w * 100, 2) + "%" : fmt(s.w * 1e4, 2) + "bp"}</b></div>
+      <div><span>시가총액 $bn</span><b>${capB(s.cap)}</b></div>
+    </div>
+    ${bars(s)}
+    ${s.fxm ? `<div class="note">I/B/E/S 추정치가 ${esc(s.rc)} 로 들어와 있어 거래통화(${esc(s.cur)})로 환산했습니다 (판정: ${esc(s.fxm)}). Datastream 에서 ~U$ 로 받으면 보정이 필요 없습니다.</div>` : ""}
+    ${s.pxf ? `<div class="note">현재가(${esc(s.cur)})가 시장 기본 호가단위와 달라 단위를 바꿔 USD로 환산했습니다. Datastream 에서 X~U$ 로 받으면 보정이 필요 없습니다.</div>` : ""}
+    <div><h3 style="margin-bottom:8px">밸류에이션 · 수익성 (12M Fwd)</h3><div class="kv">
+      <div><span>PER</span><b>${fmt(s.pe)}</b></div><div><span>PBR</span><b>${fmt(s.pb, 2)}</b></div><div><span>ROE %</span><b>${fmt(s.roe)}</b></div>
+      <div><span>배당수익률 %</span><b>${fmt(s.dy, 2)}</b></div><div><span>FCF 수익률 %</span><b>${fmt(s.fcf, 2)}</b></div><div><span>D/E %</span><b>${fmt(s.de, 0)}</b></div>
+      <div><span>순이익 $mn</span><b>${fmt(s.ni, 0)}</b></div><div><span>매출 $mn</span><b>${fmt(s.sal, 0)}</b></div><div><span>변동성 프록시 %</span><b>${fmt(s.vol)}</b></div>
+    </div></div>
+    <div><h3 style="margin-bottom:8px">성장 · 모멘텀</h3><div class="kv">
+      <div><span>EPS 성장 26 %</span><b>${fmt(s.eg26)}</b></div><div><span>EPS 성장 27 %</span><b>${s.ef || fmt(s.eg27)}</b></div><div><span>매출 성장 27 %</span><b>${fmt(s.sg27)}</b></div>
+      <div><span>1M %</span><b>${fmt(s.r1)}</b></div><div><span>12M %</span><b>${fmt(s.r12)}</b></div><div><span>12-1M %</span><b>${fmt(s.mom)}</b></div>
+    </div></div>
+    <div><h3 style="margin-bottom:8px">같은 그룹 상위 5</h3>${peers.slice(0, 5).map((p, i) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)"><span>${i + 1}. ${esc(p.n)}</span>${chip(p._z)}</div>`).join("")}</div>`;
+  el.hidden = false;
+  $("#dclose").addEventListener("click", () => { el.hidden = true; selCode = null; render(); });
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#detail").hidden) $("#dclose").click(); });
+
+// ── 섹터 · 국가 ──
+function median(a) { a = a.filter(v => v != null && !isNaN(v)).sort((x, y) => x - y); if (!a.length) return null; const h = a.length >> 1; return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2; }
+function sectorTab() {
+  const rows = sectors.map(sec => { const g = S.filter(s => s.s === sec); return {sec, n: g.length, w: g.reduce((a, s) => a + s.w, 0), pe: median(g.map(s => s.pe)), pb: median(g.map(s => s.pb)), roe: median(g.map(s => s.roe)), dy: median(g.map(s => s.dy)), eg: median(g.map(s => s.eg27))}; }).sort((a, b) => b.w - a.w);
+  const mw = Math.max(...rows.map(r => r.w));
+  $("#sectbl").innerHTML = `<thead><tr><th>섹터</th><th class="n">종목</th><th>ACWI 비중</th><th class="n">PER</th><th class="n">PBR</th><th class="n">ROE</th><th class="n">배당</th><th class="n">EPS 27</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${esc(r.sec)}</td><td class="n">${r.n}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="bar" style="width:${r.w / mw * 90}px"></div><span class="mono">${fmt(r.w * 100)}%</span></div></td><td class="n">${fmt(r.pe)}</td><td class="n">${fmt(r.pb, 2)}</td><td class="n">${fmt(r.roe)}</td><td class="n">${fmt(r.dy, 2)}</td><td class="n">${fmt(r.eg)}</td></tr>`).join("") + "</tbody>";
+  const cs = Object.values(S.reduce((a, s) => { (a[s.ct] ||= {ct: s.ct, rg: s.rg, n: 0, w: 0, z: 0}); a[s.ct].n++; a[s.ct].w += s.w; a[s.ct].z += s._z; return a; }, {})).sort((a, b) => b.w - a.w);
+  const cw = Math.max(...cs.map(c => c.w));
+  $("#ctbl").innerHTML = `<thead><tr><th>국가</th><th>지역</th><th class="n">종목</th><th>ACWI 비중</th><th class="n">평균 종합 Z</th></tr></thead><tbody>` +
+    cs.map(c => `<tr><td>${esc(c.ct)}</td><td class="muted">${esc(c.rg)}</td><td class="n">${c.n}</td><td><div style="display:flex;gap:8px;align-items:center"><div class="bar" style="width:${Math.max(c.w / cw * 90, 1)}px"></div><span class="mono">${fmt(c.w * 100, 2)}%</span></div></td><td class="n">${chip(c.z / c.n)}</td></tr>`).join("") + "</tbody>";
+  $("#sectop").innerHTML = sectors.map(sec => { const g = S.filter(s => s.s === sec).sort((a, b) => b._z - a._z).slice(0, 5);
+    return `<div style="display:grid;gap:4px;min-width:0"><h3>${esc(sec)}</h3>${g.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;border-bottom:1px solid var(--line);padding:3px 0;cursor:pointer" data-c="${esc(p.c)}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.n)} <span class="muted mono" style="font-size:11px">${esc(p.ct)}</span></span>${chip(p._z)}</div>`).join("")}</div>`; }).join("");
+}
+$("#sectop").addEventListener("click", e => { const r = e.target.closest("[data-c]"); if (r) showDetail(r.dataset.c); });
+
+// ── 검증 ──
+function auditTab() {
+  const tot = m.n_universe + 0;
+  $("#auditHead").textContent = `엑셀의 배당수익률·모멘텀 수식은 아직 ${m.original_scored_in_excel}개 행에만 있습니다`;
+  const f = m.excel_fill || {};
+  $("#auditText").innerHTML = `수식 채움 현황: W(배당수익률) ${f.W ?? "–"}행, X(모멘텀) ${f.X ?? "–"}행, BE~BO(Z-Score) ${f.BE ?? "–"}행. ${usdMode ? "이번 파일은 추정치·시가총액을 <b>~U$</b>로 받아 통화 불일치는 해결됐지만, <b>현재가(X)가 현지통화</b>라 엑셀의 P/E·P/B(AA·AB)는 해외 종목에서 수십~수천 배로 계산되고 PER 300배 컷에 걸려 가치 점수가 빠집니다." : "<b>시가총액 현지통화</b>, <b>추정치 통화 불일치</b> 때문에 점수가 왜곡됩니다."} <b>SDN#(X,1Y)</b>는 여전히 주가 수준의 표준편차입니다. 오른쪽 그림은 ${esc(m.compare_source || "원본 로직")}과 수정 모델의 순위 비교이며, 순위상관은 ${fmt(m.spearman_vs_original, 2)}입니다.`;
+  $("#issues").innerHTML = D.notes.map((n, i) => `<div class="issue"><span class="sev ${esc(n.sev)}">${esc(n.sev)}</span><div style="min-width:0"><span class="where">${i + 1}. ${esc(n.where)}</span><h3 style="margin-top:2px">${esc(n.issue)}</h3><p class="muted">${esc(n.impact)}</p><p class="fix">→ ${esc(n.fix)}</p></div></div>`).join("");
+}
+function drawScatter() {
+  const c = $("#scatter"), ctx = c.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const W0 = 560, H0 = 300; c.width = W0 * dpr; c.height = H0 * dpr; ctx.scale(dpr, dpr);
+  const cs = getComputedStyle(document.documentElement);
+  const col = n => cs.getPropertyValue(n).trim();
+  ctx.clearRect(0, 0, W0, H0);
+  const L = 44, R = 12, T = 10, B = 34, N = S.length, sx = v => L + (v - 1) / (N - 1) * (W0 - L - R), sy = v => T + (v - 1) / (N - 1) * (H0 - T - B);
+  ctx.strokeStyle = col("--line"); ctx.lineWidth = 1; ctx.font = "11px " + col("--f-body"); ctx.fillStyle = col("--muted");
+  [1, 500, 1000, 1500, 2000].forEach(t => { ctx.beginPath(); ctx.moveTo(sx(t), T); ctx.lineTo(sx(t), H0 - B); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(t, sx(t), H0 - B + 14);
+    ctx.beginPath(); ctx.moveTo(L, sy(t)); ctx.lineTo(W0 - R, sy(t)); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(t, L - 6, sy(t) + 4); });
+  ctx.textAlign = "center"; ctx.fillText("엑셀 순위 →", (L + W0 - R) / 2, H0 - 4);
+  ctx.save(); ctx.translate(11, (T + H0 - B) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("수정 순위 →", 0, 0); ctx.restore();
+  ctx.globalAlpha = .45;
+  S.forEach(s => { if (s.ork == null) return; ctx.fillStyle = isFix(s) ? col("--warn") : col("--accent"); ctx.fillRect(sx(s.ork) - 1.2, sy(s.rk) - 1.2, 2.4, 2.4); });
+  ctx.globalAlpha = 1;
+  $("#scatterNote").textContent = "점 하나가 한 종목. 대각선에서 멀수록 수정으로 순위가 크게 바뀐 종목입니다. 주황색은 단위 보정 종목.";
+}
+
+// ── 방법론 ──
+function methodTab() {
+  const f = D.factors;
+  $("#methodText").innerHTML = `<h2>계산 순서</h2><ol>
+    <li><b>정제</b> — ACWI 비중 0(편출·러시아·선물), 섹터 없음, 가격 없음 ${m.n_excluded}종목 제외.</li>
+    <li><b>통화 정합</b> — ${usdMode ? `EPS·BPS·DPS·시가총액은 Datastream ~U$ 값을 그대로 사용. 현재가는 현지통화라 ${esc(m.fx_asof)} 환율과 호가단위(영국 펜스 등)로 USD 환산${m.n_px_unit_fixed ? `, 호가단위가 시장 기본과 다른 ${m.n_px_unit_fixed}종목은 P/E 범위로 판별` : ""}.` : `가격은 거래통화, I/B/E/S 추정치는 보고통화라 FCF 수익률과 그룹 중앙값으로 보고통화를 추정해 ${nFx}종목 보정.`}</li>
+    <li><b>디스크립터</b> — ${FK.map(k => `${f[k].label}: ${f[k].descriptors.map(d => d.label + (d.dir < 0 ? "(−)" : "")).join(", ")}`).join(" / ")}.</li>
+    <li><b>윈저라이징</b> — 디스크립터별 전체 유니버스 1%·99% 분위수로 절단.</li>
+    <li><b>섹터×지역 중립 Z</b> — 같은 섹터·같은 지역(미국/선진/신흥) 안에서 (x−평균)/표준편차, ±3 절단. 표본 10개 미만이면 섹터 전체 통계.</li>
+    <li><b>팩터 점수</b> — 디스크립터 Z 의 평균을 다시 그룹 내 Z 로 표준화(분산 1). 결측 팩터는 0(그룹 평균).</li>
+    <li><b>종합</b> — 팩터 Z 가중합(기본 동일가중) → 전체 유니버스 Z → 순위·백분위.</li></ol>
+    <h2>해석 시 주의</h2><ul>
+    <li>사이즈는 작을수록 + 입니다. 대형주(엔비디아·애플 등)는 사이즈에서 크게 감점됩니다. 대형주 위주로 보려면 사이즈 가중치를 0으로 두세요.</li>
+    <li>수익률·성장률은 현지통화 명목치라 튀르키예·이집트 등 고인플레 국가는 부풀려집니다. 신흥 그룹 안에서 비교되므로 일부만 완화됩니다.</li>
+    <li>변동성은 SDN#(X,1Y)÷주가로 만든 근사치입니다. 일간 수익률 표준편차로 바꾸는 것을 권장합니다.</li>
+    <li>DPS 1Y 변화는 배당 초기 기업에서 수천 %가 나옵니다(엔비디아 2,309%). 윈저라이징으로 상한은 걸리지만 배당 팩터를 끌어올립니다.</li></ul>
+    <h2>Datastream 요청 개선안</h2><ul>
+    <li>주가: <code>X~U$</code> 추가 (추정치·시가총액 <code>~U$</code>는 10/2 파일에 적용 완료). 주가 환산과 호가단위 판별이 필요 없어집니다.</li>
+    <li>변동성: 일간 수익률 표준편차 연율화 (예: 1년 일간 PCH 의 SDN × √252)</li>
+    <li>USD 기준 수익률: <code>PCH#(X(RI)~U$,12M)</code>, <code>PCH#(X(RI)~U$,1M)</code></li></ul>`;
+  const N = FK.length, cell = 46, pad = 64, w = pad + N * cell, h = pad + N * cell;
+  let g = `<div class="scroll"><svg viewBox="0 0 ${w} ${h}" width="${w}" style="max-width:100%" role="img" aria-label="팩터 상관행렬">`;
+  FK.forEach((k, i) => { g += `<text x="${pad - 6}" y="${pad + i * cell + cell / 2 + 4}" text-anchor="end">${FL[k]}</text><text x="${pad + i * cell + cell / 2}" y="${pad - 8}" text-anchor="middle">${FL[k]}</text>`; });
+  D.corr.forEach((row, i) => row.forEach((v, j) => { const a = Math.min(Math.abs(v), 1);
+    g += `<rect x="${pad + j * cell + 1}" y="${pad + i * cell + 1}" width="${cell - 2}" height="${cell - 2}" rx="3" fill="${v >= 0 ? "var(--pos)" : "var(--neg)"}" fill-opacity="${i === j ? .12 : a * .8 + .05}"/>`;
+    g += `<text x="${pad + j * cell + cell / 2}" y="${pad + i * cell + cell / 2 + 4}" text-anchor="middle" style="fill:var(--ink);font-family:var(--f-mono)">${i === j ? "–" : v.toFixed(2)}</text>`; }));
+  $("#corr").innerHTML = g + "</svg></div>";
+}
+
+recompute(); render(); sectorTab(); auditTab(); methodTab();
+try { const t = localStorage.getItem("acwi_tab"); if (t && t !== "screen") document.querySelector(`nav.tabs button[data-tab="${t}"]`)?.click(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

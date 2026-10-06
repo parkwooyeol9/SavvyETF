@@ -1,0 +1,32 @@
+---
+description: Index Monitor (지수 편출입 이력 적재·대시보드) 작업 규칙
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Index Monitor 작업 규칙
+
+작업 시작 전 `README.md`와 `HANDOFF.md`를 먼저 읽는다. 다음 할 일과 알려진 빈칸은 HANDOFF.md에 있다.
+
+## 파일 역할
+- 사람이 고치는 원본: `data/seed/seed_changes.csv`, `data/raw/msci/reviews.csv`, `web/template.html`, `src/*.py`, `sql/schema.sql`
+- 생성물(직접 수정 금지): `data/out/*`, `web/index_monitor.html`, `data/raw/msci/*_parsed.csv`
+- 변경 후에는 항상 `python src/build_dataset.py && python src/build_html.py && python -m pytest tests/` 순서로 재생성·검증한다.
+
+## 데이터 원칙
+- 이력은 공지(이벤트) 단위로 쌓는다. 같은 `index_id` + `review`가 한 이벤트다.
+- `effective_date`는 지수에 처음 반영되는 날(장 시작 기준). 종가 반영이면 다음 거래일.
+- 날짜·종목코드를 모르면 비워둔다. 추정값을 넣지 않는다.
+- 모든 행에 `source_tier`와 `source_url`을 채운다. 2차 출처는 `secondary`로 표시하고 note에 "대조 필요"를 적는다.
+- 원문 종목명은 그대로 보존하고(`security_name_raw`), ISIN/코드 매핑은 `security_map`에서 한다.
+- seed CSV 컬럼 순서를 바꾸지 않는다: index_id, review, announce_date, effective_date, event_type, action, security_name, code, note, source_tier, source_url
+
+## 코드 규칙
+- Python 3.10+, pandas. 경로는 `Path(__file__).resolve().parent.parent` 기준 상대경로로 쓴다.
+- 새 소스 수집기는 `src/collectors/<source>.py`에 두고, seed와 같은 컬럼의 CSV를 `data/raw/<source>/`에 출력한다. 병합은 `build_dataset.py`에서만 한다.
+- MSCI 리뷰를 추가하면 `tests/test_parse_msci.py`에 그 리뷰의 국가별 요약 수치를 넣어 회귀 테스트를 건다.
+- 대시보드는 외부 JS 라이브러리 없이 단일 HTML로 유지한다(폰트는 Google Fonts만).
+
+## 권리·보안
+- MSCI 공개 PDF는 DB 생성 금지 고지가 있다. 외부 게시 기능을 만들기 전 사용자에게 확인한다.
+- KRX 계정(`KRX_ID`, `KRX_PW`) 등 비밀값은 `.env`에서 읽고 커밋하지 않는다.

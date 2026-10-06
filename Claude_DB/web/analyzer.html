@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ACWI 종목 분석기</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@600;700&display=swap">
+<style>
+/* 화면 구성: 상단 요약 → 탭(시장 개요 / 스크리너 / 종목 상세 / MSCI 편출입 / 데이터 점검).
+   색: 상승 빨강·하락 파랑(국내 관례). 팩터 스코어보드(index.html)와 같은 토큰. */
+:root {
+  --bg: #eef2f1; --surface: #ffffff; --surface-2: #f6f8f8; --ink: #14212a; --muted: #5a6a72; --line: #d6dfdf;
+  --accent: #0d5c63; --accent-ink: #ffffff; --pos: #c4162f; --neg: #1f5fbf; --warn: #a86400; --c3: #7a4fb3; --c4: #2f8a4e;
+  --f-display: "Noto Serif KR", "Apple SD Gothic Neo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1315; --surface: #141c1f; --surface-2: #19232a; --ink: #e3eaea; --muted: #8fa0a6; --line: #26343a;
+  --accent: #52b5b0; --accent-ink: #06201f; --pos: #ff6f6f; --neg: #72a9ff; --warn: #e7a43a; --c3: #b592e8; --c4: #63c483; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d1315; --surface: #141c1f; --surface-2: #19232a; --ink: #e3eaea; --muted: #8fa0a6; --line: #26343a;
+  --accent: #52b5b0; --accent-ink: #06201f; --pos: #ff6f6f; --neg: #72a9ff; --warn: #e7a43a; --c3: #b592e8; --c4: #63c483; color-scheme: dark }
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); margin: 0 }
+.wrap { max-width: 1480px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 48px }
+@media (max-width: 600px) { .wrap { padding-inline: 16px } }
+h1, h2, h3 { text-wrap: balance; margin: 0 }
+h1 { font: 700 26px/1.2 var(--f-display); letter-spacing: -0.01em }
+h2 { font: 600 16px/1.3 var(--f-body) }
+h3 { font: 600 13px/1.3 var(--f-body); color: var(--muted) }
+p { margin: 0 }
+.num, td.n, .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+.small { font-size: 12px }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+a { color: var(--accent) }
+header.top { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--line) }
+.links { display: flex; gap: 12px; font-size: 13px; margin-top: 6px; flex-wrap: wrap }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 24px }
+.fact { display: grid; gap: 2px }
+.fact b { font: 500 18px/1.1 var(--f-mono); font-variant-numeric: tabular-nums }
+nav.tabs { display: flex; gap: 4px; margin-block: 16px; overflow-x: auto }
+nav.tabs button { font: 600 14px var(--f-body); color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; cursor: pointer; white-space: nowrap }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
+button:focus-visible, input:focus-visible, select:focus-visible, tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; min-width: 0 }
+.card > h2 { margin-bottom: 4px }
+.card > .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px }
+.grid { display: grid; gap: 16px }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)) }
+@media (max-width: 1100px) { .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 760px) { .g2, .g3 { grid-template-columns: minmax(0, 1fr) } }
+.screener { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; align-items: start }
+@media (max-width: 960px) { .screener { grid-template-columns: minmax(0, 1fr) } }
+aside.ctl { display: grid; gap: 14px; position: sticky; top: 12px }
+@media (max-width: 960px) { aside.ctl { position: static } }
+.field { display: grid; gap: 5px }
+.field label, .field .lab { font-size: 12px; color: var(--muted); font-weight: 600 }
+input[type="search"], select { width: 100%; font: 14px var(--f-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 9px }
+.wrow { display: grid; grid-template-columns: 52px minmax(0, 1fr) 34px; gap: 6px; align-items: center; font-size: 12px }
+.wrow input { width: 100%; accent-color: var(--accent) }
+.wrow output { font: 11px var(--f-mono); text-align: right; color: var(--muted) }
+.btn { font: 600 13px var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--r); padding: 6px 10px; cursor: pointer }
+.seg { display: flex; flex-wrap: wrap; gap: 6px }
+.seg button { font: 12px var(--f-body); border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 3px 10px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+.tablebox { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0 }
+.tablehead { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line) }
+.scroll { overflow: auto; max-height: 70vh }
+.scroll.short { max-height: 420px }
+table { border-collapse: collapse; width: 100%; font-size: 13px }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap }
+th { font-size: 11px; font-weight: 600; color: var(--muted); position: sticky; top: 0; background: var(--surface); cursor: pointer; user-select: none; z-index: 1 }
+th.n, td.n { text-align: right }
+th[data-dir="desc"]::after { content: " ▼"; font-size: 9px }
+th[data-dir="asc"]::after { content: " ▲"; font-size: 9px }
+tbody tr.click { cursor: pointer }
+tbody tr.click:hover { background: color-mix(in srgb, var(--accent) 7%, transparent) }
+td.name { max-width: 240px; overflow: hidden; text-overflow: ellipsis }
+td.name small { display: block; color: var(--muted); font: 11px var(--f-mono) }
+.pos { color: var(--pos) } .neg { color: var(--neg) } .warn { color: var(--warn) }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap }
+.badge.on { border-color: var(--accent); color: var(--accent) }
+.badge.del { border-color: var(--pos); color: var(--pos) }
+.badge.w { border-color: var(--warn); color: var(--warn) }
+.heat { font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px }
+.kpi { background: var(--surface-2); border-radius: var(--r); padding: 8px 10px }
+.kpi > span { display: block; font-size: 11px; color: var(--muted) }
+.kpi b { font: 500 16px/1.25 var(--f-mono); font-variant-numeric: tabular-nums }
+.kpi > small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px }
+.chart { width: 100%; position: relative }
+.chart svg { display: block; width: 100%; overflow: visible }
+.chart .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; font: 11px/1.4 var(--f-mono); white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.12); display: none; z-index: 3 }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 6px }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px }
+.bars { display: grid; gap: 6px }
+.bar { display: grid; grid-template-columns: 70px minmax(0, 1fr) 48px; gap: 8px; align-items: center; font-size: 12px }
+.bar .track { position: relative; height: 12px; background: var(--surface-2); border-radius: 3px }
+.bar .track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line) }
+.bar .fill { position: absolute; top: 0; bottom: 0; border-radius: 3px }
+.range { position: relative; height: 8px; background: var(--surface-2); border-radius: 4px; margin: 10px 0 4px }
+.range i { position: absolute; top: -4px; width: 3px; height: 16px; background: var(--ink); border-radius: 2px }
+.note { font-size: 12px; color: var(--muted); line-height: 1.6 }
+.note li { margin-bottom: 4px }
+.lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px }
+.lists .card { overflow: hidden }
+.mini td.name { max-width: 190px }
+.mini td { padding: 4px 6px; font-size: 12px }
+.detail-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: flex-start }
+.detail-head h2 { font: 700 22px/1.25 var(--f-display) }
+.pick { display: flex; gap: 8px; align-items: center; max-width: 520px; position: relative }
+.sugg { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); z-index: 5; max-height: 300px; overflow: auto }
+.sugg div { padding: 6px 10px; cursor: pointer; font-size: 13px }
+.sugg div:hover, .sugg div.act { background: color-mix(in srgb, var(--accent) 10%, transparent) }
+.empty { padding: 40px; text-align: center; color: var(--muted) }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">SavvyETF · 지수분석 · 내부용</div>
+    <h1>ACWI 종목 분석기</h1>
+    <div class="links"><a href="index.html">팩터 스코어보드</a><a href="../index_monitor/web/index_monitor.html">Index Monitor</a><span class="muted" id="srcline"></span></div>
+  </div>
+  <div class="facts" id="facts"></div>
+</header>
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="market" aria-selected="true">시장 개요</button>
+  <button role="tab" data-tab="screen" aria-selected="false">스크리너</button>
+  <button role="tab" data-tab="detail" aria-selected="false">종목 상세</button>
+  <button role="tab" data-tab="msci" aria-selected="false">MSCI 편출입</button>
+  <button role="tab" data-tab="backtest" aria-selected="false">팩터 백테스트</button>
+  <button role="tab" data-tab="data" aria-selected="false">데이터·방법</button>
+</nav>
+
+<section id="tab-market"></section>
+<section id="tab-screen" hidden></section>
+<section id="tab-detail" hidden></section>
+<section id="tab-msci" hidden></section>
+<section id="tab-backtest" hidden></section>
+<section id="tab-data" hidden></section>
+</div>
+
+<script src="analyzer_data.js"></script>
+<script src="backtest_data.js"></script>
+<script>
+"use strict";
+const A = window.ANALYZER;
+const S = A.series, M = A.meta;
+const BY = Object.fromEntries(A.stocks.map(s => [s.c, s]));
+const FK = [["fv","가치"],["fs","사이즈"],["fd","배당"],["fg","성장"],["fm","모멘텀"],["fq","퀄리티"]];
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isNum = v => typeof v === "number" && isFinite(v);
+function f(v, d = 1, suf = "") { return isNum(v) ? v.toLocaleString("ko-KR", {minimumFractionDigits: d, maximumFractionDigits: d}) + suf : "–" }
+function sg(v, d = 1, suf = "%") { if (!isNum(v)) return "–"; const c = v > 0 ? "pos" : v < 0 ? "neg" : ""; return `<span class="${c}">${v > 0 ? "+" : ""}${f(v, d)}${suf}</span>` }
+function cap(v) { if (!isNum(v)) return "–"; return v >= 1e6 ? f(v / 1e6, 2) + "조$" : v >= 1e3 ? f(v / 1e3, 1) + "십억$" : f(v, 0) + "백만$" }
+function heat(v, lo, hi, invert = false) {
+  if (!isNum(v)) return "";
+  let t = Math.max(-1, Math.min(1, (v - (lo + hi) / 2) / ((hi - lo) / 2))); if (invert) t = -t;
+  const col = t >= 0 ? "var(--pos)" : "var(--neg)";
+  return `background: color-mix(in srgb, ${col} ${Math.round(Math.abs(t) * 32)}%, transparent)`;
+}
+function msBadge(s) {
+  const m = s.ms || "";
+  if (m.startsWith("편출")) return `<span class="badge del" title="${esc(s.er)} 리뷰 편출, ${esc(s.ee)} 효력">편출 ${esc(s.er)}</span>`;
+  if (m.startsWith("구성")) return `<span class="badge on">ACWI</span>`;
+  return `<span class="badge">${esc(m || "?")}</span>`;
+}
+function dday(d) { const t = new Date(d + "T00:00:00+09:00"), n = new Date(M.as_of + "T00:00:00+09:00"); return Math.round((t - n) / 864e5) }
+
+// ───────── SVG 라인 차트 (의존성 없음) ─────────
+function lineChart(el, {x, series, h = 220, yfmt = v => f(v, 1), xfmt = v => v, refs = [], zeroLine = false, log = false}) {
+  const W = Math.max(320, el.clientWidth || 600), H = h, P = {l: 46, r: 12, t: 10, b: 22};
+  let ys = series.flatMap(s => s.y.filter(isNum)); refs.forEach(r => isNum(r.y) && ys.push(r.y));
+  if (!ys.length) { el.innerHTML = `<div class="empty small">데이터 없음</div>`; return }
+  let lo = Math.min(...ys), hi = Math.max(...ys); if (zeroLine) { lo = Math.min(lo, 0); hi = Math.max(hi, 0) }
+  if (lo === hi) { lo -= 1; hi += 1 } const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  const tf = log ? Math.log : v => v; const L0 = tf(lo > 0 || !log ? lo : 1e-6), L1 = tf(hi);
+  const X = i => P.l + (W - P.l - P.r) * (x.length <= 1 ? 0.5 : i / (x.length - 1));
+  const Y = v => P.t + (H - P.t - P.b) * (1 - (tf(v) - L0) / (L1 - L0));
+  const ticks = 4, grid = [];
+  for (let k = 0; k <= ticks; k++) { const v = lo + (hi - lo) * k / ticks; grid.push(`<line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--f-mono)">${esc(yfmt(v))}</text>`) }
+  const nx = Math.min(6, x.length), xl = [];
+  for (let k = 0; k < nx; k++) { const i = Math.round((x.length - 1) * k / Math.max(1, nx - 1)); xl.push(`<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nx - 1 ? "end" : "middle"}" font-size="10" fill="var(--muted)">${esc(xfmt(x[i]))}</text>`) }
+  const paths = series.map(s => {
+    let d = "", pen = false;
+    s.y.forEach((v, i) => { if (isNum(v) && (!log || v > 0)) { d += (pen ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); pen = true } else pen = false });
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 1.6}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} stroke-linejoin="round"/>`;
+  }).join("");
+  const rl = refs.map(r => isNum(r.y) ? `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(r.y)}" y2="${Y(r.y)}" stroke="${r.color || "var(--muted)"}" stroke-dasharray="4 3"/><text x="${W - P.r}" y="${Y(r.y) - 3}" text-anchor="end" font-size="10" fill="${r.color || "var(--muted)"}">${esc(r.label || "")}</text>` : (isNum(r.x) ? `<line x1="${X(r.x)}" x2="${X(r.x)}" y1="${P.t}" y2="${H - P.b}" stroke="${r.color || "var(--muted)"}" stroke-dasharray="3 3"/><text x="${X(r.x) + 3}" y="${P.t + 10}" font-size="10" fill="${r.color || "var(--muted)"}">${esc(r.label || "")}</text>` : "")).join("");
+  const z = zeroLine ? `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)"/>` : "";
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">${grid.join("")}${z}${rl}${paths}${xl.join("")}<line class="cur" y1="${P.t}" y2="${H - P.b}" stroke="var(--muted)" stroke-width="1" style="display:none"/></svg><div class="tip"></div>`;
+  const svg = $("svg", el), tip = $(".tip", el), cur = $(".cur", el);
+  svg.addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(x.length - 1, Math.round((px - P.l) / (W - P.l - P.r) * (x.length - 1))));
+    cur.setAttribute("x1", X(i)); cur.setAttribute("x2", X(i)); cur.style.display = "";
+    tip.innerHTML = `<div>${esc(xfmt(x[i], true))}</div>` + series.map(s => `<div style="color:${s.color}">${esc(s.name || "")} ${isNum(s.y[i]) ? esc(yfmt(s.y[i])) : "–"}</div>`).join("");
+    tip.style.display = "block"; const tx = X(i) * r.width / W; tip.style.left = Math.min(r.width - tip.offsetWidth - 4, tx + 10) + "px"; tip.style.top = "6px";
+  });
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; cur.style.display = "none" });
+}
+function sma(a, n) { return a.map((_, i) => { if (i < n - 1) return null; let s = 0, c = 0; for (let k = i - n + 1; k <= i; k++) if (isNum(a[k])) { s += a[k]; c++ } return c >= n * 0.8 ? s / c : null }) }
+function legend(items) { return `<div class="legend">${items.map(([c, t, dash]) => `<span><i style="background:${c};${dash ? "background:repeating-linear-gradient(90deg," + c + " 0 4px,transparent 4px 7px)" : ""}"></i>${esc(t)}</span>`).join("")}</div>` }
+
+// ───────── 상단 요약 ─────────
+(function header() {
+  const nr = (M.next_reviews || []).find(r => r.announce >= M.as_of);
+  const all = A.stocks.filter(s => !s.xr);
+  const pct = (arr, fn) => arr.length ? arr.filter(fn).length / arr.length * 100 : NaN;
+  const revB = (() => { const v = all.filter(s => isNum(s.erd)); return v.reduce((a, s) => a + s.erd, 0) / v.length * 100 })();
+  $("#facts").innerHTML = [
+    ["기준일", M.ri_last], ["종목", A.stocks.length.toLocaleString() + ` <small class="muted">(점수 ${A.quality.n_scored.toLocaleString()})</small>`],
+    ["벤치마크 3M / 12M", `${sg(M.bench_r3m)} / ${sg(M.bench_r12m)}`],
+    ["MA200 위 비율", f(pct(all.filter(s => isNum(s.ma200)), s => s.ma200 > 0), 0, "%")],
+    ["EPS 리비전 브레드스(3M)", sg(revB, 0, "%p")],
+    ["다음 MSCI 리뷰", nr ? `${nr.review} <small class="muted">발표 ${nr.announce.slice(5)} (D-${dday(nr.announce)})</small>` : "–"],
+  ].map(([k, v]) => `<div class="fact"><span class="eyebrow">${k}</span><b>${v}</b></div>`).join("");
+  $("#srcline").textContent = `원자료 ${M.source} · 빌드 ${M.built_at.replace("T", " ")}`;
+})();
+
+// ───────── 탭 ─────────
+const rendered = {};
+function show(tab) {
+  document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  document.querySelectorAll("section[id^=tab-]").forEach(s => s.hidden = s.id !== "tab-" + tab);
+  if (!rendered[tab]) { ({market: renderMarket, screen: renderScreen, detail: renderDetail, msci: renderMsci, backtest: renderBacktest, data: renderData})[tab](); rendered[tab] = true }
+  if (tab === "detail" && pendingCode) openStock(pendingCode);
+  history.replaceState(null, "", "#" + tab + (tab === "detail" && current ? "/" + encodeURIComponent(current) : ""));
+}
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
+let current = null, pendingCode = null;
+function goStock(code) { pendingCode = code; show("detail") }
+
+// 공통 표
+function table(el, cols, rows, {sort = null, dir = "desc", limit = 300, click = true, onRow = null} = {}) {
+  const go = onRow || goStock; if (onRow) click = true;
+  let st = {k: sort, d: dir}, lim = limit;
+  function draw() {
+    let r = rows.slice();
+    if (st.k) { const c = cols.find(c => c.k === st.k), g = c.v || (x => x[c.k]); r.sort((a, b) => { const x = g(a), y = g(b); const nx = x === null || x === undefined || (typeof x === "number" && !isFinite(x)), ny = y === null || y === undefined || (typeof y === "number" && !isFinite(y)); if (nx && ny) return 0; if (nx) return 1; if (ny) return -1; return (x < y ? -1 : x > y ? 1 : 0) * (st.d === "asc" ? 1 : -1) }) }
+    const body = r.slice(0, lim).map(x => `<tr class="${click && x.c ? "click" : ""}" data-c="${esc(x.c || "")}" tabindex="${click && x.c ? 0 : -1}">${cols.map(c => `<td class="${c.n ? "n" : ""} ${c.cls || ""}" style="${c.heat ? c.heat(x) : ""}">${c.f ? c.f(x) : esc(x[c.k])}</td>`).join("")}</tr>`).join("");
+    el.innerHTML = `<table><thead><tr>${cols.map(c => `<th class="${c.n ? "n" : ""}" data-k="${c.k}" ${st.k === c.k ? `data-dir="${st.d}"` : ""} title="${esc(c.t || "")}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>` + (r.length > lim ? `<div style="padding:10px;text-align:center"><button class="btn more">더 보기 (${(r.length - lim).toLocaleString()}개 남음)</button></div>` : "");
+    el.querySelectorAll("th").forEach(th => th.addEventListener("click", () => { const k = th.dataset.k; st = {k, d: st.k === k && st.d === "desc" ? "asc" : "desc"}; draw() }));
+    el.querySelectorAll("tr.click").forEach(tr => { tr.addEventListener("click", () => go(tr.dataset.c)); tr.addEventListener("keydown", e => { if (e.key === "Enter") go(tr.dataset.c) }) });
+    const m = $(".more", el); if (m) m.addEventListener("click", () => { lim += limit; draw() });
+  }
+  draw();
+  return {set(newRows) { rows = newRows; lim = limit; draw() }};
+}
+const nameCell = s => `<td class="name"></td>`;
+const NM = {k: "n", h: "종목", f: s => `${esc(s.n || s.c)}<small>${esc(s.c)} · ${esc(s.ct || "")}</small>`, cls: "name"};
+
+// ───────── 1. 시장 개요 ─────────
+function breadthTable(el, rows, label) {
+  const cols = [
+    {k: "g", h: label, f: r => esc(r.g)},
+    {k: "n", h: "종목", n: 1, f: r => r.n},
+    {k: "rev_breadth_3m", h: "리비전 3M", n: 1, t: "EPS NTM 3개월 상향 비율 − 하향 비율", f: r => f(r.rev_breadth_3m, 0), heat: r => heat(r.rev_breadth_3m, -60, 60)},
+    {k: "eps_rev_3m_med", h: "EPS Δ3M", n: 1, t: "EPS NTM 3개월 변화율 중앙값", f: r => f(r.eps_rev_3m_med, 1, "%"), heat: r => heat(r.eps_rev_3m_med, -8, 8)},
+    {k: "above_ma200", h: "MA200↑", n: 1, t: "200일선 위 종목 비율", f: r => f(r.above_ma200, 0, "%"), heat: r => heat(r.above_ma200, 0, 100)},
+    {k: "golden", h: "골든", n: 1, t: "50일선 > 200일선 비율", f: r => f(r.golden, 0, "%"), heat: r => heat(r.golden, 0, 100)},
+    {k: "r_1m_med", h: "1M", n: 1, f: r => f(r.r_1m_med, 1, "%"), heat: r => heat(r.r_1m_med, -10, 10)},
+    {k: "r_3m_med", h: "3M", n: 1, f: r => f(r.r_3m_med, 1, "%"), heat: r => heat(r.r_3m_med, -15, 15)},
+    {k: "r_12m_med", h: "12M", n: 1, f: r => f(r.r_12m_med, 1, "%"), heat: r => heat(r.r_12m_med, -30, 30)},
+    {k: "rsi_med", h: "RSI", n: 1, f: r => f(r.rsi_med, 0), heat: r => heat(r.rsi_med, 30, 70)},
+    {k: "pe_med", h: "PER", n: 1, f: r => f(r.pe_med, 1)},
+    {k: "pe_pct_3y_med", h: "PER 3Y위치", n: 1, t: "3년 근사 PER 분포 내 현재 백분위(중앙값). 낮을수록 역사적 저평가", f: r => f(r.pe_pct_3y_med, 0), heat: r => heat(r.pe_pct_3y_med, 0, 100, true)},
+    {k: "dy_med", h: "배당", n: 1, f: r => f(r.dy_med, 2, "%")},
+  ];
+  table(el, cols, rows, {sort: "n", click: false, limit: 60});
+}
+function ideaList(title, sub, rows, cols) {
+  return `<div class="card"><h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div><table class="mini"><tbody>${rows.slice(0, 10).map(s => `<tr class="click" data-c="${esc(s.c)}"><td class="name">${esc(s.n)}<small>${esc(s.c)} · ${esc(s.ct)}</small></td>${cols.map(c => `<td class="n">${c(s)}</td>`).join("")}</tr>`).join("") || `<tr><td class="muted">해당 없음</td></tr>`}</tbody></table></div>`;
+}
+function renderMarket() {
+  const el = $("#tab-market");
+  const all = A.stocks.filter(s => !s.xr && !s.susp && !(s.ms || "").startsWith("편출"));
+  const by = (fn, k, desc = true) => all.filter(fn).sort((a, b) => desc ? b[k] - a[k] : a[k] - b[k]);
+  const ok3 = s => isNum(s.er3) && Math.abs(s.er3) <= 150;      // EPS 기저가 0 근처인 극단치(±150% 초과) 제외
+  el.innerHTML = `
+  <div class="grid g2">
+    <div class="card"><h2>벤치마크 (유니버스 ACWI 비중가중, 현지통화 총수익)</h2><div class="sub">주간, 마지막 값 = 1,000. ACWI 공식 지수가 아닌 이 파일 종목·비중으로 만든 근사치</div><div class="chart" id="bchart"></div></div>
+    <div class="card"><h2>지역별 브레드스</h2><div class="sub">리비전 = EPS NTM 3개월 상향−하향 비율(%p). 열 제목을 누르면 정렬</div><div class="scroll short" id="br-region"></div>
+      <h2 style="margin-top:14px">MSCI 리뷰 일정</h2><div class="sub">MSCI 공지(ir_dates) 기준</div><div id="revcal"></div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>섹터별 브레드스</h2><div class="sub">기술적(이동평균·RSI)과 이익 추정치 흐름을 한 표에서 비교</div><div class="scroll" id="br-sector"></div></div>
+  <div class="card" style="margin-top:16px"><h2>국가별 브레드스</h2><div class="sub">종목 수 많은 순</div><div class="scroll short" id="br-country"></div></div>
+  <h2 style="margin:22px 0 10px">아이디어 리스트 <span class="muted small">(편출 확정·거래정지 제외, 변화율 ±150% 초과 극단치 제외, 클릭하면 상세)</span></h2>
+  <div class="lists">
+    ${ideaList("리비전 상향 + 추세 강세", "EPS 3M 리비전 상위 중 기술적 점수 ≥5", by(s => s.ts >= 5 && ok3(s), "er3"), [s => sg(s.er3), s => `<span class="badge on">${s.ts}/6</span>`])}
+    ${ideaList("역사적 저PER + 리비전 상향", "근사 PER 3년 하위 20% & EPS 3M 리비전 > 0", by(s => isNum(s.pep) && s.pep <= 20 && ok3(s) && s.er3 > 0, "er3"), [s => "PER " + f(s.pe, 1), s => sg(s.er3)])}
+    ${ideaList("52주 고점 근접 + 모멘텀", "고점 대비 −3% 이내, 12-1M 수익률 순", by(s => isNum(s.dd52) && s.dd52 > -3, "mom"), [s => sg(s.mom, 0), s => sg(s.dd52)])}
+    ${ideaList("과매도 + 펀더멘털 양호", "RSI < 30 & EPS 3M 리비전 > 0, 리비전 순", by(s => s.rsi < 30 && ok3(s) && s.er3 > 0, "er3"), [s => "RSI " + f(s.rsi, 0), s => sg(s.er3)])}
+    ${ideaList("배당 안정 + 성장", "배당 ≥3%, 36개월 DPS 삭감 0회, DPS 12M 성장 순", by(s => s.dy >= 3 && s.cuts === 0 && isNum(s.dg12) && s.dg12 <= 150, "dg12"), [s => f(s.dy, 1, "%"), s => sg(s.dg12)])}
+    ${ideaList("리비전 하향 경고", "EPS 3M 리비전 하위 (대형주 비중 0.05% 이상)", by(s => ok3(s) && s.w >= 0.0005, "er3", false), [s => sg(s.er3), s => sg(s.r3m)])}
+  </div>`;
+  lineChart($("#bchart"), {x: S.weeks, series: [{y: S.bench, color: "var(--accent)", name: "벤치마크"}], h: 220, yfmt: v => f(v, 0), xfmt: v => v.slice(2, 7)});
+  breadthTable($("#br-region"), A.breadth.region, "지역");
+  breadthTable($("#br-sector"), A.breadth.sector, "섹터");
+  breadthTable($("#br-country"), A.breadth.country, "국가");
+  $("#revcal").innerHTML = `<table class="mini"><tbody>${(M.next_reviews || []).slice(0, 4).map(r => `<tr><td>${esc(r.review)}</td><td class="n">발표 ${esc(r.announce)}</td><td class="n">효력 ${esc(r.effective)}</td><td class="n muted">D-${dday(r.announce)}</td></tr>`).join("")}</tbody></table>`;
+  el.querySelectorAll(".lists tr.click").forEach(tr => tr.addEventListener("click", () => goStock(tr.dataset.c)));
+}
+
+// ───────── 2. 스크리너 ─────────
+const GROUPS = {
+  factor: {h: "팩터", cols: [
+    {k: "rk", h: "순위", n: 1, f: s => s.rk ?? "–"}, {k: "z", h: "종합", n: 1, f: s => f(s.z, 2), heat: s => heat(s.z, -2, 2)},
+    ...FK.map(([k, l]) => ({k, h: l, n: 1, f: s => f(s[k], 2), heat: s => heat(s[k], -2, 2)})),
+    {k: "pe", h: "PER", n: 1, f: s => f(s.pe, 1)}, {k: "pb", h: "PBR", n: 1, f: s => f(s.pb, 2)}, {k: "dy", h: "배당", n: 1, f: s => f(s.dy, 2, "%")}, {k: "roe", h: "ROE", n: 1, f: s => f(s.roe, 1, "%")}]},
+  tech: {h: "기술적", cols: [
+    {k: "ts", h: "추세점수", n: 1, t: "0~6: 종가>MA50, 종가>MA200, MA50>MA200, MACD>시그널, 40≤RSI≤70, 3M>0", f: s => isNum(s.ts) ? `${s.ts}/6` : "–", heat: s => heat(s.ts, 0, 6)},
+    {k: "r1m", h: "1M", n: 1, f: s => sg(s.r1m)}, {k: "r3m", h: "3M", n: 1, f: s => sg(s.r3m)}, {k: "r12m", h: "12M", n: 1, f: s => sg(s.r12m, 0)},
+    {k: "ytd", h: "YTD", n: 1, f: s => sg(s.ytd)}, {k: "ma50", h: "MA50 괴리", n: 1, f: s => sg(s.ma50)}, {k: "ma200", h: "MA200 괴리", n: 1, f: s => sg(s.ma200)},
+    {k: "rsi", h: "RSI14", n: 1, f: s => f(s.rsi, 0), heat: s => heat(s.rsi, 30, 70)}, {k: "dd52", h: "52주고점比", n: 1, f: s => sg(s.dd52)},
+    {k: "vol", h: "변동성1Y", n: 1, f: s => f(s.vol, 0, "%")}, {k: "beta", h: "베타", n: 1, f: s => f(s.beta, 2)}, {k: "mdd", h: "MDD1Y", n: 1, f: s => f(s.mdd, 0, "%")},
+    {k: "liq", h: "거래대금20D", n: 1, t: "20일 평균 거래대금 근사(백만$)", f: s => f(s.liq, 0)}, {k: "vr", h: "거래량비", n: 1, t: "20일 ÷ 120일 평균 거래량", f: s => f(s.vr, 2), heat: s => heat(s.vr, 0.5, 1.5)}]},
+  fund: {h: "EPS·BPS·배당", cols: [
+    {k: "er1", h: "EPS Δ1M", n: 1, f: s => sg(s.er1)}, {k: "er3", h: "EPS Δ3M", n: 1, f: s => sg(s.er3)}, {k: "er12", h: "EPS Δ12M", n: 1, f: s => sg(s.er12, 0)},
+    {k: "eg", h: "EPS g CY27", n: 1, f: s => sg(s.eg, 0)}, {k: "bg", h: "BPS Δ12M", n: 1, f: s => sg(s.bg)},
+    {k: "dy", h: "배당", n: 1, f: s => f(s.dy, 2, "%")}, {k: "dg12", h: "DPS Δ12M", n: 1, f: s => sg(s.dg12)}, {k: "cuts", h: "DPS삭감(36M)", n: 1, f: s => s.cuts ?? "–"},
+    {k: "pep", h: "PER 3Y위치", n: 1, t: "근사 PER 3년 백분위 (0=최저)", f: s => f(s.pep, 0), heat: s => heat(s.pep, 0, 100, true)},
+    {k: "pbp", h: "PBR 3Y위치", n: 1, f: s => f(s.pbp, 0), heat: s => heat(s.pbp, 0, 100, true)},
+    {k: "dyp", h: "배당 3Y위치", n: 1, f: s => f(s.dyp, 0), heat: s => heat(s.dyp, 0, 100)},
+    {k: "sv3", h: "매출 Δ3M", n: 1, f: s => sg(s.sv3)}, {k: "pep10", h: "PER 10Y위치", n: 1, t: "근사 PER 10년 백분위 (0=최저)", f: s => f(s.pep10, 0), heat: s => heat(s.pep10, 0, 100, true)}]},
+  msci: {h: "MSCI", cols: [
+    {k: "ms", h: "상태", f: s => msBadge(s)}, {k: "sr", h: "편입 리뷰", f: s => esc(s.sr === "<coverage" ? "2013-08 이전" : (s.sr || "–"))},
+    {k: "w", h: "ACWI 비중", n: 1, f: s => f((s.w || 0) * 100, 3, "%")}, {k: "tail", h: "국가 내 꼬리", n: 1, t: "국가 내 누적비중 위치(100=가장 작음)", f: s => f(s.tail, 1)},
+    {k: "wr", h: "편출관찰 순위", n: 1, v: s => s.wr ?? 1e9, f: s => s.wr ?? "–"}, {k: "cap", h: "시총", n: 1, f: s => cap(s.cap)}]},
+};
+const PRESETS = [
+  ["전체", s => true, null],
+  ["퀄리티+모멘텀", s => s.fq > 0.5 && s.fm > 0.5 && s.ts >= 4, "z"],
+  ["저평가+리비전↑", s => s.fv > 0.5 && s.er3 > 2, "er3"],
+  ["역사적 저PER", s => isNum(s.pep) && s.pep <= 10 && s.er3 >= 0, "pep:asc"],
+  ["고배당 안정", s => s.dy >= 4 && s.cuts === 0, "dy"],
+  ["과매도 반등후보", s => s.rsi < 30 && s.er3 > 0, "rsi:asc"],
+  ["추세 강세", s => s.ts >= 6, "r3m"],
+  ["리비전 하향", s => s.er3 < -5, "er3:asc"],
+];
+function renderScreen() {
+  const el = $("#tab-screen");
+  const uniq = k => [...new Set(A.stocks.map(s => s[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+  el.innerHTML = `<div class="screener">
+    <aside class="ctl">
+      <div class="card grid" style="gap:12px">
+        <div class="field"><label for="q">검색</label><input type="search" id="q" placeholder="종목명·코드·ISIN"></div>
+        <div class="field"><label for="frg">지역</label><select id="frg"><option value="">전체</option>${uniq("rg").map(v => `<option>${esc(v)}</option>`).join("")}</select></div>
+        <div class="field"><label for="fct">국가</label><select id="fct"><option value="">전체</option>${uniq("ct").map(v => `<option>${esc(v)}</option>`).join("")}</select></div>
+        <div class="field"><label for="fsec">섹터</label><select id="fsec"><option value="">전체</option>${uniq("s").map(v => `<option>${esc(v)}</option>`).join("")}</select></div>
+        <div class="field"><label for="fms">MSCI 상태</label><select id="fms"><option value="cur">현재 구성 (5·8월 편출 제외)</option><option value="">파일 전체</option><option value="del">5·8월 편출 (파일에 남음)</option><option value="watch">편출 관찰 상위 200</option></select></div>
+        <div class="field"><span class="lab">프리셋</span><div class="seg" id="presets">${PRESETS.map((p, i) => `<button aria-pressed="${i === 0}" data-i="${i}">${p[0]}</button>`).join("")}</div></div>
+      </div>
+      <div class="card grid" style="gap:8px"><div class="lab small muted" style="font-weight:600">팩터 가중치 → 종합점수 재계산</div>
+        ${FK.map(([k, l]) => `<div class="wrow"><span>${l}</span><input type="range" min="0" max="3" step="0.5" value="1" data-k="${k}"><output>1</output></div>`).join("")}
+        <button class="btn" id="wreset">기본(동일가중)</button>
+      </div>
+    </aside>
+    <div class="tablebox">
+      <div class="tablehead"><h2 id="scount"></h2><div class="seg" id="groups">${Object.entries(GROUPS).map(([k, g], i) => `<button aria-pressed="${i === 0}" data-g="${k}">${g.h}</button>`).join("")}</div></div>
+      <div class="scroll" id="stable"></div>
+    </div></div>`;
+  let preset = 0, group = "factor", W = Object.fromEntries(FK.map(([k]) => [k, 1]));
+  const t = table($("#stable"), [], [], {});
+  function recompute() {
+    const tw = Object.values(W).reduce((a, b) => a + b, 0) || 1;
+    const raw = A.stocks.map(s => FK.every(([k]) => isNum(s[k])) ? FK.reduce((a, [k]) => a + s[k] * W[k], 0) / tw : null);
+    const v = raw.filter(isNum), mu = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / (v.length - 1));
+    A.stocks.forEach((s, i) => { s.zc = isNum(raw[i]) ? (raw[i] - mu) / sd : null });
+    const ord = A.stocks.filter(s => isNum(s.zc)).sort((a, b) => b.zc - a.zc); ord.forEach((s, i) => s.rkc = i + 1);
+  }
+  function draw() {
+    const q = $("#q").value.trim().toLowerCase(), rg = $("#frg").value, ct = $("#fct").value, sec = $("#fsec").value, ms = $("#fms").value;
+    const P = PRESETS[preset];
+    let rows = A.stocks.filter(s => (!q || (s.n || "").toLowerCase().includes(q) || s.c.toLowerCase().includes(q) || (s.isin || "").toLowerCase().includes(q))
+      && (!rg || s.rg === rg) && (!ct || s.ct === ct) && (!sec || s.s === sec)
+      && (ms === "" || (ms === "cur" && !(s.ms || "").startsWith("편출")) || (ms === "del" && (s.ms || "").startsWith("편출")) || (ms === "watch" && s.wr && s.wr <= 200))
+      && P[1](s));
+    const custom = FK.some(([k]) => W[k] !== 1);
+    let cols = [NM, {k: "s", h: "섹터", f: s => esc(s.s || "")}];
+    if (group === "factor" && custom) cols.push({k: "rkc", h: "순위(가중)", n: 1, f: s => s.rkc ?? "–"}, {k: "zc", h: "종합(가중)", n: 1, f: s => f(s.zc, 2), heat: s => heat(s.zc, -2, 2)});
+    cols = cols.concat(GROUPS[group].cols, group !== "msci" ? [{k: "ms", h: "MSCI", f: s => msBadge(s)}] : []);
+    let sk = group === "factor" ? (custom ? "zc" : "z") : group === "tech" ? "ts" : group === "fund" ? "er3" : "wr", sd = group === "msci" ? "asc" : "desc";
+    if (P[2]) { const [k, d] = P[2].split(":"); sk = k; sd = d || "desc"; if (!cols.find(c => c.k === k)) cols.push({k, h: k, n: 1, f: s => f(s[k], 1)}) }
+    $("#scount").innerHTML = `${rows.length.toLocaleString()}개 종목 <span class="muted small">${esc(P[0])}</span>`;
+    const tb = table($("#stable"), cols, rows, {sort: sk, dir: sd, limit: 200});
+  }
+  ["q", "frg", "fct", "fsec", "fms"].forEach(id => $("#" + id).addEventListener("input", draw));
+  $("#presets").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; preset = +b.dataset.i; $("#presets").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); draw() });
+  $("#groups").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; group = b.dataset.g; $("#groups").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); draw() });
+  el.querySelectorAll(".wrow input").forEach(inp => inp.addEventListener("input", () => { W[inp.dataset.k] = +inp.value; inp.nextElementSibling.textContent = inp.value; recompute(); draw() }));
+  $("#wreset").addEventListener("click", () => { el.querySelectorAll(".wrow input").forEach(inp => { inp.value = 1; inp.nextElementSibling.textContent = "1"; W[inp.dataset.k] = 1 }); recompute(); draw() });
+  recompute(); draw();
+}
+
+// ───────── 3. 종목 상세 ─────────
+function renderDetail() {
+  $("#tab-detail").innerHTML = `<div class="pick"><input type="search" id="dq" placeholder="종목명·코드 입력 (예: Samsung, 005930, NVDA)" autocomplete="off"><div class="sugg" id="dsugg" hidden></div></div><div id="dbody" style="margin-top:16px"><div class="empty">스크리너·리스트에서 종목을 누르거나 위에서 검색하세요.</div></div>`;
+  const q = $("#dq"), sg_ = $("#dsugg"); let act = -1, items = [];
+  q.addEventListener("input", () => {
+    const v = q.value.trim().toLowerCase(); if (!v) { sg_.hidden = true; return }
+    items = A.stocks.filter(s => (s.n || "").toLowerCase().includes(v) || s.c.toLowerCase().includes(v)).sort((a, b) => (b.w || 0) - (a.w || 0)).slice(0, 12);
+    act = -1; sg_.innerHTML = items.map((s, i) => `<div data-c="${esc(s.c)}">${esc(s.n)} <span class="muted small">${esc(s.c)} · ${esc(s.ct)}</span></div>`).join(""); sg_.hidden = !items.length;
+  });
+  q.addEventListener("keydown", e => {
+    const ds = [...sg_.children]; if (e.key === "ArrowDown") { act = Math.min(ds.length - 1, act + 1) } else if (e.key === "ArrowUp") { act = Math.max(0, act - 1) } else if (e.key === "Enter" && items.length) { openStock(items[Math.max(0, act)].c); sg_.hidden = true; return } else return;
+    e.preventDefault(); ds.forEach((d, i) => d.classList.toggle("act", i === act));
+  });
+  sg_.addEventListener("click", e => { const d = e.target.closest("div[data-c]"); if (d) { openStock(d.dataset.c); sg_.hidden = true } });
+  document.addEventListener("click", e => { if (!e.target.closest(".pick")) sg_.hidden = true });
+}
+function factorBars(s) {
+  return `<div class="bars">${FK.map(([k, l]) => { const v = s[k]; const w = isNum(v) ? Math.min(3, Math.abs(v)) / 3 * 50 : 0; return `<div class="bar"><span>${l}</span><div class="track">${isNum(v) ? `<div class="fill" style="${v >= 0 ? "left:50%" : "right:50%"};width:${w}%;background:${v >= 0 ? "var(--pos)" : "var(--neg)"}"></div>` : ""}</div><span class="mono" style="text-align:right">${f(v, 2)}</span></div>` }).join("")}</div>`;
+}
+function openStock(code) {
+  pendingCode = null; current = code; const s = BY[code]; if (!s) return;
+  history.replaceState(null, "", "#detail/" + encodeURIComponent(code));
+  const ri = S.ri[code] || [], b = S.bench, rel = ri.map((v, i) => isNum(v) && isNum(b[i]) ? v / b[i] * 1000 : null);
+  const evs = A.events.per.filter(e => e.code === code);
+  const peers = A.stocks.filter(x => x.ind === s.ind && x.c !== code && !x.xr).sort((a, b) => (b.cap || 0) - (a.cap || 0)).slice(0, 10);
+  const kp = (l, v, sm = "") => `<div class="kpi"><span>${l}</span><b>${v}</b>${sm ? `<small>${sm}</small>` : ""}</div>`;
+  const xwin = s.xa != null ? `${s.xd > 0 ? "골든크로스" : "데드크로스"} ${s.xa}일 전` : (s.gold === 1 ? "MA50 > MA200" : s.gold === 0 ? "MA50 < MA200" : "");
+  $("#dbody").innerHTML = `
+  <div class="card"><div class="detail-head"><div>
+      <div class="eyebrow">${esc(s.c)} · ${esc(s.isin || "")} · ${esc(s.ct || "")}${s.hq ? " (본사 " + esc(s.hq) + ")" : ""} · ${esc(s.s || "")} / ${esc(s.ind || "")}</div>
+      <h2>${esc(s.n)}</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${msBadge(s)}
+        ${s.sr ? `<span class="badge">편입 ${s.sr === "<coverage" ? "2013-08 이전" : esc(s.sr) + " (" + esc(s.since) + ")"}</span>` : ""}
+        ${s.tr ? `<span class="badge ${s.tr === "강세" ? "on" : s.tr === "약세" ? "del" : ""}">추세 ${esc(s.tr)} ${s.ts}/6</span>` : ""}
+        ${s.wr && s.wr <= 200 ? `<span class="badge w">편출 관찰 ${s.wr}위</span>` : ""}
+        ${s.flag ? `<span class="badge w">${esc(s.flag)}</span>` : ""}${s.susp ? `<span class="badge w">거래정지 의심</span>` : ""}${s.xr ? `<span class="badge w">팩터 제외: ${esc(s.xr)}</span>` : ""}</div>
+    </div>
+    <div style="text-align:right"><div class="eyebrow">종합 순위</div><div style="font:600 28px var(--f-mono)">${s.rk ?? "–"}<span class="muted small"> / ${A.quality.n_scored.toLocaleString()}</span></div><div class="muted small">섹터 내 ${s.srk ?? "–"}위 · Z ${f(s.z, 2)}</div></div></div>
+    <div class="kpis" style="margin-top:12px">
+      ${kp("시가총액", cap(s.cap), "ACWI 비중 " + f((s.w || 0) * 100, 3) + "%")}${kp("주가(USD)", f(s.pxu, 2))}
+      ${kp("Fwd PER", f(s.pe, 1), isNum(s.pep10) ? `10Y 중앙 ${f(s.pem10, 1)} · 위치 10Y ${f(s.pep10, 0)} / 3Y ${f(s.pep, 0)}` : `3Y 중앙 ${f(s.pem, 1)} · 위치 ${f(s.pep, 0)}`)}${kp("Fwd PBR", f(s.pb, 2), isNum(s.pbp10) ? `위치 10Y ${f(s.pbp10, 0)} / 3Y ${f(s.pbp, 0)}` : `3Y 위치 ${f(s.pbp, 0)}`)}
+      ${kp("배당수익률", f(s.dy, 2, "%"), `3Y 위치 ${f(s.dyp, 0)} · 삭감 ${s.cuts ?? "–"}회`)}${kp("Fwd ROE", f(s.roe, 1, "%"))}
+      ${kp("EPS 리비전", sg(s.er3), `1M ${sg(s.er1)} · 12M ${sg(s.er12, 0)}`)}${kp("EPS 성장 CY27", sg(s.eg, 0), s.ef ? esc(s.ef) : `CY26 ${sg(s.eg26, 0)}`)}
+      ${kp("수익률 3M / 12M", `${sg(s.r3m, 0)} / ${sg(s.r12m, 0)}`, `벤치 대비 ${sg(s.rel3, 0, "%p")} / ${sg(s.rel12, 0, "%p")}`)}
+      ${kp("변동성 · 베타", `${f(s.vol, 0, "%")} · ${f(s.beta, 2)}`, `MDD 1Y ${f(s.mdd, 0, "%")}`)}
+      ${isNum(s.liq) ? kp("거래대금 20일 평균", cap(s.liq), `거래량 20일/120일 ${f(s.vr, 2)}배 · 최근 5일 Z ${f(s.vz, 1)}`) : ""}
+      ${isNum(s.sv3) ? kp("매출 추정치 리비전", sg(s.sv3), `1M ${sg(s.sv1)} · 12M ${sg(s.sv12, 0)}${isNum(s.ec5) ? " · EPS 5년 CAGR " + sg(s.ec5, 0) : ""}`) : ""}
+    </div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2 id="ptitle">총수익지수 (주간, 3년)</h2><div class="sub" id="psub">현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 10주/40주 이동평균 ≈ 50일/200일선</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">${S.rim && S.rim[code] ? `<div class="seg" id="pper"><button aria-pressed="true" data-p="3y">3년 주간</button><button aria-pressed="false" data-p="10y">10년 월간</button></div>` : ""}
+      <div class="seg" id="pmode"><button aria-pressed="true" data-m="abs">절대</button><button aria-pressed="false" data-m="rel">벤치마크 대비</button></div></div>
+      <div class="chart" id="pchart"></div><div id="plegend"></div></div>
+    <div class="card"><h2>기술적 지표</h2><div class="sub">마지막 거래일 ${esc(M.ri_last)}</div>
+      <div class="kpis">${kp("RSI(14)", f(s.rsi, 0), s.rsi >= 70 ? "과매수" : s.rsi <= 30 ? "과매도" : "중립")}${kp("MACD 히스토그램", f(s.mh, 2), s.mxd ? (s.mxd > 0 ? "시그널 상향 돌파" : "시그널 하향 돌파") : "")}
+        ${kp("볼린저 %B", f(s.bb, 0), "0=하단, 100=상단")}${kp("MA20 괴리", sg(s.ma20))}${kp("MA50 괴리", sg(s.ma50))}${kp("MA200 괴리", sg(s.ma200), esc(xwin))}
+        ${kp("1W / 1M", `${sg(s.r1w)} / ${sg(s.r1m)}`)}${kp("YTD", sg(s.ytd))}${kp("상관(주간)", f(s.corr, 2))}</div>
+      <div style="margin-top:12px"><h3>52주 범위</h3><div class="range">${isNum(s.dd52) && isNum(s.up52) ? (() => { const lo = 1 / (1 + s.up52 / 100), hi = 1 / (1 + s.dd52 / 100); const p = (1 - lo) / (hi - lo) * 100; return `<i style="left:calc(${Math.max(0, Math.min(100, p))}% - 1px)"></i>` })() : ""}</div>
+        <div class="small muted" style="display:flex;justify-content:space-between"><span>저점 대비 ${sg(s.up52, 0)}</span><span>고점 대비 ${sg(s.dd52)}</span></div></div>
+      <h3 style="margin-top:14px">팩터 (섹터×지역 중립 Z)</h3>${factorBars(s)}</div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h2>EPS NTM 추정치</h2><div class="sub">월간, 보고통화</div><div class="chart" id="ceps"></div></div>
+    <div class="card"><h2>${S.sal && S.sal[code] ? "BPS · DPS · 매출 NTM" : "BPS · DPS NTM"}</h2><div class="sub">시작 = 100 지수화</div><div class="chart" id="cbd"></div>${legend([["var(--c3)", "BPS"], ["var(--c4)", "DPS"], ...(S.sal && S.sal[code] ? [["var(--warn)", "매출"]] : [])])}</div>
+    <div class="card"><h2>근사 Fwd PER 밴드</h2><div class="sub">현재 PER × (주가 상대변화 ÷ EPS 상대변화). 점선 = ${isNum(s.pem10) ? "10년" : "3년"} 중앙값</div><div class="chart" id="cpe"></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>MSCI 편출입 이력</h2><div class="sub">2013-08~ 공개 리스트 재구성 결과 (ISIN 매칭)</div>
+      <table class="mini"><tbody>
+        <tr><td>현재 상태</td><td>${msBadge(s)} ${s.ee ? `<span class="muted small">효력 ${esc(s.ee)}</span>` : ""}</td></tr>
+        <tr><td>편입</td><td>${s.sr === "<coverage" ? "2013-08 이전부터 (공개 이력 시작 전)" : s.sr ? esc(s.sr) + " 리뷰 · " + esc(s.since) + " 효력" : "매칭 없음"}</td></tr>
+        <tr><td>국가 내 크기 위치</td><td>${f(s.tail, 1)} <span class="muted small">(100=국가에서 가장 작음) · 편출 관찰 ${s.wr ? s.wr + "위" : "–"}</span></td></tr>
+      </tbody></table>
+      ${evs.length ? `<h3 style="margin-top:12px">이벤트 초과수익 (시장조정, %)</h3><table class="mini"><thead><tr><th>리뷰</th><th>구분</th><th class="n">발표 전20일</th><th class="n">발표 2일</th><th class="n">~리밸런싱</th><th class="n">당일</th><th class="n">효력 후</th></tr></thead><tbody>${evs.map(e => `<tr><td>${esc(e.review)}</td><td>${e.action === "ADD" ? "편입" : "편출"}</td><td class="n">${sg(e.car_pre)}</td><td class="n">${sg(e.car_ann)}</td><td class="n">${sg(e.car_run)}</td><td class="n">${sg(e.car_close)}</td><td class="n">${sg(e.car_post)}</td></tr>`).join("")}</tbody></table>` : `<p class="small muted" style="margin-top:10px">시계열 기간(2023-10~) 안의 편출입 이벤트 없음</p>`}
+    </div>
+    <div class="card"><h2>같은 산업 종목</h2><div class="sub">${esc(s.ind || "")} · 시총 상위 10</div><div class="scroll short" id="peers"></div></div>
+  </div>`;
+  const pc = $("#pchart");
+  let pm = "abs", pp = "3y";
+  function drawP() {
+    const long = pp === "10y" && S.rim && S.rim[code];
+    const y = long ? S.rim[code] : ri, xs = long ? S.months : S.weeks, bb = long ? (S.bench_m || []) : b;
+    const r2 = y.map((v, i) => isNum(v) && isNum(bb[i]) ? v / bb[i] * 1000 : null);
+    const n1 = long ? 12 : 10, n2 = long ? 36 : 40, u = long ? "개월" : "주";
+    $("#ptitle").textContent = long ? "총수익지수 (월간, 10년)" : "총수익지수 (주간, 3년)";
+    $("#psub").textContent = long ? "현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 12개월/36개월 이동평균" : "현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 10주/40주 이동평균 ≈ 50일/200일선";
+    if (pm === "rel") { lineChart(pc, {x: xs, series: [{y: r2, color: "var(--accent)", name: "상대"}], yfmt: v => f(v, 0), xfmt: v => v.slice(2, 7), refs: [{y: 1000, label: "현재"}]}); $("#plegend").innerHTML = legend([["var(--accent)", "종목 ÷ 벤치마크 (상승 = 아웃퍼폼)"]]) }
+    else { lineChart(pc, {x: xs, series: [{y, color: "var(--ink)", name: "RI"}, {y: sma(y, n1), color: "var(--pos)", name: n1 + u, w: 1.2}, {y: sma(y, n2), color: "var(--neg)", name: n2 + u, w: 1.2}], yfmt: v => f(v, 0), xfmt: v => v.slice(2, 7)}); $("#plegend").innerHTML = legend([["var(--ink)", "총수익지수"], ["var(--pos)", n1 + u + " 이평"], ["var(--neg)", n2 + u + " 이평"]]) }
+  }
+  drawP();
+  $("#pmode").addEventListener("click", e => { const bt = e.target.closest("button"); if (!bt) return; $("#pmode").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === bt)); pm = bt.dataset.m; drawP() });
+  if ($("#pper")) $("#pper").addEventListener("click", e => { const bt = e.target.closest("button"); if (!bt) return; $("#pper").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === bt)); pp = bt.dataset.p; drawP() });
+  const mo = S.months, ix = a => { const b0 = (a || []).find(v => isNum(v) && v > 0); return (a || []).map(v => isNum(v) && b0 ? v / b0 * 100 : null) };
+  lineChart($("#ceps"), {x: mo, series: [{y: S.eps[code] || [], color: "var(--accent)", name: "EPS"}], h: 180, yfmt: v => f(v, Math.abs(v) < 10 ? 2 : 0), zeroLine: (S.eps[code] || []).some(v => v < 0)});
+  lineChart($("#cbd"), {x: mo, series: [{y: ix(S.bps[code]), color: "var(--c3)", name: "BPS"}, {y: ix(S.dps[code]), color: "var(--c4)", name: "DPS"}, ...(S.sal && S.sal[code] ? [{y: ix(S.sal[code]), color: "var(--warn)", name: "매출"}] : [])], h: 180, yfmt: v => f(v, 0)});
+  lineChart($("#cpe"), {x: mo, series: [{y: S.pe[code] || [], color: "var(--warn)", name: "PER"}], h: 180, yfmt: v => f(v, 1), refs: [isNum(s.pem10) ? {y: s.pem10, label: "10년 중앙 " + f(s.pem10, 1)} : {y: s.pem, label: "중앙 " + f(s.pem, 1)}]});
+  table($("#peers"), [NM, {k: "pe", h: "PER", n: 1, f: x => f(x.pe, 1)}, {k: "er3", h: "EPS Δ3M", n: 1, f: x => sg(x.er3)}, {k: "r3m", h: "3M", n: 1, f: x => sg(x.r3m)}, {k: "ts", h: "추세", n: 1, f: x => isNum(x.ts) ? x.ts + "/6" : "–"}, {k: "rk", h: "순위", n: 1, f: x => x.rk ?? "–"}], peers, {sort: null, limit: 10});
+}
+
+// ───────── 4. MSCI 편출입 ─────────
+function renderMsci() {
+  const E = A.events, nr = (M.next_reviews || []).find(r => r.announce >= M.as_of), V = M.watch_validation;
+  const x = Array.from({length: E.pre + E.post + 1}, (_, i) => i - E.pre);
+  const sumRow = (lab, o) => `<tr><td>${lab}</td>${["car_pre", "car_ann", "car_run", "car_close", "car_post"].map(k => `<td class="n">${sg(o[k + "_mean"], 2)}<br><span class="muted small">${f(o[k + "_median"], 2)}</span></td>`).join("")}</tr>`;
+  const pendDel = A.pending.filter(p => p.action.startsWith("편출")), pendAdd = A.pending.filter(p => p.action.startsWith("편입"));
+  $("#tab-msci").innerHTML = `
+  <div class="grid g3">
+    <div class="card"><div class="eyebrow">다음 정기 리뷰</div><h2 style="font:700 22px var(--f-display);margin:4px 0">${nr ? esc(nr.review) : "–"}</h2>
+      <p>${nr ? `발표 <b class="mono">${esc(nr.announce)}</b> (D-${dday(nr.announce)}) · 효력 <b class="mono">${esc(nr.effective)}</b>` : ""}</p>
+      <p class="small muted" style="margin-top:6px">반영은 효력일 전 영업일 종가. 발표는 장 마감 후(한국시간 다음날 새벽).</p></div>
+    <div class="card"><div class="eyebrow">이 파일의 구성 시점</div><h2 style="font:700 22px var(--f-display);margin:4px 0">${esc(M.anchor_review)} 반영 직후</h2>
+      <p class="small">이후 ${esc(M.latest_review)}까지 편출 <b>${pendDel.length}</b>개가 파일에 남아 있고, 편입 <b>${pendAdd.length}</b>개가 없습니다.</p>
+      <p class="small muted" style="margin-top:6px">스크리너의 'MSCI 상태 = 현재 구성'은 편출 종목을 뺀 목록입니다.</p></div>
+    <div class="card"><div class="eyebrow">편출 관찰 리스트 검증</div><h2 style="font:700 22px var(--f-display);margin:4px 0">AUC ${f(V.auc_score, 2)}</h2>
+      <p class="small">2026-05·08 실제 편출 ${V.n_deleted}개 중 관찰 상위 100에 ${V.hit_top100}개, 상위 200에 ${V.hit_top200}개.</p>
+      <p class="small muted" style="margin-top:6px">점수 = 국가 내 누적비중 위치(회사 단위). 6M 수익률을 섞으면 AUC ${f(V.auc_mix_70_30, 3)}로 오히려 낮아 제외.</p></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>발표일 기준 평균 누적초과수익</h2><div class="sub">t=0 = 발표 다음 거래일 · 편입 ${E.path_ann.n_ADD || 0}건 / 편출 ${E.path_ann.n_DEL || 0}건 · 시장조정(벤치마크 차감)</div><div class="chart" id="eann"></div>${legend([["var(--pos)", "편입"], ["var(--neg)", "편출"]])}</div>
+    <div class="card"><h2>효력일 기준 평균 누적초과수익</h2><div class="sub">t=0 = 효력일(리밸런싱 다음 영업일), t=−1 = 리밸런싱 종가일</div><div class="chart" id="eeff"></div>${legend([["var(--pos)", "편입"], ["var(--neg)", "편출"]])}</div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>구간별 초과수익</h2><div class="sub">평균(위) / 중앙값(아래), %. 발표 전 = t−20~−1, 발표 = t0~t1, 진행 = t2~리밸런싱 전일, 당일 = 리밸런싱 종가일, 효력 후 = 20거래일</div>
+      <table><thead><tr><th></th><th class="n">발표 전</th><th class="n">발표</th><th class="n">진행</th><th class="n">당일</th><th class="n">효력 후</th></tr></thead><tbody>
+        ${E.all.ADD ? sumRow("편입", E.all.ADD) : ""}${E.all.DEL ? sumRow("편출", E.all.DEL) : ""}</tbody></table>
+      <h3 style="margin-top:14px">리뷰별 (평균, 건수)</h3><div class="scroll short" id="ebyrev"></div>
+      <p class="note" style="margin-top:10px">편입 이벤트는 이후에도 남아 이 파일에 있는 종목만 포함(생존 편향), 편출은 2026-05·08분만 확인 가능. 현지통화 수익률 기준 근사.</p></div>
+    <div class="card"><h2>지역별 평균 (%)</h2><div class="sub">편입·편출 × 지역</div><div class="scroll short" id="ebyreg"></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="tablebox"><div class="tablehead"><h2>편출 관찰 리스트 <span class="muted small">다음 리뷰 후보 (이미 편출된 종목 제외)</span></h2></div><div class="scroll short" id="watch"></div></div>
+    <div class="tablebox"><div class="tablehead"><h2>미반영 변경 <span class="muted small">${esc(M.anchor_review)} 이후</span></h2><div class="seg" id="pseg"><button aria-pressed="true" data-p="del">편출 (파일에 남음)</button><button aria-pressed="false" data-p="add">편입 (파일에 없음)</button></div></div><div class="scroll short" id="pend"></div></div>
+  </div>
+  <div class="tablebox" style="margin-top:16px"><div class="tablehead"><h2>이벤트별 상세</h2><div class="seg" id="eseg"><button aria-pressed="true" data-a="">전체</button><button aria-pressed="false" data-a="ADD">편입</button><button aria-pressed="false" data-a="DEL">편출</button></div></div><div class="scroll" id="eper"></div></div>
+  <div class="card" style="margin-top:16px"><h2>재구성 구성종목 수</h2><div class="sub">리뷰 직후 · 상한(편입 후 끝 미상 포함) / 확정</div><div class="chart" id="pitc"></div>${legend([["var(--accent)", "상한"], ["var(--muted)", "확정", 1]])}</div>`;
+  const ax = (v, tip) => (v > 0 ? "+" : "") + v;
+  lineChart($("#eann"), {x, series: [{y: E.path_ann.ADD || [], color: "var(--pos)", name: "편입"}, {y: E.path_ann.DEL || [], color: "var(--neg)", name: "편출"}], yfmt: v => f(v, 1) + "%", xfmt: v => "t" + ax(v), zeroLine: true, refs: [{x: E.pre, label: "발표"}]});
+  lineChart($("#eeff"), {x, series: [{y: E.path_eff.ADD || [], color: "var(--pos)", name: "편입"}, {y: E.path_eff.DEL || [], color: "var(--neg)", name: "편출"}], yfmt: v => f(v, 1) + "%", xfmt: v => "t" + ax(v), zeroLine: true, refs: [{x: E.pre, label: "효력"}]});
+  const cs = ["car_pre", "car_ann", "car_run", "car_close", "car_post"], cl = ["발표 전", "발표", "진행", "당일", "효력 후"];
+  table($("#ebyrev"), [{k: "review", h: "리뷰", f: r => esc(r.review)}, {k: "action", h: "구분", f: r => r.action === "ADD" ? "편입" : "편출"}, {k: "car_pre_count", h: "건수", n: 1, f: r => r.car_pre_count},
+    ...cs.map((k, i) => ({k: k + "_mean", h: cl[i], n: 1, f: r => sg(r[k + "_mean"], 2)}))], E.by_review, {sort: null, click: false, limit: 50});
+  table($("#ebyreg"), [{k: "action", h: "구분", f: r => r.action === "ADD" ? "편입" : "편출"}, {k: "region", h: "지역", f: r => esc(r.region)}, ...cs.map((k, i) => ({k, h: cl[i], n: 1, f: r => sg(r[k], 2)}))], E.by_region, {sort: null, click: false});
+  const wl = A.stocks.filter(s => s.wr).sort((a, b) => a.wr - b.wr);
+  table($("#watch"), [{k: "wr", h: "순위", n: 1, f: s => s.wr}, NM, {k: "tail", h: "국가 내 꼬리", n: 1, f: s => f(s.tail, 2)}, {k: "w", h: "비중", n: 1, f: s => f((s.w || 0) * 100, 4, "%")}, {k: "r6m", h: "6M", n: 1, f: s => sg(s.r6m)}, {k: "cap", h: "시총", n: 1, f: s => cap(s.cap)}], wl, {sort: "wr", dir: "asc", limit: 100});
+  function drawPend(p) {
+    if (p === "del") { const rows = pendDel.map(r => ({...BY[r.code], ...r, n: BY[r.code]?.n || r.name, c: r.code})); table($("#pend"), [{k: "review", h: "리뷰", f: r => esc(r.review)}, NM, {k: "effective", h: "효력", f: r => esc(r.effective)}, {k: "r3m", h: "3M", n: 1, f: r => sg(r.r3m)}, {k: "rk", h: "팩터순위", n: 1, f: r => r.rk ?? "–"}], rows, {sort: "review", limit: 200}) }
+    else table($("#pend"), [{k: "review", h: "리뷰", f: r => esc(r.review)}, {k: "name", h: "MSCI 표기", f: r => esc(r.name)}, {k: "country", h: "국가", f: r => esc(r.country)}, {k: "effective", h: "효력", f: r => esc(r.effective)}], pendAdd, {sort: "review", click: false, limit: 200});
+  }
+  drawPend("del");
+  $("#pseg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; $("#pseg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawPend(b.dataset.p) });
+  const perCols = [{k: "review", h: "리뷰", f: r => esc(r.review)}, {k: "action", h: "구분", f: r => r.action === "ADD" ? "편입" : "편출"}, NM, {k: "sector_ko", h: "섹터", f: r => esc(r.sector_ko || "")}, ...cs.map((k, i) => ({k, h: cl[i], n: 1, f: r => sg(r[k], 2)}))];
+  const perRows = E.per.map(r => ({...r, c: r.code, n: r.name, ct: r.country}));
+  const pt = table($("#eper"), perCols, perRows, {sort: "car_ann", limit: 150});
+  $("#eseg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; $("#eseg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); pt.set(perRows.filter(r => !b.dataset.a || r.action === b.dataset.a)) });
+  lineChart($("#pitc"), {x: A.reviews.map(r => r.review), series: [{y: A.reviews.map(r => r.members_after), color: "var(--accent)", name: "상한"}, {y: A.reviews.map(r => r.confirmed_after), color: "var(--muted)", name: "확정", dash: "4 3"}], h: 200, yfmt: v => f(v, 0)});
+}
+
+// ───────── 4b. 팩터 백테스트 (window.BACKTEST ← backtest_data.js, factor/backtest.py) ─────────
+const BT_MODES = [["pit", "편출입 반영 (PIT)", "그 달 ACWI 구성종목만 — 편입 전·편출 후 제외"], ["pit_large", "PIT 대형·중형", "PIT 중 지역별 시총 상위 50% — 편출 누락(생존 편향)이 적은 비교군"], ["static", "현재 구성 고정", "지금 종목을 과거에도 그대로 — 편입 look-ahead 포함 (비교용)"]];
+const QC = ["var(--pos)", "color-mix(in srgb, var(--pos) 55%, var(--muted))", "var(--muted)", "color-mix(in srgb, var(--neg) 55%, var(--muted))", "var(--neg)"];
+function btPerf(r, bench) {
+  const idx = r.map((_, i) => i).filter(i => isNum(r[i])); if (idx.length < 12) return {};
+  const rr = idx.map(i => r[i]); let lvl = 1, peak = 1, mdd = 0;
+  for (const x of rr) { lvl *= 1 + x; peak = Math.max(peak, lvl); mdd = Math.min(mdd, lvl / peak - 1) }
+  const mean = rr.reduce((a, b) => a + b, 0) / rr.length, sd = Math.sqrt(rr.reduce((a, b) => a + (b - mean) ** 2, 0) / (rr.length - 1));
+  const o = {cagr: (lvl ** (12 / rr.length) - 1) * 100, vol: sd * Math.sqrt(12) * 100, mdd: mdd * 100, hit: rr.filter(x => x > 0).length / rr.length * 100};
+  o.sharpe = o.vol ? o.cagr / o.vol : null;
+  if (bench) { const ex = idx.filter(i => isNum(bench[i])).map(i => r[i] - bench[i]); if (ex.length >= 12) { const em = ex.reduce((a, b) => a + b, 0) / ex.length, es = Math.sqrt(ex.reduce((a, b) => a + (b - em) ** 2, 0) / (ex.length - 1)); o.excess = em * 1200; o.te = es * Math.sqrt(12) * 100; o.ir = o.te ? o.excess / o.te : null; o.hitb = ex.filter(x => x > 0).length / ex.length * 100 } }
+  return o;
+}
+const btCum = r => { let l = 1; return r.map(v => { if (isNum(v)) l *= 1 + v; return l }) };
+const btNet = (r, to, legs, bp) => bp ? r.map((v, i) => isNum(v) ? v - legs * (isNum(to[i]) ? to[i] : 0) * bp / 1e4 : null) : r;
+const btRoll = (a, n) => a.map((_, i) => { if (i < n - 1) return null; const w = a.slice(i - n + 1, i + 1).filter(isNum); return w.length >= n * 0.75 ? w.reduce((x, y) => x + y, 0) / w.length : null });
+function renderBacktest() {
+  const el = $("#tab-backtest"), B = window.BACKTEST;
+  if (!B) { el.innerHTML = `<div class="card empty">backtest_data.js 가 없습니다. <span class="mono">python -m Claude_DB.factor.backtest --xlsx ...</span> 를 먼저 실행하세요.</div>`; return }
+  const st = {mode: "pit", region: "전체", sig: "composite", cost: 20, chart: "q"};
+  const label = k => (B.signals.find(x => x.key === k) || {}).label || k;
+  const kp = (l, v, sm = "") => `<div class="kpi"><span>${l}</span><b>${v}</b>${sm ? `<small>${sm}</small>` : ""}</div>`;
+  const opt = kind => B.signals.filter(x => x.kind === kind).map(x => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join("");
+  el.innerHTML = `
+  <div class="card"><div class="grid g3" style="gap:12px 20px">
+    <div class="field"><span class="lab">유니버스</span><div class="seg" id="btm">${BT_MODES.map(([m, l, t], i) => `<button title="${esc(t)}" aria-pressed="${i === 0}" data-v="${m}">${l}</button>`).join("")}</div></div>
+    <div class="field"><span class="lab">지역</span><div class="seg" id="btr">${B.meta.regions.map((r, i) => `<button aria-pressed="${i === 0}" data-v="${esc(r)}">${esc(r)}</button>`).join("")}</div></div>
+    <div class="field"><label for="bts">신호</label><select id="bts"><optgroup label="조합">${opt("preset")}</optgroup><optgroup label="팩터">${opt("factor")}</optgroup><optgroup label="디스크립터">${opt("descriptor")}</optgroup></select></div>
+    <div class="field"><span class="lab">거래비용 (편도)</span><div class="seg" id="btc">${[0, 20, 50].map(c => `<button aria-pressed="${c === 20}" data-v="${c}">${c}bp</button>`).join("")}</div></div>
+  </div><p class="small muted" id="btmeta" style="margin-top:8px"></p><div class="kpis" id="btk" style="margin-top:8px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))"></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>누적 성과</h2><div class="sub">1에서 시작. Q1 은 거래비용 차감 후</div><div class="seg" id="btch" style="margin-bottom:8px"><button aria-pressed="true" data-v="q">5분위</button><button aria-pressed="false" data-v="q1">Q1 − 유니버스</button><button aria-pressed="false" data-v="ls">롱숏</button></div><div class="chart" id="btc1"></div><div id="btl1"></div></div>
+    <div class="card"><h2>분위별 연환산 수익률 · IC 추이</h2><div class="sub">막대 = 분위 연수익 (Q1 비용 차감), 선 = 12개월 이동평균 IC</div><div class="bars" id="btbars"></div><h3 style="margin-top:12px">12개월 이동평균 IC</h3><div class="chart" id="btic"></div></div>
+  </div>
+  <div class="tablebox" style="margin-top:16px"><div class="tablehead"><h2>신호 비교 <span class="muted small" id="btcmpsub"></span></h2></div><div class="scroll short" id="btcmp"></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>유니버스 정의에 따른 차이 (look-ahead 점검)</h2><div class="sub" id="btmcsub"></div><div class="scroll short" id="btmc"></div>
+      <p class="note" style="margin-top:10px">'현재 구성 고정'은 지금 ACWI 종목을 10년 전에도 들고 있었다고 가정해 <b>나중에 커서 편입될 종목</b>을 미리 담습니다(특히 사이즈 팩터가 크게 부풀려짐). PIT 도 2026-02 이전 편출 종목이 파일에 없어 생존 편향이 남으므로 소형주 영향이 적은 'PIT 대형·중형'과 함께 보세요.</p></div>
+    <div class="card"><h2>연도별 수익률</h2><div class="sub" id="btysub"></div><div class="scroll short" id="bty"></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>팩터 롱숏 수익률 상관</h2><div class="sub">PIT · 전체 · 비용 전</div><div class="scroll short" id="btcorr"></div></div>
+    <div class="card"><h2>유니버스 커버리지</h2><div class="sub">파일 종목 중 그 달 ACWI 구성(PIT) vs 재구성한 실제 구성종목 수(확정)</div><div class="chart" id="btcov"></div>${legend([["var(--accent)", "PIT"], ["var(--c3)", "PIT 대형·중형"], ["var(--neg)", "현재 구성 고정"], ["var(--muted)", "실제 구성(확정)", 1]])}</div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>방법</h2><div class="sub">빌드 ${esc(B.meta.built_at.replace("T", " "))} · 원자료 ${esc(B.meta.source)}</div><ul class="note">
+    <li><b>신호</b>: 매월 1일 값 → 1/99% 윈저 → 섹터×지역 중립 Z(±3) → 팩터 = 디스크립터 Z 평균 → 다시 중립 Z. 종합 = 팩터 동일가중.</li>
+    <li><b>디스크립터</b>: 가치 E/P·B/P · 사이즈 −ln 시총 · 배당 배당수익률·DPS 12M 변화 · 성장 EPS·매출 NTM 12M 변화 · 모멘텀 12-1M(국가 상대)·EPS 3M 리비전 · 퀄리티 ROE(EPS/BPS)·−변동성 24M. FCF·D/E 는 과거 시계열이 없어 제외.</li>
+    <li><b>과거 주가·밸류 복원</b>: 총수익지수에서 배당을 되돌려 주가 상대값을 만들고(파일의 12M 주가변화와 94% 종목이 ±2%p 이내 일치), 지금 USD 주가·추정치로 수준을 맞춤.</li>
+    <li><b>수익률</b>: 다음 달 1일까지 현지통화 총수익. 거래비용은 Q1 = 2×회전율×비용, 롱숏 = 4×회전율×비용 근사.</li>
+    <li><b>한계</b>: 2026-02 이전 편출 종목 부재(생존 편향) · 섹터는 현재 분류 · 시총은 주식 수 불변 가정.</li></ul></div>`;
+  const corr = B.factor_corr;
+  $("#btcorr").innerHTML = `<table class="mini"><thead><tr><th></th>${corr.labels.map(l => `<th class="n">${esc(l)}</th>`).join("")}</tr></thead><tbody>${corr.m.map((row, i) => `<tr><td>${esc(corr.labels[i])}</td>${row.map((v, j) => `<td class="n" style="${i === j ? "" : heat(v, -0.8, 0.8)}">${f(v, 2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  const cv = B.coverage;
+  lineChart($("#btcov"), {x: cv.map(c => c.date), series: [{y: cv.map(c => c.members_confirmed), color: "var(--muted)", name: "실제(확정)", dash: "4 3"}, {y: cv.map(c => c.n_static), color: "var(--neg)", name: "현재 고정"}, {y: cv.map(c => c.n_pit), color: "var(--accent)", name: "PIT"}, {y: cv.map(c => c.n_pit_large), color: "var(--c3)", name: "PIT 대형·중형"}], h: 200, yfmt: v => f(v, 0), xfmt: v => v.slice(2, 7)});
+  const segs = [["btm", "mode"], ["btr", "region"], ["btc", "cost"], ["btch", "chart"]];
+  segs.forEach(([id, k]) => $("#" + id).addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; $("#" + id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); st[k] = k === "cost" ? +b.dataset.v : b.dataset.v; draw() }));
+  $("#bts").value = st.sig; $("#bts").addEventListener("change", e => { st.sig = e.target.value; draw() });
+  function draw() {
+    const R = (B.results[st.mode] || {})[st.region], S = R && R.sig[st.sig], dates = B.dates, dx = v => v.slice(2, 7);
+    if (!R || !S) { $("#btk").innerHTML = `<p class="muted">결과 없음</p>`; return }
+    const q1n = btNet(S.q[0], S.to, 2, st.cost), lsn = btNet(S.ls, S.to, 4, st.cost);
+    const pq = S.q.map((q, i) => btPerf(i === 0 ? q1n : q, R.bench_ew)), pls = btPerf(lsn), pb = btPerf(R.bench_ew), pcw = btPerf(R.bench_cw), P1 = pq[0], I = S.ic_stats || {};
+    $("#btmeta").textContent = `${B.meta.start} ~ ${B.meta.end} · ${B.meta.n_months}개월 · ${B.meta.rebalance} · 5분위 동일가중 · ${B.meta.currency}${B.meta.lag_months ? " · 신호 " + B.meta.lag_months + "개월 지연" : ""} · 종목 수 ${R.n[0] ?? "–"} → ${R.n[R.n.length - 1] ?? "–"}`;
+    $("#btk").innerHTML = kp(esc(label(st.sig)) + " Q1 연수익", f(P1.cagr, 1, "%"), `유니버스 ${f(pb.cagr, 1, "%")} · 시총가중 ${f(pcw.cagr, 1, "%")}`) + kp("Q1 초과수익 (연)", sg(P1.excess, 1, "%p"), `IR ${f(P1.ir, 2)} · 승률 ${f(P1.hitb, 0, "%")}`)
+      + kp("롱숏 (Q1−Q5) 연수익", sg(pls.cagr), `샤프 ${f(pls.sharpe, 2)} · MDD ${f(pls.mdd, 0, "%")}`) + kp("IC 평균 · t값", `${f(I.ic_mean, 3)} · ${f(I.ic_t, 2)}`, `ICIR ${f(I.icir, 2)} · IC>0 ${f(I.ic_hit, 0, "%")}`)
+      + kp("Q1 회전율 (월)", f(isNum(S.to_mean) ? S.to_mean * 100 : null, 0, "%"), `${st.cost}bp 차감 반영`) + kp("Q1 변동성 · MDD", `${f(P1.vol, 0, "%")} · ${f(P1.mdd, 0, "%")}`, `유니버스 ${f(pb.vol, 0, "%")} · ${f(pb.mdd, 0, "%")}`);
+    if (st.chart === "q") { lineChart($("#btc1"), {x: dates, series: [...S.q.map((q, i) => ({y: btCum(i === 0 ? q1n : q), color: QC[i], name: "Q" + (i + 1), w: i === 0 || i === 4 ? 1.8 : 1.1})), {y: btCum(R.bench_ew), color: "var(--ink)", name: "유니버스", dash: "4 3", w: 1.2}], h: 260, yfmt: v => f(v, 2), xfmt: dx}); $("#btl1").innerHTML = legend([["var(--pos)", "Q1 (점수 상위)"], ["var(--muted)", "Q3"], ["var(--neg)", "Q5 (하위)"], ["var(--ink)", "유니버스 동일가중", 1]]) }
+    else if (st.chart === "q1") { lineChart($("#btc1"), {x: dates, series: [{y: btCum(q1n.map((v, i) => isNum(v) && isNum(R.bench_ew[i]) ? v - R.bench_ew[i] : null)), color: "var(--accent)", name: "누적 초과"}], h: 260, yfmt: v => f(v, 2), xfmt: dx, refs: [{y: 1}]}); $("#btl1").innerHTML = "" }
+    else { lineChart($("#btc1"), {x: dates, series: [{y: btCum(lsn), color: "var(--accent)", name: "롱숏"}], h: 260, yfmt: v => f(v, 2), xfmt: dx, refs: [{y: 1}]}); $("#btl1").innerHTML = "" }
+    const mx = Math.max(...pq.map(p => Math.abs(p.cagr || 0)), 1);
+    $("#btbars").innerHTML = pq.map((p, i) => { const v = p.cagr || 0; return `<div class="bar"><span>Q${i + 1}</span><div class="track"><div class="fill" style="${v >= 0 ? "left:50%" : "right:50%"};width:${Math.abs(v) / mx * 50}%;background:${QC[i]}"></div></div><span class="mono" style="text-align:right">${f(p.cagr, 1, "%")}</span></div>` }).join("");
+    lineChart($("#btic"), {x: dates, series: [{y: btRoll(S.ic, 12), color: "var(--warn)", name: "IC 12M"}], h: 150, yfmt: v => f(v, 3), xfmt: dx, zeroLine: true});
+    const rows = B.signals.filter(x => R.sig[x.key]).map(x => { const r = R.sig[x.key], q1 = btPerf(btNet(r.q[0], r.to, 2, st.cost), R.bench_ew), ls = btPerf(btNet(r.ls, r.to, 4, st.cost)), ic = r.ic_stats || {};
+      return {c: x.key, key: x.key, label: x.label, kind: x.kind, q1: q1.cagr, ex: q1.excess, ir: q1.ir, ls: ls.cagr, sh: ls.sharpe, mdd: ls.mdd, ic: ic.ic_mean, ict: ic.ic_t, to: isNum(r.to_mean) ? r.to_mean * 100 : null, mono: r.spread_mono * 100} });
+    $("#btcmpsub").textContent = `${BT_MODES.find(m => m[0] === st.mode)[1]} · ${st.region} · 거래비용 ${st.cost}bp · 행을 누르면 위 차트가 바뀝니다`;
+    table($("#btcmp"), [{k: "label", h: "신호", f: r => esc(r.label) + (r.kind === "descriptor" ? ' <small class="muted">디스크립터</small>' : r.kind === "preset" ? ' <small class="muted">조합</small>' : "")},
+      {k: "q1", h: "Q1 연수익", n: 1, f: r => f(r.q1, 1, "%")}, {k: "ex", h: "Q1 초과", n: 1, f: r => sg(r.ex), heat: r => heat(r.ex, -6, 6)}, {k: "ir", h: "IR", n: 1, f: r => f(r.ir, 2), heat: r => heat(r.ir, -1, 1)},
+      {k: "ls", h: "롱숏 연수익", n: 1, f: r => sg(r.ls), heat: r => heat(r.ls, -10, 10)}, {k: "sh", h: "롱숏 샤프", n: 1, f: r => f(r.sh, 2)}, {k: "mdd", h: "롱숏 MDD", n: 1, f: r => f(r.mdd, 0, "%")},
+      {k: "ic", h: "IC 평균", n: 1, f: r => f(r.ic, 3)}, {k: "ict", h: "IC t값", n: 1, t: "|t|>2 면 통계적으로 의미 있는 수준", f: r => f(r.ict, 2), heat: r => heat(r.ict, -3, 3)},
+      {k: "to", h: "Q1 회전율/월", n: 1, f: r => f(r.to, 0, "%")}, {k: "mono", h: "단조성", n: 1, t: "Q1>Q2>…>Q5 순서가 맞는 비율", f: r => f(r.mono, 0, "%")}], rows, {sort: "ls", limit: 40, onRow: k => { st.sig = k; $("#bts").value = k; draw() }});
+    $("#btmcsub").textContent = `같은 신호(${label(st.sig)})·지역에서 유니버스만 바꿈 · 비용 ${st.cost}bp`;
+    $("#btmc").innerHTML = `<table class="mini"><thead><tr><th>유니버스</th><th class="n">롱숏 연수익</th><th class="n">샤프</th><th class="n">Q1 초과</th><th class="n">IC t</th><th class="n">종목 수</th></tr></thead><tbody>${BT_MODES.map(([m, l]) => { const rr = (B.results[m] || {})[st.region], r = rr && rr.sig[st.sig]; if (!r) return ""; const ls = btPerf(btNet(r.ls, r.to, 4, st.cost)), q1 = btPerf(btNet(r.q[0], r.to, 2, st.cost), rr.bench_ew);
+      return `<tr><td>${l}</td><td class="n">${sg(ls.cagr)}</td><td class="n">${f(ls.sharpe, 2)}</td><td class="n">${sg(q1.excess, 1, "%p")}</td><td class="n">${f((r.ic_stats || {}).ic_t, 2)}</td><td class="n">${rr.n[0] ?? "–"} → ${rr.n[rr.n.length - 1] ?? "–"}</td></tr>` }).join("")}</tbody></table>`;
+    const by = {}; dates.forEach((d, i) => (by[d.slice(0, 4)] = by[d.slice(0, 4)] || []).push(i));
+    const comp = (a, ix) => { const v = ix.map(i => a[i]).filter(isNum); return v.length ? (v.reduce((p, x) => p * (1 + x), 1) - 1) * 100 : null };
+    const yr = Object.entries(by).map(([y, ix]) => { const q1 = comp(q1n, ix), bb = comp(R.bench_ew, ix); return {y, m: ix.length, q1, b: bb, ex: isNum(q1) && isNum(bb) ? q1 - bb : null, q5: comp(S.q[4], ix), ls: comp(lsn, ix)} });
+    $("#btysub").textContent = `${label(st.sig)} · Q1 은 비용 차감 후`;
+    table($("#bty"), [{k: "y", h: "연도", f: r => r.y + (r.m < 12 ? ` (${r.m}개월)` : "")}, {k: "q1", h: "Q1", n: 1, f: r => sg(r.q1)}, {k: "b", h: "유니버스(EW)", n: 1, f: r => sg(r.b)}, {k: "ex", h: "초과", n: 1, f: r => sg(r.ex, 1, "%p"), heat: r => heat(r.ex, -10, 10)}, {k: "q5", h: "Q5", n: 1, f: r => sg(r.q5)}, {k: "ls", h: "롱숏", n: 1, f: r => sg(r.ls), heat: r => heat(r.ls, -15, 15)}], yr, {sort: null, click: false, limit: 20});
+  }
+  draw();
+}
+
+// ───────── 5. 데이터·방법 ─────────
+function renderData() {
+  const Q = A.quality, J = Object.entries(Q.jump_stocks || {});
+  $("#tab-data").innerHTML = `<div class="grid g2">
+  <div class="card"><h2>이번 파일 점검 결과</h2><div class="sub">${esc(M.source)} · 일간 ${esc(Q.ri_first)}~${esc(Q.ri_last)} · 월간 ${esc(Q.eps_first)}~${esc(Q.eps_last)}</div>
+    <ul class="note">
+      <li><b>시트 하단 잔여행 자동 제거</b> (월간 행 아래 남은 일간 값, 날짜가 처음 거꾸로 가는 행부터): ${["ri_m", "eps", "bps", "dps", "sal"].filter(k => Q[k + "_stale_rows_dropped"]).map(k => ({ri_m: "월간 Price", eps: "EPS", bps: "BPS", dps: "DPS", sal: "SALE"})[k] + " " + Q[k + "_stale_rows_dropped"] + "행").join(" · ") || "없음"}</li>
+      ${Q.sheets ? `<li>읽은 시트: ${Object.entries(Q.sheets).map(([k, v]) => esc(v)).join(" · ")}</li>` : ""}
+      <li>조회 실패(#ERROR) 시리즈: Price ${Q.ri_error_series} · EPS ${Q.eps_error_series} · BPS ${Q.bps_error_series} · DPS ${Q.dps_error_series} (러시아·선물·현금성 등)</li>
+      <li>RI 0 값 ${Q.ri_zero_values}개 → 결측 처리 (BMPS 2023년 구간)</li>
+      <li>하루 ±40% 이상 급변 ${Q.ri_jumps}건 / ${Q.ri_jump_stocks}종목. <b>마지막 날 급변: ${esc((Q.last_day_jumps || []).join(", ") || "없음")}</b> → 스핀오프·분할 미조정 의심, 밸류·배당 지표 제외 처리</li>
+      <li>거래정지 의심(최근 30일 중 20일 이상 무변동) ${(Q.suspended || []).length}종목: ${esc((Q.suspended || []).join(", "))}</li>
+      <li>시계열 시작이 늦은 종목(상장·편입 후 데이터) ${Q.ri_late_start}개</li>
+      <li><b>변동성</b>: 원자료 SDN#(X,1Y)는 현지 주가 수준의 표준편차라 USD 주가로 나누면 단위가 깨짐. RI 일간수익률로 다시 계산한 값과 순위상관 ${f(Q.vol_proxy_vs_ri_spearman, 2)} → 팩터의 변동성은 RI 기준으로 교체</li>
+    </ul>
+    <h3 style="margin-top:12px">급변 종목</h3><p class="small mono">${J.map(([c, v]) => `${esc(c)} (${v.join(", ")}%)`).join(" · ")}</p>
+  </div>
+  <div class="card"><h2>계산 방법</h2><ul class="note">
+    <li><b>기술적</b>: RI(배당 재투자 총수익지수, 현지통화) 일간. 수익률 1W~12M·YTD, 12-1M, 변동성(일간 로그수익률 SD×√252), MDD, 52주 고저, MA20/50/200 괴리, 골든/데드크로스(20일 내), RSI14(Wilder), MACD(12,26,9, 가격 대비 %), 볼린저 %B. 베타·상관 = 최근 104주 주간수익률 vs 벤치마크.</li>
+    <li><b>추세점수 0~6</b>: 종가>MA50, 종가>MA200, MA50>MA200, MACD>시그널, 40≤RSI≤70, 3M 수익률>0. 거래량·고저가가 없어 거래량 지표는 없음.</li>
+    <li><b>EPS·BPS·DPS</b>: 12개월 선행(NTM) 월간. 리비전 = 1/3/6/12개월 변화율(양수→양수만). 브레드스 = 상향 비율−하향 비율.</li>
+    <li><b>근사 PER·PBR·배당 3년 위치</b>: 현재값 × 주가 상대변화 ÷ 추정치 상대변화. 주가 상대변화 = RI 변화 × (1+현재 배당수익률)^경과연수. 주가 통화와 추정치 통화가 다르면 환율 변동만큼 오차.</li>
+    <li><b>팩터 모델</b> (오전 v2 기준 + 시계열 반영): ${Object.values(M.factors).map(x => `${esc(x.label)}(${x.descriptors.map(esc).join(", ")})`).join(" · ")}. 섹터×지역 중립 Z, 1/99% 윈저, ±3 절단.</li>
+    <li><b>변경점</b>: 모멘텀 = RI 12-1M을 <b>국가 중앙값 대비</b>로(고인플레 통화 왜곡 제거) + EPS 3M 리비전 추가. 변동성 = RI 일간수익률. 최근 10일 ±40% 급변 종목은 밸류·배당 제외.</li>
+    <li><b>MSCI 연동</b>: 2013-08~2026-08 정기리뷰 53회 공개 리스트 → ISIN 기준 매칭. 이벤트 스터디는 시장조정 초과수익(종목−벤치마크). 편출 관찰 = 국가 내 회사 단위 누적비중 꼬리.</li>
+    <li><b>벤치마크</b>: 이 파일 종목의 ACWI 비중 × 현지통화 일간수익률. 통화 효과가 섞인 근사치.</li>
+  </ul>
+  <h3 style="margin-top:12px">다음 Datastream 요청 권장</h3><ul class="note">
+    <li>변동성: 2026-10-06 파일부터 수익률 기준 <span class="mono">SDN#(PCH#(X 1D) 1Y)*15.8</span> 반영 ✓ (분석기는 RI 일간으로 계산)</li>
+    <li>국가: <span class="mono">TR.UltimateParentCountryHQ</span> 는 <b>최상위 모회사 본사</b> 국가라 MSCI 국가와 198종목 다름(아일랜드 법인 미국 기업, 인도 자회사 등) → 참고 표시만. MSCI 분류가 필요하면 상장 국가 기준 열</li>
+    <li>USD 기준 수익률이 필요하면 Price 시트를 <span class="mono">X(RI)~U$</span>로 (현재 현지통화)</li>
+    <li>구성종목을 최신 리뷰(${esc(M.latest_review)}) 기준으로 갱신 — 백테스트 생존 편향의 핵심은 2026-02 이전 편출 종목 부재 → 과거 시점 구성종목(편출 종목 포함) 시계열이 있으면 가장 효과 큼</li>
+    <li>월간 Price 시트는 새 시트에서 DSGRID를 실행해 잔여행이 생기지 않게</li>
+  </ul></div></div>
+  <p class="note" style="margin-top:16px">원자료: Datastream/Refinitiv(내부 리서치용, 공개 저장소·외부 게시 금지), MSCI 공개 편출입 리스트(고지문상 DB 생성 금지 → 내부용).</p>`;
+}
+
+// 초기 탭 (#detail/CODE 지원)
+(function init() {
+  const h = decodeURIComponent(location.hash.slice(1)); const [tab, code] = h.split("/");
+  if (tab === "detail" && code && BY[code]) goStock(code); else if (["market", "screen", "detail", "msci", "backtest", "data"].includes(tab)) show(tab); else show("market");
+})();
+</script>
+</body>
+</html>
