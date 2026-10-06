@@ -14,6 +14,11 @@ export type RebalanceTradeDay = {
   aum_eok: number;
   has_index: boolean;
   expiry_same_day?: boolean;
+  /** 지수 행을 뺀 ETF 수 · 예상 매매가 계산된 ETF · 그 순자산 합 · 순자산 기준 반영률(%) */
+  n_etfs?: number;
+  computed_etfs?: string[];
+  computed_aum_eok?: number;
+  coverage_aum_pct?: number | null;
 };
 
 export type RebalanceEvent = {
@@ -50,6 +55,13 @@ export type RebalanceEtf = {
   next_effective: string | null;
   flow_status: FlowStatus;
   notes: string[];
+  /** 확인되지 않은 입력: "months" | "rule" | "weighting" | "effective_date" | "constituents" */
+  unverified?: string[];
+  /** 운용사 표현대로 읽은 대안 효력일·매매일 (기본과 다를 때만) */
+  alt_rule?: string | null;
+  alt_rule_label?: string | null;
+  next_trade_date_alt?: string | null;
+  next_effective_alt?: string | null;
 };
 
 export type RebalanceTrade = {
@@ -66,6 +78,7 @@ export type RebalanceFlow = {
   etf_name: string;
   trade_date: string;
   effective: string;
+  alt_trade_date?: string | null;
   scenario_id: string;
   scenario_label: string;
   scenario_note?: string;

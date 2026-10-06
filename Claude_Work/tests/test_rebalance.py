@@ -170,5 +170,49 @@ class FetchTest(unittest.TestCase):
         self.assertEqual(snap["coverage_pct"], 51.1)
 
 
+class ReviewFixesTest(unittest.TestCase):
+    """2026-10-06 검토 반영: TOP2 규칙·대안 효력일·계산 반영 범위."""
+
+    def test_alt_rule_splits_only_when_friday_closed(self):
+        # 10월: 10/9 한글날 → 익주 첫 영업일 10/12, 2영업일 10/13
+        self.assertEqual(kcal.effective_date("D+2B", 2026, 10), date(2026, 10, 13))
+        self.assertEqual(kcal.trade_date("D+2B", 2026, 10), date(2026, 10, 12))
+        # 7월: 두 해석이 같은 날
+        self.assertEqual(kcal.effective_date("D+2B", 2026, 7), kcal.effective_date("D+2", 2026, 7))
+
+    def test_tiger_top10_resets_hynix_to_25(self):
+        res = build(date(2026, 10, 1), 4)
+        prim = next(f for f in res["flows"] if f["etf_code"] == "396500" and f["primary"])
+        self.assertEqual(prim["scenario_id"], "top2")
+        rows = {t["code"]: t for t in prim["trades"]}
+        self.assertAlmostEqual(rows["000660"]["target_pct"], 25.0)
+        self.assertAlmostEqual(rows["005930"]["target_pct"], 25.0)
+        self.assertLess(abs(prim["buy_eok"] + prim["sell_eok"]), 2.0)
+
+    def test_sol_top2_has_alt_trade_date(self):
+        res = build(date(2026, 10, 1), 4)
+        row = next(e for e in res["etfs"] if e["code"] == "0167A0")
+        self.assertEqual(row["next_trade_date"], "2026-10-08")
+        self.assertEqual(row["next_trade_date_alt"], "2026-10-12")
+        self.assertEqual(row["next_effective_alt"], "2026-10-13")
+        prim = next(f for f in res["flows"] if f["etf_code"] == "0167A0" and f["primary"])
+        self.assertEqual(prim["alt_trade_date"], "2026-10-12")
+
+    def test_trade_day_coverage(self):
+        res = build(date(2026, 10, 1), 4)
+        day = next(d for d in res["trade_days"] if d["trade_date"] == "2026-10-08")
+        self.assertGreater(day["n_etfs"], len(day["computed_etfs"]))
+        self.assertIn("0167A0", day["computed_etfs"])
+        self.assertTrue(0 < day["coverage_aum_pct"] <= 100)
+        dec = next(d for d in res["trade_days"] if d["trade_date"] == "2026-12-10")
+        self.assertEqual(dec["n_etfs"], len([c for c in dec["etfs"] if c not in ("KOSPI200", "KOSDAQ150")]))
+
+    def test_unverified_flags_pass_through(self):
+        res = build(date(2026, 10, 1), 4)
+        rows = {e["code"]: e for e in res["etfs"]}
+        self.assertIn("months", rows["395160"]["unverified"])
+        self.assertEqual(rows["0190C0"]["flow_status"], "rule_unknown")
+
+
 if __name__ == "__main__":
     unittest.main()

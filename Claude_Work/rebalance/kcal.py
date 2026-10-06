@@ -8,7 +8,9 @@
 -----------------------------------------------------------------
 D    선물·옵션 만기일 당일 변경
 D+1  만기일 익영업일 변경
-D+2  만기일 다음 주 첫 영업일 변경
+D+2  만기일 다음 주 첫 영업일 변경 (FnGuide 방법론 '만기일 익주 첫 영업일')
+D+2B 만기일 이후 2번째 영업일 변경 (운용사 보도자료 표현 '만기일 이후 2영업일').
+     금요일이 휴장인 달(예: 2026-10, 10/9 한글날)에만 D+2 와 하루 갈린다 → 대안 날짜로만 쓴다
 S    해당 월 첫 영업일 변경
 E    해당 월 마지막 영업일 변경
 
@@ -28,6 +30,7 @@ RULE_LABELS = {
     "D": "만기일 당일",
     "D+1": "만기 익영업일",
     "D+2": "만기 다음 주 첫 영업일",
+    "D+2B": "만기 후 2영업일",
     "S": "해당 월 첫 영업일",
     "E": "해당 월 마지막 영업일",
 }
@@ -118,6 +121,8 @@ def effective_date(rule: str, year: int, month: int) -> date:
         return exp
     if rule == "D+1":
         return next_trading_day(exp)
+    if rule == "D+2B":
+        return next_trading_day(next_trading_day(exp))
     if rule == "D+2":
         monday = exp + timedelta(days=7 - exp.weekday())
         d = monday
