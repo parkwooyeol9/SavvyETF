@@ -70,6 +70,7 @@ const UNVERIFIED_LABEL: Record<string, string> = {
   effective_date: "효력일 해석",
   constituents: "편출입",
   multi_day: "다영업일 분할 개편",
+  execution: "현물 집행",
 };
 
 function unverifiedText(keys: string[] | undefined): string {
@@ -174,6 +175,12 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
       <h4>
         {flow.etf_name} <span className="meta-soft">{flow.scenario_label}</span>
       </h4>
+      {flow.split_n && flow.split_n > 1 ? (
+        <p className="meta-soft rb-note">
+          방법론상 {flow.split_n}영업일 분할 개편 · 이 날 몫 {(flow.split_index ?? 0) + 1}/{flow.split_n} (금액은 전체의
+          1/{flow.split_n})
+        </p>
+      ) : null}
       {flow.alt_trade_date && flow.alt_trade_date !== flow.trade_date ? (
         <p className="meta-soft rb-note">
           매매일 대안 해석: {flow.alt_trade_date} 종가 (기본 {flow.trade_date}). 금액은 같고 날짜만 달라집니다.
@@ -584,6 +591,7 @@ export default function RebalanceTab() {
                         <td>{fmtEok(e.aum_eok)}</td>
                         <td>
                           {e.rule} <span className="meta-soft">{e.rule_label}</span>
+                          {e.split ? <span className="rb-tag dd"> 분할 {e.split}</span> : null}
                           <div className="meta-soft">
                             효력 {eff.md}({eff.w})
                           </div>

@@ -195,9 +195,7 @@ class ReviewFixesTest(unittest.TestCase):
         row = next(e for e in res["etfs"] if e["code"] == "0167A0")
         self.assertEqual(row["next_trade_date"], "2026-10-12")
         self.assertEqual(row["next_effective"], "2026-10-13")
-        self.assertEqual(row["next_trade_date_alt"], "2026-10-08")
-        prim = next(f for f in res["flows"] if f["etf_code"] == "0167A0" and f["primary"])
-        self.assertEqual(prim["alt_trade_date"], "2026-10-08")
+        self.assertIsNone(row["next_trade_date_alt"])  # 방법론 v1.2: D+2 단일일 개편
 
     def test_fnguide_notice_dates(self):
         self.assertEqual(kcal.effective_date("D+3B", 2026, 10), date(2026, 10, 14))
@@ -206,7 +204,9 @@ class ReviewFixesTest(unittest.TestCase):
         self.assertEqual(rows["396500"]["next_effective"], "2026-10-12")
         for c in ("0093A0", "484880", "0008T0"):
             self.assertEqual(rows[c]["next_effective"], "2026-10-13")
-        self.assertEqual(rows["462010"]["next_effective"], "2026-10-14")
+        self.assertEqual(rows["462010"]["next_effective"], "2026-10-13")  # 2일 분할 첫날 (둘째 날 10/14 는 split 이벤트)
+        second = [e for e in res["events"] if e["etf_code"] == "462010" and e.get("split") == "2/2"]
+        self.assertEqual(second[0]["effective"], "2026-10-14")
 
     def test_trade_day_coverage(self):
         res = build(date(2026, 10, 1), 4)
@@ -222,6 +222,39 @@ class ReviewFixesTest(unittest.TestCase):
         rows = {e["code"]: e for e in res["etfs"]}
         self.assertIn("months", rows["395160"]["unverified"])
         self.assertEqual(rows["0190C0"]["flow_status"], "rule_unknown")
+
+
+class MethodologyFeaturesTest(unittest.TestCase):
+    """2026-10-07: 원문 방법론 반영 — 상위 N 고정(WISE)·단순시총 가중·다영업일 분할."""
+
+    def test_fixed_top_and_mcap_full(self):
+        w = {"A": 15, "B": 15, "C": 15, "D": 15, "E": 10, "F": 10, "G": 10, "H": 10}
+        hs = [engine.Holding(c, c, v) for c, v in w.items()]
+        sc = engine.Scenario("t", "t", cap=15, basis="mcap_full", fixed_top={"n": 4, "pct": 15},
+                             mcap_jo={"A": 50, "B": 40, "C": 30, "D": 20, "E": 10, "F": 6, "G": 3, "H": 1})
+        tgt = engine.target_weights(hs, sc, cash=0)
+        for c in "ABCD":
+            self.assertAlmostEqual(tgt[c], 15)
+        # 남은 40% 를 시총 10:6:3:1 → E 20%(상한 15) → 나머지 25% 를 6:3:1
+        self.assertAlmostEqual(tgt["E"], 15)
+        self.assertAlmostEqual(tgt["F"], 15)
+        self.assertAlmostEqual(tgt["G"], 7.5)
+        self.assertAlmostEqual(tgt["H"], 2.5)
+
+    def test_split_days_halves_amounts(self):
+        from Claude_Work.rebalance import build as b
+        etf = {"split_rules": ["D+2B", "D+3B"]}
+        ev = {"trade_date": "2026-10-12", "effective": "2026-10-13"}
+        parts = b._split_days(etf, ev, [{"code": "X", "name": "X", "current_pct": 10, "target_pct": 12,
+                                         "delta_pct": 2, "amount_eok": 100.0}])
+        self.assertEqual([p["trade_date"] for p in parts], ["2026-10-12", "2026-10-13"])
+        self.assertEqual([p["rows"][0]["amount_eok"] for p in parts], [50.0, 50.0])
+
+    def test_build_has_second_split_day(self):
+        res = build(date(2026, 10, 6), 4)
+        days = {d["trade_date"]: d for d in res["trade_days"]}
+        self.assertIn("462010", days["2026-10-12"]["etfs"])
+        self.assertIn("462010", days["2026-10-13"]["etfs"])
 
 
 if __name__ == "__main__":
