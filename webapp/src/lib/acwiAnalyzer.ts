@@ -15,12 +15,16 @@ export type AcwiNumKey =
   | "rsi" | "mh" | "mxd" | "bb" | "beta" | "corr" | "rel3" | "rel12" | "ts"
   | "er1" | "er3" | "er6" | "er12" | "erd" | "e24" | "bg" | "dg12" | "cuts"
   | "pep" | "pbp" | "dyp" | "pez" | "pem"
-  | "tail" | "wr";
+  | "tail" | "wr"
+  // 2026-10-06: 거래량·매출 추정치·10년 밸류 위치
+  | "liq" | "vr" | "vz" | "obv" | "sv1" | "sv3" | "sv12" | "svd" | "pep10" | "pbp10" | "dyp10" | "pem10" | "ec5";
 
 /** 문자 필드: ms = MSCI 상태("구성 …"/"편출 …"), sr/er = 편입·편출 리뷰, since/ee = 효력일, xr = 팩터 제외 사유. */
 export type AcwiStrKey =
   | "n" | "ct" | "rg" | "s" | "ind" | "isin" | "ef" | "tr"
-  | "ms" | "since" | "sr" | "er" | "ee" | "flag" | "xr";
+  | "ms" | "since" | "sr" | "er" | "ee" | "flag" | "xr"
+  /** 최상위 모회사 본사 국가 (TR.UltimateParentCountryHQ, 참고용 — 팩터 중립화는 상장 기준 ct 사용) */
+  | "hq";
 
 export type AcwiStock = { c: string; susp?: boolean } & Partial<Record<AcwiNumKey, number>> &
   Partial<Record<AcwiStrKey, string>>;
@@ -66,7 +70,8 @@ export type AcwiSummary = {
     suspended?: string[];
   };
   stocks: AcwiStock[];
-  series: { weeks: string[]; months: string[]; bench: (number | null)[] };
+  /** months: 10년 월간(2026-10 파일부터). bench_m: 월간 벤치마크(마지막=1,000) */
+  series: { weeks: string[]; months: string[]; bench: (number | null)[]; bench_m?: (number | null)[] };
   breadth: { region: AcwiBreadthRow[]; sector: AcwiBreadthRow[]; country: AcwiBreadthRow[] };
   events: {
     per: AcwiEventRow[];
@@ -82,7 +87,48 @@ export type AcwiSummary = {
   reviews: (Record<string, number | string | null> & { review: string })[];
 };
 
-export type AcwiSeries = Partial<Record<"ri" | "eps" | "bps" | "dps" | "pe", (number | null)[]>>;
+/** ri = 주간 3년, rim = 월간 10년 총수익지수(마지막=1,000), sal = 월간 매출 NTM. 나머지는 월간(months 축). */
+export type AcwiSeries = Partial<Record<"ri" | "rim" | "eps" | "bps" | "dps" | "sal" | "pe", (number | null)[]>>;
+
+// ───────── 팩터 백테스트 (Claude_DB/factor/backtest.py → private/acwi/latest/backtest.bin) ─────────
+export type BtPerf = {
+  cagr?: number; vol?: number; sharpe?: number; mdd?: number; hit?: number; best?: number; worst?: number; months?: number;
+  excess?: number; te?: number; ir?: number; hit_vs_bench?: number;
+};
+export type BtIc = { ic_mean?: number; ic_sd?: number; icir?: number; ic_t?: number; ic_hit?: number };
+export type BtSignalResult = {
+  /** 5분위 월간 수익률 (Q1 = 점수 최상위), 소수 */
+  q: (number | null)[][];
+  ls: (number | null)[];
+  ic: (number | null)[];
+  /** Q1 편입 종목 교체 비율 (월, 0~1) */
+  to: (number | null)[];
+  stats_q: BtPerf[];
+  stats_ls: BtPerf;
+  ic_stats: BtIc;
+  to_mean: number | null;
+  spread_mono: number;
+};
+export type BtRegionResult = {
+  bench_ew: (number | null)[];
+  bench_cw: (number | null)[];
+  bench_ew_stats: BtPerf;
+  bench_cw_stats: BtPerf;
+  n: number[];
+  sig: Record<string, BtSignalResult>;
+};
+export type BtMode = "pit" | "pit_large" | "static";
+export type AcwiBacktest = {
+  meta: {
+    built_at: string; source: string; start: string; end: string; n_months: number; lag_months: number; nq: number;
+    currency: string; rebalance: string; regions: string[]; diag?: Record<string, number>;
+  };
+  dates: string[];
+  signals: { key: string; label: string; kind: "factor" | "preset" | "descriptor"; desc?: string[]; weights?: Record<string, number> }[];
+  results: Record<BtMode, Record<string, BtRegionResult>>;
+  factor_corr: { keys: string[]; labels: string[]; m: number[][] };
+  coverage: { date: string; n_pit: number; n_static: number; n_pit_large: number; members_upper: number | null; members_confirmed: number | null }[];
+};
 
 export type AcwiApiResponse<T> = { ok: boolean; data?: T; error?: string };
 

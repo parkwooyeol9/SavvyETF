@@ -21,6 +21,8 @@ import {
   type RebalancePayload,
   type RebalanceResponse,
 } from "@/lib/rebalance";
+import ExcelButton from "@/components/ExcelButton";
+import { downloadRebalanceExcel } from "@/lib/rebalanceExcel";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -211,7 +213,7 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
 
 const SIDE_LABEL = { buy: "ETF 매수", sell: "ETF 매도" } as const;
 
-function EventStudySection({ study }: { study: EventStudy }) {
+function EventStudySection({ study, onExcel }: { study: EventStudy; onExcel: () => Promise<void> }) {
   const { summary, params } = study;
   const chart = study.paths.map((p) => ({
     t: p.t,
@@ -222,7 +224,10 @@ function EventStudySection({ study }: { study: EventStudy }) {
   const post = `T+1~T+${params.hold}`;
   return (
     <section className="geo-section geo-featured">
-      <h3 className="geo-section-title">과거 정기변경 전후 주가</h3>
+      <div className="ka-hero">
+        <h3 className="geo-section-title">과거 정기변경 전후 주가</h3>
+        <ExcelButton onClick={onExcel} />
+      </div>
       <p className="geo-thesis">
         지난 정기변경에서 ETF가 사고판 종목의 시장(KOSPI·KOSDAQ) 대비 초과수익. T는 매매일 종가. 선은 T
         {params.path_from}부터 누적한 평균입니다.
@@ -377,6 +382,7 @@ export default function RebalanceTab() {
   for (const f of dayFlows) scenarioGroups.set(f.etf_code, [...(scenarioGroups.get(f.etf_code) || []), f]);
   const multiScenario = [...scenarioGroups.entries()].filter(([, fs]) => fs.length > 1);
   const top = rows[0];
+  const excel = () => downloadRebalanceExcel(data, selected, rows);
 
   const kpis: [string, string, string][] = [
     [
@@ -404,9 +410,12 @@ export default function RebalanceTab() {
               직전 영업일 종가로 봅니다.
             </p>
           </div>
-          <button type="button" className="ghost-btn" onClick={() => void load()} disabled={loading}>
-            {loading ? "불러오는 중…" : "새로고침"}
-          </button>
+          <div className="kr-hero-actions">
+            <ExcelButton onClick={excel} />
+            <button type="button" className="ghost-btn" onClick={() => void load()} disabled={loading}>
+              {loading ? "불러오는 중…" : "새로고침"}
+            </button>
+          </div>
         </div>
         <p className="meta-soft">
           기준일 {data.as_of} · 생성 {data.generated_at.replace("T", " ").slice(0, 16)} · 거래대금{" "}
@@ -574,7 +583,7 @@ export default function RebalanceTab() {
         )}
       </section>
 
-      {data.event_study?.rows.length ? <EventStudySection study={data.event_study} /> : null}
+      {data.event_study?.rows.length ? <EventStudySection study={data.event_study} onExcel={excel} /> : null}
 
       <section className="geo-section geo-featured">
         <details className="rb-details">

@@ -62,6 +62,8 @@ const GROUPS: Record<GroupId, { h: string; cols: Col<Row>[] }> = {
       n1("vol", "변동성1Y", 0, "%"),
       n1("beta", "베타", 2),
       n1("mdd", "MDD1Y", 0, "%"),
+      n1("liq", "거래대금20D", 0, "", "20일 평균 거래대금 근사 (백만$)"),
+      ht(n1("vr", "거래량비", 2, "", "20일 ÷ 120일 평균 거래량"), 0.5, 1.5),
     ],
   },
   fund: {
@@ -78,6 +80,8 @@ const GROUPS: Record<GroupId, { h: string; cols: Col<Row>[] }> = {
       ht(n1("pep", "PER 3Y위치", 0, "", "근사 PER 3년 백분위 (0=최저)"), 0, 100, true),
       ht(n1("pbp", "PBR 3Y위치", 0), 0, 100, true),
       ht(n1("dyp", "배당 3Y위치", 0), 0, 100),
+      sg("sv3", "매출 Δ3M"),
+      ht(n1("pep10", "PER 10Y위치", 0, "", "근사 PER 10년 백분위 (0=최저)"), 0, 100, true),
     ],
   },
   msci: {

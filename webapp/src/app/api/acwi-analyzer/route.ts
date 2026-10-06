@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
-import { seriesBucket, type AcwiSeries, type AcwiSummary } from "@/lib/acwiAnalyzer";
+import { seriesBucket, type AcwiBacktest, type AcwiSeries, type AcwiSummary } from "@/lib/acwiAnalyzer";
 import { readSealedJson, sealedSourceConfigured } from "@/lib/sealedData";
 
 export const runtime = "nodejs";
@@ -15,7 +15,8 @@ function fail(status: number, error: string) {
 
 /**
  * Datastream/Refinitiv + MSCI-derived analytics: admin only, never CDN-cached.
- * `?part=summary` → screener/breadth/events; `?part=series&code=XXX` → one stock's charts.
+ * `?part=summary` → screener/breadth/events; `?part=series&code=XXX` → one stock's charts;
+ * `?part=backtest` → 10년 팩터 백테스트 결과 (약 2MB, 백테스트 탭을 처음 열 때만).
  */
 export async function GET(request: Request) {
   const denied = requireSiteAdmin(request);
@@ -38,7 +39,12 @@ export async function GET(request: Request) {
       if (!all) return fail(503, "ACWI 시계열이 아직 업로드되지 않았습니다.");
       return NextResponse.json({ ok: true, data: all[code] ?? {} }, { headers: PRIVATE_NO_STORE });
     }
-    return fail(400, "part 는 summary 또는 series 입니다.");
+    if (part === "backtest") {
+      const data = await readSealedJson<AcwiBacktest>(`${PREFIX}/backtest.bin`);
+      if (!data) return fail(503, "백테스트 결과가 아직 업로드되지 않았습니다. (python -m Claude_DB.factor.export_webapp --upload)");
+      return NextResponse.json({ ok: true, data }, { headers: PRIVATE_NO_STORE });
+    }
+    return fail(400, "part 는 summary · series · backtest 입니다.");
   } catch (e) {
     return fail(500, e instanceof Error ? e.message : "읽기 실패");
   }

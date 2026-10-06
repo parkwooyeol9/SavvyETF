@@ -13,6 +13,9 @@ import {
   type AcwiSummary,
 } from "@/lib/acwiAnalyzer";
 
+import ExcelButton from "@/components/ExcelButton";
+import { downloadAcwiStockExcel } from "@/lib/acwiExcel";
+
 import AcwiChart from "./AcwiChart";
 import AcwiTable, { type Col } from "./AcwiTable";
 import { Card, Kpi, Legend, MsBadge, nameCol, Sg } from "./parts";
@@ -124,6 +127,7 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
   const s = useMemo(() => (code ? A.stocks.find((x) => x.c === code) : undefined), [A.stocks, code]);
   const [ser, setSer] = useState<{ code: string; data?: AcwiSeries; error?: string } | null>(null);
   const [mode, setMode] = useState<"abs" | "rel">("abs");
+  const [period, setPeriod] = useState<"3y" | "10y">("3y");
 
   useEffect(() => {
     if (!code) return;
@@ -138,13 +142,17 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
   }, [code, loadSeries]);
 
   const S = ser?.code === code ? ser.data : undefined;
-  const ri = useMemo(() => S?.ri ?? [], [S]);
-  const ma10 = useMemo(() => sma(ri, 10), [ri]);
-  const ma40 = useMemo(() => sma(ri, 40), [ri]);
+  // 3년 = 주간 RI (10·40주 이평), 10년 = 월간 RI (12·36개월 이평). 10년 월간은 2026-10 파일부터.
+  const has10y = Boolean(S?.rim?.length && A.series.bench_m?.length);
+  const long = period === "10y" && has10y;
+  const ri = useMemo(() => (long ? S?.rim : S?.ri) ?? [], [S, long]);
+  const xAxis = long ? A.series.months : A.series.weeks;
+  const ma10 = useMemo(() => sma(ri, long ? 12 : 10), [ri, long]);
+  const ma40 = useMemo(() => sma(ri, long ? 36 : 40), [ri, long]);
   const rel = useMemo(() => {
-    const b = A.series.bench;
+    const b = (long ? A.series.bench_m : A.series.bench) ?? [];
     return ri.map((v, i) => (isNum(v) && isNum(b[i]) ? (v / (b[i] as number)) * 1000 : null));
-  }, [ri, A.series.bench]);
+  }, [ri, long, A.series.bench, A.series.bench_m]);
   const evs = useMemo(() => (code ? A.events.per.filter((e) => e.code === code) : []), [A.events.per, code]);
   const peers = useMemo(
     () =>
@@ -192,7 +200,7 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
         <div className="aa-detail-head">
           <div>
             <div className="aa-eyebrow">
-              {s.c} · {s.isin ?? ""} · {s.ct ?? ""} · {s.s ?? ""} / {s.ind ?? ""}
+              {s.c} · {s.isin ?? ""} · {s.ct ?? ""}{s.hq ? ` (본사 ${s.hq})` : ""} · {s.s ?? ""} / {s.ind ?? ""}
             </div>
             <h2 className="aa-title">{s.n}</h2>
             <div className="aa-badges">
@@ -218,13 +226,22 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             <div className="meta-soft">
               섹터 내 {s.srk ?? "–"}위 · Z {fmt(s.z, 2)}
             </div>
+            {ser?.code === code && ser.data ? (
+              <div className="aa-mt">
+                <ExcelButton label="종목 엑셀" onClick={() => downloadAcwiStockExcel(A, s, ser.data ?? {})} />
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="aa-kpis">
           <Kpi label="시가총액" value={fmtCap(s.cap)} sub={`ACWI 비중 ${fmt((s.w ?? 0) * 100, 3)}%`} />
           <Kpi label="주가(USD)" value={fmt(s.pxu, 2)} />
-          <Kpi label="Fwd PER" value={fmt(s.pe, 1)} sub={`3Y 중앙 ${fmt(s.pem, 1)} · 위치 ${fmt(s.pep, 0)}`} />
-          <Kpi label="Fwd PBR" value={fmt(s.pb, 2)} sub={`3Y 위치 ${fmt(s.pbp, 0)}`} />
+          <Kpi
+            label="Fwd PER"
+            value={fmt(s.pe, 1)}
+            sub={isNum(s.pep10) ? `10Y 중앙 ${fmt(s.pem10, 1)} · 위치 10Y ${fmt(s.pep10, 0)} / 3Y ${fmt(s.pep, 0)}` : `3Y 중앙 ${fmt(s.pem, 1)} · 위치 ${fmt(s.pep, 0)}`}
+          />
+          <Kpi label="Fwd PBR" value={fmt(s.pb, 2)} sub={isNum(s.pbp10) ? `위치 10Y ${fmt(s.pbp10, 0)} / 3Y ${fmt(s.pbp, 0)}` : `3Y 위치 ${fmt(s.pbp, 0)}`} />
           <Kpi label="배당수익률" value={fmt(s.dy, 2, "%")} sub={`3Y 위치 ${fmt(s.dyp, 0)} · 삭감 ${s.cuts ?? "–"}회`} />
           <Kpi label="Fwd ROE" value={fmt(s.roe, 1, "%")} />
           <Kpi
@@ -263,12 +280,54 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             }
           />
           <Kpi label="변동성 · 베타" value={`${fmt(s.vol, 0, "%")} · ${fmt(s.beta, 2)}`} sub={`MDD 1Y ${fmt(s.mdd, 0, "%")}`} />
+          {isNum(s.liq) ? (
+            <Kpi
+              label="거래대금 20일 평균"
+              value={fmtCap(s.liq)}
+              sub={
+                <>
+                  거래량 20일/120일 {fmt(s.vr, 2)}배 · 최근 5일 Z {fmt(s.vz, 1)}
+                </>
+              }
+            />
+          ) : null}
+          {isNum(s.sv3) ? (
+            <Kpi
+              label="매출 추정치 리비전"
+              value={<Sg v={s.sv3} />}
+              sub={
+                <>
+                  1M <Sg v={s.sv1} /> · 12M <Sg v={s.sv12} d={0} />
+                  {isNum(s.ec5) ? (
+                    <>
+                      {" "}· EPS 5년 CAGR <Sg v={s.ec5} d={0} />
+                    </>
+                  ) : null}
+                </>
+              }
+            />
+          ) : null}
         </div>
       </section>
 
       <div className="aa-grid aa-g2">
-        <Card title="총수익지수 (주간, 3년)" sub="현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 10주/40주 이동평균 ≈ 50일/200일선">
+        <Card
+          title={long ? "총수익지수 (월간, 10년)" : "총수익지수 (주간, 3년)"}
+          sub={long ? "현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 12개월/36개월 이동평균" : "현지통화 · 배당 재투자 · 마지막 값 = 1,000 · 10주/40주 이동평균 ≈ 50일/200일선"}
+        >
           <div className="aa-seg">
+            {has10y
+              ? (
+                  [
+                    ["3y", "3년 주간"],
+                    ["10y", "10년 월간"],
+                  ] as const
+                ).map(([p, l]) => (
+                  <button key={p} type="button" className={`chip${period === p ? " active" : ""}`} aria-pressed={period === p} onClick={() => setPeriod(p)}>
+                    {l}
+                  </button>
+                ))
+              : null}
             {(
               [
                 ["abs", "절대"],
@@ -285,7 +344,7 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             mode === "rel" ? (
               <>
                 <AcwiChart
-                  x={A.series.weeks}
+                  x={xAxis}
                   series={[{ y: rel, color: "var(--accent)", name: "상대" }]}
                   yfmt={(v) => fmt(v, 0)}
                   xfmt={(v) => String(v).slice(2, 7)}
@@ -296,11 +355,11 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             ) : (
               <>
                 <AcwiChart
-                  x={A.series.weeks}
+                  x={xAxis}
                   series={[
                     { y: ri, color: "var(--text)", name: "RI" },
-                    { y: ma10, color: "var(--aa-pos)", name: "10주", w: 1.2 },
-                    { y: ma40, color: "var(--aa-neg)", name: "40주", w: 1.2 },
+                    { y: ma10, color: "var(--aa-pos)", name: long ? "12개월" : "10주", w: 1.2 },
+                    { y: ma40, color: "var(--aa-neg)", name: long ? "36개월" : "40주", w: 1.2 },
                   ]}
                   yfmt={(v) => fmt(v, 0)}
                   xfmt={(v) => String(v).slice(2, 7)}
@@ -308,8 +367,8 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
                 <Legend
                   items={[
                     ["var(--text)", "총수익지수"],
-                    ["var(--aa-pos)", "10주 이평"],
-                    ["var(--aa-neg)", "40주 이평"],
+                    ["var(--aa-pos)", long ? "12개월 이평" : "10주 이평"],
+                    ["var(--aa-neg)", long ? "36개월 이평" : "40주 이평"],
                   ]}
                 />
               </>
@@ -362,13 +421,14 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             />
           ) : null}
         </Card>
-        <Card title="BPS · DPS NTM" sub="시작 = 100 지수화">
+        <Card title={S?.sal ? "BPS · DPS · 매출 NTM" : "BPS · DPS NTM"} sub="시작 = 100 지수화">
           {S ? (
             <AcwiChart
               x={A.series.months}
               series={[
                 { y: indexed(S.bps), color: "var(--aa-c3)", name: "BPS" },
                 { y: indexed(S.dps), color: "var(--aa-c4)", name: "DPS" },
+                ...(S.sal ? [{ y: indexed(S.sal), color: "var(--warn)", name: "매출" }] : []),
               ]}
               h={180}
               yfmt={(v) => fmt(v, 0)}
@@ -378,17 +438,21 @@ export default function AcwiDetail({ A, code, onPick, loadSeries }: Props) {
             items={[
               ["var(--aa-c3)", "BPS"],
               ["var(--aa-c4)", "DPS"],
+              ...(S?.sal ? ([["var(--warn)", "매출"]] as [string, string][]) : []),
             ]}
           />
         </Card>
-        <Card title="근사 Fwd PER 밴드" sub="현재 PER × (주가 상대변화 ÷ EPS 상대변화). 점선 = 3년 중앙값. 주가·추정치 통화가 다르면 환율 오차 포함">
+        <Card
+          title="근사 Fwd PER 밴드"
+          sub={`현재 PER × (주가 상대변화 ÷ EPS 상대변화). 점선 = ${isNum(s.pem10) ? "10년" : "3년"} 중앙값. 주가·추정치 통화가 다르면 환율 오차 포함`}
+        >
           {S ? (
             <AcwiChart
               x={A.series.months}
               series={[{ y: S.pe ?? [], color: "var(--warn)", name: "PER" }]}
               h={180}
               yfmt={(v) => fmt(v, 1)}
-              refs={[{ y: s.pem, label: `중앙 ${fmt(s.pem, 1)}` }]}
+              refs={[isNum(s.pem10) ? { y: s.pem10, label: `10년 중앙 ${fmt(s.pem10, 1)}` } : { y: s.pem, label: `중앙 ${fmt(s.pem, 1)}` }]}
             />
           ) : null}
         </Card>

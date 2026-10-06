@@ -3,21 +3,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
+import ExcelButton from "@/components/ExcelButton";
+import AcwiBacktest from "@/components/acwi/AcwiBacktest";
 import AcwiData from "@/components/acwi/AcwiData";
 import AcwiDetail from "@/components/acwi/AcwiDetail";
 import AcwiMarket from "@/components/acwi/AcwiMarket";
 import AcwiMsci from "@/components/acwi/AcwiMsci";
 import AcwiScreener from "@/components/acwi/AcwiScreener";
 import { Sg } from "@/components/acwi/parts";
-import { ddayFrom, fmt, isNum, type AcwiApiResponse, type AcwiSeries, type AcwiSummary } from "@/lib/acwiAnalyzer";
+import {
+  ddayFrom,
+  fmt,
+  isNum,
+  type AcwiApiResponse,
+  type AcwiBacktest as AcwiBacktestData,
+  type AcwiSeries,
+  type AcwiSummary,
+} from "@/lib/acwiAnalyzer";
+import { downloadAcwiExcel } from "@/lib/acwiExcel";
 import { adminAuthHeaders } from "@/lib/adminSession";
 
-type View = "market" | "screen" | "detail" | "msci" | "data";
+type View = "market" | "screen" | "detail" | "msci" | "backtest" | "data";
 const VIEWS: [View, string][] = [
   ["market", "시장 개요"],
   ["screen", "스크리너"],
   ["detail", "종목 상세"],
   ["msci", "MSCI 편출입"],
+  ["backtest", "팩터 백테스트"],
   ["data", "데이터·방법"],
 ];
 
@@ -30,6 +42,8 @@ export default function AcwiAnalyzerTab() {
   const [visited, setVisited] = useState<Set<View>>(() => new Set(["market"]));
   if (!visited.has(view)) setVisited(new Set(visited).add(view));
   const seriesCache = useRef(new Map<string, AcwiSeries>());
+  const [bt, setBt] = useState<{ data?: AcwiBacktestData; error?: string } | null>(null);
+  const btPromise = useRef<Promise<AcwiBacktestData> | null>(null);
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +60,35 @@ export default function AcwiAnalyzerTab() {
       live = false;
     };
   }, [ready, unlocked, secret]);
+
+  // 백테스트 결과(약 2MB)는 탭을 처음 열거나 엑셀을 받을 때만 받는다
+  const loadBacktest = useCallback(() => {
+    if (!btPromise.current) {
+      btPromise.current = fetch("/api/acwi-analyzer?part=backtest", { cache: "no-store", headers: adminAuthHeaders(secret) })
+        .then(async (res) => {
+          const json = (await res.json().catch(() => ({}))) as AcwiApiResponse<AcwiBacktestData>;
+          if (!res.ok || !json.ok || !json.data) throw new Error(json.error || `HTTP ${res.status}`);
+          setBt({ data: json.data });
+          return json.data;
+        })
+        .catch((e: unknown) => {
+          btPromise.current = null;          // 실패하면 다음 요청 때 재시도
+          setBt({ error: e instanceof Error ? e.message : "불러오기 실패" });
+          throw e;
+        });
+    }
+    return btPromise.current;
+  }, [secret]);
+
+  useEffect(() => {
+    if (view === "backtest" && secret) loadBacktest().catch(() => {});
+  }, [view, secret, loadBacktest]);
+
+  const excel = useCallback(async () => {
+    if (!A) return;
+    const B = await loadBacktest().catch(() => null);
+    await downloadAcwiExcel(A, B);
+  }, [A, loadBacktest]);
 
   const loadSeries = useCallback(
     async (c: string) => {
@@ -96,6 +139,7 @@ export default function AcwiAnalyzerTab() {
               {facts ? ` 원자료 ${facts.M.source} · 빌드 ${facts.M.built_at.replace("T", " ")}` : ""}
             </p>
           </div>
+          {A ? <ExcelButton onClick={excel} /> : null}
         </header>
         {error ? <p className="empty">{error}</p> : null}
         {!A && !error ? <p className="empty">불러오는 중…</p> : null}
@@ -172,6 +216,12 @@ export default function AcwiAnalyzerTab() {
                 <AcwiDetail A={A} code={code} onPick={pick} loadSeries={loadSeries} />
               ) : id === "msci" ? (
                 <AcwiMsci A={A} onPick={pick} />
+              ) : id === "backtest" ? (
+                bt?.data ? (
+                  <AcwiBacktest B={bt.data} />
+                ) : (
+                  <p className="empty">{bt?.error ?? "백테스트 결과 불러오는 중…"}</p>
+                )
               ) : (
                 <AcwiData A={A} />
               )}

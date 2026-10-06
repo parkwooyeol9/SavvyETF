@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
+import ExcelButton from "@/components/ExcelButton";
+import { downloadIndexMonitorExcel } from "@/lib/indexMonitorExcel";
 import { adminAuthHeaders } from "@/lib/adminSession";
 import {
   INDEX_DATA_SOURCES,
@@ -266,6 +268,7 @@ export default function IndexMonitorTab() {
               공지, 예상 일정은 규칙상 날짜로 계산한 값입니다.
             </p>
           </div>
+          {data && rows.length ? <ExcelButton onClick={() => downloadIndexMonitorExcel(data.asOf, rows, upcoming)} /> : null}
         </div>
         <p className="meta-soft">
           {data ? `기준일 ${data.asOf} · ${trackedLabel} · 이벤트 ${events.length}건 · 변경 ${rows.length}행` : ""}
