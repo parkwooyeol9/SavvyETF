@@ -9,6 +9,7 @@ import AcwiData from "@/components/acwi/AcwiData";
 import AcwiDetail from "@/components/acwi/AcwiDetail";
 import AcwiMarket from "@/components/acwi/AcwiMarket";
 import AcwiMsci from "@/components/acwi/AcwiMsci";
+import AcwiPublic from "@/components/acwi/AcwiPublic";
 import AcwiScreener from "@/components/acwi/AcwiScreener";
 import { Sg } from "@/components/acwi/parts";
 import {
@@ -125,7 +126,8 @@ export default function AcwiAnalyzerTab() {
     return { M, above, revB, nr };
   }, [A]);
 
-  if (!unlocked) return null;
+  if (!ready) return null;
+  if (!unlocked) return <AcwiPublic />;
 
   return (
     <div className="panel-stack acwi" ref={top}>

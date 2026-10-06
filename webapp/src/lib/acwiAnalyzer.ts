@@ -130,6 +130,13 @@ export type AcwiBacktest = {
   coverage: { date: string; n_pit: number; n_static: number; n_pit_large: number; members_upper: number | null; members_confirmed: number | null }[];
 };
 
+/** 비로그인 공개분: 집계 백테스트 + MSCI 리뷰 일정만. 종목별 값·구성/비중은 없다. */
+export type AcwiPublic = {
+  backtest: AcwiBacktest;
+  as_of: string;
+  next_reviews: AcwiReview[];
+};
+
 export type AcwiApiResponse<T> = { ok: boolean; data?: T; error?: string };
 
 export const ACWI_SERIES_BUCKETS = 32;

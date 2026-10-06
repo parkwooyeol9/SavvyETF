@@ -536,7 +536,7 @@ function DashboardInner({
       ) : tab === "corridor" ? (
         unlocked ? <CorridorTab /> : null
       ) : tab === "acwi" ? (
-        unlocked ? <AcwiAnalyzerTab /> : null
+        <AcwiAnalyzerTab />
       ) : tab === "usmidterm" ? (
         <UsMidtermTab />
       ) : tab === "midtermstudy" ? (

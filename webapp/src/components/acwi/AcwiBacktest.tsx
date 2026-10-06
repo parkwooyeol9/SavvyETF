@@ -105,6 +105,7 @@ export default function AcwiBacktest({ B }: { B: Bt }) {
   const S: BtSignalResult | undefined = R?.sig[sig];
   const label = (k: string) => B.signals.find((x) => x.key === k)?.label ?? k;
   const dates = B.dates;
+  const hasMembers = B.coverage.some((c) => c.members_confirmed != null);
 
   const view = useMemo(() => {
     if (!R || !S) return null;
@@ -393,11 +394,16 @@ export default function AcwiBacktest({ B }: { B: Bt }) {
             </table>
           </div>
         </Card>
-        <Card title="유니버스 커버리지" sub="파일 종목 중 그 달 ACWI 구성(PIT) vs 재구성한 실제 구성종목 수(확정)">
+        <Card
+          title="유니버스 커버리지"
+          sub={hasMembers ? "파일 종목 중 그 달 ACWI 구성(PIT) vs 재구성한 실제 구성종목 수(확정)" : "백테스트에 쓰인 월별 종목 수"}
+        >
           <AcwiChart
             x={B.coverage.map((c) => c.date)}
             series={[
-              { y: B.coverage.map((c) => c.members_confirmed), color: "var(--muted)", name: "실제 구성(확정)", dash: "4 3" },
+              ...(hasMembers
+                ? [{ y: B.coverage.map((c) => c.members_confirmed), color: "var(--muted)", name: "실제 구성(확정)", dash: "4 3" }]
+                : []),
               { y: B.coverage.map((c) => c.n_static), color: "var(--aa-neg)", name: "현재 구성 고정" },
               { y: B.coverage.map((c) => c.n_pit), color: "var(--accent)", name: "PIT" },
               { y: B.coverage.map((c) => c.n_pit_large), color: "var(--aa-c3)", name: "PIT 대형·중형" },
@@ -406,7 +412,14 @@ export default function AcwiBacktest({ B }: { B: Bt }) {
             yfmt={(v) => fmt(v, 0)}
             xfmt={dx}
           />
-          <Legend items={[["var(--accent)", "PIT"], ["var(--aa-c3)", "PIT 대형·중형"], ["var(--aa-neg)", "현재 구성 고정"], ["var(--muted)", "실제 구성(확정)", true]]} />
+          <Legend
+            items={[
+              ["var(--accent)", "PIT"],
+              ["var(--aa-c3)", "PIT 대형·중형"],
+              ["var(--aa-neg)", "현재 구성 고정"],
+              ...(hasMembers ? [["var(--muted)", "실제 구성(확정)", true] as [string, string, boolean]] : []),
+            ]}
+          />
         </Card>
       </div>
 

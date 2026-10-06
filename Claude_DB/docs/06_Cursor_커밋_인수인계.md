@@ -157,6 +157,14 @@ git push -u origin feat/acwi-backtest-10y   # PR → main 머지 후 Vercel 배�
   - ACWI(관리자): 종목 전체·벤치마크·브레드스·MSCI 이벤트/관찰/미반영/리뷰이력 + 백테스트(유니버스 3종 종합 5분위·롱숏 누적, 팩터 롱숏, 월수익률·IC, 연도별, 신호비교, 커버리지, 팩터상관) (시트 24 · 차트 18). 종목 상세에 '종목 엑셀'(주간·월간 시계열, 차트 4)
 - QA: 로컬 `next start` + `SEALED_DATA_LOCAL_DIR` 로 백테스트 기본 화면 롱숏 +6.1%(20bp)·IC t 4.00 확인, 엑셀은 Microsoft Excel 에서 차트·`=SERIES()` 수식 인식 확인, 모바일 가로 넘침 없음. 운영: 비로그인 `?part=backtest`·`summary` 401 + `private, no-store`, 공개 Index Monitor 262행·MSCI 0
 
+## 6-2. ACWI 탭 부분 공개 (2026-10-06)
+
+- 비로그인도 포트폴리오 › ACWI 탭이 보임 (`ADMIN_ONLY_TABS` 에서 제외). 관리자 화면은 그대로
+- 공개 화면 = 팩터 백테스트(집계) + 방법 + MSCI 정기 리뷰 일정 + 백테스트 엑셀(시트 10 · 차트 10) — `components/acwi/AcwiPublic.tsx`
+- API `?part=public`: 서버가 봉인 `backtest.bin`·`summary.bin` 을 열어 화이트리스트로 다시 만든 값만 반환 (`public, s-maxage=600`). 분위·롱숏·IC·회전율·유니버스 종목 수·팩터 상관·리뷰 일정만. 빠지는 것: 종목 단위 값 전부, MSCI 구성종목 수(재구성 `members_*`), 원자료 파일명(→ "LSEG Datastream 기반 자체 계산"), `diag`, 벤치마크 수익률
+- `summary`·`series`·`backtest` 는 여전히 관리자 전용·`private, no-store`. 공개분은 URL 이 달라 CDN 캐시가 섞이지 않음
+- 2단계(지역·섹터 브레드스, 종목별 팩터 점수·순위)와 MSCI 이벤트 스터디 평균은 라이선스 확인 전까지 비공개
+
 ## 7. 다음 후보
 
 1. 생존 편향 축소: `index_monitor/data/out/acwi_name_map_todo.csv`(편출 종목명) → ISIN 매핑 → 그 종목들의 월간 RI·EPS·BPS·DPS 10년을 Datastream 에서 추가 → `membership_mask` 가 그대로 사용

@@ -1,5 +1,5 @@
 /**
- * ACWI 종목 분석기 엑셀 (관리자 전용). 이미 복호화돼 화면에 있는 데이터만 쓴다 — 서버를 거치지 않는다.
+ * ACWI 종목 분석기 엑셀 (전체·종목은 관리자 전용, 백테스트 집계만 공개). 이미 화면에 있는 데이터만 쓴다 — 서버를 거치지 않는다.
  */
 import {
   ACWI_FACTORS,
@@ -209,7 +209,7 @@ const cum = (r: Series): Series => {
 const netOf = (r: Series, to: Series, legs: number, bp: number): Series =>
   r.map((v, i) => (isNum(v) ? v - legs * (isNum(to[i]) ? (to[i] as number) : 0) * (bp / 1e4) : null));
 
-function backtestSheets(B: AcwiBacktest): XlsxSheet[] {
+function backtestSheets(B: AcwiBacktest, note = CONFIDENTIAL): XlsxSheet[] {
   const label = (k: string) => B.signals.find((x) => x.key === k)?.label ?? k;
   const D = B.dates;
   const out: XlsxSheet[] = [];
@@ -317,14 +317,18 @@ function backtestSheets(B: AcwiBacktest): XlsxSheet[] {
       : undefined,
   });
 
+  const hasMembers = B.coverage.some((c) => c.members_confirmed != null);
   out.push({
     name: "BT_커버리지",
     rows: [
-      ["월", "PIT 종목", "고정 종목", "PIT 대형·중형", "MSCI 구성(상한)", "MSCI 구성(확정)"],
-      ...B.coverage.map((c) => [c.date.slice(0, 7), c.n_pit, c.n_static, c.n_pit_large, c.members_upper, c.members_confirmed]),
+      ["월", "PIT 종목", "고정 종목", "PIT 대형·중형", ...(hasMembers ? ["MSCI 구성(상한)", "MSCI 구성(확정)"] : [])],
+      ...B.coverage.map((c) => [
+        c.date.slice(0, 7), c.n_pit, c.n_static, c.n_pit_large,
+        ...(hasMembers ? [c.members_upper, c.members_confirmed] : []),
+      ]),
     ],
     widths: [9, 10, 10, 14, 15, 15],
-    charts: [{ type: "line", title: "백테스트 유니버스 종목 수", cat: 0, series: [1, 2, 3, 4], size: { cols: 12, rows: 20 } }],
+    charts: [{ type: "line", title: "백테스트 유니버스 종목 수", cat: 0, series: hasMembers ? [1, 2, 3, 4] : [1, 2, 3], size: { cols: 12, rows: 20 } }],
   });
 
   const FC = B.factor_corr;
@@ -340,7 +344,7 @@ function backtestSheets(B: AcwiBacktest): XlsxSheet[] {
     name: "BT_안내",
     rows: [
       ["ACWI 10년 팩터 백테스트 · SavvyETF"],
-      [CONFIDENTIAL],
+      [note],
       [],
       ["기간", `${m.start} ~ ${m.end} (${m.n_months}개월)`],
       ["리밸런싱", `${m.rebalance} · ${m.nq}분위 동일가중 · ${m.currency} · 재무 ${m.lag_months}개월 시차`],
@@ -361,6 +365,13 @@ export async function downloadAcwiExcel(A: AcwiSummary, B: AcwiBacktest | null) 
   const XLSX = await import("xlsx");
   const sheets = [...summarySheets(A), ...(B ? backtestSheets(B) : [])];
   downloadXlsx(buildXlsxWithCharts(XLSX, sheets), `SavvyETF_ACWI_${A.meta.ri_last}_${kstStamp()}.xlsx`);
+}
+
+/** 비로그인 공개분 — 집계 백테스트 시트만. */
+export async function downloadAcwiBacktestExcel(B: AcwiBacktest) {
+  const XLSX = await import("xlsx");
+  const sheets = backtestSheets(B, `분위·롱숏 집계 결과만 수록 · ${B.meta.source} · 과거 성과는 미래 수익을 보장하지 않으며 투자 권유가 아닙니다`);
+  downloadXlsx(buildXlsxWithCharts(XLSX, sheets), `SavvyETF_ACWI_팩터백테스트_${B.meta.end}_${kstStamp()}.xlsx`);
 }
 
 /** 종목 상세 — 주간 총수익지수와 10년 월간 시계열. */

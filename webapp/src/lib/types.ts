@@ -342,7 +342,6 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
-  "acwi",
   "aiport",
   "bookclub",
   "bookclubboard",
