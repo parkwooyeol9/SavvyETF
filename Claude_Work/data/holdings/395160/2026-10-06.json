@@ -1,0 +1,65 @@
+{
+ "etf_code": "395160",
+ "as_of": "2026-10-06",
+ "aum_eok": 42329,
+ "source": "Koscom ETF CHECK getEtfPdfRankListWeight",
+ "coverage_pct": 97.39,
+ "fetched_at": "2026-10-06T14:34:12+09:00",
+ "holdings": [
+  {
+   "code": "005930",
+   "name": "삼성전자",
+   "weight": 25.13,
+   "mcap_jo": 1588.73
+  },
+  {
+   "code": "000660",
+   "name": "SK하이닉스",
+   "weight": 23.62,
+   "mcap_jo": 1298.82
+  },
+  {
+   "code": "402340",
+   "name": "SK스퀘어",
+   "weight": 22.89,
+   "mcap_jo": 152.5
+  },
+  {
+   "code": "009150",
+   "name": "삼성전기",
+   "weight": 19.01,
+   "mcap_jo": 124.59
+  },
+  {
+   "code": "042700",
+   "name": "한미반도체",
+   "weight": 2.51,
+   "mcap_jo": 26.26
+  },
+  {
+   "code": "007660",
+   "name": "이수페타시스",
+   "weight": 1.45,
+   "mcap_jo": 9.68
+  },
+  {
+   "code": "000990",
+   "name": "DB하이텍",
+   "weight": 0.94,
+   "mcap_jo": 6.05
+  },
+  {
+   "code": "058470",
+   "name": "리노공업",
+   "weight": 0.92,
+   "mcap_jo": 6.66
+  },
+  {
+   "code": "403870",
+   "name": "HPSP",
+   "weight": 0.92,
+   "mcap_jo": 5.66
+  }
+ ],
+ "mcap_source": "네이버 금융 실시간 시세 시가총액"
+}

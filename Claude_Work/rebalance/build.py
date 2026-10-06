@@ -34,7 +34,8 @@ ASSUMPTIONS = [
     "매매는 정기변경 효력일 직전 영업일 종가에 일어난다고 본다.",
     "고정 비중이 없는 종목은 현재 비중에 비례해 남은 비중을 나눈다. 실제 지수는 시가총액·스코어로 다시 가중할 수 있다.",
     "종목당 상한은 최근 시가총액(네이버 금융, 매일 갱신)으로 판정한다. 실제 지수는 정기변경 기준일 시가총액을 쓴다.",
-    "종목 편출입은 반영하지 않는다. 맞춤형 지수는 변경 공지가 공개되지 않는 경우가 많다.",
+    "종목 편출입은 반영하지 않는다. 맞춤형 지수는 변경 공지가 공개되지 않는 경우가 많다. 편출 종목은 보유분 전량 매도, 편입 종목은 신규 매수가 추가로 생긴다.",
+    "종목별 합계는 보유비중·규칙이 확인된 ETF만 더한 값이다. 매매일별 '계산 반영' 개수와 순자산 비중을 함께 본다.",
     "순자산은 보유비중 파일의 값을 우선 쓰고, 없으면 유니버스의 참고 AUM을 쓴다.",
     "레버리지·커버드콜 액티브 ETF는 현물 매매 규모가 다를 수 있어 규칙이 확인된 상품만 계산한다.",
 ]
@@ -95,11 +96,32 @@ def event_study_block() -> dict | None:
     return block
 
 
+INDEX_CODES: set[str] = set()
+
+
+def _alt_event(etf: dict, next_event: dict | None) -> dict | None:
+    """운용사 표현이 방법론과 다르게 읽히는 상품의 대안 효력일·매매일 (같은 달 기준).
+
+    ``alt_rule`` 이 없거나 대안 날짜가 기본 날짜와 같으면 None.
+    """
+    rule = etf.get("alt_rule")
+    if not rule or rule not in kcal.RULE_LABELS or not next_event:
+        return None
+    eff0 = date.fromisoformat(next_event["effective"])
+    eff = kcal.effective_date(rule, eff0.year, eff0.month)
+    if eff.isoformat() == next_event["effective"]:
+        return None
+    return {"rule": rule, "rule_label": kcal.RULE_LABELS[rule],
+            "effective": eff.isoformat(), "trade_date": kcal.prev_trading_day(eff).isoformat()}
+
+
 def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
     universe = _load_json(DATA / "universe.json", {"etfs": []})
     adv_doc = _load_json(DATA / "adv.json", {"adv_eok": {}})
     adv = {k: float(v) for k, v in (adv_doc.get("adv_eok") or {}).items() if v}
 
+    INDEX_CODES.clear()
+    INDEX_CODES.update(e["code"] for e in universe["etfs"] if e.get("kind") == "index")
     window = kcal.months_ahead(as_of, months)
     events, flows, etf_rows = [], [], []
 
@@ -155,6 +177,7 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
                 flows.append({
                     "etf_code": etf["code"], "etf_name": etf["name"],
                     "trade_date": next_event["trade_date"], "effective": next_event["effective"],
+                    "alt_trade_date": (_alt_event(etf, next_event) or {}).get("trade_date"),
                     "scenario_id": s.id, "scenario_label": s.label, "scenario_note": s.note,
                     "capped_by_mcap": at_cap,
                     "primary": i == 0, "aum_eok": aum,
@@ -165,6 +188,7 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
                     "trades": rows,
                 })
 
+        alt = _alt_event(etf, next_event)
         etf_rows.append({
             "code": etf["code"], "name": etf["name"], "issuer": etf.get("issuer"),
             "kind": etf.get("kind", "etf"), "theme": etf.get("theme"), "index": etf.get("index"),
@@ -176,6 +200,11 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
             "next_trade_date": next_event["trade_date"] if next_event else None,
             "next_effective": next_event["effective"] if next_event else None,
             "flow_status": flow_status, "notes": etf.get("notes", []),
+            "unverified": etf.get("unverified", []),
+            "alt_rule": alt["rule"] if alt else None,
+            "alt_rule_label": alt["rule_label"] if alt else None,
+            "next_trade_date_alt": alt["trade_date"] if alt else None,
+            "next_effective_alt": alt["effective"] if alt else None,
         })
 
     events.sort(key=lambda e: (e["trade_date"], -(e["aum_eok"] or 0)))
@@ -192,7 +221,16 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
         exp = ev["expiry"]
         d["expiry_same_day"] = d.get("expiry_same_day", False) or exp == ev["trade_date"]
     trade_days = sorted(days.values(), key=lambda d: d["trade_date"])
+    computed = {}
+    for f in primary:
+        computed.setdefault(f["trade_date"], {})[f["etf_code"]] = f["aum_eok"] or 0
     for d in trade_days:
+        got = computed.get(d["trade_date"], {})
+        n_etf = sum(1 for c in d["etfs"] if c not in INDEX_CODES)
+        d["n_etfs"] = n_etf
+        d["computed_etfs"] = sorted(got)
+        d["computed_aum_eok"] = round(sum(got.values()))
+        d["coverage_aum_pct"] = round(100 * sum(got.values()) / d["aum_eok"], 1) if d["aum_eok"] else None
         d["aum_eok"] = round(d["aum_eok"])
 
     expiries = [{"month": f"{y}-{m:02d}", "expiry": kcal.expiry_date(y, m).isoformat(),

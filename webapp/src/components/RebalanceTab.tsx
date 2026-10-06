@@ -63,6 +63,18 @@ function toneOf(v: number | null | undefined): string {
   return v == null ? "" : v > 0 ? "tone-up" : v < 0 ? "tone-down" : "";
 }
 
+const UNVERIFIED_LABEL: Record<string, string> = {
+  months: "주기",
+  rule: "변경일 규칙",
+  weighting: "가중 방식",
+  effective_date: "효력일 해석",
+  constituents: "편출입",
+};
+
+function unverifiedText(keys: string[] | undefined): string {
+  return (keys || []).map((k) => UNVERIFIED_LABEL[k] || k).join("·");
+}
+
 function StatusChip({ status, kind }: { status: FlowStatus; kind: "etf" | "index" }) {
   if (kind === "index") return <span className="rb-chip off">지수</span>;
   if (status === "ok") return <span className="rb-chip ok">계산</span>;
@@ -161,6 +173,11 @@ function FlowDetail({ flow }: { flow: RebalanceFlow }) {
       <h4>
         {flow.etf_name} <span className="meta-soft">{flow.scenario_label}</span>
       </h4>
+      {flow.alt_trade_date && flow.alt_trade_date !== flow.trade_date ? (
+        <p className="meta-soft rb-note">
+          매매일 대안 해석: {flow.alt_trade_date} 종가 (기본 {flow.trade_date}). 금액은 같고 날짜만 달라집니다.
+        </p>
+      ) : null}
       <p className="meta-soft rb-flow-meta">
         순자산 {fmtEok(flow.aum_eok)} · 비중 기준일 {flow.holdings_as_of || "—"} · 매수{" "}
         {fmtSigned(flow.buy_eok)}억 / 매도 {fmtSigned(flow.sell_eok)}억
@@ -376,6 +393,7 @@ export default function RebalanceTab() {
   const maxAum = Math.max(1, ...data.trade_days.map((d) => d.aum_eok));
   const sel = selected ? dayLabel(selected) : null;
   const dayEvents = data.events.filter((e) => e.trade_date === selected);
+  const selDay = data.trade_days.find((d) => d.trade_date === selected);
   const dayFlows = data.flows.filter((f) => f.trade_date === selected);
   const chosenFlows = dayFlows.filter((f) => choice[f.etf_code] === f.scenario_id);
   const scenarioGroups = new Map<string, RebalanceFlow[]>();
@@ -464,6 +482,11 @@ export default function RebalanceTab() {
                   {expirySet.has(d.trade_date) ? <span className="rb-tag exp">옵션만기</span> : null}
                   {d.has_index ? <span className="rb-tag idx">지수 정기변경</span> : null}
                   {!past ? <span className="rb-tag dd">D-{daysUntil(d.trade_date, today)}</span> : null}
+                  {d.n_etfs ? (
+                    <span className="rb-tag" title="예상 매매가 계산된 ETF 수 / 그날 정기변경 ETF 수">
+                      반영 {(d.computed_etfs || []).length}/{d.n_etfs}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             );
@@ -480,6 +503,13 @@ export default function RebalanceTab() {
             보유비중이 수집되고 규칙이 확인된 ETF만 합산. 종목명을 누르면 ETF별 내역. 오른쪽은 20일 평균
             거래대금 대비 비율(10%↑ 빨강, 3%↑ 노랑).
           </p>
+          {selDay?.n_etfs ? (
+            <p className="rb-warn">
+              계산 반영 ETF {(selDay.computed_etfs || []).length} / {selDay.n_etfs}개
+              {selDay.coverage_aum_pct != null ? ` · 순자산 기준 ${selDay.coverage_aum_pct}%` : ""} · 나머지 ETF 매매는
+              합계에 없음 · 종목 편출입 미반영(편출 종목은 전량 매도가 추가로 생김)
+            </p>
+          ) : null}
           {multiScenario.length ? (
             <div className="rb-scen">
               {multiScenario.map(([code, fs]) => (
@@ -556,10 +586,23 @@ export default function RebalanceTab() {
                           <div className="meta-soft">
                             효력 {eff.md}({eff.w})
                           </div>
+                          {meta?.next_trade_date_alt && meta.next_effective_alt ? (
+                            <div className="meta-soft rb-note">
+                              대안({meta.alt_rule_label}): 효력 {dayLabel(meta.next_effective_alt).md} · 매매{" "}
+                              {dayLabel(meta.next_trade_date_alt).md}
+                            </div>
+                          ) : null}
                         </td>
                         <td>{meta?.cap_pct ? `${meta.cap_pct}%` : "—"}</td>
                         <td>
                           <StatusChip status={meta?.flow_status || "no_rule"} kind={e.kind} />
+                          {meta?.unverified?.length ? (
+                            <div>
+                              <span className="rb-chip wait" title="운용사 공시·지수 방법론으로 확인 필요">
+                                확인 필요: {unverifiedText(meta.unverified)}
+                              </span>
+                            </div>
+                          ) : null}
                         </td>
                       </tr>
                     );
