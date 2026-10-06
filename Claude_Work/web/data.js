@@ -1,5 +1,5 @@
 window.REBALANCE_DATA = {
- "generated_at": "2026-10-07T07:03:55+09:00",
+ "generated_at": "2026-10-07T07:27:26+09:00",
  "as_of": "2026-10-07",
  "window": [
   "2026-10",
@@ -92,18 +92,19 @@ window.REBALANCE_DATA = {
    "etfs": [
     "0167A0",
     "484880",
+    "462010",
     "0093A0",
     "0008T0"
    ],
-   "aum_eok": 66580,
+   "aum_eok": 69126,
    "has_index": false,
    "expiry_same_day": false,
-   "n_etfs": 4,
+   "n_etfs": 5,
    "computed_etfs": [
     "0167A0"
    ],
    "computed_aum_eok": 59862,
-   "coverage_aum_pct": 89.9
+   "coverage_aum_pct": 86.6
   },
   {
    "trade_date": "2026-10-13",
@@ -111,7 +112,7 @@ window.REBALANCE_DATA = {
    "etfs": [
     "462010"
    ],
-   "aum_eok": 5092,
+   "aum_eok": 2546,
    "has_index": false,
    "expiry_same_day": false,
    "n_etfs": 1,
@@ -206,14 +207,15 @@ window.REBALANCE_DATA = {
     "0167A0",
     "0091P0",
     "463250",
+    "462010",
     "0093A0",
     "471760",
     "0008T0"
    ],
-   "aum_eok": 75212,
+   "aum_eok": 77758,
    "has_index": false,
    "expiry_same_day": false,
-   "n_etfs": 6,
+   "n_etfs": 7,
    "computed_etfs": [],
    "computed_aum_eok": 0,
    "coverage_aum_pct": 0.0
@@ -224,7 +226,7 @@ window.REBALANCE_DATA = {
    "etfs": [
     "462010"
    ],
-   "aum_eok": 5092,
+   "aum_eok": 2546,
    "has_index": false,
    "expiry_same_day": false,
    "n_etfs": 1,
@@ -460,6 +462,22 @@ window.REBALANCE_DATA = {
    "holiday_list_ok": true
   },
   {
+   "etf_code": "462010",
+   "etf_name": "TIGER 2차전지소재Fn",
+   "issuer": "미래에셋자산운용",
+   "kind": "etf",
+   "theme": "2차전지",
+   "aum_eok": 2546.0,
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
+   "expiry": "2026-10-08",
+   "effective": "2026-10-13",
+   "trade_date": "2026-10-12",
+   "status": "upcoming",
+   "holiday_list_ok": true,
+   "split": "1/2"
+  },
+  {
    "etf_code": "0093A0",
    "etf_name": "RISE AI반도체TOP10",
    "issuer": "KB자산운용",
@@ -495,14 +513,15 @@ window.REBALANCE_DATA = {
    "issuer": "미래에셋자산운용",
    "kind": "etf",
    "theme": "2차전지",
-   "aum_eok": 5092,
+   "aum_eok": 2546.0,
    "rule": "D+3B",
    "rule_label": "만기 후 3영업일",
    "expiry": "2026-10-08",
    "effective": "2026-10-14",
    "trade_date": "2026-10-13",
    "status": "upcoming",
-   "holiday_list_ok": true
+   "holiday_list_ok": true,
+   "split": "2/2"
   },
   {
    "etf_code": "091160",
@@ -730,6 +749,22 @@ window.REBALANCE_DATA = {
    "holiday_list_ok": true
   },
   {
+   "etf_code": "462010",
+   "etf_name": "TIGER 2차전지소재Fn",
+   "issuer": "미래에셋자산운용",
+   "kind": "etf",
+   "theme": "2차전지",
+   "aum_eok": 2546.0,
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
+   "expiry": "2027-01-14",
+   "effective": "2027-01-18",
+   "trade_date": "2027-01-15",
+   "status": "upcoming",
+   "holiday_list_ok": true,
+   "split": "1/2"
+  },
+  {
    "etf_code": "0093A0",
    "etf_name": "RISE AI반도체TOP10",
    "issuer": "KB자산운용",
@@ -780,14 +815,15 @@ window.REBALANCE_DATA = {
    "issuer": "미래에셋자산운용",
    "kind": "etf",
    "theme": "2차전지",
-   "aum_eok": 5092,
+   "aum_eok": 2546.0,
    "rule": "D+3B",
    "rule_label": "만기 후 3영업일",
    "expiry": "2027-01-14",
    "effective": "2027-01-19",
    "trade_date": "2027-01-18",
    "status": "upcoming",
-   "holiday_list_ok": true
+   "holiday_list_ok": true,
+   "split": "2/2"
   }
  ],
  "etfs": [
@@ -812,8 +848,9 @@ window.REBALANCE_DATA = {
    "next_effective": "2026-10-12",
    "flow_status": "ok",
    "notes": [
-    "FnGuide 반도체TOP10 방법론: 시총 상위 2종목 각 25%, 나머지 8종목은 유동시가총액 가중으로 50% (Methodology Book v1.0, 2024-05). 최신판에서 SK스퀘어 등 상한 추가 여부 확인 필요",
-    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 반도체TOP10 개편일 10/12 확인 → 10/8 종가 매매"
+    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 반도체TOP10 개편일 10/12 확인 → 10/8 종가 매매",
+    "방법론 v1.1(fnindex 공식) 2.4: '매년 4, 10월 선물옵션 만기일 익주 첫 영업일에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 개편일(정기변경일 기준 2영업일 전)의 종가를 이용합니다.' → 10/12 개편, 비중 10/7 종가 확정, 10/8 종가 매매",
+    "같은 문서: '상위 2종목에 대해 각각 25%의 비중을, 하위 8종목에 대해서는 나머지 50%에 유동시가총액 가중 방식' (나머지 8종목 상한 문구 없음)"
    ],
    "unverified": [],
    "alt_rule": null,
@@ -877,17 +914,16 @@ window.REBALANCE_DATA = {
    "flow_status": "ok",
    "notes": [
     "정기변경일마다 삼성전자·SK하이닉스 각 25%로 조정 (신한자산운용 공지)",
-    "그 외 종목은 종목당 15% 상한. SK스퀘어·삼성전기는 시가총액 비중이 상한을 넘어 15%로 잘림 (상장·4월·7월 정기변경 후 비중으로 확인, 특정 종목 고정 규칙 아님)",
-    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 → 10/12 종가 매매가 기본 (운용사 '만기일 이후 2영업일'과 일치). 다영업일 개편이면 10/8 에 일부 매매 가능 → 대안 날짜로 표시"
+    "방법론 v1.2(2026-01-02) 2.4: '매년 1, 4, 7, 10월 옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 옵션 만기일(D-1)의 종가를 이용합니다.' → 10/13 개편·10/12 종가 매매(단일일), 비중은 10/7 종가로 확정. FnGuide 10/2 공지 10/13 과 일치",
+    "방법론 v1.2 1장: 'TOP2 종목의 비중은 각각 25%로 고정하며, 나머지 8종목은 유동시가총액가중 방식으로 15% 실링을 적용합니다.' (현재 계산은 소형 6종목을 현재 비중 비례로 배분 — 유동시총 가중으로 바꿀 후보)"
    ],
    "unverified": [
-    "constituents",
-    "multi_day"
+    "constituents"
    ],
-   "alt_rule": "D+2",
-   "alt_rule_label": "만기 다음 주 첫 영업일",
-   "next_trade_date_alt": "2026-10-08",
-   "next_effective_alt": "2026-10-12"
+   "alt_rule": null,
+   "alt_rule_label": null,
+   "next_trade_date_alt": null,
+   "next_effective_alt": null
   },
   {
    "code": "395160",
@@ -975,9 +1011,14 @@ window.REBALANCE_DATA = {
    "holdings_as_of": null,
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
-   "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "flow_status": "no_holdings",
+   "notes": [
+    "WISE 방법론: '매 1, 4, 7, 10월 옵션 만기일 익일에 지수의 정기변경을 실시한다' → 10/9 휴장으로 10/12 개편, 10/8 종가 매매",
+    "WISE 방법론: '시가총액 상위 4종목의 편입 비중을 15%로 적용하고, 그 외의 종목들은 단순시가총액 가중 방식으로 비중을 배분'"
+   ],
+   "unverified": [
+    "constituents"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1005,10 +1046,11 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [
     "커버드콜 액티브: 콜옵션 매도 포지션 포함, 운용 재량 있음",
-    "기초지수가 반도체TOP10 계열이지만 Capped·레버리지 지수라 TOP2 규칙 적용 여부 미확인 → 계산 제외"
+    "기초지수가 반도체TOP10 계열이지만 Capped·레버리지 지수라 TOP2 규칙 적용 여부 미확인 → 계산 제외",
+    "기초지수 FnGuide 반도체 TOP10 Capped(PR): 운용사 설명 '상위 2종목 각각 25%, 하위 8개 종목 나머지 50% 유동시가총액 가중', 4·10월 정기변경 — 반도체TOP10과 같은 비중 규칙. 액티브 커버드콜이라 현물 매매 시점·규모는 운용 재량"
    ],
    "unverified": [
-    "weighting"
+    "execution"
    ],
    "alt_rule": null,
    "alt_rule_label": null,
@@ -1037,10 +1079,11 @@ window.REBALANCE_DATA = {
    "flow_status": "no_rule",
    "notes": [
     "레버리지 ETF는 스왑·선물로 노출을 만들 수 있어 현물 매매 규모가 다를 수 있음",
-    "기초지수가 반도체TOP10 계열이지만 Capped·레버리지 지수라 TOP2 규칙 적용 여부 미확인 → 계산 제외"
+    "기초지수가 반도체TOP10 계열이지만 Capped·레버리지 지수라 TOP2 규칙 적용 여부 미확인 → 계산 제외",
+    "2배 레버리지: 구성 규칙은 반도체TOP10 과 같으나 현물+선물·스와프로 운용 → 현물 매매 규모는 AUM×비중변화와 다름"
    ],
    "unverified": [
-    "weighting"
+    "execution"
    ],
    "alt_rule": null,
    "alt_rule_label": null,
@@ -1069,8 +1112,13 @@ window.REBALANCE_DATA = {
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
    "flow_status": "ok",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "KEDI 방법론(2025-09) 4.A: '비중결정일: 1,4,7,10월 옵션 만기일의 1영업일 전(D-1) 선정된 종목의 비중을 확정', '수행일: 1,4,7,10월 옵션 만기일(D) 주식시장 종료 시점에 정기 변경을 수행' → 10/8 종가 매매(규칙 D+1 과 같은 매매일)",
+    "KEDI 방법론 2: 유사도점수·시가총액 50:50 비중점수 가중, 종목당 최대 15% (현재 계산은 현재 비중 비례 근사)"
+   ],
+   "unverified": [
+    "weighting"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1098,8 +1146,12 @@ window.REBALANCE_DATA = {
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "NH투자증권 iSelect 지수 방법론 원문 미확보 → 매매일은 규칙 추정(D+2). 운용사 설명: 1·4·7·10월 정기변경"
+   ],
+   "unverified": [
+    "rule"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1118,21 +1170,19 @@ window.REBALANCE_DATA = {
     7,
     10
    ],
-   "rule": "D+3B",
-   "rule_label": "만기 후 3영업일",
+   "rule": "D+2B",
+   "rule_label": "만기 후 2영업일",
    "cap_pct": null,
    "aum_eok": 5092,
    "aum_as_of": "2026-09-29",
    "holdings_as_of": null,
-   "next_trade_date": "2026-10-13",
-   "next_effective": "2026-10-14",
+   "next_trade_date": "2026-10-12",
+   "next_effective": "2026-10-13",
    "flow_status": "no_rule",
    "notes": [
-    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/14 (다영업일이면 마지막 날 기준)"
+    "방법론 v1.3 2.4: '매년 1, 4, 7, 10월 옵션 만기일(D)을 기준으로 2영업일째(D+2)에 2영업일에 걸쳐 정기 변경을 수행합니다. 이때, 지수의 비중 확정은 옵션 만기일(D)의 종가를 이용합니다.' → 10/13·10/14 2일 분할 개편 = 10/12·10/13 종가에 나눠 매매 (기본=첫날, 대안=둘째 날)"
    ],
-   "unverified": [
-    "multi_day"
-   ],
+   "unverified": [],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1160,8 +1210,12 @@ window.REBALANCE_DATA = {
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "NH투자증권 iSelect 지수 방법론 원문 미확보 → 매매일은 규칙 추정(D+2). 운용사 설명: 1·4·7·10월 정기변경"
+   ],
+   "unverified": [
+    "rule"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1222,11 +1276,9 @@ window.REBALANCE_DATA = {
    "next_effective": "2026-10-13",
    "flow_status": "no_rule",
    "notes": [
-    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 (다영업일이면 마지막 날 기준)"
+    "방법론 v1.1(2024-04) 2.4: '매년 4, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일 직전 영업일(D-1)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/7 종가"
    ],
-   "unverified": [
-    "multi_day"
-   ],
+   "unverified": [],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1283,7 +1335,9 @@ window.REBALANCE_DATA = {
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
    "flow_status": "ok",
-   "notes": [],
+   "notes": [
+    "WISE 화장품 방법론: '매 1, 4, 7, 10월 옵션 만기일 익일에 지수의 정기변경을 실시한다', '각 종목 별로 최대 10%의 실링을 적용하며 실링은 매 정기변경 시점에 재적용한다'"
+   ],
    "unverified": [],
    "alt_rule": null,
    "alt_rule_label": null,
@@ -1313,11 +1367,9 @@ window.REBALANCE_DATA = {
    "next_effective": "2026-10-13",
    "flow_status": "no_rule",
    "notes": [
-    "FnGuide 2026-10-02 '10월 상반기 정기변경 안내': 개편일 10/13 (다영업일이면 마지막 날 기준)"
+    "방법론 v1.0(2025-06) 2.4: '매년 1, 4, 7, 10월 선물옵션 만기일(D) 이후 2영업일째(D+2)에 정기변경을 수행합니다. 이때, 지수의 비중 확정은 선물옵션 만기일(D)의 종가를 이용합니다.' → 단일일 10/13, 10/12 종가 매매, 비중 10/8 종가"
    ],
-   "unverified": [
-    "multi_day"
-   ],
+   "unverified": [],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1374,8 +1426,12 @@ window.REBALANCE_DATA = {
    "next_trade_date": "2026-10-08",
    "next_effective": "2026-10-12",
    "flow_status": "no_rule",
-   "notes": [],
-   "unverified": [],
+   "notes": [
+    "NH투자증권 iSelect 지수 방법론 원문 미확보 → 매매일은 규칙 추정(D+2). 운용사 설명: 1·4·7·10월 정기변경"
+   ],
+   "unverified": [
+    "rule"
+   ],
    "alt_rule": null,
    "alt_rule_label": null,
    "next_trade_date_alt": null,
@@ -1569,6 +1625,8 @@ window.REBALANCE_DATA = {
    "etf_name": "TIGER 반도체TOP10",
    "trade_date": "2026-10-08",
    "effective": "2026-10-12",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "top2",
    "scenario_label": "TOP2 25% + 나머지 비례",
@@ -1669,6 +1727,8 @@ window.REBALANCE_DATA = {
    "etf_name": "TIGER 반도체TOP10",
    "trade_date": "2026-10-08",
    "effective": "2026-10-12",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "cap",
    "scenario_label": "(이전 가정) 25% 상한만",
@@ -1769,7 +1829,9 @@ window.REBALANCE_DATA = {
    "etf_name": "SOL AI반도체TOP2플러스",
    "trade_date": "2026-10-12",
    "effective": "2026-10-13",
-   "alt_trade_date": "2026-10-08",
+   "split_index": 0,
+   "split_n": 1,
+   "alt_trade_date": null,
    "scenario_id": "base",
    "scenario_label": "25% 리셋 + 15% 상한",
    "scenario_note": "삼성전자·SK하이닉스 25%. 나머지는 시가총액 기준 15% 상한(SK스퀘어·삼성전기가 상한에 걸림), 남은 비중은 소형 6종목에 현재 비중 비례. 편출입은 반영 안 함",
@@ -1872,6 +1934,8 @@ window.REBALANCE_DATA = {
    "etf_name": "KODEX AI반도체TOP2플러스",
    "trade_date": "2026-12-11",
    "effective": "2026-12-14",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "top2",
    "scenario_label": "TOP2 25% + 나머지 비례",
@@ -1964,6 +2028,8 @@ window.REBALANCE_DATA = {
    "etf_name": "SOL AI반도체소부장",
    "trade_date": "2026-12-11",
    "effective": "2026-12-14",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "cap",
    "scenario_label": "Cap 20% 조정",
@@ -2064,6 +2130,8 @@ window.REBALANCE_DATA = {
    "etf_name": "TIGER 코리아휴머노이드로봇산업",
    "trade_date": "2026-10-08",
    "effective": "2026-10-12",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "cap",
    "scenario_label": "Cap 15% 조정",
@@ -2164,6 +2232,8 @@ window.REBALANCE_DATA = {
    "etf_name": "TIGER 화장품",
    "trade_date": "2026-10-08",
    "effective": "2026-10-12",
+   "split_index": 0,
+   "split_n": 1,
    "alt_trade_date": null,
    "scenario_id": "cap",
    "scenario_label": "Cap 10% 조정",

@@ -115,6 +115,28 @@ def _alt_event(etf: dict, next_event: dict | None) -> dict | None:
             "effective": eff.isoformat(), "trade_date": kcal.prev_trading_day(eff).isoformat()}
 
 
+def _split_days(etf: dict, next_event: dict, rows: list[dict]) -> list[dict]:
+    """``split_rules`` 가 있으면 (방법론상 여러 영업일에 걸친 개편) 매매를 날짜별로 균등 분할.
+
+    예: 2차전지소재 "D+2에 2영업일에 걸쳐" → split_rules ["D+2B", "D+3B"] → 10/12·10/13 종가 각 1/2.
+    없으면 next_event 하루.
+    """
+    rules = etf.get("split_rules") or []
+    if len(rules) < 2:
+        return [{"index": 0, "n": 1, "trade_date": next_event["trade_date"],
+                 "effective": next_event["effective"], "rows": rows}]
+    eff0 = date.fromisoformat(next_event["effective"])
+    n = len(rules)
+    out = []
+    for k, rule in enumerate(rules):
+        eff = kcal.effective_date(rule, eff0.year, eff0.month)
+        part = [dict(r, amount_eok=round(r["amount_eok"] / n, 1),
+                     delta_pct=round(r["delta_pct"] / n, 4)) for r in rows]
+        out.append({"index": k, "n": n, "trade_date": kcal.prev_trading_day(eff).isoformat(),
+                    "effective": eff.isoformat(), "rows": part})
+    return out
+
+
 def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
     universe = _load_json(DATA / "universe.json", {"etfs": []})
     adv_doc = _load_json(DATA / "adv.json", {"adv_eok": {}})
@@ -150,6 +172,19 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
             events.append(ev)
             if ev["status"] == "upcoming" and next_event is None:
                 next_event = ev
+            # 여러 영업일 분할 개편: 둘째 날 이후도 일정에 올린다 (같은 순자산을 날짜 수로 나눔)
+            split = etf.get("split_rules") or []
+            if len(split) > 1:
+                share = (aum or 0) / len(split) if aum else None
+                ev["aum_eok"] = share
+                ev["split"] = f"1/{len(split)}"
+                for k, srule in enumerate(split[1:], start=2):
+                    seff = kcal.effective_date(srule, y, m)
+                    strd = kcal.prev_trading_day(seff)
+                    events.append(dict(ev, effective=seff.isoformat(), trade_date=strd.isoformat(),
+                                       rule=srule, rule_label=kcal.RULE_LABELS[srule],
+                                       split=f"{k}/{len(split)}",
+                                       status="past" if strd < as_of else "upcoming"))
 
         flow_status = "no_rule"
         if not supported:
@@ -170,23 +205,27 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
                 s = engine.Scenario(
                     sc["id"], sc["label"], sc.get("fixed") or {}, sc.get("cap"), sc.get("note", ""),
                     basis=sc.get("basis", "current"), mcap_jo=mcap, rest_mcap_jo=rest_mcap,
+                    fixed_top=sc.get("fixed_top"),
                 )
                 rows = engine.trades(holdings, s, float(aum))
                 cash = max(0.0, 100.0 - sum(h.weight for h in holdings))
                 at_cap = engine.capped_by_mcap(holdings, s, cash)
-                flows.append({
-                    "etf_code": etf["code"], "etf_name": etf["name"],
-                    "trade_date": next_event["trade_date"], "effective": next_event["effective"],
-                    "alt_trade_date": (_alt_event(etf, next_event) or {}).get("trade_date"),
-                    "scenario_id": s.id, "scenario_label": s.label, "scenario_note": s.note,
-                    "capped_by_mcap": at_cap,
-                    "primary": i == 0, "aum_eok": aum,
-                    "holdings_as_of": hold.get("as_of"), "holdings_source": hold.get("source"),
-                    "coverage_pct": round(sum(h.weight for h in holdings), 2),
-                    "buy_eok": round(sum(r["amount_eok"] for r in rows if r["amount_eok"] > 0), 1),
-                    "sell_eok": round(sum(r["amount_eok"] for r in rows if r["amount_eok"] < 0), 1),
-                    "trades": rows,
-                })
+                for part in _split_days(etf, next_event, rows):
+                    prow = part["rows"]
+                    flows.append({
+                        "etf_code": etf["code"], "etf_name": etf["name"],
+                        "trade_date": part["trade_date"], "effective": part["effective"],
+                        "split_index": part["index"], "split_n": part["n"],
+                        "alt_trade_date": (_alt_event(etf, next_event) or {}).get("trade_date") if part["n"] == 1 else None,
+                        "scenario_id": s.id, "scenario_label": s.label, "scenario_note": s.note,
+                        "capped_by_mcap": at_cap,
+                        "primary": i == 0, "aum_eok": aum,
+                        "holdings_as_of": hold.get("as_of"), "holdings_source": hold.get("source"),
+                        "coverage_pct": round(sum(h.weight for h in holdings), 2),
+                        "buy_eok": round(sum(r["amount_eok"] for r in prow if r["amount_eok"] > 0), 1),
+                        "sell_eok": round(sum(r["amount_eok"] for r in prow if r["amount_eok"] < 0), 1),
+                        "trades": prow,
+                    })
 
         alt = _alt_event(etf, next_event)
         etf_rows.append({
@@ -223,7 +262,7 @@ def build(as_of: date, months: int = 4, with_event_study: bool = False) -> dict:
     trade_days = sorted(days.values(), key=lambda d: d["trade_date"])
     computed = {}
     for f in primary:
-        computed.setdefault(f["trade_date"], {})[f["etf_code"]] = f["aum_eok"] or 0
+        computed.setdefault(f["trade_date"], {})[f["etf_code"]] = (f["aum_eok"] or 0) / (f.get("split_n") or 1)
     for d in trade_days:
         got = computed.get(d["trade_date"], {})
         n_etf = sum(1 for c in d["etfs"] if c not in INDEX_CODES)

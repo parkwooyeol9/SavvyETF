@@ -35,6 +35,8 @@ export type RebalanceEvent = {
   trade_date: string;
   status: RebalanceStatus;
   holiday_list_ok: boolean;
+  /** 방법론상 여러 영업일에 걸친 개편이면 "1/2", "2/2" (순자산은 날짜 수로 나눈 몫) */
+  split?: string;
 };
 
 export type RebalanceEtf = {
@@ -79,6 +81,8 @@ export type RebalanceFlow = {
   trade_date: string;
   effective: string;
   alt_trade_date?: string | null;
+  split_index?: number;
+  split_n?: number;
   scenario_id: string;
   scenario_label: string;
   scenario_note?: string;
