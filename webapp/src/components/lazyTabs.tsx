@@ -68,6 +68,7 @@ export const MidtermStudyTab = dynamic(() => import("@/components/MidtermStudyTa
 export const PoliThemesTab = dynamic(() => import("@/components/PoliThemesTab"), { loading });
 export const ThemeEtfTab = dynamic(() => import("@/components/ThemeEtfTab"), { loading });
 export const AiEtfTab = dynamic(() => import("@/components/AiEtfTab"), { loading });
+export const AiPulseTab = dynamic(() => import("@/components/AiPulseTab"), { loading });
 export const EtfDbTab = dynamic(() => import("@/components/EtfDbTab"), { loading });
 export const EtfDbUsTab = dynamic(() => import("@/components/EtfDbUsTab"), { loading });
 export const DataCatalogTab = dynamic(() => import("@/components/DataCatalogTab"), { loading });
