@@ -25,6 +25,7 @@ RUN if [ -f constraints.txt ]; then \
     fi
 
 # Root bot.py is the launcher. Collectors live in the numbered folders.
+# Claude_DB/ai_pulse is the 05:10 AI 시황 collector.
 COPY bot.py ./
 COPY 01_봇/ 01_봇/
 COPY 02_시황/ 02_시황/
@@ -36,6 +37,7 @@ COPY 07_공시/ 07_공시/
 COPY 08_ADR/ 08_ADR/
 COPY 09_매매/ 09_매매/
 COPY 10_공통/ 10_공통/
+COPY Claude_DB/ai_pulse/ Claude_DB/ai_pulse/
 COPY Claude_Work/ Claude_Work/
 COPY assets/ assets/
 COPY colab/ colab/

@@ -100,6 +100,25 @@ def get_json(key: str) -> dict[str, Any] | None:
     return _get_json(_client(), key)
 
 
+def get_bytes(key: str) -> bytes | None:
+    if not r2_configured():
+        return None
+    client = _client()
+    try:
+        obj = client.get_object(Bucket=_bucket(), Key=key)
+    except client.exceptions.NoSuchKey:
+        return None
+    except Exception as exc:
+        msg = str(exc)
+        if "NoSuchKey" in msg or "404" in msg or "Not Found" in msg:
+            return None
+        raise
+    body = obj.get("Body")
+    if body is None:
+        return None
+    return body.read()
+
+
 def upload_etf_snapshot(day: str, snapshot: dict[str, Any]) -> bool:
     ymd = _ymd(day) or _ymd(str(snapshot.get("date") or ""))
     if not ymd:

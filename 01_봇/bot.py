@@ -47,6 +47,7 @@ from kospi200_panel_scheduler import start_kospi200_panel_scheduler
 from nlp_history import start_nlp_history_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
+from ai_pulse_scheduler import start_ai_pulse_scheduler
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
 from summary_kor_scheduler import start_summary_kor_scheduler
@@ -2433,6 +2434,7 @@ def start_web_server():
                             ),
                             "esg-scheduler": "esg-scheduler" in thread_names,
                             "esg-brief-scheduler": "esg-brief-scheduler" in thread_names,
+                            "ai-pulse-scheduler": "ai-pulse-scheduler" in thread_names,
                         },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
@@ -2467,6 +2469,12 @@ def start_web_server():
                         "last_rebalance_attempt_at": state.get("last_rebalance_attempt_at"),
                         "last_rebalance_error": state.get("last_rebalance_error"),
                         "rebalance_scheduler_heartbeat": state.get("rebalance_scheduler_heartbeat"),
+                        "last_ai_pulse_slot": state.get("last_ai_pulse_slot"),
+                        "last_ai_pulse_ok_at": state.get("last_ai_pulse_ok_at"),
+                        "last_ai_pulse_error": state.get("last_ai_pulse_error"),
+                        "ai_pulse_scheduler_heartbeat": state.get(
+                            "ai_pulse_scheduler_heartbeat"
+                        ),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
                         "last_esg_overview_error": state.get("last_esg_overview_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
@@ -2490,6 +2498,7 @@ def start_web_server():
                         ),
                     },
                     "schedule": {
+                        "ai_pulse_kst": os.environ.get("AI_PULSE_SCHEDULE_KST", "5:10"),
                         "summary_kst": os.environ.get(
                             "SUMMARY_SCHEDULE_HOURS_KST", "7:00"
                         ),
@@ -2533,7 +2542,7 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
-                            "ON: summary@07:00 (compact Telegram), reddit@21:00 "
+                            "ON: ai_pulse@05:10 (R2, every day), summary@07:00 (compact Telegram), reddit@21:00 "
                             "(compact Telegram), summary_kor@15:40 "
                             "(compact Telegram), etfcheck@16:20, "
                             "summary_nxt@16:40 (web-only), "
@@ -3743,6 +3752,7 @@ def start_all_schedulers(token: str) -> None:
     start_nlp_history_scheduler()
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
+    start_ai_pulse_scheduler()
 
 
 if __name__ == "__main__":

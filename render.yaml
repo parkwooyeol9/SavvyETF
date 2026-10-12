@@ -109,6 +109,12 @@ services:
         value: "17:50"
       - key: KOSDAQ_ACTIVE_CATCHUP_MINUTES
         value: "45"
+      - key: AI_PULSE_SCHEDULE_ENABLED
+        value: "true"
+      - key: AI_PULSE_SCHEDULE_KST
+        value: "5:10"
+      - key: AI_PULSE_CATCHUP_MINUTES
+        value: "50"
       - key: ETFDB_SCHEDULE_KST
         value: "18:20"
       - key: ETFDB_CATCHUP_MINUTES

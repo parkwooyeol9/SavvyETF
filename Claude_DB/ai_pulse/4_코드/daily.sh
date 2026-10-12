@@ -1,5 +1,7 @@
 #!/bin/bash
-# 매일 자동 실행용 (launchd가 호출). 브라우저는 열지 않고 로그만 남깁니다.
+# Manual/local runner. Production uses the SavvyETF bot at 05:10 KST
+# (02_시황/ai_pulse_scheduler.py). Do not also register the 07:30 launchd job —
+# that window belongs to the US summary.
 cd "$(dirname "$0")/.." || exit 1
 LOG="2_결과물/daily.log"
 PY="${PYTHON:-/Users/wooyeol/opt/anaconda3/bin/python3}"
