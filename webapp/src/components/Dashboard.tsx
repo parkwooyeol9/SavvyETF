@@ -59,6 +59,7 @@ import {
   PoliThemesTab,
   ThemeEtfTab,
   AiEtfTab,
+  AiPulseTab,
   EtfDbTab,
   EtfDbUsTab,
   DataCatalogTab,
@@ -246,6 +247,10 @@ function DashboardInner({
       const code = prev.get("code");
       if (code && /^\d{6}$/.test(code)) nextParams.set("code", code);
     }
+    if (tab === "aipulse") {
+      const view = prev.get("view");
+      if (view === "pulse" || view === "economy") nextParams.set("view", view);
+    }
     if (tab === "midtermstudy") {
       const sc = prev.get("scenario");
       const g = prev.get("grouping");
@@ -373,6 +378,7 @@ function DashboardInner({
       tab === "etfdbus" ||
       tab === "datacatalog" ||
       tab === "aietf" ||
+      tab === "aipulse" ||
       tab === "leverage" ||
       tab === "etfweights" ||
       tab === "etfholdings" ||
@@ -573,6 +579,8 @@ function DashboardInner({
         <CountryEtfTab />
       ) : tab === "themeetf" ? (
         <ThemeEtfTab />
+      ) : tab === "aipulse" ? (
+        <AiPulseTab />
       ) : tab === "aietf" ? (
         <AiEtfTab />
       ) : tab === "leverage" ? (

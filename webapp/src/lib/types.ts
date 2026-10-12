@@ -47,6 +47,7 @@ export type ShellTabId =
   | "aiport"
   | "minutepred"
   | "stockboard"
+  | "aipulse"
   | "nlp"
   | "nlphistory"
   | "graph"
@@ -144,6 +145,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "aiport",
   "minutepred",
   "stockboard",
+  "aipulse",
   "nlp",
   "nlphistory",
   "graph",
@@ -233,6 +235,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aiport: "AI포트",
   minutepred: "단기예측",
   stockboard: "종목보드",
+  aipulse: "AI 시황",
   nlp: "NLP",
   nlphistory: "NLP",
   graph: "밸류체인",
@@ -298,7 +301,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["nlp", "graph", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
+    tabs: ["aipulse", "nlp", "graph", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
     nested: [
       {
         id: "politics",
@@ -506,6 +509,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (isShellTabId(v)) return canonicalShellTab(v);
   if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
   if (v === "aietf" || v === "ai-etf" || v === "ai_etf") return "aietf";
+  if (v === "aipulse" || v === "ai-pulse" || v === "ai_pulse" || v === "aieconomy" || v === "ai시황") return "aipulse";
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
   if (v === "rebal" || v === "rebalancing" || v === "리밸런싱") return "rebalance";

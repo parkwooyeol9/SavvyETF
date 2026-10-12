@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 경제 침투</title>
+__STYLE__
+<style>
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10.5rem),1fr));gap:10px;counter-reset:st}
+.flow .card{position:relative;padding:14px 14px 12px}
+.flow .st{font-size:11.5px;color:var(--mut);letter-spacing:.02em}
+.flow .st b{color:var(--ink);font-size:13px;margin-left:2px}
+.flow .v{font-size:23px;font-weight:600;margin:4px 0 2px;line-height:1.2}
+.flow .s{font-size:11.5px;color:var(--mut);line-height:1.4}
+.flow a{text-decoration:none}
+.verdict{margin-top:12px;font-size:13.5px;line-height:1.6;color:var(--ink2)}
+.verdict b{color:var(--ink)}
+.pill{display:inline-block;font-size:11.5px;padding:1px 9px;border-radius:999px;background:var(--wash);color:var(--ink2);margin-left:6px}
+.crumb{font-size:13px;margin-top:8px}.crumb a{color:var(--c1)}
+/* evidence tags: what kind of statement this is */
+.ev{display:inline-block;font-size:10.5px;font-weight:600;padding:0 6px;border-radius:4px;margin-right:6px;vertical-align:1px;border:1px solid currentColor;white-space:nowrap}
+.ev.f{color:var(--c3)}.ev.e{color:var(--c1)}.ev.p{color:var(--c4)}.ev.i{color:var(--c5)}
+.evlegend{font-size:12px;color:var(--mut);display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:12px}
+.notes .card h3{font-size:14.5px;margin:6px 0 4px}.notes .card p{margin:0;font-size:13px;color:var(--ink2);line-height:1.55}
+.notes .num{font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.verdict li{margin:4px 0}
+.calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9.5rem),1fr));gap:8px;margin:8px 0}
+.calc label{font-size:12px;color:var(--ink2);display:flex;flex-direction:column;gap:3px}
+.calc input,.calc select{font:inherit;font-size:13px;color:var(--ink);background:var(--page);border:1px solid var(--ring);border-radius:8px;padding:5px 8px;min-width:0}
+.calc-out{font-size:26px;font-weight:600;margin:6px 0 2px}
+.layerbtn{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.layerbtn button{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:6px 14px;cursor:pointer}
+.layerbtn button[aria-pressed=true]{background:var(--ink);color:var(--page);border-color:var(--ink)}
+.held{font-variant-numeric:tabular-nums;white-space:nowrap}.held .no{color:var(--mut)}
+</style></head><body><div class="wrap">
+<header><h1>AI 경제 침투</h1>
+<p class="lede">AI 투자가 사용량·매출·기업 채택·일자리·생산성으로 이어지는지, 로봇으로 번지는지를 공개 데이터로 추적합니다. 생성 <span id="gen"></span></p>
+<p class="crumb">← <a href="ai_pulse.html">AI Pulse (구루 발언·SDK·채용·오픈모델)</a></p>
+<div class="evlegend"><span><span class="ev f">사실</span>출처가 보고·측정한 값</span><span><span class="ev e">추정</span>데이터 위에서 우리가 계산한 값</span><span><span class="ev p">전망</span>기관·시장의 미래 예상</span><span><span class="ev i">해석</span>관측에 대한 우리의 읽기</span></div></header>
+<nav><a href="#notes">핵심</a><a href="#chain">가치사슬</a><a href="#models">⓪ 모델 경쟁</a><a href="#money">① 매출 전환</a><a href="#adopt">② 기업 채택</a><a href="#prod">③ 생산성·일자리</a><a href="#robot">④ 로보틱스</a><a href="#infra">⑤ 인프라·ETF</a><a href="#about">데이터·주의</a></nav>
+
+<section id="notes"><h2>이번 관측의 핵심</h2><p class="note">데이터에서 자동으로 뽑은 관찰입니다. 꼬리표로 사실과 해석을 구분했습니다.</p><div class="notes" id="notes-box"></div></section>
+
+<section id="chain"><h2>AI 가치사슬 — 투자가 어디까지 내려왔나</h2>
+<p class="note">왼쪽(투자·사용량)만 크게 늘고 오른쪽(생산성)이 따라오지 않으면 "아직 투자 단계", 오른쪽까지 움직이면 "실질 침투"로 읽습니다. 카드를 누르면 해당 섹션으로 이동합니다.</p>
+<div class="flow" id="flow"></div>
+<div class="card verdict" id="verdict"></div>
+</section>
+
+<section id="models"><h2>⓪ 모델 경쟁 — 같은 돈으로 얼마나 똑똑한가</h2>
+<p class="note" id="fr-note"></p>
+<div class="g2">
+<div class="card"><h3>지능 지수 vs 과제당 비용</h3><p class="note">위쪽일수록 고성능, 왼쪽일수록 저비용. 진한 점 = 효율 경계(더 싸면서 더 높은 모델이 없음). 가로축은 로그 눈금.</p>
+<div class="legend"><span><span class="sw" style="background:var(--c2)"></span>Anthropic</span><span><span class="sw" style="background:var(--c1)"></span>OpenAI</span><span><span class="sw" style="background:var(--c3)"></span>Google</span><span><span class="sw" style="background:var(--mut)"></span>기타</span></div><div class="chart" id="fr-c"></div></div>
+<div class="card"><h3>모델 표</h3><div class="ctl" id="fr-sort"></div><div class="tbl" style="max-height:26rem"><table><thead><tr><th>모델</th><th>개발사</th><th class="n">지수</th><th class="n">과제당 $</th><th class="n">출시</th></tr></thead><tbody id="fr-t"></tbody></table></div></div>
+</div>
+<div class="card mt"><h3>API 비용 계산기</h3><p class="note" id="calc-note">가격 × 토큰 × 요청 수. 캐시·배치 할인, 도구 요금, 인건비는 빼고 계산합니다. 작업 성공률이나 매출을 추정하지 않습니다.</p>
+<div class="calc"><label>모델<select id="cm"></select></label><label>요청당 입력 토큰<input id="ci" type="number" min="0" value="3000"></label><label>요청당 출력·추론 토큰<input id="co" type="number" min="0" value="1500"></label><label>월 요청 수<input id="cr" type="number" min="0" value="10000"></label></div>
+<div class="calc-out" id="calc-out">—</div><p class="note" id="calc-cmp"></p></div>
+</section>
+
+<section id="money"><h2>① 매출 전환 — 투자는 돈이 되고 있나</h2>
+<div class="g2">
+<div class="card"><h3>빅테크 5사 분기 설비투자 vs 매출 ($B)</h3><p class="note" id="inv-note"></p><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>설비투자</span><span><span class="sw" style="background:var(--c2)"></span>매출</span></div><div class="chart" id="inv-c"></div></div>
+<div class="card"><h3>매출 대비 설비투자 비율 (%)</h3><p class="note">100원 벌 때 몇 원을 설비(데이터센터·칩)에 쓰는지. 2019~22년엔 15% 안팎이었습니다.</p><div class="chart" id="int-c"></div>
+<div class="tbl mt"><table><thead><tr><th>회사</th><th class="n">설비투자</th><th class="n">매출</th><th class="n">비율</th><th class="n">설비투자 전년비</th></tr></thead><tbody id="inv-t"></tbody></table></div></div>
+</div>
+<div class="g3 mt">
+<div class="card"><h3>기업 AI API 주간 지출 ($M)</h3><p class="note">Ramp 고객사(미국 기업 7만+)가 쓴 토큰 비용 = 사용량 × 단가. 기업이 실제로 내는 돈입니다.</p><div class="legend"><span><span class="sw" style="background:var(--c2)"></span>Anthropic</span><span><span class="sw" style="background:var(--c1)"></span>OpenAI</span></div><div class="chart" id="tk-spend"></div></div>
+<div class="card"><h3>주간 토큰 사용량 (조 개)</h3><div class="legend"><span><span class="sw" style="background:var(--c2)"></span>Anthropic</span><span><span class="sw" style="background:var(--c1)"></span>OpenAI</span></div><div class="chart" id="tk-vol"></div></div>
+<div class="card"><h3>토큰 100만 개당 실효 단가 ($)</h3><div class="legend"><span><span class="sw" style="background:var(--c2)"></span>Anthropic</span><span><span class="sw" style="background:var(--c1)"></span>OpenAI</span></div><div class="chart" id="tk-price"></div></div>
+</div>
+<div class="g3 mt">
+<div class="card"><h3>엔비디아 분기 매출 ($B)</h3><p class="note" id="nv-note"></p><div class="chart" id="nv-c"></div></div>
+<div class="card"><h3>OpenRouter 토큰 처리량 상위 모델 (주간)</h3><p class="note" id="or-note"></p><div class="tbl"><table><thead><tr><th>#</th><th>모델</th><th class="n">토큰</th><th class="n">변화</th><th class="n">입력/출력 $/M</th></tr></thead><tbody id="or-t"></tbody></table></div></div>
+<div class="card"><h3>AI 앱 매출 순위 (앱스토어)</h3><p class="note" id="gr-note"></p><div class="tbl"><table><thead><tr><th>앱</th><th class="n">한국</th><th class="n">미국</th></tr></thead><tbody id="gr-t"></tbody></table></div></div>
+</div></section>
+
+<section id="adopt"><h2>② 기업 채택 — 어디까지 퍼졌나</h2>
+<div class="g2">
+<div class="card"><h3>미국 기업 AI 도입률 (%)</h3><p class="note">결제(Ramp: AI에 돈을 낸 기업)와 설문(Census: 최근 2주 업무에 AI 사용)은 기준이 달라 수준 차이가 큽니다. 방향을 같이 보세요. Census 설문은 2025년 11월 문항이 바뀌었습니다.</p>
+<div class="legend"><span><span class="sw" style="background:var(--c1)"></span>Ramp 유료 도입</span><span><span class="sw" style="background:var(--c2)"></span>Census 현재 사용</span><span><span class="sw" style="background:var(--c3)"></span>Census 6개월 내 사용 예정</span></div><div class="chart" id="ad-c"></div></div>
+<div class="card"><h3>회사별 기업 도입률 (Ramp, %)</h3><div class="legend" id="vd-leg"></div><div class="chart" id="vd-c"></div><p class="note mt" id="vd-note"></p></div>
+</div>
+<div class="g3 mt">
+<div class="card"><h3>업종별 AI 유료 도입률 (Ramp, %)</h3><p class="note" id="ri-note"></p><div class="chart" id="ri-c"></div></div>
+<div class="card"><h3>업종별 AI 사용률 (Census 설문, %)</h3><p class="note">최근 3회 조사 평균. 값이 가려진 칸은 뺐습니다.</p><div class="chart" id="bs-c"></div></div>
+<div class="card"><h3>직원 1인당 월 AI 지출 (Ramp 중앙값, $)</h3><p class="note" id="sp-note"></p><div class="chart" id="sp-c"></div></div>
+</div>
+<div class="g2 mt">
+<div class="card"><h3>공시에 "artificial intelligence"를 쓴 분기·연간 보고서 (최근 4분기 합)</h3><p class="note" id="fl-note"></p><div class="chart" id="fl-c"></div></div>
+<div class="card"><h3>AI를 언급한 보고서의 업종 구성 (%)</h3><p class="note" id="fs-note"></p><div class="tbl"><table><thead><tr><th>업종</th><th class="n" id="fs-h1"></th><th class="n" id="fs-h2"></th><th class="n">변화</th></tr></thead><tbody id="fs-t"></tbody></table></div></div>
+</div></section>
+
+<section id="prod"><h2>③ 생산성·일자리 — 숫자에 찍히고 있나</h2>
+<div class="g2">
+<div class="card"><h3>미국 노동생산성 전년비 (%)</h3><p class="note" id="pr-note"></p><div class="chart" id="pr-c"></div></div>
+<div class="card"><h3>총요소생산성 (가동률 조정, 분기 연율 %)</h3><p class="note" id="tf-note"></p><div class="chart" id="tf-c"></div></div>
+</div>
+<div class="g3 mt">
+<div class="card"><h3>채용 공고 중 AI 관련 비중 (%)</h3><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>미국</span><span><span class="sw" style="background:var(--c2)"></span>영국</span><span><span class="sw" style="background:var(--c3)"></span>독일</span></div><div class="chart" id="ia-c"></div><p class="note mt" id="ia-note"></p></div>
+<div class="card"><h3>소프트웨어 개발자 채용 공고 (2020-02 = 100)</h3><p class="note">AI 코딩 도구가 개발자 수요를 줄이는지.</p><div class="chart" id="sd-c"></div></div>
+<div class="card"><h3>컴퓨터 시스템 설계업 고용 (천 명)</h3><p class="note">IT 서비스·SI 고용. AI 대체가 가장 먼저 나타날 수 있는 업종입니다.</p><div class="chart" id="cs-c"></div></div>
+</div></section>
+
+<section id="robot"><h2>④ 로보틱스 — 물리 세계로 번지나</h2>
+<div class="g2">
+<div class="card"><h3>산업용 로봇 수출 ($M, HS 847950)</h3><p class="note" id="rt-note"></p><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>중국</span><span><span class="sw" style="background:var(--c2)"></span>일본</span><span><span class="sw" style="background:var(--c3)"></span>한국</span></div><div class="chart" id="rt-c"></div>
+<div class="tbl mt"><table><thead><tr><th>국가</th><th class="n" id="rt-h">수출</th><th class="n">전년비</th><th class="n">10년 배수</th></tr></thead><tbody id="rt-t"></tbody></table></div></div>
+<div>
+<div class="card"><h3>로봇·자율주행 기업 채용</h3><p class="note">제조·생산·품질 직무 비중이 오르면 양산 준비 신호입니다.</p><div class="tbl"><table><thead><tr><th>회사</th><th class="n">공고</th><th class="n">30일 신규</th><th class="n">제조·생산</th><th>많은 부서</th></tr></thead><tbody id="rj-t"></tbody></table></div></div>
+<div class="card mt"><h3>로봇 연구 — arXiv cs.RO 월별 논문</h3><p class="note" id="ro-note"></p><div class="chart" id="ro-c"></div></div>
+</div></div>
+<div class="g2 mt">
+<div class="card"><h3>로봇 AI 모델 다운로드 (Hugging Face, 조직별 30일)</h3><p class="note" id="hr-note"></p><div class="chart" id="hr-c"></div></div>
+<div class="card"><h3>로봇 노출도가 높은 직업 (Anthropic Economic Index)</h3><p class="note">업무 중 로봇이 대신할 수 있는 물리 작업 비중 지수(0~1). 기준표로 보세요.</p><div class="tbl" style="max-height:24rem"><table><thead><tr><th>직업</th><th class="n">노출도</th></tr></thead><tbody id="ex-t"></tbody></table></div></div>
+</div></section>
+
+<section id="infra"><h2>⑤ 인프라 병목 · 기업 · ETF</h2>
+<p class="note">밸류체인을 고르면 해당 층 기업의 분기 매출과, AI 관련 ETF(AIQ·BOTZ·DTCR)가 그 기업을 <b>실제로</b> 담고 있는지(운용사 공개 보유종목)를 함께 보여줍니다. 매출은 회사 전체 매출이며 AI 전용 매출이 아닙니다.</p>
+<div class="layerbtn" id="ly-btn"></div>
+<div class="g2">
+<div class="card"><h3 id="ly-title">분기 매출 ($B)</h3><div class="legend" id="ly-leg"></div><div class="chart" id="ly-c"></div></div>
+<div class="card"><h3>기업별 매출 증가와 ETF 실제 편입</h3><div class="tbl"><table><thead><tr><th>기업</th><th class="n">최근 분기</th><th class="n">전년비</th><th class="n">4분기 합 전년비</th><th>ETF 편입 비중</th></tr></thead><tbody id="ly-t"></tbody></table></div><p class="note mt" id="ly-note"></p></div>
+</div>
+<div class="g2 mt">
+<div class="card"><h3>ETF별 밸류체인 노출 (편입 비중 합, %)</h3><p class="note" id="etf-note"></p><div class="tbl"><table id="etf-t"></table></div></div>
+<div class="card"><h3>메모리 현물가 (TrendForce)</h3><p class="note" id="mem-note"></p><div class="tbl" style="max-height:22rem"><table><thead><tr><th>품목</th><th class="n">평균가 $</th><th class="n">전일비</th></tr></thead><tbody id="mem-t"></tbody></table></div></div>
+</div>
+</section>
+
+<section id="about"><h2>데이터·주의</h2>
+<div class="gk" id="status"></div>
+<div class="card mt"><ul class="tight">
+<li><b>빅테크 설비투자</b>는 현금흐름표의 유형자산 취득액입니다(데이터센터 외 설비 포함). 엔비디아·오라클은 회계 분기가 달라 분기 중간 날짜로 달력 분기에 맞췄습니다. AI 매출만 따로 공시하는 회사가 없어 전체 매출과 비교합니다.</li>
+<li><b>Ramp 데이터</b>는 Ramp 법인카드·결제를 쓰는 미국 기업(7만+, 중소·성장 기업 비중 큼) 기준이라 미국 전체보다 도입률이 높게 나옵니다. 토큰 지출은 Ramp를 통해 결제된 API 사용분만입니다.</li>
+<li><b>Census BTOS</b>는 2주마다 하는 미국 기업 설문입니다. 2025년 11월 AI 문항이 바뀌어 그 전후 수준을 바로 비교하기 어렵습니다.</li>
+<li><b>공시 속 AI</b>는 분기·연간 보고서(10-Q·10-K)에 "artificial intelligence"가 한 번이라도 나온 건수입니다. 매년 1분기에 연간보고서가 몰려 4분기 합으로 봅니다. 금융 업종에는 스팩(SPAC)이 많이 포함됩니다.</li>
+<li><b>생산성</b>에 AI 효과만 따로 떼어 볼 방법은 없습니다. 도입률과 생산성이 같은 시기에 움직이는지 나란히 보는 용도입니다.</li>
+<li><b>로봇 수출</b>은 UN Comtrade 연간 자료(HS 847950 산업용 로봇)이며 최신 연도는 일부 국가가 늦게 보고합니다.</li>
+<li><b>모델 성능·비용</b>은 Artificial Analysis 공개 페이지의 기본(대표) 설정 값입니다. 같은 모델도 추론 강도에 따라 점수·비용이 크게 달라지고, 공개 벤치마크에는 오염·포화 가능성이 있습니다.</li>
+<li><b>ETF 편입</b>은 Global X가 공개한 AIQ·BOTZ·DTCR 보유종목(기준일 표기) 그대로입니다. 다른 운용사 ETF는 아직 포함하지 않았습니다. 테마 ETF 연결은 투자 추천이 아닙니다.</li>
+<li><b>인프라 기업 매출</b>은 회사 전체 매출(AI 외 사업 포함)입니다. Eaton은 전력 설비 전체, AMD·Broadcom은 PC·소프트웨어 등도 포함합니다.</li>
+<li><b>메모리 현물가</b>는 TrendForce 공개 페이지의 당일 값입니다. 외부 공개 전에 재배포 조건을 확인하세요.</li>
+<li>OpenRouter·앱 매출 순위·로봇 기업 채용·로봇 모델은 실행 시점 스냅샷이며 매일 실행하면 <code>econ_*_history.csv</code>에 쌓입니다.</li>
+</ul>
+<p class="foot">출처: SEC EDGAR XBRL·전문검색 · Ramp AI Index · OpenRouter · Apple iTunes RSS · U.S. Census Bureau BTOS · FRED (BLS, Indeed) · Federal Reserve Bank of San Francisco TFP · Indeed Hiring Lab AI tracker (CC BY 4.0) · UN Comtrade · Greenhouse/Ashby 채용 API · Hugging Face · Anthropic Economic Index (CC BY) · arXiv · Artificial Analysis · Global X ETFs 공개 보유종목 · TrendForce 공개 현물가</p></div>
+</section>
+</div>
+<script>
+const P=__PAYLOAD__;
+__HELPERS__
+const fq=q=>{const [y,n]=q.split('Q');return new Date(+y,(+n-1)*3+1,15);};  // calendar quarter → mid-quarter date
+
+// ---------- 핵심 노트
+const EVC={'사실':'f','추정':'e','전망':'p','해석':'i'};const ev=t=>h('span','ev '+(EVC[t]||'i'),t);
+(function(){const box=$('#notes-box');(P.notes||[]).forEach((n,i)=>{const c=h('div','card');const top=h('div');top.append(ev(n.tag),h('span','num',String(i+1).padStart(2,'0')));
+  c.append(top,h('h3','',n.title),h('p','',n.body));box.append(c);});
+  if(!(P.notes||[]).length)box.append(h('p','note','관찰할 데이터가 아직 없습니다.'));})();
+
+// ---------- 가치사슬
+(function(){const K=P.kpi||{};const steps=[['invest','투자','#money'],['usage','사용량','#money'],['revenue','매출(지출)','#money'],['adopt','기업 채택','#adopt'],['jobs','일자리','#prod'],['prod','생산성','#prod'],['robot','로봇','#robot']];
+  const box=$('#flow');steps.forEach(([k,n,href],i)=>{const v=K[k];const c=h('div','card');const a=h('a');a.href=href;
+    const st=h('div','st',`${i+1}단계`);st.append(h('b','',' '+n));a.append(st,h('div','v',v?v.v:'—'),h('div','s',v?v.s:'데이터 없음'));c.append(a);box.append(c);});
+  const v=$('#verdict');const I=P.invest,T=P.tokens,PR=P.prod,TF=P.tfp;
+  const parts=[];  // [tag, text] — every sentence says what kind of claim it is
+  if(I)parts.push(['사실',`투자: 빅테크 5사 최근 4분기 설비투자 $${fmt(I.cap_ttm_b,0)}B, 1년 새 ${sgn(I.cap_yoy,0)}% (같은 기간 매출 ${sgn(I.rev_yoy,0)}%).`]);
+  if(T)parts.push(['추정',`사용·지출: 기업 토큰 사용량 1년 전의 ${fmt(T.tok_x,1)}배, 단가 ${sgn(T.price_chg,0)}% → 지출 ${fmt(T.spend_x,1)}배.`]);
+  if(T&&I)parts.push(['해석','돈은 공급자(칩·클라우드)에서 사용자(기업 API 지출)까지 흐르기 시작했지만, 투자 증가 속도가 아직 매출 증가보다 훨씬 빠릅니다.']);
+  if(PR)parts.push(['사실',`생산성: 노동생산성 전년비 ${sgn(PR.yoy,1)}% (2015~19 평균 ${fmt(PR.pre_avg,1)}%)${TF?`, 가동률 조정 총요소생산성 최근 4분기 평균 ${sgn(TF.avg4,2)}%`:''}.`]);
+  if(PR&&TF)parts.push(['해석','거시 생산성에서 AI 효과가 분명하게 분리돼 보이지는 않습니다.']);
+  v.innerHTML='';const ul=h('ul','tight');parts.forEach(([t,x])=>{const li=h('li');li.append(ev(t),document.createTextNode(x));ul.append(li);});v.append(ul);
+  v.append(h('p','note','자동 생성 요약입니다. 수치는 아래 섹션과 출처에서 확인하세요.'));})();
+
+// ---------- ⓪ 모델 경쟁
+function scatter(node,pts,o={}){  // pts=[{x,y,label,color,strong,tip}], log x
+  node.innerHTML='';if(!pts.length)return empty(node);const W=Math.max(node.clientWidth,280),H=o.h||300;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img'});node.append(svg);
+  const xs=pts.map(p=>Math.max(p.x,0.01)),ys=pts.map(p=>p.y),lx=v=>Math.log10(Math.max(v,0.01));
+  const x0=Math.floor(lx(Math.min(...xs))),x1=Math.ceil(lx(Math.max(...xs))),yt=ticks(Math.min(...ys),Math.max(...ys)),y0=yt[0],y1=yt[yt.length-1];
+  const ml=34,mr=12,mt=10,mb=26,X=v=>ml+(lx(v)-x0)/((x1-x0)||1)*(W-ml-mr),Y=v=>mt+(y1-v)/((y1-y0)||1)*(H-mt-mb);
+  yt.forEach(v=>{svg.append(el('line',{x1:ml,x2:W-mr,y1:Y(v),y2:Y(v),stroke:'var(--grid)'}));svg.append(el('text',{x:ml-6,y:Y(v)+4,'text-anchor':'end'},fmt(v,0)));});
+  for(let e=x0;e<=x1;e++){const v=10**e;svg.append(el('line',{x1:X(v),x2:X(v),y1:mt,y2:H-mb,stroke:'var(--grid)'}));svg.append(el('text',{x:X(v),y:H-8,'text-anchor':'middle'},v>=1?`$${v}`:`$${v}`));}
+  const fr=pts.filter(p=>p.strong).sort((a,b)=>a.x-b.x);if(fr.length>1)svg.append(el('path',{d:'M'+fr.map(p=>`${X(Math.max(p.x,0.01)).toFixed(1)},${Y(p.y).toFixed(1)}`).join('L'),fill:'none',stroke:'var(--axis)','stroke-dasharray':'4,3'}));
+  const placed=[];  // label boxes already drawn — skip a label rather than overlap
+  pts.slice().sort((a,b)=>b.y-a.y).forEach(p=>{const c=el('circle',{cx:X(Math.max(p.x,0.01)),cy:Y(p.y),r:p.strong?6:4.5,fill:p.color,opacity:p.strong?1:.6,stroke:'var(--surface)','stroke-width':2});svg.append(c);
+    if(p.strong){const w=textW(svg,p.label),cx=X(Math.max(p.x,0.01)),left=cx+8+w>W-mr,lx0=left?cx-8-w:cx+8,ly=Y(p.y)+4;
+      if(!placed.some(b=>lx0<b[0]+b[2]&&lx0+w>b[0]&&Math.abs(ly-b[1])<13))placed.push([lx0,ly,w,left?cx-8:cx+8,left,p.label]);}
+    const hit=el('circle',{cx:X(Math.max(p.x,0.01)),cy:Y(p.y),r:12,fill:'transparent'});hit.addEventListener('mousemove',e=>showTip(node,e,p.tip));hit.addEventListener('mouseleave',()=>hideTip(node));svg.append(hit);});
+  placed.forEach(([,ly,,tx,left,label])=>svg.insertBefore(el('text',{x:tx,y:ly,class:'val','text-anchor':left?'end':'start',style:'paint-order:stroke;stroke:var(--surface);stroke-width:3px;pointer-events:none'},label),null));}
+(function(){const F=P.frontier;if(!F){empty($('#fr-c'));return;}
+  const col=c=>({Anthropic:'var(--c2)',OpenAI:'var(--c1)',Google:'var(--c3)'}[c]||'var(--mut)');
+  $('#fr-note').textContent=`${F.snapshot} Artificial Analysis 공개 페이지 기준 ${F.rows.length}개 모델. 지능 지수는 여러 평가의 종합 점수, 과제당 비용은 그 평가를 돌리는 데 든 평균 비용입니다. 서로 다른 추론 설정이 섞여 있습니다.`;
+  later(()=>scatter($('#fr-c'),F.rows.filter(r=>r.cost_per_task>0).map(r=>({x:r.cost_per_task,y:r.index,label:r.model,color:col(r.creator),strong:r.frontier,
+    tip:[r.model,`${r.creator} · 출시 ${r.released||'—'}`,`지능 지수 ${fmt(r.index,1)}`,`과제당 $${fmt(r.cost_per_task,2)}`]}))));
+  let SORT='index';const draw=()=>{seg($('#fr-sort'),[['index','성능 높은 순'],['cost','비용 낮은 순'],['rel','최근 출시 순']],SORT,v=>{SORT=v;draw();});
+    const rows=F.rows.slice().sort((a,b)=>SORT==='index'?b.index-a.index:SORT==='cost'?(a.cost_per_task??99)-(b.cost_per_task??99):(b.released||'').localeCompare(a.released||''));
+    const tb=$('#fr-t');tb.innerHTML='';rows.forEach(r=>{const tr=h('tr');const c=td(tr,'');const a=h('a',r.frontier?'strong':'',r.model);a.href='https://artificialanalysis.ai/models/'+r.slug;a.target='_blank';a.rel='noopener';c.append(a);
+      td(tr,r.creator);td(tr,fmt(r.index,1),'n');td(tr,r.cost_per_task==null?'—':'$'+fmt(r.cost_per_task,2),'n');td(tr,r.released||'—','n');tb.append(tr);});};draw();
+  const PZ=P.prices;if(PZ){const sel=$('#cm');PZ.rows.forEach((m,i)=>sel.append(new Option(`${m.lab} · ${m.model} ($${fmt(m.in_usd_mtok,2)}/$${fmt(m.out_usd_mtok,2)})`,i)));
+    $('#calc-note').textContent+=` 가격은 OpenRouter 공개 단가(${PZ.snapshot}, 100만 토큰당 USD).`;
+    const calc=()=>{const m=PZ.rows[+sel.value]||PZ.rows[0],i=+$('#ci').value||0,o=+$('#co').value||0,n=+$('#cr').value||0;
+      const cost=(i*m.in_usd_mtok+o*m.out_usd_mtok)/1e6*n;$('#calc-out').textContent=`$${fmt(cost,2)} / 월`;
+      const all=PZ.rows.map(x=>({m:x,c:(i*x.in_usd_mtok+o*x.out_usd_mtok)/1e6*n})).sort((a,b)=>a.c-b.c);
+      $('#calc-cmp').textContent=`같은 조건 최저 ${all[0].m.model} $${fmt(all[0].c,2)} · 최고 ${all[all.length-1].m.model} $${fmt(all[all.length-1].c,2)} (목록 ${all.length}개 모델)`;};
+    ['#cm','#ci','#co','#cr'].forEach(s=>$(s).addEventListener('input',calc));calc();}})();
+
+// ---------- ① 매출 전환
+(function(){const I=P.invest;if(I){
+  $('#inv-note').textContent=`Microsoft·Alphabet·Amazon·Meta·Oracle 합계, 다섯 회사가 모두 발표한 분기(${I.last_q})까지.`;
+  later(()=>line($('#inv-c'),[{name:'설비투자',color:'var(--c1)',pts:I.series.map(r=>[fq(r[0]),r[1]])},{name:'매출',color:'var(--c2)',pts:I.series.map(r=>[fq(r[0]),r[2]])}],{zero:true}));
+  later(()=>line($('#int-c'),[{name:'설비투자/매출 %',color:'var(--c1)',pts:I.series.map(r=>[fq(r[0]),r[3]])}],{zero:true,h:170}));
+  const tb=$('#inv-t');I.table.forEach(r=>{const tr=h('tr');td(tr,r.company,'strong');td(tr,'$'+fmt(r.capex,1)+'B','n');td(tr,'$'+fmt(r.revenue,1)+'B','n');td(tr,fmt(r.intensity,0)+'%','n');td(tr,sgn(r.capex_yoy,0)+'%','n');tb.append(tr);});
+  $('#nv-note').textContent=`AI 투자의 공급 측. 최근 4분기 매출 전년비 ${sgn(I.nvda_yoy,0)}% (달력 ${I.nvda_q}까지).`;
+  later(()=>line($('#nv-c'),[{name:'엔비디아 매출',color:'var(--c1)',pts:I.nvda.map(r=>[fq(r[0]),r[1]])}],{zero:true,h:190}));}
+  const T=P.tokens;if(T){const mk=[['anthropic','Anthropic','var(--c2)'],['openai','OpenAI','var(--c1)']];
+    const ser=i=>mk.filter(([k])=>T.series[k]).map(([k,n,c])=>({name:n,color:c,pts:T.series[k].map(r=>[D(r[0]),r[i]])}));
+    later(()=>line($('#tk-spend'),ser(3),{zero:true,h:190}));later(()=>line($('#tk-vol'),ser(1),{zero:true,h:190}));later(()=>line($('#tk-price'),ser(2),{zero:true,h:190}));}
+  const O=P.openrouter;if(O){$('#or-note').textContent=`${O.snapshot} 순위 페이지 기준. 개발자들이 실제로 많이 돌리는 모델과 가격입니다.`;
+    const tb=$('#or-t');O.rows.forEach(r=>{const tr=h('tr');td(tr,r.rank,'n');const c=td(tr,'');c.append(h('span','strong',r.model),h('span','pill',r.author));td(tr,abbr(r.tokens),'n');td(tr,r.change||'—','n');
+      td(tr,r.in_usd_mtok==null?'—':`${fmt(r.in_usd_mtok,2)} / ${fmt(r.out_usd_mtok,2)}`,'n');tb.append(tr);});}
+  const G=P.grossing;if(G){$('#gr-note').textContent=`${G.snapshot} 앱스토어(아이폰) 매출 순위 200위 안. 소비자가 실제로 돈을 내는지를 봅니다.`;
+    const tb=$('#gr-t');G.rows.sort((a,b)=>(a.KR??999)-(b.KR??999)).forEach(r=>{const tr=h('tr');td(tr,r.app,'strong');td(tr,r.KR?r.KR+'위':'—','n');td(tr,r.US?r.US+'위':'—','n');tb.append(tr);});}})();
+
+// ---------- ② 기업 채택
+(function(){const A=P.adopt;if(A){const s=[{name:'Ramp 유료 도입',color:'var(--c1)',pts:A.ramp.map(r=>[D(r[0]),r[1]])}];
+    if(A.btos_now)s.push({name:'Census 현재 사용',color:'var(--c2)',pts:A.btos_now.map(r=>[D(r[0]),r[1]])});
+    if(A.btos_next6m)s.push({name:'Census 6개월 내 예정',color:'var(--c3)',pts:A.btos_next6m.map(r=>[D(r[0]),r[1]])});
+    later(()=>line($('#ad-c'),s,{zero:true}));}
+  if(P.vendor){const cols=['var(--c1)','var(--c2)','var(--c3)'];const names=Object.keys(P.vendor).sort((a,b)=>P.vendor[b].slice(-1)[0][1]-P.vendor[a].slice(-1)[0][1]);
+    const lg=$('#vd-leg');names.forEach((n,i)=>{const sp=h('span');const sw=h('span','sw');sw.style.background=cols[i];sp.append(sw,document.createTextNode(n));lg.append(sp);});
+    later(()=>line($('#vd-c'),names.map((n,i)=>({name:n,color:cols[i],pts:P.vendor[n].map(r=>[D(r[0]),r[1]])})),{zero:true}));
+    $('#vd-note').textContent='최신 달: '+P.vendor_last.map(v=>`${v.vendor} ${fmt(v.adoption_rate_pct,1)}%`).join(' · ');}
+  if(P.ramp_ind){$('#ri-note').textContent='괄호 안은 1년 전 대비 변화(%p).';
+    later(()=>hbars($('#ri-c'),P.ramp_ind.map(r=>({label:r.sector,segs:[{v:r.adoption_rate_pct,color:'var(--c1)'}],valLabel:`${fmt(r.adoption_rate_pct,0)}% (${sgn(r.yoy,0)})`,tip:[r.sector,`도입률 ${fmt(r.adoption_rate_pct,1)}%`,`1년 새 ${sgn(r.yoy,1)}%p`]})),{}));}
+  if(P.btos_sector)later(()=>hbars($('#bs-c'),P.btos_sector.map(r=>({label:r.sector,segs:[{v:r.pct,color:'var(--c2)'}],valLabel:fmt(r.pct,1)+'%',tip:[r.sector,`AI 사용 ${fmt(r.pct,1)}%`]})),{}));
+  if(P.spend){$('#sp-note').textContent=`${P.spend.month}. 규모별: `+P.spend.size.map(s=>`${{Small:'소기업',Medium:'중기업',Large:'대기업'}[s.dimension_label]||s.dimension_label} $${fmt(s.median_pepm,1)}`).join(' · ');
+    later(()=>hbars($('#sp-c'),P.spend.sector.map(r=>({label:r.sector,segs:[{v:r.median_pepm,color:'var(--c1)'}],valLabel:'$'+fmt(r.median_pepm,1),tip:[r.sector,`직원 1인당 월 $${fmt(r.median_pepm,2)}`]})),{}));}
+  const F=P.filings;if(F){$('#fl-note').textContent=`미국 상장사 보고서 중 AI를 언급한 건수, 최근 4분기 합 · 1년 전 대비 ${sgn(F.ttm_yoy,0)}%.`;
+    later(()=>line($('#fl-c'),[{name:'최근 4분기 합',color:'var(--c1)',pts:F.ttm.map(r=>[fq(r[0]),r[1]])}],{zero:true,h:200}));
+    $('#fs-note').textContent='IT·소프트웨어 밖 업종 비중이 늘면 AI가 산업 전반으로 번지는 신호입니다.';$('#fs-h1').textContent=F.prev||'1년 전';$('#fs-h2').textContent=F.last;
+    const prev=Object.fromEntries((F.share_prev||[]).map(r=>[r.sector,r.share]));const tb=$('#fs-t');
+    F.share_last.slice().sort((a,b)=>b.share-a.share).forEach(r=>{const tr=h('tr');td(tr,r.sector);td(tr,prev[r.sector]!=null?fmt(prev[r.sector],1)+'%':'—','n');td(tr,fmt(r.share,1)+'%','n');const d=prev[r.sector]!=null?r.share-prev[r.sector]:null;td(tr,d==null?'—':sgn(d,1)+'%p','n');tb.append(tr);});}})();
+
+// ---------- ③ 생산성·일자리
+(function(){const PR=P.prod;if(PR){$('#pr-note').textContent=`${PR.date.slice(0,7)} ${sgn(PR.yoy,1)}%. 점선은 2015~19년 연평균(${fmt(PR.pre_avg,1)}%). 2020년 급등은 코로나 때 저생산성 일자리가 먼저 사라진 영향입니다.`;
+    later(()=>line($('#pr-c'),[{name:'노동생산성 전년비',color:'var(--c1)',pts:PR.yoy_series.map(r=>[D(r[0]),r[1]])}],{ref:PR.pre_avg,dec:1}));}
+  const TF=P.tfp;if(TF){$('#tf-note').textContent=`투입(자본·노동)으로 설명되지 않는 효율 개선. 기술 효과가 가장 먼저 잡히는 지표입니다. 최근 4분기 평균 ${sgn(TF.avg4,2)}%.`;
+    later(()=>dvbar($('#tf-c'),TF.rows.map(r=>({label:r[0].slice(2).replace('-',''),v:r[1],tip:[r[0],`TFP(가동률 조정) ${sgn(r[1],2)}%`,`노동생산성 ${sgn(r[2],2)}%`]})),{h:200,dec:1}));}
+  const IA=P.indeed_ai;if(IA){const cols={US:['미국','var(--c1)'],GB:['영국','var(--c2)'],DE:['독일','var(--c3)']};
+    later(()=>line($('#ia-c'),Object.keys(cols).filter(k=>IA[k]).map(k=>({name:cols[k][0],color:cols[k][1],pts:IA[k].map(r=>[D(r[0]),r[1]])})),{zero:true,h:200}));
+    $('#ia-note').textContent='최신: '+P.indeed_last.map(r=>`${r.jobcountry} ${fmt(r.AI_share_postings,1)}%`).join(' · ');}
+  const F=P.fred||{};if(F.IHLIDXUSTPSOFTDEVE)later(()=>line($('#sd-c'),[{name:'개발자 공고',color:'var(--c1)',pts:F.IHLIDXUSTPSOFTDEVE.pts.filter(r=>r[0]>='2020').map(r=>[D(r[0]),r[1]])}],{h:200,zero:true}));
+  if(F.CES6054150001)later(()=>line($('#cs-c'),[{name:'고용(천 명)',color:'var(--c1)',pts:F.CES6054150001.pts.map(r=>[D(r[0]),r[1]])}],{h:200}));})();
+
+// ---------- ④ 로보틱스
+(function(){const R=P.robot_trade;if(R){$('#rt-note').textContent=`${R.first}~${R.year}년 연간 수출액. 중국이 일본·독일을 빠르게 따라붙고 있는지가 핵심입니다.`;$('#rt-h').textContent=`${R.year} 수출`;
+    const cols={중국:'var(--c1)',일본:'var(--c2)',한국:'var(--c3)'};later(()=>line($('#rt-c'),Object.keys(cols).filter(k=>R.series[k]).map(k=>({name:k,color:cols[k],pts:R.series[k].map(r=>[D(r[0]),r[1]])})),{zero:true}));
+    const tb=$('#rt-t');R.table.forEach(r=>{const tr=h('tr');td(tr,r.country,'strong');td(tr,'$'+fmt(r.v,0)+'M','n');td(tr,sgn(r.yoy,0)+'%','n '+ud(r.yoy));td(tr,fmt(r.x,1)+'배','n');tb.append(tr);});}
+  const J=P.robot_jobs;if(J){const tb=$('#rj-t');J.rows.sort((a,b)=>b.open-a.open).forEach(r=>{const tr=h('tr');td(tr,r.company,'strong');td(tr,fmt(r.open,0),'n');td(tr,fmt(r.new30,0),'n');td(tr,`${r.mfg} (${fmt(r.mfg/r.open*100,0)}%)`,'n');td(tr,r.top.join(', '));tb.append(tr);});}
+  const A=P.arxiv_ro;if(A&&A.length){const l=A[A.length-1];$('#ro-note').textContent=`${l[0].slice(0,7)} ${fmt(l[1],0)}편 · 머신러닝(cs.LG) 대비 ${fmt(l[2],0)}%.`;
+    later(()=>line($('#ro-c'),[{name:'cs.RO 논문',color:'var(--c1)',pts:A.map(r=>[D(r[0]),r[1]])}],{zero:true,h:180,month:true}));}
+  else empty($('#ro-c'),'arXiv 로보틱스 수집 중입니다(첫 실행 약 6분). 다음 갱신부터 표시됩니다.');
+  const H=P.hf_robot;if(H){$('#hr-note').textContent=`로봇 모델 상위 ${fmt(H.models,0)}개의 30일 다운로드 ${abbr(H.downloads)}회 · 최근 90일 새로 올라온 모델 ${H.new90}개.`;
+    later(()=>hbars($('#hr-c'),H.orgs.map(o=>({label:o.org,segs:[{v:o.dl,color:'var(--c1)'}],valLabel:abbr(o.dl),tip:[o.org,`30일 ${fmt(o.dl,0)}회`]})),{}));}
+  if(P.exposure){const tb=$('#ex-t');P.exposure.forEach(r=>{const tr=h('tr');td(tr,r.occupation_title);td(tr,fmt(r.robot_exposure_index,2),'n');tb.append(tr);});}})();
+
+// ---------- ⑤ 인프라·ETF
+(function(){const IN=P.infra;if(!IN){empty($('#ly-c'));return;}const layers=IN.order.filter(l=>IN.layers[l]);let L=layers[0];const cols=['var(--c1)','var(--c2)','var(--c3)'];
+  const draw=()=>{seg($('#ly-btn'),layers.map(l=>[l,l]),L,v=>{L=v;draw();});document.querySelectorAll('#ly-btn button').forEach(b=>b.parentElement.className='layerbtn');
+    const rows=IN.layers[L];$('#ly-title').textContent=`${L} — 분기 매출 ($B, 달력 분기)`;
+    const lg=$('#ly-leg');lg.innerHTML='';rows.slice(0,3).forEach((r,i)=>{const s=h('span');const sw=h('span','sw');sw.style.background=cols[i];s.append(sw,document.createTextNode(`${r.company} (${r.ticker})`));lg.append(s);});
+    line($('#ly-c'),rows.slice(0,3).map((r,i)=>({name:r.company,color:cols[i],pts:r.series.map(x=>[fq(x[0]),x[1]])})),{zero:true});
+    const tb=$('#ly-t');tb.innerHTML='';rows.forEach(r=>{const tr=h('tr');td(tr,`${r.company} (${r.ticker})`,'strong');td(tr,`$${fmt(r.rev_b,2)}B · ${r.last_q}`,'n');td(tr,sgn(r.yoy,0)+'%','n '+ud(r.yoy));td(tr,sgn(r.ttm_yoy,0)+'%','n '+ud(r.ttm_yoy));
+      const c=td(tr,'','held');const ks=Object.keys(r.etf);if(ks.length)c.textContent=ks.map(k=>`${k} ${fmt(r.etf[k],2)}%`).join(' · ');else c.append(h('span','no','AIQ·BOTZ·DTCR 미보유'));tb.append(tr);});
+    $('#ly-note').innerHTML='';const n=$('#ly-note');n.append(ev('사실'),document.createTextNode('매출은 SEC 공시, 편입 비중은 Global X 공개 보유종목 기준. '));n.append(ev('해석'),document.createTextNode('매출 증가가 빠른데 ETF에 없다면, 테마 ETF로는 그 병목에 노출되지 않는다는 뜻입니다.'));};
+  later(draw);
+  const E=P.etf;if(E){const t=$('#etf-t');const hr=h('tr');hr.append(h('th','','ETF'));layers.forEach(l=>hr.append(h('th','n',l)));hr.append(h('th','n','종목 수'));const th=h('thead');th.append(hr);t.append(th);const tb=h('tbody');
+    Object.entries(E).forEach(([k,v])=>{const tr=h('tr');const c=td(tr,'');c.append(h('span','strong',k),h('span','pill',v.label));layers.forEach(l=>{const w=v.layer_w[l]||0;td(tr,w?fmt(w,1)+'%':'—','n');});td(tr,fmt(v.n,0),'n');tb.append(tr);});t.append(tb);
+    $('#etf-note').textContent=`${Object.values(E)[0].as_of} 기준. 위 표의 대표 기업(층별 2~3개)만 셌으므로 층 전체 노출은 아닙니다. 상위 보유: `+Object.entries(E).map(([k,v])=>`${k} ${v.top.slice(0,3).map(x=>x.ticker).join('·')}`).join(' / ');}
+  const M=P.memory;if(M){$('#mem-note').textContent=`${M.snapshot} 공개 현물가 세션 평균(달러). 메모리 가격은 HBM·DRAM 수급의 가장 빠른 신호입니다. 재배포 전 TrendForce 약관 확인 필요.`;
+    const tb=$('#mem-t');M.rows.forEach(r=>{const tr=h('tr');td(tr,`${r.kind} · ${r.item}`);td(tr,fmt(r.avg,2),'n');td(tr,r.chg_pct==null?'—':sgn(r.chg_pct,2)+'%','n '+ud(r.chg_pct));tb.append(tr);});}
+  else $('#mem-note').textContent='공개 페이지에서는 TrendForce 재배포 조건을 확인하기 전까지 표시하지 않습니다.';})();
+
+// ---------- 현황
+(function(){const N={bigtech:'빅테크 재무',ramp:'Ramp AI Index',openrouter:'OpenRouter',grossing:'앱 매출 순위',btos:'Census BTOS',labor:'생산성·노동',filings:'공시 속 AI',robots:'로보틱스',frontier:'모델 성능·비용',infra:'인프라 기업·메모리',etf:'ETF 보유종목',prices:'모델 API 가격'};
+  Object.keys(N).forEach(k=>{const s=P.status[k]||{};const d=tile($('#status'),N[k],s.rows?fmt(s.rows,0)+'행':'—',s.first?(s.first===s.last?`${s.first} 스냅샷`:`${s.first} ~ ${s.last}`):(s.note||'미수집'));
+    const w=h('div');w.style.marginTop='6px';w.append(h('span','badge '+(s.ok?'ok':'no'),s.ok?'수집됨':(s.note?'실패':'미수집')));d.append(w);});})();
+DRAW.forEach(f=>f());
+</script></body></html>
