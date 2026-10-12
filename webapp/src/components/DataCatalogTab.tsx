@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
+import { freshnessOf, freshnessTitle } from "@/lib/freshness";
 import {
   DATA_CATALOG_GROUPS,
   fmtBytes,
@@ -28,6 +31,7 @@ function statusOf(row: CatalogDatasetRow): { label: string; className: string } 
 }
 
 function CatalogPreview({ datasetId }: { datasetId: string }) {
+  const { secret } = useAdminSession();
   const [index, setIndex] = useState<SeriesIndex | null>(null);
   const [date, setDate] = useState("");
   const [key, setKey] = useState("");
@@ -41,7 +45,8 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
     setLoading(true);
     setPreview(null);
     setError(null);
-    void fetch(`/api/series?dataset=${encodeURIComponent(datasetId)}`)
+    const headers = adminAuthHeaders(secret);
+    void fetch(`/api/series?dataset=${encodeURIComponent(datasetId)}`, { headers })
       .then(async (res) => {
         const json = (await res.json()) as SeriesIndex;
         if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
@@ -54,7 +59,7 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
         if (nextKey) {
           const qs = new URLSearchParams({ dataset: datasetId, key: nextKey });
           if (nextDate) qs.set("date", nextDate);
-          const objRes = await fetch(`/api/series?${qs.toString()}`);
+          const objRes = await fetch(`/api/series?${qs.toString()}`, { headers });
           const obj = (await objRes.json()) as SeriesObject;
           if (!cancelled && objRes.ok && obj.ok) setPreview(obj);
         }
@@ -68,7 +73,7 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [datasetId]);
+  }, [datasetId, secret]);
 
   const keysForDate = useMemo(() => {
     if (!index) return [];
@@ -83,7 +88,7 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
     try {
       const qs = new URLSearchParams({ dataset: datasetId, key });
       if (date) qs.set("date", date);
-      const res = await fetch(`/api/series?${qs.toString()}`);
+      const res = await fetch(`/api/series?${qs.toString()}`, { headers: adminAuthHeaders(secret) });
       const json = (await res.json()) as SeriesObject;
       if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setPreview(json);
@@ -93,7 +98,7 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
     } finally {
       setOpening(false);
     }
-  }, [datasetId, date, key]);
+  }, [datasetId, date, key, secret]);
 
   useEffect(() => {
     if (keysForDate.length && !keysForDate.some((k) => k.key === key)) {
@@ -171,6 +176,7 @@ function CatalogPreview({ datasetId }: { datasetId: string }) {
 }
 
 export default function DataCatalogTab() {
+  const { secret } = useAdminSession();
   const [data, setData] = useState<DataCatalogPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,7 +185,7 @@ export default function DataCatalogTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/data-catalog");
+      const res = await fetch("/api/data-catalog", { headers: adminAuthHeaders(secret) });
       const json = (await res.json()) as DataCatalogPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);
@@ -191,7 +197,7 @@ export default function DataCatalogTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [secret]);
 
   useEffect(() => {
     void load();
@@ -269,7 +275,23 @@ export default function DataCatalogTab() {
                           : ""}
                       </p>
                     </div>
-                    <em className={status.className}>{status.label}</em>
+                    <span style={{ display: "flex", gap: 6, flex: "none" }}>
+                      {row.allowWeekdays != null ? (
+                        (() => {
+                          const f = freshnessOf(row.live.lastDay, row.allowWeekdays);
+                          if (f.level === "unknown") return null;
+                          return (
+                            <em
+                              className={`data-cat-badge ${f.level === "stale" ? "warn" : "ok"}`}
+                              title={freshnessTitle(f)}
+                            >
+                              {f.level === "stale" ? `지연 ${f.missedWeekdays}일` : "최신"}
+                            </em>
+                          );
+                        })()
+                      ) : null}
+                      <em className={status.className}>{status.label}</em>
+                    </span>
                   </button>
                   {open ? (
                     <div className="data-cat-body">

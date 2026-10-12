@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="ko" data-page="pulse" data-src="/api/ai-pulse?page=pulse"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Pulse</title>
+<style>
+:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--mut:#898781;--grid:#e1e0d9;--axis:#c3c2b7;
+--ring:rgba(11,11,11,.10);--wash:#f0efec;--good:#006300;--bad:#b42f2f;--pos:#2a78d6;--neg:#e34948;
+--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;
+--q1:#cde2fb;--q2:#9ec5f4;--q3:#6da7ec;--q4:#3987e5;--q5:#256abf;--q6:#184f95}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;
+--grid:#2c2c2a;--axis:#383835;--ring:rgba(255,255,255,.10);--wash:#262624;--good:#0ca30c;--bad:#e66767;--pos:#3987e5;--neg:#e66767;
+--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
+--q1:#104281;--q2:#184f95;--q3:#1c5cab;--q4:#2a78d6;--q5:#5598e7;--q6:#86b6ef}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;
+--grid:#2c2c2a;--axis:#383835;--ring:rgba(255,255,255,.10);--wash:#262624;--good:#0ca30c;--bad:#e66767;--pos:#3987e5;--neg:#e66767;
+--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
+--q1:#104281;--q2:#184f95;--q3:#1c5cab;--q4:#2a78d6;--q5:#5598e7;--q6:#86b6ef}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+a{color:inherit}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:28px;margin:0;letter-spacing:-.01em}h2{font-size:19px;margin:0 0 4px}h3{font-size:14px;margin:0 0 2px}
+.lede{color:var(--ink2);margin:6px 0 0}.note{color:var(--mut);font-size:12.5px;margin:0 0 10px}
+nav{position:sticky;top:0;z-index:5;background:var(--page);display:flex;gap:6px;flex-wrap:wrap;padding:10px 0;margin:16px 0 0;border-bottom:1px solid var(--grid)}
+nav a{font-size:13px;text-decoration:none;border:1px solid var(--ring);border-radius:999px;padding:3px 12px;background:var(--surface)}
+section{margin-top:34px;scroll-margin-top:56px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:16px;min-width:0}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr));gap:14px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));gap:14px}
+.gk{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12.5rem),1fr));gap:12px}
+.mt{margin-top:14px}
+.tile .k{font-size:12.5px;color:var(--ink2)}.tile .v{font-size:24px;font-weight:600;margin:4px 0 2px;line-height:1.2}
+.tile .s{font-size:12px;color:var(--mut);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tile a{text-decoration:none}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid var(--ring);color:var(--ink2)}
+.badge.ok::before{content:"✓";color:var(--good);font-weight:700}.badge.no::before{content:"!";color:var(--bad);font-weight:700}
+.chip{display:inline-block;font-size:11px;padding:0 7px;border-radius:999px;background:var(--wash);color:var(--ink2);margin:2px 3px 0 0;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:600;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--grid);vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--good)}.dn{color:var(--bad)}.strong{font-weight:700}
+.tbl{overflow-x:auto}
+.chart{position:relative}
+svg{display:block;overflow:visible}svg text{font-size:11.5px;fill:var(--ink2)}svg .val{fill:var(--ink);font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--ring);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.14);
+padding:5px 9px;font-size:12px;white-space:nowrap;display:none;z-index:3;font-variant-numeric:tabular-nums}
+.tip .t{color:var(--mut)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:2px 0 8px}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.ctl{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;align-items:center}
+.ctl button,.ctl select{font:inherit;font-size:12.5px;color:var(--ink);background:var(--page);border:1px solid var(--ring);border-radius:8px;padding:3px 11px;cursor:pointer}
+.ctl button[aria-pressed=true]{background:var(--ink);color:var(--page);border-color:var(--ink)}
+/* guru cards */
+.gurus{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16.5rem),1fr));gap:12px}
+.gc{cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .15s}
+.gc:hover{border-color:var(--axis)}.gc[aria-pressed=true]{border-color:var(--c1);box-shadow:0 0 0 1px var(--c1) inset}
+.gc .nm{font-weight:700;font-size:15px}.gc .en{color:var(--mut);font-size:12px;font-weight:400;margin-left:4px}
+.gc .rl{font-size:12px;color:var(--ink2)}
+.gc .nums{display:flex;gap:14px;font-size:12px;color:var(--mut)}.gc .nums b{color:var(--ink);font-size:16px;font-variant-numeric:tabular-nums}
+.gc blockquote{margin:2px 0 0;padding:6px 0 0 10px;border-left:3px solid var(--grid);font-size:13px;line-height:1.45}
+.gc blockquote .src{display:block;color:var(--mut);font-size:11.5px;margin-top:3px}
+/* feed */
+.feed{list-style:none;margin:0;padding:0;max-height:38rem;overflow:auto}
+.feed li{padding:10px 2px;border-bottom:1px solid var(--grid)}
+.feed .meta{font-size:12px;color:var(--mut)}.feed .meta b{color:var(--ink2)}
+.feed .q{font-size:14.5px;font-weight:600;margin:3px 0 2px;line-height:1.4}.feed .h{font-size:13px;color:var(--ink2)}
+.feed a{text-decoration:none}.feed a:hover .h,.feed a:hover .q{text-decoration:underline}
+.tone{display:inline-block;font-size:11px;padding:0 7px;border-radius:999px;margin:2px 3px 0 0;border:1px solid currentColor}
+.tone.p{color:var(--pos)}.tone.n{color:var(--neg)}.tone.z{color:var(--mut)}
+.mood{font-size:12px;color:var(--ink2)}.mood b{font-variant-numeric:tabular-nums}
+.ch-up::before{content:"▲ ";color:var(--good)}.ch-dn::before{content:"▼ ";color:var(--bad)}.ch-new::before{content:"● ";color:var(--pos)}
+.heat td:first-child{white-space:nowrap}.heat td.c{text-align:center;font-variant-numeric:tabular-nums;font-size:12px;min-width:44px}
+.posts{list-style:none;margin:0;padding:0}.posts li{padding:7px 0;border-bottom:1px solid var(--grid);font-size:13px}
+.posts .d{color:var(--mut);font-size:12px;margin-right:6px;font-variant-numeric:tabular-nums}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--wash);padding:1px 5px;border-radius:5px}
+pre{background:var(--wash);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:6px 0 12px}pre code{background:none;padding:0}
+ul.tight{margin:6px 0 0;padding-left:18px}ul.tight li{margin:4px 0}
+.foot{color:var(--mut);font-size:12px;margin-top:36px}
+@media print{nav,.ctl{display:none}.card{break-inside:avoid}.feed{max-height:none}}
+</style></head><body><div class="wrap">
+<header><h1>AI Pulse</h1>
+<p class="lede">AI 붐을 사람들의 발언, 개발자 선택, 기업 채용, 오픈모델, 앱 순위, 연구량으로 한 페이지에 모았습니다. 생성 <span id="gen"></span></p>
+<p style="font-size:13px;margin-top:8px">→ <a href="economy.html" style="color:var(--c1)">AI 경제 침투 (매출 전환·기업 채택·생산성·로보틱스)</a></p></header>
+<nav><a href="#glance">한눈에</a><a href="#changes">달라진 점</a><a href="#gurus">① AI 구루 발언</a><a href="#sdk">② 개발자 선택</a><a href="#jobs">③ 채용</a><a href="#hf">④ 오픈모델</a><a href="#apps">⑤ 앱 순위</a><a href="#gh">⑥ 오픈소스</a><a href="#arxiv">⑦ 연구량</a><a href="#about">데이터·갱신</a></nav>
+
+<section id="glance"><h2>한눈에</h2><p class="note">카드를 누르면 해당 섹션으로 이동합니다.</p><div class="gk" id="kpi"></div></section>
+
+<section id="changes"><h2>지난번 대비 달라진 점</h2><p class="note" id="ch-note"></p><div class="card"><ul class="posts" id="ch-list"></ul></div></section>
+
+<section id="gurus"><h2>① AI 구루 발언</h2>
+<p class="note" id="g-note"></p>
+<div class="g2">
+<div class="card"><h3>구루 무드 지수 — 주간</h3><p class="note" id="mood-note"></p><div class="chart" id="mood-c"></div></div>
+<div class="card"><h3>인물별 무드 (최근 30일)</h3><p class="note">파랑 = 가속·낙관 쪽, 빨강 = 신중·우려 쪽. 발언 3건 미만은 뺐습니다.</p><div class="chart" id="mood-g"></div></div>
+</div>
+<div class="gurus mt" id="g-cards"></div>
+
+<div class="g2 mt">
+<div class="card"><h3>발언 피드</h3><p class="note" id="feed-note">헤드라인에서 따옴표 안 문장을 뽑아 굵게 표시했습니다. 따옴표가 없으면 헤드라인만 보입니다. 누르면 원문 기사로 이동합니다.</p>
+<div class="ctl" id="f-ctl"><select id="f-guru" aria-label="인물"></select><select id="f-topic" aria-label="주제"></select>
+<select id="f-tone" aria-label="어조"><option value="all">전체 어조</option><option value="1">가속·낙관</option><option value="-1">신중·우려</option><option value="0">중립·혼합</option></select>
+<button data-lang="all" aria-pressed="true">전체</button><button data-lang="en" aria-pressed="false">영문</button><button data-lang="ko" aria-pressed="false">국내</button>
+<label style="font-size:12.5px;color:var(--ink2)"><input type="checkbox" id="f-q"> 직접 인용만</label></div>
+<ul class="feed" id="feed"></ul></div>
+<div>
+<div class="card"><h3>화제성 — 최근 30일 기사 수</h3><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>영문</span><span><span class="sw" style="background:var(--c2)"></span>국내</span></div><div class="chart" id="g-buzz"></div></div>
+</div></div>
+<div class="card mt"><h3>누가 무엇을 말하나 — 주제별 기사 수</h3><p class="note">헤드라인 키워드로 분류. 색이 진할수록 많이 다뤄진 주제입니다. 칸을 누르면 피드가 그 인물·주제로 좁혀집니다.</p><div class="tbl"><table class="heat" id="heat"></table></div></div>
+
+<div class="g2 mt">
+<div class="card"><h3>본인 채널 — 블로그·에세이·블루스카이</h3><p class="note">본인이 직접 쓴 글입니다. 일리야 수츠케버, 젠슨 황 등은 직접 운영하는 공개 채널이 없어 뉴스로만 추적합니다.</p><ul class="posts" id="own"></ul></div>
+<div class="card"><h3>장문 인터뷰·뉴스레터</h3><p class="note">구루들이 길게 말하는 곳입니다. 언급된 인물이 있으면 이름표를 붙였습니다.</p><ul class="posts" id="ven"></ul></div>
+</div></section>
+
+<section id="sdk"><h2>② 개발자 선택 — AI SDK 다운로드</h2>
+<p class="note">개발자가 코드에 실제로 설치한 AI 회사 SDK 다운로드 수입니다. 회사별 API 사용 점유율의 대리지표로 볼 수 있습니다(미러·봇 다운로드 제외 기준).</p>
+<div class="ctl" id="sdk-seg"></div>
+<div class="g2">
+<div class="card"><h3>3대 회사 SDK 주간 다운로드</h3><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>OpenAI</span><span><span class="sw" style="background:var(--c2)"></span>Anthropic</span><span><span class="sw" style="background:var(--c3)"></span>Google Gen AI</span></div><div class="chart" id="sdk-c"></div><p class="note mt" id="sdk-share"></p></div>
+<div class="card"><h3>패키지별 최근 30일 (백만 회)</h3><div class="tbl"><table><thead><tr><th>패키지</th><th class="n">최근 30일</th><th class="n">직전 30일 대비</th></tr></thead><tbody id="sdk-t"></tbody></table></div></div>
+</div></section>
+
+<section id="jobs"><h2>③ AI 기업 채용 공고</h2>
+<p class="note" id="jobs-note"></p>
+<div class="g2">
+<div class="card"><h3>회사별 공고 수 (전체 · 최근 30일 신규)</h3><div class="chart" id="jobs-c"></div></div>
+<div class="card"><h3>직군 구성 (%)</h3><div class="legend" id="mix-leg"></div><div class="chart" id="mix-c"></div></div>
+</div>
+<div class="card mt"><h3>최근 올라온 하드웨어·인프라 공고</h3><p class="note">칩·데이터센터·전력 쪽 채용은 설비투자 방향을 보여줍니다.</p><div class="tbl"><table><thead><tr><th>회사</th><th>공고</th><th class="n">게시일</th></tr></thead><tbody id="hw-t"></tbody></table></div></div>
+</section>
+
+<section id="hf"><h2>④ 오픈모델 — Hugging Face 다운로드</h2>
+<p class="note" id="hf-note"></p>
+<div class="g2">
+<div class="card"><h3>LLM(텍스트·멀티모달 생성) 다운로드 점유율 (%)</h3><div class="chart" id="hf-llm"></div></div>
+<div class="card"><h3>지금 뜨는 모델 (트렌딩 상위 15)</h3><div class="tbl"><table><thead><tr><th>모델</th><th>용도</th><th class="n">30일 다운로드</th><th class="n">등록일</th></tr></thead><tbody id="hf-t"></tbody></table></div></div>
+</div>
+<div class="card mt"><h3>전체 모델 다운로드 상위 조직 (상위 1,000개 모델 기준, 30일, 백만 회)</h3><div class="chart" id="hf-org"></div></div>
+</section>
+
+<section id="apps"><h2>⑤ 대중 — 앱스토어 무료 순위</h2>
+<p class="note" id="apps-note"></p>
+<div class="g2">
+<div class="card"><h3>AI 앱 순위 (무료 100위 안)</h3><div class="tbl"><table><thead><tr><th>앱</th><th class="n">한국</th><th class="n">미국</th></tr></thead><tbody id="apps-t"></tbody></table></div></div>
+<div class="card"><h3>전체 무료 1~5위</h3><div class="g2" id="apps-top"></div></div>
+</div></section>
+
+<section id="gh"><h2>⑥ 오픈소스 — GitHub 스타</h2>
+<p class="note" id="gh-note"></p>
+<div class="card"><div class="tbl"><table><thead><tr><th>저장소</th><th>설명</th><th class="n">스타</th><th class="n" id="gh-gain-h">증가</th><th class="n">최근 커밋</th></tr></thead><tbody id="gh-t"></tbody></table></div></div>
+</section>
+
+<section id="arxiv"><h2>⑦ 연구량 — arXiv 월별 논문 수</h2>
+<p class="note">월별 신규 + 교차 게재 논문 수. 한 논문이 여러 분야에 동시에 올라가므로 분야끼리 더하면 안 됩니다.</p>
+<div class="gk" id="ax-kpi"></div>
+<div class="card mt"><div class="legend"><span><span class="sw" style="background:var(--c1)"></span>cs.LG 머신러닝</span><span><span class="sw" style="background:var(--c2)"></span>cs.AI 인공지능</span><span><span class="sw" style="background:var(--c3)"></span>cs.CL 자연어(LLM)</span></div><div class="chart" id="ax-c"></div></div>
+</section>
+
+<section id="about"><h2>데이터·갱신</h2>
+<div class="gk" id="status"></div>
+<div class="g2 mt">
+<div class="card"><h3>읽을 때 주의할 점</h3><ul class="tight">
+<li><b>발언</b>은 구글 뉴스 헤드라인(최근 30일, 영문·국내)에서 뽑았습니다. 헤드라인은 기자가 요약한 문장이라 원문 발언과 다를 수 있으니 중요한 건 원문 링크로 확인하세요. X(트위터)는 로그인이 필요해 수집하지 않습니다.</li>
+<li><b>발언 판별</b>은 규칙 기반입니다. 이름 뒤에 says·warns 같은 동사나 따옴표가 오면 발언으로 봅니다. 영화 〈Artificial〉, 가족·가십 기사는 뺐습니다. 일부 오분류가 남아 있을 수 있습니다.</li>
+<li><b>SDK 다운로드</b>에는 CI 서버의 자동 설치가 섞여 있습니다. MCP·LangChain처럼 다른 패키지가 함께 설치하는 경우 수치가 부풀려집니다. 회사 간 비교와 추세로 읽으세요.</li>
+<li><b>채용·Hugging Face·앱 순위·GitHub</b>은 실행 시점 스냅샷입니다. 실행할 때마다 <code>*_history.csv</code>에 쌓여, 두 번째 실행부터 증감을 볼 수 있습니다.</li>
+<li><b>직군 분류</b>는 공고 제목·부서명 키워드로 나눈 근사치입니다.</li>
+</ul></div>
+<div class="card"><h3>갱신 방법</h3>
+<pre><code>cd ~/GitHub/SavvyDB/ai_pulse
+./run.sh                                     # 전체
+python3 4_코드/fetch_all.py --only gurus apps   # 일부만
+python3 4_코드/build_dashboard.py</code></pre>
+<p class="note" style="margin:0">권장: 발언·앱 순위는 매일, 나머지는 주 1회. arXiv는 첫 실행만 약 20분(robots.txt 요청 간격 15초 준수), 이후엔 이번 달만 받습니다.</p></div>
+</div>
+<p class="foot">출처: Google News RSS · 각 인물 블로그(blog.samaltman.com, karpathy.bearblog.dev, darioamodei.com) · Bluesky 공개 API · Dwarkesh Podcast · Lex Fridman Podcast · Import AI · One Useful Thing · Gary Marcus Substack · pypistats.org · npm · Greenhouse/Ashby 공개 채용 API · Hugging Face API · Apple 마케팅 RSS · GitHub API · arXiv. 헤드라인과 링크만 저장하며 기사 본문의 저작권은 각 언론사에 있습니다.</p>
+</section>
+</div>
+<script>
+const __Q=new URLSearchParams(location.search);
+if(__Q.get('theme'))document.documentElement.dataset.theme=__Q.get('theme');
+if(__Q.get('embed')){const st=document.createElement('style');  // inside the SavvyETF tab: let the site's background show through
+  st.textContent='body{background:transparent!important}.wrap{padding-top:4px!important;max-width:none!important}header h1{font-size:22px}nav{background:transparent;position:static}';document.head.append(st);}
+(function(){const send=()=>parent!==window&&parent.postMessage({type:'ai-pulse-height',page:document.documentElement.dataset.page,h:document.documentElement.scrollHeight},'*');
+  try{new ResizeObserver(send).observe(document.body);}catch(e){addEventListener('resize',send);}addEventListener('load',send);})();
+(async()=>{let P;
+try{const r=await fetch(__Q.get('src')||document.documentElement.dataset.src,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);P=await r.json();}
+catch(e){const d=document.createElement('p');d.className='note';d.style.padding='24px';d.textContent='데이터를 불러오지 못했습니다 ('+e.message+'). 잠시 후 다시 시도해 주세요.';document.querySelector('.wrap').prepend(d);return;}
+
+const NS='http://www.w3.org/2000/svg',$=s=>document.querySelector(s);
+const el=(t,a={},txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;return e;};
+const h=(t,cls,txt)=>{const e=document.createElement(t);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;};
+const fmt=(v,d=1)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('en',{minimumFractionDigits:d,maximumFractionDigits:d});
+const sgn=(v,d=1)=>v==null||isNaN(v)?'—':(v>0?'+':'')+fmt(v,d);
+const td=(tr,txt,cls)=>{const c=h('td',cls,txt);tr.append(c);return c;};
+const empty=(node,msg)=>{node.innerHTML='';node.append(h('p','note',msg||'데이터가 없습니다. fetch_all.py를 실행하세요.'));};
+const ud=v=>v>0?'up':v<0?'dn':'';
+const D=s=>new Date(s);
+$('#gen').textContent=P.generated;
+const DRAW=[];const later=f=>DRAW.push(f);
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>DRAW.forEach(f=>f()),150);});
+function textW(svg,s){const t=el('text',{},s);svg.append(t);const w=t.getComputedTextLength();t.remove();return w;}
+function tipOf(node){let t=node.querySelector('.tip');if(!t){t=h('div','tip');node.append(t);}return t;}
+function showTip(node,ev,lines){const tip=tipOf(node);tip.innerHTML='';lines.forEach((l,i)=>{const d=h('div',i===0?'t':'');
+  if(Array.isArray(l)){const sw=h('span','sw');sw.style.background=l[0];d.append(sw,document.createTextNode(l[1]));}else d.textContent=l;tip.append(d);});
+  tip.style.display='block';const r=node.getBoundingClientRect();let x=ev.clientX-r.left+12,y=ev.clientY-r.top+12;if(x+tip.offsetWidth>r.width)x=ev.clientX-r.left-tip.offsetWidth-12;tip.style.left=Math.max(0,x)+'px';tip.style.top=y+'px';}
+function hideTip(node){const t=node.querySelector('.tip');if(t)t.style.display='none';}
+function ticks(lo,hi,n=4){if(lo===hi){lo-=1;hi+=1;}const st0=(hi-lo)/n,mag=10**Math.floor(Math.log10(st0)),e=st0/mag,st=(e>=7.5?10:e>=3.5?5:e>=1.5?2:1)*mag;const t=[];for(let v=Math.floor(lo/st)*st;v<=hi+st*1e-9;v+=st)t.push(+v.toFixed(10));if(t[t.length-1]<hi)t.push(+(t[t.length-1]+st).toFixed(10));return t;}
+const abbr=v=>Math.abs(v)>=1e9?fmt(v/1e9,1)+'B':Math.abs(v)>=1e6?fmt(v/1e6,1)+'M':Math.abs(v)>=1e3?fmt(v/1e3,0)+'K':fmt(v,0);
+
+function line(node,series,o={}){
+  node.innerHTML='';const W=Math.max(node.clientWidth,280),H=o.h||230;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img'});node.append(svg);
+  const all=series.flatMap(s=>s.pts.filter(p=>p[1]!=null));if(!all.length)return empty(node);
+  const ys=all.map(p=>p[1]);let lo=Math.min(...ys),hi=Math.max(...ys);if(o.zero)lo=Math.min(0,lo);
+  const yt=ticks(lo,hi);lo=yt[0];hi=yt[yt.length-1];
+  const tdec=Math.abs(yt[1]-yt[0])<1?(Math.abs(yt[1]-yt[0])<0.1?2:1):0,lab=v=>o.abbr?abbr(v):fmt(v,tdec);
+  const ml=Math.max(...yt.map(v=>textW(svg,lab(v))))+10,mr=10,mt=8,mb=22;
+  const xs=all.map(p=>+p[0]),x0=Math.min(...xs),x1=Math.max(...xs);
+  const X=t=>ml+(t-x0)/((x1-x0)||1)*(W-ml-mr),Y=v=>mt+(hi-v)/((hi-lo)||1)*(H-mt-mb);
+  yt.forEach(v=>{svg.append(el('line',{x1:ml,x2:W-mr,y1:Y(v),y2:Y(v),stroke:'var(--grid)'}));svg.append(el('text',{x:ml-6,y:Y(v)+4,'text-anchor':'end'},lab(v)));});
+  const n=Math.max(2,Math.min(6,Math.floor((W-ml)/100)));
+  for(let i=0;i<n;i++){const t=x0+(x1-x0)*i/(n-1),d=new Date(t);svg.append(el('text',{x:X(t),y:H-5,'text-anchor':i===0?'start':i===n-1?'end':'middle'},`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`));}
+  series.forEach(s=>{const pts=s.pts.filter(p=>p[1]!=null);if(!pts.length)return;svg.append(el('path',{d:'M'+pts.map(p=>`${X(+p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('L'),fill:'none',stroke:s.color,'stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+    const lp=pts[pts.length-1];svg.append(el('circle',{cx:X(+lp[0]),cy:Y(lp[1]),r:4,fill:s.color,stroke:'var(--surface)','stroke-width':2}));});
+  const rule=el('line',{y1:mt,y2:H-mb,stroke:'var(--axis)',display:'none'});svg.append(rule);
+  const dots=series.map(s=>{const c=el('circle',{r:4,fill:s.color,stroke:'var(--surface)','stroke-width':2,display:'none'});svg.append(c);return c;});
+  const ov=el('rect',{x:ml,y:0,width:W-ml-mr,height:H,fill:'transparent'});svg.append(ov);
+  ov.addEventListener('mousemove',ev=>{const r=svg.getBoundingClientRect(),t=x0+((ev.clientX-r.left)*W/r.width-ml)/(W-ml-mr)*(x1-x0);
+    const ref=series.reduce((a,s)=>s.pts.length>a.length?s.pts:a,[]);let b=ref[0];ref.forEach(p=>{if(Math.abs(+p[0]-t)<Math.abs(+b[0]-t))b=p;});
+    rule.setAttribute('x1',X(+b[0]));rule.setAttribute('x2',X(+b[0]));rule.removeAttribute('display');
+    const lines=[b[0].toISOString().slice(0,o.month?7:10)];
+    series.forEach((s,i)=>{const p=s.pts.find(q=>+q[0]===+b[0]);if(p&&p[1]!=null){dots[i].setAttribute('cx',X(+p[0]));dots[i].setAttribute('cy',Y(p[1]));dots[i].removeAttribute('display');lines.push([s.color,`${s.name}  ${fmt(p[1],0)}`]);}else dots[i].setAttribute('display','none');});
+    showTip(node,ev,lines);});
+  ov.addEventListener('mouseleave',()=>{rule.setAttribute('display','none');dots.forEach(d=>d.setAttribute('display','none'));hideTip(node);});
+}
+// Horizontal bars; rows=[{label, segs:[{v,color,name}], tip}] — one seg = plain bar; o.pct = 100% stacked
+function hbars(node,rows,o={}){
+  node.innerHTML='';if(!rows.length)return empty(node);
+  const bh=o.bh||18,gap=6,W=Math.max(node.clientWidth,280),H=rows.length*(bh+gap)+4;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img'});node.append(svg);
+  const lw=Math.min(Math.max(...rows.map(r=>textW(svg,r.label)))+12,W*.4);
+  const tot=r=>r.segs.reduce((s,x)=>s+x.v,0),hi=o.pct?100:Math.max(...rows.map(tot)),vw=o.pct?4:58;
+  const X=v=>lw+v/(hi||1)*(W-lw-vw);
+  rows.forEach((r,i)=>{const y=i*(bh+gap)+2;let acc=0;const T=tot(r);
+    svg.append(el('text',{x:lw-8,y:y+bh/2+4,'text-anchor':'end'},r.label));
+    r.segs.forEach((s,j)=>{const v=o.pct?s.v/(T||1)*100:s.v;if(v<=0)return;const x=X(acc),w=Math.max(X(acc+v)-x-(j<r.segs.length-1&&r.segs.length>1?2:0),1);
+      const last=j===r.segs.length-1||r.segs.slice(j+1).every(z=>z.v<=0),rad=last?Math.min(4,w/2):0;
+      svg.append(el('path',{d:`M${x},${y}H${x+w-rad}Q${x+w},${y} ${x+w},${y+rad}V${y+bh-rad}Q${x+w},${y+bh} ${x+w-rad},${y+bh}H${x}Z`,fill:s.color}));acc+=v;});
+    if(!o.pct)svg.append(el('text',{class:'val',x:X(acc)+5,y:y+bh/2+4},r.valLabel||fmt(T,o.dec??0)));
+    const hit=el('rect',{x:0,y:y-gap/2,width:W,height:bh+gap,fill:'transparent'});
+    hit.addEventListener('mousemove',ev=>showTip(node,ev,r.tip||[r.label,fmt(T,0)]));hit.addEventListener('mouseleave',()=>hideTip(node));svg.append(hit);});
+}
+function dhbar(node,rows,o={}){  // signed horizontal bars, blue = +, red = −
+  node.innerHTML='';if(!rows.length)return empty(node);const bh=18,gap=6,W=Math.max(node.clientWidth,280),H=rows.length*(bh+gap)+4;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img'});node.append(svg);
+  const lw=Math.min(Math.max(...rows.map(r=>textW(svg,r.label)))+12,W*.4),lo=Math.min(0,...rows.map(r=>r.v)),hi=Math.max(0,...rows.map(r=>r.v));
+  const pl=lo<0?40:4,pr=hi>0?40:4,X=v=>lw+pl+(v-lo)/((hi-lo)||1)*(W-lw-pl-pr);svg.append(el('line',{x1:X(0),x2:X(0),y1:0,y2:H,stroke:'var(--axis)'}));
+  rows.forEach((r,i)=>{const y=i*(bh+gap)+2,a=X(Math.min(0,r.v)),b=X(Math.max(0,r.v)),w=Math.max(b-a,1.5),p=r.v>=0,rad=Math.min(4,w/2);
+    svg.append(el('text',{x:lw-8,y:y+bh/2+4,'text-anchor':'end'},r.label));
+    svg.append(el('path',{d:p?`M${a},${y}H${a+w-rad}Q${a+w},${y} ${a+w},${y+rad}V${y+bh-rad}Q${a+w},${y+bh} ${a+w-rad},${y+bh}H${a}Z`:`M${b},${y}H${b-w+rad}Q${b-w},${y} ${b-w},${y+rad}V${y+bh-rad}Q${b-w},${y+bh} ${b-w+rad},${y+bh}H${b}Z`,fill:p?'var(--pos)':'var(--neg)'}));
+    svg.append(el('text',{class:'val',x:p?b+5:a-5,y:y+bh/2+4,'text-anchor':p?'start':'end'},sgn(r.v,0)));
+    const hit=el('rect',{x:0,y:y-gap/2,width:W,height:bh+gap,fill:'transparent'});hit.addEventListener('mousemove',ev=>showTip(node,ev,r.tip));hit.addEventListener('mouseleave',()=>hideTip(node));svg.append(hit);});}
+function dvbar(node,rows,o={}){  // signed vertical bars
+  node.innerHTML='';if(!rows.length)return empty(node,o.empty);const W=Math.max(node.clientWidth,240),H=o.h||190,svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img'});node.append(svg);
+  const yt=ticks(Math.min(0,...rows.map(r=>r.v)),Math.max(0,...rows.map(r=>r.v)),3),lo=yt[0],hi=yt[yt.length-1],ml=Math.max(...yt.map(v=>textW(svg,fmt(v,0))))+10,mt=8,mb=22,Y=v=>mt+(hi-v)/((hi-lo)||1)*(H-mt-mb);
+  yt.forEach(v=>{svg.append(el('line',{x1:ml,x2:W-4,y1:Y(v),y2:Y(v),stroke:v===0?'var(--axis)':'var(--grid)'}));svg.append(el('text',{x:ml-6,y:Y(v)+4,'text-anchor':'end'},fmt(v,0)));});
+  const slot=(W-ml-4)/rows.length,bw=Math.min(46,slot-6),every=Math.max(1,Math.ceil(rows.length/Math.max(1,Math.floor((W-ml)/48))));
+  rows.forEach((r,i)=>{const x=ml+i*slot+(slot-bw)/2,y0=Y(0),y1=Y(r.v),up=r.v>=0,top=Math.min(y0,y1),hgt=Math.abs(y1-y0),rad=Math.min(4,bw/2,hgt/2);
+    svg.append(el('path',{d:up?`M${x},${top+hgt}V${top+rad}Q${x},${top} ${x+rad},${top}H${x+bw-rad}Q${x+bw},${top} ${x+bw},${top+rad}V${top+hgt}Z`:`M${x},${top}V${top+hgt-rad}Q${x},${top+hgt} ${x+rad},${top+hgt}H${x+bw-rad}Q${x+bw},${top+hgt} ${x+bw},${top+hgt-rad}V${top}Z`,fill:up?'var(--pos)':'var(--neg)'}));
+    if(i%every===0||i===rows.length-1)svg.append(el('text',{x:x+bw/2,y:H-5,'text-anchor':'middle'},r.label));
+    if(slot>=26)svg.append(el('text',{class:'val',x:x+bw/2,y:up?y1-5:y1+13,'text-anchor':'middle'},sgn(r.v,o.dec??0)));
+    const hit=el('rect',{x:ml+i*slot,y:0,width:slot,height:H,fill:'transparent'});hit.addEventListener('mousemove',ev=>showTip(node,ev,r.tip));hit.addEventListener('mouseleave',()=>hideTip(node));svg.append(hit);});}
+const TONE={1:['p','가속·낙관'],'-1':['n','신중·우려'],0:['z','중립']};
+function tile(box,k,v,s,href){const d=h('div','card tile');const w=href?h('a'):d;if(href){w.href=href;d.append(w);}
+  w.append(h('div','k',k),h('div','v',v),h('div','s',s));box.append(d);return d;}
+function seg(node,opts,cur,on){node.innerHTML='';opts.forEach(([v,l])=>{const b=h('button','',l);b.setAttribute('aria-pressed',String(v===cur));b.onclick=()=>on(v);node.append(b);});}
+const GK=Object.fromEntries((P.gurus||[]).map(g=>[g.guru,g.ko]));
+
+// ---------- 한눈에
+(function(){const b=$('#kpi');
+  if(P.gurus){const g=P.gurus[0];tile(b,'최근 30일 최다 언급',g.ko,`기사 ${fmt(g.articles,0)}건 · 발언 ${g.statements}건`,'#gurus');
+    const tot=P.gurus.reduce((s,x)=>s+x.statements,0);tile(b,'수집된 발언 헤드라인',`${fmt(tot,0)}건`,`구루 ${P.gurus.length}명, ${P.news_window[0]} ~ ${P.news_window[1]}`,'#gurus');}
+  if(P.mood)tile(b,'구루 무드 지수 (30일)',sgn(P.mood.now,0),`가속·낙관 ${P.mood.opt} · 신중·우려 ${P.mood.cau} · 중립 ${P.mood.neu}`,'#gurus');
+  if(P.sdk&&P.sdk.PyPI){const s=P.sdk.PyPI.share;tile(b,'SDK 점유 (PyPI 30일)',`OpenAI ${fmt(s.OpenAI,0)}%`,`Anthropic ${fmt(s.Anthropic,0)}% · Google ${fmt(s['Google Gen AI'],0)}%`,'#sdk');}
+  if(P.jobs)tile(b,'AI 기업 채용 공고',fmt(P.jobs.total,0)+'건',`10개사 · 최근 30일 신규 ${fmt(P.jobs.new30,0)}건`,'#jobs');
+  if(P.hf){const o=P.hf.llm_orgs[0];tile(b,'오픈 LLM 다운로드 1위',o.org,`LLM 다운로드의 ${fmt(o.share,0)}%`,'#hf');}
+  if(P.apps){const best=P.apps.rows.filter(r=>r.KR!=null).sort((a,b)=>a.KR-b.KR)[0];if(best)tile(b,'한국 앱스토어 AI 앱 최고 순위',`${best.app} ${best.KR}위`,P.apps.rows.filter(r=>r.KR!=null&&r.app!==best.app).sort((a,b)=>a.KR-b.KR).map(r=>`${r.app} ${r.KR}위`).join(' · '),'#apps');}
+  if(P.github){const g=P.github.rows[0];tile(b,'스타 1위 AI 저장소',g.repo.split('/')[1],`${fmt(g.stars,0)} 스타`,'#gh');}
+  if(P.arxiv&&P.arxiv.last['cs.LG']){const a=P.arxiv.last['cs.LG'];tile(b,`arXiv 머신러닝 논문 (${a.month})`,fmt(a.v,0)+'편',a.yoy!=null?`전년 같은 달 대비 ${sgn(a.yoy,0)}%`:'월별 신규+교차 게재','#arxiv');}
+})();
+
+// ---------- 달라진 점
+(function(){const C=P.changes||{items:[],snapshots:[]};const ul=$('#ch-list');
+  if(C.snapshots.length<2){$('#ch-note').textContent=`아직 비교할 이전 스냅샷이 없습니다(첫 수집 ${C.snapshots[0]||'—'}). 다음 날 실행부터 앱 순위·채용·GitHub 스타·Hugging Face 점유율·구루 발언량의 변화가 여기에 나옵니다.`;
+    ul.append(h('li','note','변화 없음 — 첫 스냅샷'));return;}
+  $('#ch-note').textContent=`${C.snapshots[C.snapshots.length-2]} → ${C.snapshots[C.snapshots.length-1]} 사이에 크게 움직인 항목입니다.`;
+  if(!C.items.length){ul.append(h('li','note','눈에 띄는 변화가 없습니다.'));return;}
+  C.items.forEach(x=>{const li=h('li');li.append(h('span','chip',x.kind));li.append(h('span',x.up===undefined?'ch-new':x.up?'ch-up':'ch-dn',x.text));ul.append(li);});})();
+
+// ---------- ① 구루
+let SEL='all',LANG='all';
+(function(){if(!P.gurus){empty($('#g-cards'));return;}
+  $('#g-note').textContent=`${P.gurus.length}명의 최근 30일(${P.news_window[0]} ~ ${P.news_window[1]}) 영문·국내 뉴스 헤드라인에서 발언을 모았습니다. 카드를 누르면 아래 피드가 그 사람으로 좁혀집니다.`;
+  const box=$('#g-cards');
+  P.gurus.forEach(g=>{const c=h('div','card gc');c.setAttribute('role','button');c.tabIndex=0;c.dataset.g=g.guru;c.setAttribute('aria-pressed','false');
+    const nm=h('div','nm',g.ko);nm.append(h('span','en',g.guru));c.append(nm,h('div','rl',g.role));
+    const nums=h('div','nums');[['기사',g.articles],['발언',g.statements],['국내',g.ko_n]].forEach(([k,v])=>{const s=h('span');s.append(h('b','',fmt(v,0)),document.createTextNode(' '+k));nums.append(s);});c.append(nums);
+    if(g.mood!=null){const m=h('div','mood');m.append(document.createTextNode('무드 '),h('b',g.mood>0?'up':g.mood<0?'dn':'',sgn(g.mood,0)),document.createTextNode(` · 가속 ${g.opt} / 신중 ${g.cau}`));c.append(m);}
+    const tp=Object.entries(g.topics).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,3);const chips=h('div');tp.forEach(([t])=>chips.append(h('span','chip',t)));c.append(chips);
+    if(g.top_quote){const bq=h('blockquote','',`“${g.top_quote.quote}”`);bq.append(h('span','src',`${g.top_quote.date} · ${g.top_quote.source||''}${g.top_quote.outlets>1?` 외 ${g.top_quote.outlets-1}곳`:''}`));c.append(bq);}
+    else c.append(h('p','note','최근 30일 직접 인용 헤드라인 없음'));
+    const pick=()=>{SEL=SEL===g.guru?'all':g.guru;$('#f-guru').value=SEL;drawFeed();document.querySelectorAll('.gc').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.g===SEL)));};
+    c.onclick=pick;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};box.append(c);});
+  // filters
+  const fg=$('#f-guru');fg.append(new Option('전체 인물','all'));P.gurus.forEach(g=>fg.append(new Option(g.ko,g.guru)));
+  fg.onchange=()=>{SEL=fg.value;document.querySelectorAll('.gc').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.g===SEL)));drawFeed();};
+  const ft=$('#f-topic');ft.append(new Option('전체 주제','all'));P.topics.forEach(t=>ft.append(new Option(t,t)));ft.onchange=drawFeed;$('#f-q').onchange=drawFeed;$('#f-tone').onchange=drawFeed;
+  document.querySelectorAll('#f-ctl button').forEach(b=>b.onclick=()=>{LANG=b.dataset.lang;document.querySelectorAll('#f-ctl button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));drawFeed();});
+  drawFeed();
+  if(P.mood){$('#mood-note').textContent=`서로 다른 발언(같은 발언을 여러 매체가 쓴 건 하나로 셈)의 어조 평균. +100이면 모두 가속·낙관, −100이면 모두 신중·우려입니다. 30일 평균 ${sgn(P.mood.now,0)}. 뉴스 헤드라인은 원래 우려 쪽으로 기울어 있으니 수준보다 주간 변화를 보세요.`;
+    later(()=>dvbar($('#mood-c'),P.mood.weekly.map(w=>({label:w[0].slice(5).replace('-','/')+'~',v:w[1],tip:[`${w[0]} 주`,`무드 ${sgn(w[1],0)} · 발언 ${w[2]}건`]})),{empty:'주간 발언이 부족합니다.'}));
+    const gm=P.gurus.filter(g=>g.mood!=null).sort((a,b)=>b.mood-a.mood);
+    later(()=>dhbar($('#mood-g'),gm.map(g=>({label:g.ko,v:g.mood,tip:[g.ko,`무드 ${sgn(g.mood,0)}`,`가속·낙관 ${g.opt} · 신중·우려 ${g.cau} · 발언 ${g.statements}건`]}))));}
+  // buzz
+  later(()=>hbars($('#g-buzz'),P.gurus.map(g=>({label:g.ko,segs:[{v:g.en,color:'var(--c1)'},{v:g.ko_n,color:'var(--c2)'}],tip:[g.ko,`영문 ${g.en}건 · 국내 ${g.ko_n}건`,`발언 헤드라인 ${g.statements}건`]}))));
+  // heatmap
+  const tb=$('#heat');const hr=h('tr');hr.append(h('th','',''));P.topics.forEach(t=>hr.append(h('th','n',t)));const th=h('thead');th.append(hr);tb.append(th);
+  const mx=Math.max(1,...P.gurus.flatMap(g=>Object.values(g.topics)));const body=h('tbody');
+  P.gurus.forEach(g=>{const tr=h('tr');td(tr,g.ko,'strong');P.topics.forEach(t=>{const v=g.topics[t]||0,c=td(tr,v?String(v):'','c');
+    if(v){const s=Math.min(6,1+Math.floor(v/mx*6));c.style.background=`var(--q${s})`;c.style.color=s>=4?'#fff':'var(--ink)';}
+    c.title=`${g.ko} · ${t}: ${v}건`;c.style.cursor=v?'pointer':'default';c.onclick=()=>{if(!v)return;SEL=g.guru;fg.value=g.guru;ft.value=t;document.querySelectorAll('.gc').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.g===SEL)));drawFeed();$('#feed').scrollIntoView({block:'nearest'});};});body.append(tr);});tb.append(body);
+  // own channels & venues
+  const own=$('#own');(P.own||[]).forEach(p=>{const li=h('li');li.append(h('span','d',p.date||'—'),h('span','chip',`${GK[p.guru]||p.guru} · ${p.kind}`));const a=h('a','',p.title.length>140?p.title.slice(0,140)+'…':p.title);a.href=p.link;a.target='_blank';a.rel='noopener';li.append(document.createTextNode(' '),a);
+    if(p.date&&p.date<'2025-06')li.append(h('span','chip','최근 활동 없음'));own.append(li);});
+  const ven=$('#ven');(P.venues||[]).forEach(p=>{const li=h('li');li.append(h('span','d',p.date),h('span','chip',p.venue));const a=h('a','',p.title);a.href=p.link;a.target='_blank';a.rel='noopener';li.append(document.createTextNode(' '),a);
+    if(p.gurus)p.gurus.split(',').forEach(g=>li.append(h('span','chip','🗣 '+(GK[g]||g))));ven.append(li);});
+})();
+function drawFeed(){const ul=$('#feed');ul.innerHTML='';const t=$('#f-topic').value,qOnly=$('#f-q').checked,tn=$('#f-tone').value;
+  if(P.dedup)$('#feed-note').textContent=`같은 발언을 여러 매체가 쓴 헤드라인은 하나로 묶었습니다(${P.dedup.raw}건 → ${P.dedup.distinct}건). 따옴표 안 문장은 굵게, 어조와 보도 매체 수를 함께 표시합니다. 누르면 원문 기사로 이동합니다.`;
+  const rows=P.feed.filter(r=>(SEL==='all'||r.guru===SEL)&&(LANG==='all'||r.lang===LANG)&&(t==='all'||(r.topics||'').includes(t))&&(!qOnly||r.quote)&&(tn==='all'||String(r.tone)===tn));
+  if(!rows.length){ul.append(h('li','note','조건에 맞는 발언이 없습니다.'));return;}
+  rows.slice(0,150).forEach(r=>{const li=h('li');const a=h('a');a.href=r.link;a.target='_blank';a.rel='noopener';
+    const m=h('div','meta');m.append(h('b','',GK[r.guru]||r.guru),document.createTextNode(` · ${r.date} · ${r.source||''} · ${r.lang==='ko'?'국내':'영문'}`));a.append(m);
+    if(r.quote)a.append(h('div','q',`“${r.quote}”`));a.append(h('div','h',r.title));li.append(a);
+    const tc=TONE[r.tone]||TONE[0];li.append(h('span','tone '+tc[0],tc[1]));
+    if(r.outlets>1){const c=h('span','chip',`${r.outlets}개 매체`);c.title=r.sources;li.append(c);}
+    if(r.topics)r.topics.split(',').forEach(x=>li.append(h('span','chip',x)));ul.append(li);});
+  if(rows.length>150)ul.append(h('li','note',`외 ${rows.length-150}건 — 인물·주제로 좁혀 보세요.`));}
+
+// ---------- ② SDK
+(function(){if(!P.sdk){empty($('#sdk-c'));return;}let REG='PyPI';
+  const draw=()=>{seg($('#sdk-seg'),Object.keys(P.sdk).map(k=>[k,k]),REG,v=>{REG=v;draw();});const S=P.sdk[REG];
+    const ser=[['OpenAI','var(--c1)'],['Anthropic','var(--c2)'],['Google Gen AI','var(--c3)']].filter(([n])=>S.weekly[n]).map(([n,c])=>({name:n,color:c,pts:S.weekly[n].map(r=>[D(r[0]),r[1]])}));
+    line($('#sdk-c'),ser,{abbr:true,zero:true});
+    $('#sdk-share').textContent=`최근 30일 3사 점유율: OpenAI ${fmt(S.share.OpenAI,1)}% · Anthropic ${fmt(S.share.Anthropic,1)}% · Google ${fmt(S.share['Google Gen AI'],1)}% (${S.asof}까지)`+
+      (REG==='PyPI'?' · 주의: 2026년 8월 마지막 주부터 모든 PyPI 패키지가 동시에 약 40% 줄었습니다(같은 기간 npm은 증가). 실제 사용 감소보다 집계 방식 변화로 보이며, 그래서 직전 30일 대비 수치는 일제히 마이너스입니다. 회사 간 점유율 비교는 유효합니다.':'');
+    const tb=$('#sdk-t');tb.innerHTML='';S.table.forEach(r=>{const tr=h('tr');td(tr,r.label);td(tr,fmt(r.last30/1e6,1),'n');td(tr,sgn(r.chg,1)+'%','n '+ud(r.chg));tb.append(tr);});};
+  later(draw);})();
+
+// ---------- ③ 채용
+(function(){const J=P.jobs;if(!J){empty($('#jobs-c'));return;}
+  $('#jobs-note').textContent=`${J.snapshot} 기준 공개 채용 게시판에 열려 있는 공고입니다. 게시일로 최근 30일 신규 공고를 셌습니다. 쌓인 스냅샷 ${J.snapshots}회 — 실행할수록 증감 추이가 생깁니다.`;
+  later(()=>hbars($('#jobs-c'),J.rows.map(r=>({label:r.company,segs:[{v:r.new30,color:'var(--c1)'},{v:r.open-r.new30,color:'var(--q2)'}],valLabel:`${fmt(r.open,0)} (신규 ${r.new30})`,
+    tip:[r.company,`전체 ${fmt(r.open,0)}건 · 최근 30일 신규 ${r.new30}건`,'많은 부서: '+r.top_dept.join(', ')]}))));
+  const cols=['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)','var(--axis)'];const lg=$('#mix-leg');P.roles.forEach((k,i)=>{const s=h('span');const sw=h('span','sw');sw.style.background=cols[i];s.append(sw,document.createTextNode(k));lg.append(s);});
+  later(()=>hbars($('#mix-c'),J.rows.map(r=>({label:r.company,segs:P.roles.map((k,i)=>({v:r.mix[k],color:cols[i]})),
+    tip:[r.company,...P.roles.map((k,i)=>[cols[i],`${k} ${fmt(r.mix[k]/r.open*100,0)}% (${r.mix[k]})`])]})),{pct:true}));
+  const tb=$('#hw-t');J.hw_titles.forEach(r=>{const tr=h('tr');td(tr,r.company,'strong');td(tr,r.title);td(tr,r.published,'n');tb.append(tr);});})();
+
+// ---------- ④ HF
+(function(){const H=P.hf;if(!H){empty($('#hf-llm'));return;}
+  $('#hf-note').textContent=`${H.snapshot} 기준 다운로드 상위 1,000개 모델의 최근 30일 다운로드입니다. 오픈모델 생태계에서 누구의 모델이 실제로 많이 쓰이는지 보여줍니다.`;
+  later(()=>hbars($('#hf-llm'),H.llm_orgs.map(o=>({label:o.org,segs:[{v:o.share,color:'var(--c1)'}],valLabel:fmt(o.share,1)+'%',tip:[o.org,`LLM 다운로드 점유 ${fmt(o.share,1)}%`,`30일 ${abbr(o.dl)}회`]}))));
+  later(()=>hbars($('#hf-org'),H.orgs.map(o=>({label:o.org,segs:[{v:o.dl/1e6,color:'var(--c1)'}],valLabel:fmt(o.dl/1e6,1),tip:[o.org,`30일 ${fmt(o.dl/1e6,1)}M회 · 모델 ${o.n}개 · 점유 ${fmt(o.share,1)}%`]}))));
+  const tb=$('#hf-t');H.trending.forEach(m=>{const tr=h('tr');const c=td(tr,'');const a=h('a','',m.model);a.href='https://huggingface.co/'+m.model;a.target='_blank';a.rel='noopener';c.append(a);td(tr,m.pipeline||'—');td(tr,abbr(m.downloads_30d),'n');td(tr,m.created,'n');tb.append(tr);});})();
+
+// ---------- ⑤ 앱
+(function(){const A=P.apps;if(!A)return;$('#apps-note').textContent=`${A.snapshot} 기준 앱스토어(아이폰) 무료 앱 순위입니다. 100위 밖이면 —로 표시합니다.`;
+  const tb=$('#apps-t');A.rows.sort((a,b)=>(a.KR??999)-(b.KR??999)).forEach(r=>{const tr=h('tr');td(tr,r.app,'strong');td(tr,r.KR?r.KR+'위':'—','n');td(tr,r.US?r.US+'위':'—','n');tb.append(tr);});
+  const box=$('#apps-top');[['KR','한국'],['US','미국']].forEach(([cc,n])=>{const d=h('div');d.append(h('h3','',n));const ol=h('ol','tight');A.top5[cc].forEach(([rk,nm])=>ol.append(h('li','',nm)));d.append(ol);box.append(d);});})();
+
+// ---------- ⑥ GitHub
+(function(){const G=P.github;if(!G)return;const hasGain=G.rows.some(r=>r.gain!=null);
+  $('#gh-note').textContent=`${G.snapshot} 기준. 개발자 관심을 보여주는 스타 수입니다.${hasGain?' 증가는 첫 스냅샷 대비입니다.':' 두 번째 실행부터 스타 증가량이 표시됩니다.'}`;
+  if(!hasGain)$('#gh-gain-h').textContent='';
+  const tb=$('#gh-t');G.rows.forEach(r=>{const tr=h('tr');const c=td(tr,'');const a=h('a','strong',r.repo);a.href='https://github.com/'+r.repo;a.target='_blank';a.rel='noopener';c.append(a);
+    td(tr,r.description);td(tr,fmt(r.stars,0),'n');td(tr,hasGain?sgn(r.gain,0):'','n');td(tr,r.pushed,'n'+(r.pushed<'2026-01'?' dn':''));tb.append(tr);});})();
+
+// ---------- ⑦ arXiv
+(function(){const X=P.arxiv;if(!X){empty($('#ax-c'),'arXiv 수집 전입니다. fetch_all.py --only arxiv를 실행하세요(첫 실행 약 20분).');return;}
+  const nm={'cs.LG':'머신러닝','cs.AI':'인공지능','cs.CL':'자연어(LLM)'};
+  Object.entries(X.last).forEach(([c,v])=>tile($('#ax-kpi'),`${nm[c]||c} (${c}) · ${v.month}`,fmt(v.v,0)+'편',v.yoy!=null?`전년 같은 달 대비 ${sgn(v.yoy,0)}%`:''));
+  later(()=>line($('#ax-c'),[['cs.LG','var(--c1)'],['cs.AI','var(--c2)'],['cs.CL','var(--c3)']].filter(([c])=>X.series[c]).map(([c,col])=>({name:`${c} ${nm[c]}`,color:col,pts:X.series[c].map(r=>[D(r[0]),r[1]])})),{zero:true,month:true}));})();
+
+// ---------- 현황
+(function(){const N={gurus:'AI 구루 발언',sdk:'SDK 다운로드',jobs:'채용 공고',hf:'Hugging Face',apps:'앱스토어 순위',github:'GitHub',arxiv:'arXiv'};
+  Object.keys(N).forEach(k=>{const s=P.status[k]||{};const d=tile($('#status'),N[k],s.rows?fmt(s.rows,0)+'행':'—',s.first?(s.first===s.last?`${s.first} 스냅샷`:`${s.first} ~ ${s.last}`):(s.note||'미수집'));
+    const w=h('div');w.style.marginTop='6px';w.append(h('span','badge '+(s.ok?'ok':'no'),s.ok?'수집됨':(s.note?'실패':'미수집')));d.append(w);});})();
+DRAW.forEach(f=>f());
+
+})();
+</script></body></html>

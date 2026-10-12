@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { cdnCacheHeader } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
 import {
   getMoneyFlowPayload,
   type MoneyFlowPeriod,
@@ -15,13 +15,16 @@ function parsePeriod(raw: string | null): MoneyFlowPeriod {
   return "1m";
 }
 
+// Admin-only tab (글로벌 자금 흐름). weight-optimize forwards the admin header.
 export async function GET(request: Request) {
+  const denied = requireSiteAdmin(request);
+  if (denied) return denied;
   const url = new URL(request.url);
   const period = parsePeriod(url.searchParams.get("period"));
   try {
     const payload = await getMoneyFlowPayload(period);
     return NextResponse.json(payload, {
-      headers: { "Cache-Control": cdnCacheHeader("market") },
+      headers: PRIVATE_NO_STORE,
     });
   } catch (exc) {
     return NextResponse.json(
@@ -30,7 +33,7 @@ export async function GET(request: Request) {
         period,
         error: exc instanceof Error ? exc.message : "money flow failed",
       },
-      { status: 500 },
+      { status: 500, headers: PRIVATE_NO_STORE },
     );
   }
 }

@@ -15,11 +15,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV TZ=Asia/Seoul
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# constraints.txt (exact pins) is produced by the "python deps lock" GitHub
+# workflow. The [t] glob keeps the build working before it exists.
+COPY requirements.txt constraints.tx[t] ./
+RUN if [ -f constraints.txt ]; then \
+      pip install --no-cache-dir -r requirements.txt -c constraints.txt; \
+    else \
+      pip install --no-cache-dir -r requirements.txt; \
+    fi
 
-# Copy every Python module so new features are not dropped from the image.
-COPY *.py ./
+# Root bot.py is the launcher. Collectors live in the numbered folders.
+COPY bot.py ./
+COPY 01_봇/ 01_봇/
+COPY 02_시황/ 02_시황/
+COPY 03_ETF/ 03_ETF/
+COPY 04_국내시장/ 04_국내시장/
+COPY 05_매크로/ 05_매크로/
+COPY 06_ESG/ 06_ESG/
+COPY 07_공시/ 07_공시/
+COPY 08_ADR/ 08_ADR/
+COPY 09_매매/ 09_매매/
+COPY 10_공통/ 10_공통/
 COPY Claude_Work/ Claude_Work/
 COPY assets/ assets/
 COPY colab/ colab/

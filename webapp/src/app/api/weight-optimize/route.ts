@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
+import { withServerCache } from "@/lib/apiCache";
 import type { ChainPayload } from "@/lib/chainGraph";
 import type { MoneyFlowPayload } from "@/lib/moneyFlow";
 import type { NlpPulsePayload } from "@/lib/nlpPulse";
@@ -18,11 +19,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function fetchJson<T>(req: Request, path: string, timeoutMs: number): Promise<T | null> {
+async function fetchJson<T>(
+  req: Request,
+  path: string,
+  timeoutMs: number,
+  forwardAuth = false,
+): Promise<T | null> {
   try {
     const url = new URL(path, req.url);
+    const auth = forwardAuth ? req.headers.get("authorization") : null;
     const res = await fetch(url, {
-      headers: { Accept: "application/json" },
+      headers: auth ? { Accept: "application/json", Authorization: auth } : { Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -60,7 +67,10 @@ function emptyPayload(error: string): WeightOptimizePayload {
   };
 }
 
+// Admin-only tab (비중 최적화) — gated here, not just hidden in the nav.
 export async function GET(req: Request) {
+  const denied = requireSiteAdmin(req);
+  if (denied) return denied;
   try {
     const payload = await withServerCache(
       "weight-optimize:v2",
@@ -71,7 +81,8 @@ export async function GET(req: Request) {
           fetchJson<TradingSignalsPayload>(req, "/api/trading-signals", 28_000),
           fetchJson<NlpPulsePayload>(req, "/api/nlp-pulse", 28_000),
           fetchJson<ChainPayload>(req, "/api/chain", 28_000),
-          fetchJson<MoneyFlowPayload>(req, "/api/money-flow?period=1m", 8_000),
+          // money-flow is admin-only too; pass the caller's (already verified) admin header on.
+          fetchJson<MoneyFlowPayload>(req, "/api/money-flow?period=1m", 8_000, true),
         ]);
         if (!signals) {
           return emptyPayload("시그널을 불러오지 못했습니다.");
@@ -107,11 +118,9 @@ export async function GET(req: Request) {
         return built;
       },
     );
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": cdnCacheHeader("yahoo") },
-    });
+    return NextResponse.json(payload, { headers: PRIVATE_NO_STORE });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
-    return NextResponse.json(emptyPayload(message), { status: 502 });
+    return NextResponse.json(emptyPayload(message), { status: 502, headers: PRIVATE_NO_STORE });
   }
 }

@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 
+import FreshnessBadge from "@/components/FreshnessBadge";
 import {
   fmtSignedUsdMn,
   fmtUsdMn,
@@ -918,6 +919,8 @@ export default function EtfDbUsTab() {
                     {totalFlow == null ? "대기중" : fmtSignedUsdMn(totalFlow)}
                   </span>
                   {data.prev_as_of ? ` · 전일 ${data.prev_as_of}` : ""}
+                  {/* US dates trail KST by a day, so allow one extra weekday */}
+                  <FreshnessBadge asOf={data.prev_as_of} allowWeekdays={2} />
                 </p>
                 <div className="etfdbus-series-tabs" role="tablist" aria-label="수급">
                   {(

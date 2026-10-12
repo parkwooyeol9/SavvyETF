@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
+import { withServerCache } from "@/lib/apiCache";
 import {
   catalogSpec,
   keyBelongsToSpec,
@@ -16,7 +17,10 @@ export const maxDuration = 60;
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
+// Raw R2 dataset browser behind the admin-only 적재 현황 tab.
 export async function GET(request: Request) {
+  const denied = requireSiteAdmin(request);
+  if (denied) return denied;
   const url = new URL(request.url);
   const dataset = (url.searchParams.get("dataset") || "").trim();
   const spec = catalogSpec(dataset);
@@ -51,7 +55,7 @@ export async function GET(request: Request) {
 
     if (!date && !key) {
       return NextResponse.json(index, {
-        headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
+        headers: PRIVATE_NO_STORE,
       });
     }
 
@@ -84,7 +88,7 @@ export async function GET(request: Request) {
 
     const obj = await loadSeriesObject(spec, picked.key, date || ymdLoose(picked.key));
     return NextResponse.json(obj, {
-      headers: { "Cache-Control": cdnCacheHeader("yahoo") },
+      headers: PRIVATE_NO_STORE,
     });
   } catch (exc) {
     return NextResponse.json(

@@ -12,6 +12,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
 import {
   CORRIDOR_DEFAULTS,
   DEFAULT_SCENARIOS,
@@ -130,6 +132,7 @@ function newScenario(index: number, targetPct: number): CorridorScenarioConfig {
 }
 
 export default function CorridorTab() {
+  const { secret } = useAdminSession();
   const equityOptions = useMemo(() => corridorBmUniverse("equity"), []);
   const bondOptions = useMemo(() => corridorBmUniverse("bond"), []);
   const [equitySymbol, setEquitySymbol] = useState<string>(
@@ -159,7 +162,7 @@ export default function CorridorTab() {
     try {
       const res = await fetch("/api/corridor", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders(secret) },
         body: JSON.stringify({
           equity_symbol: equitySymbol,
           bond_symbol: bondSymbol,
@@ -177,7 +180,7 @@ export default function CorridorTab() {
     } finally {
       setLoading(false);
     }
-  }, [equitySymbol, bondSymbol, startDate, target, scenarios, weightFocus]);
+  }, [equitySymbol, bondSymbol, startDate, target, scenarios, weightFocus, secret]);
 
   useEffect(() => {
     void run();

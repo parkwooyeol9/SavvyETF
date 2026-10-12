@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
+import { withServerCache } from "@/lib/apiCache";
 import {
   DATA_CATALOG,
   emptyLiveStats,
@@ -93,12 +94,13 @@ async function buildPayload(): Promise<DataCatalogPayload> {
   };
 }
 
-export async function GET() {
+// Admin-only tab (적재 현황): bucket name, object keys and sizes.
+export async function GET(request: Request) {
+  const denied = requireSiteAdmin(request);
+  if (denied) return denied;
   try {
     const payload = await withServerCache("data-catalog:v1", 120_000, 600_000, buildPayload);
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
-    });
+    return NextResponse.json(payload, { headers: PRIVATE_NO_STORE });
   } catch (exc) {
     return NextResponse.json(
       {
@@ -110,7 +112,7 @@ export async function GET() {
         datasets: DATA_CATALOG.map((spec) => ({ ...spec, live: emptyLiveStats() })),
         error: exc instanceof Error ? exc.message : "catalog failed",
       } satisfies DataCatalogPayload,
-      { status: 500 },
+      { status: 500, headers: PRIVATE_NO_STORE },
     );
   }
 }

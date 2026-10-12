@@ -6,13 +6,16 @@ import {
   type CorridorScenarioConfig,
   type RebalanceTargetMode,
 } from "@/lib/corridor";
-import { cdnCacheHeader } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Admin-only tab (비중조절전략) — gated here, not just hidden in the nav.
 export async function GET(req: Request) {
+  const denied = requireSiteAdmin(req);
+  if (denied) return denied;
   const url = new URL(req.url);
   const body: CorridorRequest = {
     equity_symbol: url.searchParams.get("equity") || undefined,
@@ -27,17 +30,19 @@ export async function GET(req: Request) {
     const payload = await runCorridorAnalysis(body);
     return NextResponse.json(payload, {
       status: payload.ok ? 200 : 400,
-      headers: { "Cache-Control": cdnCacheHeader("yahoo") },
+      headers: PRIVATE_NO_STORE,
     });
   } catch (exc) {
     return NextResponse.json(
       { ok: false, error: exc instanceof Error ? exc.message : String(exc) },
-      { status: 502 },
+      { status: 502, headers: PRIVATE_NO_STORE },
     );
   }
 }
 
 export async function POST(req: Request) {
+  const denied = requireSiteAdmin(req);
+  if (denied) return denied;
   try {
     const raw = (await req.json()) as CorridorRequest & {
       scenarios?: unknown;
@@ -49,12 +54,12 @@ export async function POST(req: Request) {
     const payload = await runCorridorAnalysis(body);
     return NextResponse.json(payload, {
       status: payload.ok ? 200 : 400,
-      headers: { "Cache-Control": "no-store" },
+      headers: PRIVATE_NO_STORE,
     });
   } catch (exc) {
     return NextResponse.json(
       { ok: false, error: exc instanceof Error ? exc.message : String(exc) },
-      { status: 502 },
+      { status: 502, headers: PRIVATE_NO_STORE },
     );
   }
 }

@@ -38,6 +38,9 @@ services:
         sync: false
       - key: PORT
         value: "8080"
+      # all = web + schedulers + Telegram polling in one process (see README "프로세스 역할 분리")
+      - key: BOT_ROLE
+        value: "all"
       - key: SUMMARY_SCHEDULE_ENABLED
         value: "true"
       - key: SUMMARY_SCHEDULE_HOURS_KST

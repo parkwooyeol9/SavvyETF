@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import FreshnessBadge from "@/components/FreshnessBadge";
 import type { Kosdaq100Payload, Kosdaq100Row } from "@/lib/kosdaq100";
 
 type SortKey =
@@ -239,6 +240,7 @@ export default function Kosdaq100Tab({ embedded = false }: { embedded?: boolean 
         <p className="meta-soft">
           {data?.schedule_note || "평일 17:15 KST(장마감 후) 데이터·브리핑 갱신"}
           {data?.as_of ? ` · 기준 ${data.as_of}` : ""}
+          <FreshnessBadge asOf={data?.as_of} />
           {data?.generated_at
             ? ` · 조회 ${new Date(data.generated_at).toLocaleString("ko-KR", {
                 hour12: false,

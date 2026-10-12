@@ -18,11 +18,17 @@ export type DatasetSpec = {
   volatile: boolean;
   insight: string;
   viewTab?: string;
+  /**
+   * Weekdays without a new snapshot that are still normal. Set only for
+   * datasets with a known cadence; the catalog flags the rest as "주기 미정".
+   */
+  allowWeekdays?: number;
 };
 
 export const DATA_CATALOG: DatasetSpec[] = [
   {
     id: "etf_db",
+    allowWeekdays: 1,
     label: "한국 상장 ETF DB",
     group: "etf",
     kind: "timeseries",
@@ -35,6 +41,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "etf_db_us",
+    allowWeekdays: 2,
     label: "미국 상장 ETF DB",
     group: "etf",
     kind: "timeseries",
@@ -47,6 +54,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "nlp_history",
+    allowWeekdays: 1,
     label: "종목 뉴스 감성 (NLP)",
     group: "news",
     kind: "timeseries",
@@ -59,6 +67,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "kospi200_panel",
+    allowWeekdays: 1,
     label: "코스피 200 패널",
     group: "news",
     kind: "timeseries",
@@ -88,6 +97,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "etf_weights",
+    allowWeekdays: 1,
     label: "ETF 편입비 모니터",
     group: "etf",
     kind: "timeseries",
@@ -100,6 +110,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "kosdaq_active",
+    allowWeekdays: 1,
     label: "코스닥 액티브 ETF",
     group: "etf",
     kind: "timeseries",
@@ -148,6 +159,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "insider_us",
+    allowWeekdays: 1,
     label: "미국 내부자 매매 (SEC Form 4)",
     group: "monitor",
     kind: "rolling",
@@ -160,6 +172,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "cftc",
+    allowWeekdays: 7,
     label: "CFTC 포지션",
     group: "monitor",
     kind: "timeseries",
@@ -172,6 +185,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "credit_monitor",
+    allowWeekdays: 1,
     label: "신용·자금 (FreeSIS)",
     group: "monitor",
     kind: "timeseries",
@@ -184,6 +198,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
   },
   {
     id: "kosdaq100",
+    allowWeekdays: 1,
     label: "코스닥100 모니터",
     group: "monitor",
     kind: "timeseries",

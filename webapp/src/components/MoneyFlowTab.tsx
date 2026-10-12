@@ -14,6 +14,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
 import type {
   MetricCell,
   MetricKind,
@@ -88,6 +90,7 @@ function CellView({ cell }: { cell: MetricCell }) {
 }
 
 export default function MoneyFlowTab() {
+  const { secret } = useAdminSession();
   const [period, setPeriod] = useState<MoneyFlowPeriod>("1m");
   const [data, setData] = useState<MoneyFlowPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +100,7 @@ export default function MoneyFlowTab() {
     async (p: MoneyFlowPeriod, silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const res = await fetch(`/api/money-flow?period=${p}`);
+        const res = await fetch(`/api/money-flow?period=${p}`, { headers: adminAuthHeaders(secret) });
         const json = (await res.json()) as MoneyFlowPayload;
         if (!res.ok || !json.ok) {
           throw new Error(json.error || `HTTP ${res.status}`);
@@ -110,7 +113,7 @@ export default function MoneyFlowTab() {
         if (!silent) setLoading(false);
       }
     },
-    [],
+    [secret],
   );
 
   useEffect(() => {

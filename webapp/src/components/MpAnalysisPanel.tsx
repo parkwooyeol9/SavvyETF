@@ -110,7 +110,8 @@ export default function MpAnalysisPanel() {
   const [news, setNews] = useState<MpNewsBlock[] | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsFilter, setNewsFilter] = useState<string>("all");
-  const autoRan = useRef(false);
+  /** `canEdit` value the last auto-run used; login/logout re-runs with the other API mode. */
+  const autoRan = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (pf && !selId) setSelId(latestVersion(pf)?.id || "");
@@ -131,10 +132,14 @@ export default function MpAnalysisPanel() {
       setLoading(true);
       setError(null);
       try {
+        // Admin analyses the (possibly unsaved) draft. Everyone else analyses the
+        // stored MP by reference: their copy has no 편입일 to send.
         const r = await fetch("/api/mp/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ portfolio: p, mode: m, lookback_days: lb }),
+          body: JSON.stringify(
+            canEdit ? { portfolio: p, mode: m, lookback_days: lb } : { shared: "mp", mode: m, lookback_days: lb },
+          ),
         });
         const json = (await r.json()) as MpAnalysis;
         setRes(json);
@@ -146,7 +151,7 @@ export default function MpAnalysisPanel() {
         setLoading(false);
       }
     },
-    [],
+    [canEdit],
   );
 
   const loadNews = useCallback(async (p: MpPortfolio, lang: MpNewsLang) => {
@@ -172,11 +177,12 @@ export default function MpAnalysisPanel() {
   }, []);
 
   useEffect(() => {
-    if (!pf || autoRan.current) return;
-    autoRan.current = true;
+    if (!pf || autoRan.current === canEdit) return;
+    const first = autoRan.current === null;
+    autoRan.current = canEdit;
     void run(pf, mode, lookback);
-    void loadNews(pf, newsLang);
-  }, [pf, mode, lookback, newsLang, run, loadNews]);
+    if (first) void loadNews(pf, newsLang);
+  }, [pf, canEdit, mode, lookback, newsLang, run, loadNews]);
 
   if (!pf || !sel) return <p className="empty">MP 불러오는 중…</p>;
 

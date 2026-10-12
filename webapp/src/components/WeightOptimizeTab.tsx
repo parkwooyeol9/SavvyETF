@@ -12,6 +12,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
 import type { OptimizedSleeve, WeightOptimizePayload } from "@/lib/weightOptimize";
 
 const LAST_KEY = "savvyetf.weightopt.last";
@@ -92,6 +94,7 @@ function saveLast(data: WeightOptimizePayload) {
 }
 
 export default function WeightOptimizeTab() {
+  const { secret } = useAdminSession();
   const [data, setData] = useState<WeightOptimizePayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +104,7 @@ export default function WeightOptimizeTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/weight-optimize");
+      const res = await fetch("/api/weight-optimize", { headers: adminAuthHeaders(secret) });
       const json = (await res.json()) as WeightOptimizePayload;
       setData(json);
       if (!json.ok) setError(json.error || "최적화 실패");
@@ -111,7 +114,7 @@ export default function WeightOptimizeTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [secret]);
 
   useEffect(() => {
     setLast(loadLast());

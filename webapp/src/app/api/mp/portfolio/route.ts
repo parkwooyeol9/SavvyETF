@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { PRIVATE_NO_STORE } from "@/lib/adminGuard";
+import type { MpPortfolio } from "@/lib/mpPortfolio";
 import {
   isMpPortfolioKind,
   loadSharedMpPortfolio,
@@ -7,12 +9,14 @@ import {
   saveSharedMpPortfolio,
   validateMpPortfolio,
 } from "@/lib/mpPortfolioStore";
+import { redactMpPortfolioForPublic } from "@/lib/mpRedact";
 import { siteAdminAuthorized } from "@/lib/siteAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NO_STORE = { "Cache-Control": "no-store" };
+// Response differs by caller (admin gets dates), so never let the CDN keep it.
+const NO_STORE = PRIVATE_NO_STORE;
 
 function kindOf(request: Request) {
   const kind = new URL(request.url).searchParams.get("kind");
@@ -22,9 +26,16 @@ function kindOf(request: Request) {
 export async function GET(request: Request) {
   const kind = kindOf(request);
   if (!kind) return NextResponse.json({ ok: false, error: "kind=mp|etf" }, { status: 400 });
+  const admin = siteAdminAuthorized(request);
+  // MP-ETF배분 is an admin-only view end to end.
+  if (kind === "etf" && !admin) {
+    return NextResponse.json({ ok: false, portfolio: null, error: "관리자 전용입니다." }, { status: 401, headers: NO_STORE });
+  }
   try {
-    const portfolio = await loadSharedMpPortfolio(kind);
-    return NextResponse.json({ ok: true, portfolio, configured: mpStoreConfigured() }, { headers: NO_STORE });
+    const stored = await loadSharedMpPortfolio(kind);
+    // Non-admins get holdings and weights but not 편입·리밸런싱 일자.
+    const portfolio = stored && !admin ? redactMpPortfolioForPublic(stored as MpPortfolio) : stored;
+    return NextResponse.json({ ok: true, portfolio, full: admin, configured: mpStoreConfigured() }, { headers: NO_STORE });
   } catch (exc) {
     return NextResponse.json(
       { ok: false, portfolio: null, error: exc instanceof Error ? exc.message : "load failed" },

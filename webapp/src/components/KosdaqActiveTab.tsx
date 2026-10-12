@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import FreshnessBadge from "@/components/FreshnessBadge";
 import type {
   FundSnapshot,
   KosdaqActivePayload,
@@ -299,6 +300,7 @@ export default function KosdaqActiveTab() {
         <p className="meta-soft">
           {data?.schedule_note || "매일 17:50 KST 장마감 후 갱신"}
           {data?.as_of ? ` · 기준일 ${data.as_of}` : ""}
+          <FreshnessBadge asOf={data?.as_of} />
           {data?.generated_at
             ? ` · 조회 ${new Date(data.generated_at).toLocaleString("ko-KR", {
                 hour12: false,

@@ -13575,3 +13575,32 @@ p.aa-note { padding-left: 0; }
   .aa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .aa-rank { text-align: left; }
 }
+
+/* ---- AI Pulse tab (AiPulseTab.tsx) — prefix ap- ---- */
+.ap-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ap-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ap-view {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text, #e6edf3);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.ap-view.active {
+  background: rgba(77, 163, 255, 0.18);
+  border-color: rgba(77, 163, 255, 0.55);
+}
+.ap-frame {
+  border-radius: 12px;
+}
