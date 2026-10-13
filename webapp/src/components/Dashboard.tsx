@@ -181,6 +181,15 @@ function DashboardInner({
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
   const visibleGroupTabs = visibleShellTabs(activeGroup.tabs, unlocked);
   const visibleNested = visibleNestedGroups(activeGroup.nested, unlocked);
+  // 교육: 월가 구루를 카드뉴스보다 앞에 둔다. 자료실은 오른쪽 끝.
+  const leadNested =
+    activeGroup.id === "learn"
+      ? visibleNested.filter((item) => item.id === "fundmgr")
+      : [];
+  const trailNested =
+    activeGroup.id === "learn"
+      ? visibleNested.filter((item) => item.id !== "fundmgr")
+      : visibleNested;
   const activeNested =
     visibleNested.find((item) => item.id === nestedId) || null;
   const visibleNestedTabs = activeNested
@@ -421,9 +430,20 @@ function DashboardInner({
     const group = NAV_GROUPS.find((g) => g.id === nextGroup);
     if (!group) return;
     if (navPlacement(tab).groupId === nextGroup) return;
+    const nestedVisible = visibleNestedGroups(group.nested, unlocked);
+    const learnGuru =
+      nextGroup === "learn"
+        ? nestedVisible.find((item) => item.id === "fundmgr")
+        : undefined;
+    const guruLeaf = learnGuru
+      ? visibleShellTabs(learnGuru.tabs, unlocked)[0]
+      : undefined;
+    if (guruLeaf) {
+      setTab(guruLeaf);
+      return;
+    }
     const first =
-      visibleShellTabs(group.tabs, unlocked)[0] ||
-      visibleNestedGroups(group.nested, unlocked)[0]?.tabs[0];
+      visibleShellTabs(group.tabs, unlocked)[0] || nestedVisible[0]?.tabs[0];
     if (first) setTab(first);
   }
 
@@ -474,6 +494,16 @@ function DashboardInner({
           className={`tabs tabs-secondary ${showTertiary ? "has-tertiary" : ""}`}
           aria-label={`${activeGroup.label} 하위 탭`}
         >
+          {leadNested.map((nested) => (
+            <button
+              key={nested.id}
+              type="button"
+              className={`tab-btn sub ${activeNested?.id === nested.id ? "active" : ""}`}
+              onClick={() => selectNested(nested.id)}
+            >
+              {nested.label}
+            </button>
+          ))}
           {visibleGroupTabs.map((id) => (
             <button
               key={id}
@@ -484,7 +514,7 @@ function DashboardInner({
               {SHELL_TAB_LABELS[id]}
             </button>
           ))}
-          {(visibleNested || []).map((nested) => (
+          {trailNested.map((nested) => (
             <button
               key={nested.id}
               type="button"
