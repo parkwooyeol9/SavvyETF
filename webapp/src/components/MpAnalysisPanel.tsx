@@ -460,7 +460,7 @@ export default function MpAnalysisPanel() {
               {sel.holdings.map((h) => {
                 const t = normalizeTicker(h.ticker, h.country);
                 const meta = tickerMeta(t);
-                const row = res?.holdings.find((x) => x.key === (h.country === "CASH" ? `CASH:${t}` : t));
+                const row = res?.holdings?.find((x) => x.key === (h.country === "CASH" ? `CASH:${t}` : t));
                 const name =
                   h.country === "CASH"
                     ? t === "CNY"
