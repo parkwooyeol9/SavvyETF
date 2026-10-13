@@ -1,22 +1,21 @@
 /**
- * Korean ETF supply/demand snapshot from Koscom ETF CHECK rank boards.
+ * ETF supply/demand snapshot from Koscom ETF CHECK rank boards.
  * Server-only: uses Node HTTPS (HTTP/1.1). Do not import from client components.
  *
- * Volume: https://www.etfcheck.co.kr/mobile/rank/volume
- * Inflow: https://www.etfcheck.co.kr/mobile/rank/inflow
+ * KR inflow: https://www.etfcheck.co.kr/mobile/rank/inflow
+ * US inflow: https://www.etfcheck.co.kr (global ETF inflow rank)
  */
 
 import https from "https";
 import { URL } from "url";
 
-export const ETF_SUPPLY_SOURCE_VOLUME =
-  "https://www.etfcheck.co.kr/mobile/rank/volume";
 export const ETF_SUPPLY_SOURCE_INFLOW =
   "https://www.etfcheck.co.kr/mobile/rank/inflow";
+export const ETF_SUPPLY_SOURCE_US_INFLOW =
+  "https://www.etfcheck.co.kr/user/etp/getGlobalEtfRankListInflow";
 
-export type EtfSupplyVolumePeriod = "10D" | "5D" | "D" | "BD";
 export type EtfSupplyInflowPeriod = "W" | "M" | "3M";
-export type EtfSupplyPeriod = EtfSupplyVolumePeriod | EtfSupplyInflowPeriod;
+export type EtfSupplyPeriod = EtfSupplyInflowPeriod;
 
 export const ETF_SUPPLY_INFLOW_PERIODS: EtfSupplyInflowPeriod[] = [
   "W",
@@ -25,10 +24,6 @@ export const ETF_SUPPLY_INFLOW_PERIODS: EtfSupplyInflowPeriod[] = [
 ];
 
 export const ETF_SUPPLY_PERIOD_LABEL: Record<EtfSupplyPeriod, string> = {
-  "10D": "10일평균",
-  "5D": "5일평균",
-  D: "당일",
-  BD: "전일",
   W: "1주",
   M: "1개월",
   "3M": "3개월",
@@ -57,8 +52,9 @@ export type EtfSupplyPayload = {
   generated_at: string;
   generated_at_display: string;
   source: string;
-  volume: EtfSupplyBoard;
-  turnover: EtfSupplyBoard;
+  /** US-listed ETF net inflow (USD). */
+  us_inflow: Record<EtfSupplyInflowPeriod, EtfSupplyBoard>;
+  /** Korean-listed ETF net inflow (KRW). */
   inflow: Record<EtfSupplyInflowPeriod, EtfSupplyBoard>;
   notes: string[];
   error?: string;
@@ -67,7 +63,6 @@ export type EtfSupplyPayload = {
 const BASE_URL = "https://www.etfcheck.co.kr";
 const FALLBACK_KEY = "vfSddfdv";
 const TOP_N = 10;
-const VOLUME_PERIODS: EtfSupplyVolumePeriod[] = ["10D", "D", "BD"];
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -215,6 +210,18 @@ async function getJson(
   throw lastErr instanceof Error ? lastErr : new Error(`ETF CHECK ${path} failed`);
 }
 
+function stampBoard(
+  rows: RankBoard["rows"],
+  date: unknown,
+  limit: number,
+): RankBoard {
+  const dateNum = Number(date);
+  return {
+    rows: rows.slice(0, Math.max(1, limit)),
+    date_ms: Number.isFinite(dateNum) && dateNum > 0 ? dateNum : null,
+  };
+}
+
 function parseBoard(
   payload: { results?: unknown; date?: unknown },
   limit: number,
@@ -237,11 +244,32 @@ function parseBoard(
       prev_price: num(r.BEF_JONGGA),
     });
   }
-  const dateNum = Number(payload.date);
-  return {
-    rows: rows.slice(0, Math.max(1, limit)),
-    date_ms: Number.isFinite(dateNum) && dateNum > 0 ? dateNum : null,
-  };
+  return stampBoard(rows, payload.date, limit);
+}
+
+function parseGlobalBoard(
+  payload: { results?: unknown; date?: unknown },
+  limit: number,
+): RankBoard {
+  const rows: RankBoard["rows"] = [];
+  const raw = Array.isArray(payload.results) ? payload.results : [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const code = String(r.SYMBOL || "").trim();
+    const name = String(r.FUNDNAME || "").trim();
+    if (!code && !name) continue;
+    rows.push({
+      code: code || name,
+      name: name || code,
+      value: num(r.RANK_VALUE),
+      price: null,
+      change_pct: null,
+      yield_pct: num(r.YIELD),
+      prev_price: null,
+    });
+  }
+  return stampBoard(rows, payload.date, limit);
 }
 
 const RANK_BASE = {
@@ -255,16 +283,6 @@ const RANK_BASE = {
   coveredCall: "",
 };
 
-async function fetchVolume(order: string, orderCol: "V" | "P"): Promise<RankBoard> {
-  const payload = await getJson("/user/etp/getEtpRankListVolume", {
-    ...RANK_BASE,
-    order,
-    orderCol,
-    limit: TOP_N,
-  });
-  return parseBoard(payload, TOP_N);
-}
-
 async function fetchInflow(order: EtfSupplyInflowPeriod): Promise<RankBoard> {
   const payload = await getJson("/user/etp/getEtpRankListInflow2", {
     ...RANK_BASE,
@@ -272,6 +290,15 @@ async function fetchInflow(order: EtfSupplyInflowPeriod): Promise<RankBoard> {
     limit: TOP_N,
   });
   return parseBoard(payload, TOP_N);
+}
+
+async function fetchUsInflow(order: EtfSupplyInflowPeriod): Promise<RankBoard> {
+  const payload = await getJson("/user/etp/getGlobalEtfRankListInflow", {
+    ...RANK_BASE,
+    order,
+    limit: TOP_N,
+  });
+  return parseGlobalBoard(payload, TOP_N);
 }
 
 function emptyInflowMap(): Record<EtfSupplyInflowPeriod, EtfSupplyBoard> {
@@ -312,10 +339,6 @@ function asOfFromMs(ms: number | null): string | null {
   }
 }
 
-function hasRankValues(board: RankBoard): boolean {
-  return board.rows.some((r) => r.value != null && r.value > 0);
-}
-
 function boardFrom(period: EtfSupplyPeriod, fetched: RankBoard): EtfSupplyBoard {
   return {
     period,
@@ -334,69 +357,48 @@ function emptyBoard(period: EtfSupplyPeriod): EtfSupplyBoard {
   };
 }
 
+async function loadInflowBoards(
+  fetchBoard: (period: EtfSupplyInflowPeriod) => Promise<RankBoard>,
+): Promise<Record<EtfSupplyInflowPeriod, EtfSupplyBoard>> {
+  const entries = await Promise.all(
+    ETF_SUPPLY_INFLOW_PERIODS.map(async (period) => {
+      try {
+        return [period, await fetchBoard(period)] as const;
+      } catch {
+        return [period, { rows: [], date_ms: null } as RankBoard] as const;
+      }
+    }),
+  );
+  const boards = emptyInflowMap();
+  for (const [period, board] of entries) {
+    boards[period] = boardFrom(period, board);
+  }
+  return boards;
+}
+
 export async function collectEtfSupply(): Promise<EtfSupplyPayload> {
   const generated = new Date();
   const notes: string[] = [
-    "국내 상장 ETF. 거래량·거래대금은 ETF CHECK 거래량 랭킹, 자금유입은 1주·1개월·3개월.",
-    "거래량 랭킹 페이지는 월간 기간이 없어 10일평균 → 당일 → 전일 순으로 값이 있는 기간을 사용합니다.",
+    "국내 ETF 자금유입은 ETF CHECK 순유입(원), 미국 상장 ETF 자금유입은 글로벌 랭킹(달러).",
+    "기간은 1주·1개월·3개월이며 각 기간 순유입 상위 10종입니다.",
   ];
 
   try {
-    const inflowPromise = Promise.all(
-      ETF_SUPPLY_INFLOW_PERIODS.map(async (period) => {
-        try {
-          return [period, await fetchInflow(period)] as const;
-        } catch {
-          return [period, { rows: [], date_ms: null } as RankBoard] as const;
-        }
-      }),
+    const [inflow, usInflow] = await Promise.all([
+      loadInflowBoards(fetchInflow),
+      loadInflowBoards(fetchUsInflow),
+    ]);
+
+    const ok = ETF_SUPPLY_INFLOW_PERIODS.some(
+      (period) => inflow[period].rows.length > 0 || usInflow[period].rows.length > 0,
     );
-
-    let volumePeriod: EtfSupplyVolumePeriod = "BD";
-    let volumeBoard: RankBoard = { rows: [], date_ms: null };
-    let turnoverBoard: RankBoard = { rows: [], date_ms: null };
-
-    for (const period of VOLUME_PERIODS) {
-      try {
-        const [volume, turnover] = await Promise.all([
-          fetchVolume(period, "V"),
-          fetchVolume(period, "P"),
-        ]);
-        if (hasRankValues(volume) || hasRankValues(turnover)) {
-          volumePeriod = period;
-          volumeBoard = volume;
-          turnoverBoard = turnover;
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    const inflowEntries = await inflowPromise;
-    const inflow = emptyInflowMap();
-    for (const [period, board] of inflowEntries) {
-      inflow[period] = boardFrom(period, board);
-    }
-
-    if (volumePeriod !== "10D") {
-      notes.push(
-        `거래량은 현재 ${ETF_SUPPLY_PERIOD_LABEL[volumePeriod]} 기준입니다.`,
-      );
-    }
-
-    const ok =
-      hasRankValues(volumeBoard) ||
-      hasRankValues(turnoverBoard) ||
-      ETF_SUPPLY_INFLOW_PERIODS.some((period) => inflow[period].rows.length > 0);
 
     return {
       ok,
       generated_at: generated.toISOString(),
       generated_at_display: fmtKst(kstNow()),
       source: "etfcheck",
-      volume: boardFrom(volumePeriod, volumeBoard),
-      turnover: boardFrom(volumePeriod, turnoverBoard),
+      us_inflow: usInflow,
       inflow,
       notes,
       error: ok ? undefined : "ETF CHECK 수급 랭킹을 가져오지 못했습니다.",
@@ -408,8 +410,7 @@ export async function collectEtfSupply(): Promise<EtfSupplyPayload> {
       generated_at: generated.toISOString(),
       generated_at_display: fmtKst(kstNow()),
       source: "etfcheck",
-      volume: emptyBoard("BD"),
-      turnover: emptyBoard("BD"),
+      us_inflow: emptyInflowMap(),
       inflow: emptyInflowMap(),
       notes,
       error: message,
