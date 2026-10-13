@@ -1659,6 +1659,11 @@ a.geo-choke-hl:hover {
 .etf-supply-name {
   margin-top: 0.12rem;
   font-size: 0.82rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .etf-supply-rank {

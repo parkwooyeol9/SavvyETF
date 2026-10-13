@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function GET() {
   try {
     const payload = await withServerCache(
-      "etf-supply:v4",
+      "etf-supply:v5",
       180_000,
       420_000,
       async () => {
@@ -33,17 +33,10 @@ export async function GET() {
         generated_at: new Date().toISOString(),
         generated_at_display: "",
         source: "etfcheck",
-        volume: {
-          period: "BD",
-          period_label: "전일",
-          as_of: null,
-          rows: [],
-        },
-        turnover: {
-          period: "BD",
-          period_label: "전일",
-          as_of: null,
-          rows: [],
+        us_inflow: {
+          W: { period: "W", period_label: "1주", as_of: null, rows: [] },
+          M: { period: "M", period_label: "1개월", as_of: null, rows: [] },
+          "3M": { period: "3M", period_label: "3개월", as_of: null, rows: [] },
         },
         inflow: {
           W: { period: "W", period_label: "1주", as_of: null, rows: [] },

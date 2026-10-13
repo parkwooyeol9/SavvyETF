@@ -27,8 +27,7 @@ type EtfSupplyPayload = {
   generated_at: string;
   generated_at_display: string;
   source: string;
-  volume: EtfSupplyBoard;
-  turnover: EtfSupplyBoard;
+  us_inflow: Record<InflowPeriod, EtfSupplyBoard>;
   inflow: Record<InflowPeriod, EtfSupplyBoard>;
   notes: string[];
   error?: string;
@@ -52,8 +51,6 @@ function emptyInflow(): Record<InflowPeriod, EtfSupplyBoard> {
   };
 }
 
-type VolumeMode = "volume" | "turnover";
-
 function fmtPct(n?: number | null, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
@@ -63,14 +60,6 @@ function fmtPct(n?: number | null, digits = 2): string {
 function tone(n?: number | null): string {
   if (n == null || n === 0) return "";
   return n > 0 ? "up" : "down";
-}
-
-function fmtShares(n?: number | null): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(abs >= 1e9 ? 1 : 2)}억주`;
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(abs >= 1e6 ? 0 : 1)}만주`;
-  return `${Math.round(n).toLocaleString("ko-KR")}주`;
 }
 
 function fmtKrwDelta(n?: number | null, signed = true): string {
@@ -85,6 +74,21 @@ function fmtKrwDelta(n?: number | null, signed = true): string {
   }
   if (Math.abs(eok) >= 10) return `${sign}${eok.toFixed(1)}억`;
   return `${sign}${eok.toFixed(2)}억`;
+}
+
+function fmtUsdDelta(n?: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1e9) {
+    const digits = abs >= 1e11 ? 0 : abs >= 1e10 ? 1 : 2;
+    return `${sign}$${(abs / 1e9).toFixed(digits)}B`;
+  }
+  if (abs >= 1e6) {
+    const digits = abs >= 1e8 ? 0 : 1;
+    return `${sign}$${(abs / 1e6).toFixed(digits)}M`;
+  }
+  return `${sign}$${Math.round(abs).toLocaleString("en-US")}`;
 }
 
 function RankBar({
@@ -159,7 +163,9 @@ function RankTable({
                 </td>
                 <td>
                   <code>{row.code}</code>
-                  <div className="etf-supply-name">{row.name}</div>
+                  <div className="etf-supply-name" title={row.name}>
+                    {row.name}
+                  </div>
                 </td>
                 <td className="num etf-supply-val">
                   <strong className={tone(row.value)}>{formatValue(row.value)}</strong>
@@ -180,7 +186,7 @@ function RankTable({
 export default function EtfSupplyPanel() {
   const [data, setData] = useState<EtfSupplyPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<VolumeMode>("volume");
+  const [usPeriod, setUsPeriod] = useState<InflowPeriod>("M");
   const [inflowPeriod, setInflowPeriod] = useState<InflowPeriod>("M");
 
   const load = useCallback(async () => {
@@ -195,8 +201,7 @@ export default function EtfSupplyPanel() {
         generated_at: new Date().toISOString(),
         generated_at_display: "",
         source: "etfcheck",
-        volume: emptyBoard("BD", "전일"),
-        turnover: emptyBoard("BD", "전일"),
+        us_inflow: emptyInflow(),
         inflow: emptyInflow(),
         notes: [],
         error: exc instanceof Error ? exc.message : "로드 실패",
@@ -212,7 +217,7 @@ export default function EtfSupplyPanel() {
     return () => window.clearInterval(id);
   }, [load]);
 
-  const volumeBoard = mode === "volume" ? data?.volume : data?.turnover;
+  const usBoard = data?.us_inflow?.[usPeriod];
   const inflowBoard = data?.inflow?.[inflowPeriod];
 
   return (
@@ -221,7 +226,7 @@ export default function EtfSupplyPanel() {
         <div>
           <h2>ETF 수급</h2>
           <p className="kr-note">
-            국내 ETF 수급 · 거래량 Top10 · 자금유입 Top10
+            미국상장 ETF · 국내 ETF 자금유입 Top10
             {data?.generated_at_display ? ` · ${data.generated_at_display}` : ""}
           </p>
         </div>
@@ -237,45 +242,34 @@ export default function EtfSupplyPanel() {
       <div className="etf-supply-grid">
         <div className="etf-supply-block">
           <div className="etf-supply-block-head">
-            <h3>
-              거래량 Top10
-              {volumeBoard?.period_label ? (
-                <span className="etf-supply-period">{volumeBoard.period_label}</span>
-              ) : null}
-            </h3>
-            <div className="chip-row" role="group" aria-label="거래량 기준">
-              <button
-                type="button"
-                className={`chip ${mode === "volume" ? "active" : ""}`}
-                onClick={() => setMode("volume")}
-              >
-                거래량
-              </button>
-              <button
-                type="button"
-                className={`chip ${mode === "turnover" ? "active" : ""}`}
-                onClick={() => setMode("turnover")}
-              >
-                거래대금
-              </button>
+            <h3>미국상장 ETF 자금유입 Top10</h3>
+            <div className="chip-row" role="group" aria-label="미국 자금유입 기간">
+              {INFLOW_PERIODS.map((period) => (
+                <button
+                  key={period.id}
+                  type="button"
+                  className={`chip ${usPeriod === period.id ? "active" : ""}`}
+                  onClick={() => setUsPeriod(period.id)}
+                >
+                  {period.label}
+                </button>
+              ))}
             </div>
           </div>
           <RankTable
-            rows={volumeBoard?.rows || []}
-            valueLabel={mode === "volume" ? "거래량" : "거래대금"}
-            formatValue={
-              mode === "volume" ? fmtShares : (n) => fmtKrwDelta(n, false)
-            }
-            extraLabel="등락"
-            extraValue={(row) => fmtPct(row.change_pct)}
-            extraTone={(row) => tone(row.change_pct)}
+            rows={usBoard?.rows || []}
+            valueLabel="자금유입"
+            formatValue={fmtUsdDelta}
+            extraLabel="기간수익률"
+            extraValue={(row) => fmtPct(row.yield_pct)}
+            extraTone={(row) => tone(row.yield_pct)}
             loading={loading}
           />
         </div>
 
         <div className="etf-supply-block">
           <div className="etf-supply-block-head">
-            <h3>자금유입 Top10</h3>
+            <h3>국내 ETF 자금유입 Top10</h3>
             <div className="chip-row" role="group" aria-label="자금유입 기간">
               {INFLOW_PERIODS.map((period) => (
                 <button
