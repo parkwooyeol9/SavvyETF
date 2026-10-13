@@ -337,7 +337,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "월가 구루",
         tabs: ["gurus", "moneyflow", "thirteenf", "insider"],
       },
-      // Single-tab nested group so it renders after 월가 구루 (rightmost).
+      // Single-tab nested group. Dashboard renders this after the leaf tabs.
       { id: "vault", label: "자료실", tabs: ["vault"] },
     ],
   },
