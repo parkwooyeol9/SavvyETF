@@ -50,7 +50,7 @@ SPDR_XLSX = ("https://www.ssga.com/us/en/intermediary/library-content/products/f
              "holdings-daily-us-en-{t}.xlsx")
 
 # ── ETF 목록: (티커, 운용사, 분류, 한글 이름, 비교할 ACWI 그룹 id) ──
-# 분류: 국가 · 지역 · 섹터(미국) · 섹터(글로벌) · 산업·테마.  비교 그룹은 groups.py 의 id (없으면 None).
+# 분류: 국가 · 지역 · 섹터(미국) · 섹터(글로벌) · 테마.  (보유종목을 받을 수 없는 ETF 는 etf_valuation.PROXIES)  비교 그룹은 groups.py 의 id (없으면 None).
 ETFS: list[tuple[str, str, str, str, str | None]] = [
     # 국가
     ("EWJ", "iShares", "국가", "MSCI 일본", "country:일본"),
@@ -78,6 +78,16 @@ ETFS: list[tuple[str, str, str, str, str | None]] = [
     ("EWP", "iShares", "국가", "MSCI 스페인", "country:스페인"),
     ("EWN", "iShares", "국가", "MSCI 네덜란드", "country:네덜란드"),
     ("EWD", "iShares", "국가", "MSCI 스웨덴", "country:스웨덴"),
+    ("EIS", "iShares", "국가", "MSCI 이스라엘", "country:이스라엘"),
+    ("UAE", "iShares", "국가", "MSCI UAE", "country:UAE"),
+    ("QAT", "iShares", "국가", "MSCI 카타르", "country:카타르"),
+    ("KWT", "iShares", "국가", "MSCI 쿠웨이트", "country:쿠웨이트"),
+    ("TUR", "iShares", "국가", "MSCI 튀르키예", "country:튀르키예"),
+    ("EPOL", "iShares", "국가", "MSCI 폴란드", "country:폴란드"),
+    ("EPHE", "iShares", "국가", "MSCI 필리핀", "country:필리핀"),
+    ("ENZL", "iShares", "국가", "MSCI 뉴질랜드", "country:뉴질랜드"),
+    ("EIRL", "iShares", "국가", "MSCI 아일랜드", "country:아일랜드"),
+    ("EDEN", "iShares", "국가", "MSCI 덴마크", "country:덴마크"),
     # 지역·광역
     ("SPY", "SPDR", "지역", "S&P 500", "region:미국"),
     ("IVV", "iShares", "지역", "S&P 500 (Core)", "region:미국"),
@@ -113,22 +123,29 @@ ETFS: list[tuple[str, str, str, str, str | None]] = [
     ("MXI", "iShares", "섹터(글로벌)", "글로벌 소재", "sector:ACWI:소재"),
     ("IXP", "iShares", "섹터(글로벌)", "글로벌 커뮤니케이션", "sector:ACWI:커뮤니케이션"),
     # 산업·테마
-    ("SOXX", "iShares", "산업·테마", "반도체", "theme:semi_all"),
-    ("IGV", "iShares", "산업·테마", "소프트웨어", "theme:software"),
-    ("ARTY", "iShares", "산업·테마", "AI·테크", "theme:ai_semi"),
-    ("IHAK", "iShares", "산업·테마", "사이버보안", "theme:cyber"),
-    ("ITA", "iShares", "산업·테마", "미국 항공우주·방산", "theme:defense"),
-    ("XAR", "SPDR", "산업·테마", "미국 항공우주·방산 (동일가중)", "theme:defense"),
-    ("IDEF", "iShares", "산업·테마", "방산 (액티브)", "theme:defense"),
-    ("ICLN", "iShares", "산업·테마", "글로벌 클린에너지", "theme:renewable"),
-    ("IDRV", "iShares", "산업·테마", "자율주행·전기차", "theme:ev_battery"),
-    ("IBB", "iShares", "산업·테마", "바이오테크", "industry:Biotechnology"),
-    ("IHI", "iShares", "산업·테마", "미국 의료기기", "industry:Health Care Equipment & Supplies"),
-    ("RING", "iShares", "산업·테마", "글로벌 금광", "theme:gold"),
-    ("PICK", "iShares", "산업·테마", "글로벌 금속·광산", "theme:base_metals"),
-    ("XME", "SPDR", "산업·테마", "미국 금속·광업 (동일가중)", "theme:steel"),
-    ("IGF", "iShares", "산업·테마", "글로벌 인프라", None),
-    ("REET", "iShares", "산업·테마", "글로벌 리츠", "theme:reits"),
+    ("SOXX", "iShares", "테마", "반도체", "theme:semi_all"),
+    ("IGV", "iShares", "테마", "소프트웨어", "theme:software"),
+    ("ARTY", "iShares", "테마", "AI·테크", "theme:ai_semi"),
+    ("IHAK", "iShares", "테마", "사이버보안", "theme:cyber"),
+    ("ITA", "iShares", "테마", "미국 항공우주·방산", "theme:defense"),
+    ("XAR", "SPDR", "테마", "미국 항공우주·방산 (동일가중)", "theme:defense"),
+    ("IDEF", "iShares", "테마", "방산 (액티브)", "theme:defense"),
+    ("ICLN", "iShares", "테마", "글로벌 클린에너지", "theme:renewable"),
+    ("IDRV", "iShares", "테마", "자율주행·전기차", "theme:ev_battery"),
+    ("IBB", "iShares", "테마", "바이오테크", "industry:Biotechnology"),
+    ("IHI", "iShares", "테마", "미국 의료기기", "industry:Health Care Equipment & Supplies"),
+    ("RING", "iShares", "테마", "글로벌 금광", "theme:gold"),
+    ("PICK", "iShares", "테마", "글로벌 금속·광산", "theme:base_metals"),
+    ("XME", "SPDR", "테마", "미국 금속·광업 (동일가중)", "theme:steel"),
+    ("IGF", "iShares", "테마", "글로벌 인프라", None),
+    ("REET", "iShares", "테마", "글로벌 리츠", "theme:reits"),
+    ("ITB", "iShares", "테마", "미국 주택건설", "industry:Household Durables"),
+    ("IAI", "iShares", "테마", "미국 브로커리지·거래소", "industry:Capital Markets"),
+    ("SLVP", "iShares", "테마", "글로벌 은광", "theme:gold"),
+    ("KRE", "SPDR", "테마", "미국 지역은행 (동일가중)", None),
+    ("KIE", "SPDR", "테마", "미국 보험 (동일가중)", "industry:Insurance"),
+    ("XOP", "SPDR", "테마", "미국 원유생산 (동일가중)", None),
+    ("XTL", "SPDR", "테마", "미국 통신장비·서비스 (동일가중)", None),
 ]
 CATEGORIES = list(dict.fromkeys(c for _, _, c, _, _ in ETFS))
 
@@ -252,7 +269,7 @@ def read_holdings(p: Path) -> pd.DataFrame:
         df = pd.read_csv(io.StringIO("\n".join(body)), dtype=str)
         out = pd.DataFrame({
             "ticker": df["Ticker"].str.strip(), "name": df["Name"].str.strip(),
-            "weight": pd.to_numeric(df["Weight (%)"].str.replace(",", ""), errors="coerce"),
+            "weight": _ishares_weight(df),
             "location": df.get("Location"), "exchange": df.get("Exchange"), "cusip": None,
             "asset": df.get("Asset Class"),
         })
@@ -269,6 +286,15 @@ def read_holdings(p: Path) -> pd.DataFrame:
         })
         out.loc[out["ticker"].isin(["-", "nan", "CASH_USD"]) | out["name"].str.contains("CASH|FUTURE", case=False), "asset"] = "Cash"
     return out[out["weight"].notna()].reset_index(drop=True)
+
+
+def _ishares_weight(df: pd.DataFrame) -> pd.Series:
+    """Weight (%) 열, 없으면(IAI 등 일부 펀드) Market Value 비율로 계산."""
+    num = lambda c: pd.to_numeric(df[c].astype(str).str.replace(",", ""), errors="coerce")
+    if "Weight (%)" in df:
+        return num("Weight (%)")
+    mv = num("Market Value")
+    return mv / mv.sum() * 100
 
 
 def cusip_to_isin(cusip: str, country="US") -> str | None:

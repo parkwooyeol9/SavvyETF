@@ -249,6 +249,8 @@ def build(xlsx: Path, as_of: str, skip_pit: bool = False, skip_scoreboard: bool 
     if getattr(ts, "ri_m", None) is not None and not ts.ri_m.empty and not ts.sal.empty:
         from . import groups as GR                             # 국가·섹터·테마별 10년 밸류에이션 → web/groups_data.js
         meta["groups"] = {k: v for k, v in GR.build(d, ts, as_of, xlsx.name).items() if k in ("n_groups", "size_js_mb")}
+        from . import etf_valuation as EV                      # 밸류에이션 탭: ETF 룩스루 + ACWI 근사 → web/etf_valuation*.js
+        meta["etf_valuation"] = {k: v for k, v in EV.build(d, ts, as_of, xlsx.name).items() if k in ("n_etfs", "size_js_mb")}
     return meta
 
 

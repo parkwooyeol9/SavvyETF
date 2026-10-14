@@ -560,150 +560,26 @@ a.tab-btn {
   margin-bottom: 0.75rem;
 }
 
-.sdb-tab .sdb-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.72rem;
-  color: var(--muted, #8b9bb4);
-}
 
-.sdb-tab .sdb-field select,
-.sdb-tab select,
-.sdb-search {
-  background: rgba(16, 32, 40, 0.85);
-  border: 1px solid var(--border, #2b3648);
-  color: inherit;
-  border-radius: 8px;
-  padding: 0.35rem 0.55rem;
-  font-size: 0.85rem;
-  min-width: 7.5rem;
-}
 
-.sdb-search {
-  min-width: 11rem;
-}
 
-.sdb-heat {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 0.45rem;
-  margin-bottom: 0.75rem;
-}
 
-.sdb-heat-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.15rem;
-  padding: 0.55rem 0.6rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-}
 
-.sdb-heat-btn.selected {
-  border-color: rgba(91, 159, 212, 0.75);
-  box-shadow: 0 0 0 1px rgba(91, 159, 212, 0.35);
-}
 
-.sdb-heat-btn b {
-  font-size: 0.82rem;
-}
 
-.sdb-heat-btn span {
-  font-size: 0.95rem;
-  font-variant-numeric: tabular-nums;
-}
 
-.sdb-heat-btn small {
-  opacity: 0.75;
-  font-size: 0.7rem;
-}
 
-.sdb-dl {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.45rem 0.75rem;
-  margin: 0.5rem 0 0;
-}
 
-.sdb-dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid rgba(43, 54, 72, 0.65);
-  font-size: 0.86rem;
-}
 
-.sdb-dl dt {
-  color: var(--muted, #8b9bb4);
-}
 
-.sdb-dl dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
 
-.sdb-factors {
-  margin-top: 0.65rem;
-}
 
-.sdb-factor {
-  display: grid;
-  grid-template-columns: 3.2rem 1fr 2.6rem;
-  gap: 0.55rem;
-  align-items: center;
-  font-size: 0.78rem;
-  margin: 0.55rem 0;
-}
 
-.sdb-factor-track {
-  position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(43, 54, 72, 0.85);
-}
 
-.sdb-factor-track::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -3px;
-  height: 14px;
-  border-left: 1px solid rgba(139, 155, 180, 0.45);
-}
 
-.sdb-factor-track i {
-  position: absolute;
-  top: 0;
-  height: 8px;
-  border-radius: 3px;
-}
 
-.sdb-factor b {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
 
-.sdb-row-active td {
-  background: rgba(91, 159, 212, 0.12);
-}
 
-.sdb-tab .callout {
-  margin-top: 0.5rem;
-  padding: 0.65rem 0.75rem;
-  border-left: 3px solid rgba(91, 159, 212, 0.55);
-  background: rgba(91, 159, 212, 0.08);
-  border-radius: 0 8px 8px 0;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--muted, #8b9bb4);
-}
 
 @media (max-width: 900px) {
   .nxt-stat-grid {

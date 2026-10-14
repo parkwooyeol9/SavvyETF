@@ -51,6 +51,14 @@ class TestGroups(unittest.TestCase):
         self.assertEqual(A["cov"][-1, 0], 100.0)
         self.assertAlmostEqual(A["tr"][-1, 0], 100.0)
 
+    def test_pe_blank_when_earnings_cancel(self):
+        d, ts = _setup()
+        d.loc[d["code"] == "C", "eps_ntm"] = -1.95             # A 흑자 + C 적자가 거의 상쇄 → ΣE ≈ 0
+        P, _ = G._stock_panels(d, ts)
+        M = np.array([[1.0], [0.0], [1.0]])
+        A = G.aggregate(P, M, np.array([2.0]))
+        self.assertTrue(np.isnan(A["pe"][-1, 0]))
+
     def test_drift_cap_limits_recap_weight(self):
         d, ts = _setup()
         ri = ts.ri_m.copy()

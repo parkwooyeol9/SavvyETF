@@ -9,7 +9,6 @@ import {
   type AcwiGroup,
   type AcwiGroups as AcwiGroupsData,
   type AcwiStock,
-  type AcwiSummary,
   type GroupDim,
   type GroupMetricKey,
 } from "@/lib/acwiAnalyzer";
@@ -19,7 +18,9 @@ import AcwiTable, { type Col } from "./AcwiTable";
 import { Card, Kpi, Legend, nameCol, Sg } from "./parts";
 
 /**
- * 국가·지역·섹터·산업·테마별 10년 밸류에이션 (Claude_DB/factor/groups.py).
+ * 그룹별 10년 밸류에이션 보기. 두 곳에서 쓴다:
+ *  - ACWI 분석기 › 국가·업종·테마 (Claude_DB/factor/groups.py, 관리자)
+ *  - 포트폴리오 › 밸류에이션 (Claude_DB/factor/etf_valuation.py, dim "etf" 하나 + 비교선 "cmp")
  * 그룹 값은 유동시총 가중 합산(ΣW/ΣE) — 종목 PER 의 단순 평균·중앙값이 아니다.
  */
 
@@ -35,8 +36,8 @@ const PERIODS: [number, string][] = [
   [3, "3년"],
   [1, "1년"],
 ];
-const DEC: Record<GroupMetricKey, number> = { pe: 1, pb: 2, ps: 2, dy: 2, roe: 1, eg: 1, sg: 1, er3: 1, tr: 0 };
-const SIGNED = new Set<GroupMetricKey>(["eg", "sg", "er3"]);
+const DEC: Record<GroupMetricKey, number> = { pe: 1, pb: 2, ps: 2, dy: 2, roe: 1, eg: 1, sg: 1, er1: 1, er3: 1, tr: 0 };
+const SIGNED = new Set<GroupMetricKey>(["eg", "sg", "er1", "er3"]);
 /** ACWI 대비: 배수·수익률은 비율, 나머지(%)는 차이(%p) */
 const RATIO = new Set<GroupMetricKey>(["pe", "pb", "ps", "tr"]);
 const SUMMARY: GroupMetricKey[] = ["pe", "pb", "dy", "roe", "eg", "sg"];
@@ -148,9 +149,22 @@ function downloadCsv(name: string, head: string[], rows: (string | number | null
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGroupsData; onPick: (code: string) => void }) {
+type Props = {
+  G: AcwiGroupsData;
+  /** 구성 종목 표에 쓸 종목 정보 (없으면 G.stocks 의 이름·국가만) */
+  stocks?: Map<string, AcwiStock>;
+  /** 구성 종목 행을 누르면 (없으면 클릭 안 됨) */
+  onPick?: (code: string) => void;
+  title?: string;
+  intro?: string;
+  /** '분류 기준 · 계산 방법' 카드 내용 (없으면 ACWI 그룹용 기본 설명) */
+  notes?: ReactNode;
+  csvPrefix?: string;
+};
+
+export default function AcwiGroups({ G, stocks, onPick, title, intro, notes, csvPrefix = "ACWI" }: Props) {
   const M = G.meta;
-  const [dim, setDim] = useState<GroupDim>("sector");
+  const [dim, setDim] = useState<GroupDim>(M.dims.some((d) => d.key === "sector") ? "sector" : M.dims[0]?.key ?? "sector");
   const [scope, setScope] = useState("ACWI");
   const [metric, setMetric] = useState<GroupMetricKey>("pe");
   const [years, setYears] = useState(10);
@@ -188,7 +202,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
   );
 
   const byWeight = useMemo(() => [...groups].sort((a, b) => (b.w ?? 0) - (a.w ?? 0)), [groups]);
-  const sel = (selMap[viewKey] ?? byWeight.slice(0, 5).map((g) => g.id)).filter((id) => groups.some((g) => g.id === id));
+  const sel = (selMap[viewKey] ?? byWeight.slice(0, isEtf ? 4 : 5).map((g) => g.id)).filter((id) => groups.some((g) => g.id === id));
   const focusId = focusMap[viewKey] && groups.some((g) => g.id === focusMap[viewKey]) ? focusMap[viewKey] : sel[0] ?? byWeight[0]?.id;
   const focus = G.groups.find((g) => g.id === focusId);
   const colorOf = (id: string) => COLORS[Math.max(0, sel.indexOf(id)) % COLORS.length];
@@ -199,7 +213,14 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
   };
   const drop = (id: string) => setSelMap((m) => ({ ...m, [viewKey]: sel.filter((x) => x !== id) }));
 
-  const stockMap = useMemo(() => new Map<string, AcwiStock>(A.stocks.map((s) => [s.c, s])), [A.stocks]);
+  const stockMap = useMemo(() => {
+    if (stocks) return stocks;
+    const m = new Map<string, AcwiStock>();
+    for (const [c, s] of Object.entries(G.stocks)) m.set(c, { c, n: s.n, ct: s.ct });
+    return m;
+  }, [stocks, G.stocks]);
+  const stockMetrics = useMemo(() => [...stockMap.values()].some((s) => isNum(s.pe) || isNum(s.pb)), [stockMap]);
+  const hasPeg = groups.some((g) => isNum(g.cy.peg));
   const themeLabel = useMemo(() => new Map(M.themes.map((t) => [t.key, t.label])), [M.themes]);
 
   // ── 차트 ──
@@ -244,7 +265,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
       <span title={r.g.desc}>
         <i className="aa-dot" style={{ background: sel.includes(r.id) ? colorOf(r.id) : "transparent" }} />
         {r.g.label}
-        {r.g.desc && dim === "theme" ? <small>{r.g.desc}</small> : null}
+        {r.g.desc && (dim === "theme" || isEtf) ? <small>{r.g.desc}</small> : null}
       </span>
     ),
   };
@@ -258,7 +279,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
           n: true,
           t: "ETF 주식 비중 중 ACWI 유니버스(시계열 있는 종목)로 덮은 비율. 낮으면 소형주 비중이 커서 결과가 대표성이 떨어집니다",
           v: (r) => r.g.etf?.coverage,
-          f: (r) => fmt(r.g.etf?.coverage, 0, "%"),
+          f: (r) => (r.g.etf?.method === "ACWI 근사" ? <span className="aa-badge" title="보유종목 대신 같은 성격의 ACWI 종목 묶음">근사</span> : fmt(r.g.etf?.coverage, 0, "%")),
           heat: (r) => heatStyle(r.g.etf?.coverage, 40, 100),
         },
       ]
@@ -323,7 +344,11 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
       heat: (r) => heatStyle(r.st.sg.last, -15, 15),
     },
     { k: "eg27", h: "EPS CY27", n: true, t: "컨센서스 EPS 성장 CY27/CY26", v: (r) => r.g.cy.eg27, f: (r) => <Sg v={r.g.cy.eg27} /> },
+    ...(hasPeg
+      ? [{ k: "peg", h: "PEG", n: true, t: "Fwd PER ÷ EPS 성장률(CY27/CY26, %). 성장률이 0 이하면 없음", v: (r: Row) => r.g.cy.peg, f: (r: Row) => fmt(r.g.cy.peg, 2) } as Col<Row>]
+      : []),
     { k: "sg27", h: "매출 CY27", n: true, t: "컨센서스 매출 성장 CY27/CY26", v: (r) => r.g.cy.sg27, f: (r) => <Sg v={r.g.cy.sg27} /> },
+    { k: "er1", h: "리비전 1M", n: true, v: (r) => r.st.er1?.last, f: (r) => fv("er1", r.st.er1?.last), heat: (r) => heatStyle(r.st.er1?.last, -4, 4) },
     { k: "er3", h: "리비전 3M", n: true, v: (r) => r.st.er3.last, f: (r) => fv("er3", r.st.er3.last), heat: (r) => heatStyle(r.st.er3.last, -8, 8) },
     { k: "r1", h: "1년 수익률", n: true, v: (r) => r.ret.r1, f: (r) => <Sg v={r.ret.r1} /> },
   ];
@@ -337,7 +362,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
       ...M.metrics.flatMap((m) => (m.key === "tr" ? [] : [r.st[m.key].last, r.st[m.key].avg, r.st[m.key].pct])),
       r.g.cy.eg26, r.g.cy.eg27, r.g.cy.sg26, r.g.cy.sg27, r.ret.r1, r.ret.r3, r.ret.r5, r.ret.r10,
     ].map((v) => (typeof v === "number" ? Number(v.toFixed(3)) : v)));
-    downloadCsv(`ACWI_${dim}${sc ? `_${sc}` : ""}_${M.as_of}.csv`, head, body);
+    downloadCsv(`${csvPrefix}_${dim}${sc ? `_${sc}` : ""}_${M.as_of}.csv`, head, body);
   };
 
   // ── 선택 그룹 상세 ──
@@ -351,11 +376,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
     return out;
   }, [focus, stockMap]);
   type Member = AcwiStock & { ew?: number };
-  const memberCols: Col<Member>[] = [
-    nameCol<Member>(),
-    focus?.wts
-      ? { k: "w", h: "ETF 비중", n: true, v: (s) => s.ew, f: (s) => fmt(s.ew, 2, "%") }
-      : { k: "w", h: "ACWI 비중", n: true, v: (s) => s.w, f: (s) => fmt(isNum(s.w) ? s.w * 100 : null, 2, "%") },
+  const metricCols: Col<Member>[] = [
     { k: "pe", h: "PER", n: true, f: (s) => fmt(s.pe, 1) },
     { k: "pb", h: "PBR", n: true, f: (s) => fmt(s.pb, 2) },
     { k: "dy", h: "배당", n: true, f: (s) => fmt(s.dy, 2, "%") },
@@ -372,6 +393,20 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
       f: (s) => fmt(s.pep10, 0),
       heat: (s) => heatStyle(s.pep10, 0, 100, true),
     },
+  ];
+  const memberCols: Col<Member>[] = [
+    nameCol<Member>(),
+    focus?.wts
+      ? {
+          k: "w",
+          h: focus.etf?.method === "ACWI 근사" ? "근사 비중" : "ETF 비중",
+          t: focus.etf?.method === "ACWI 근사" ? "ACWI 유동시총 비중을 묶음 안에서 다시 나눈 값 (테마는 한 종목 상한)" : "운용사 공개 비중 (ACWI 에 없는 종목·현금 제외 전 기준)",
+          n: true,
+          v: (s) => s.ew,
+          f: (s) => fmt(s.ew, 2, "%"),
+        }
+      : { k: "w", h: "ACWI 비중", n: true, v: (s) => s.w, f: (s) => fmt(isNum(s.w) ? s.w * 100 : null, 2, "%") },
+    ...(stockMetrics ? metricCols : []),
     {
       k: "th",
       h: "테마",
@@ -393,23 +428,39 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
   return (
     <div className="aa-view">
       <Card
-        title="국가 · 업종 · 테마 밸류에이션"
-        sub={`ACWI ${M.n_stocks.toLocaleString()}종목을 국가·지역·GICS 섹터/산업그룹/산업·투자 테마로 묶어 10년(${months[0]} ~ ${months[months.length - 1]}) 월간 PER·PBR·성장률을 유동시총 가중으로 합산했습니다. 표의 행을 누르면 차트에 추가되고 아래에 구성 종목이 나옵니다.`}
+        title={title ?? "국가 · 업종 · 테마 밸류에이션"}
+        sub={
+          intro ??
+          `ACWI ${M.n_stocks.toLocaleString()}종목을 국가·지역·GICS 섹터/산업그룹/산업·투자 테마로 묶어 10년(${months[0]} ~ ${months[months.length - 1]}) 월간 PER·PBR·성장률을 유동시총 가중으로 합산했습니다. 표의 행을 누르면 차트에 추가되고 아래에 구성 종목이 나옵니다.`
+        }
       >
         <div className="aa-gctl">
-          <div className="aa-field">
-            분류
-            <div className="aa-seg" role="tablist" aria-label="분류">
-              {M.dims.map((d) => (
-                <button key={d.key} type="button" role="tab" aria-selected={dim === d.key} className={`chip${dim === d.key ? " active" : ""}`} onClick={() => setDim(d.key)}>
-                  {d.label}
-                </button>
-              ))}
+          {M.dims.length > 1 ? (
+            <div className="aa-field">
+              분류
+              <div className="aa-seg" role="tablist" aria-label="분류">
+                {M.dims.map((d) => (
+                  <button key={d.key} type="button" role="tab" aria-selected={dim === d.key} className={`chip${dim === d.key ? " active" : ""}`} onClick={() => setDim(d.key)}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          {scopes ? (
+          ) : null}
+          {scopes && isEtf ? (
+            <div className="aa-field aa-gwide">
+              ETF 분류
+              <div className="aa-seg" role="tablist" aria-label="ETF 분류">
+                {scopes.map((s) => (
+                  <button key={s} type="button" role="tab" aria-selected={sc === s} className={`chip${sc === s ? " active" : ""}`} onClick={() => setScope(s)}>
+                    {s} <small className="meta-soft">{G.groups.filter((g) => g.dim === "etf" && g.scope === s).length}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : scopes ? (
             <label className="aa-field">
-              {isEtf ? "ETF 분류" : "범위"}
+              범위
               <select className="im-select" value={sc ?? ""} onChange={(e) => setScope(e.target.value)}>
                 {scopes.map((s) => (
                   <option key={s} value={s}>
@@ -473,7 +524,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
       <Card>
         <div className="aa-tablehead">
           <h3 className="aa-h">
-            {M.dims.find((d) => d.key === dim)?.label}별 {tableMode === "all" ? "전체 지표" : mdef.label}
+            {M.dims.find((d) => d.key === dim)?.label}{isEtf ? "" : "별"} {tableMode === "all" ? "전체 지표" : mdef.label}
             {sc ? <span className="meta-soft"> · {sc}</span> : null}
           </h3>
           <div className="aa-seg">
@@ -489,7 +540,7 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
           </div>
         </div>
         <div className="aa-scroll">
-          <AcwiTable className="aa-tbl" cols={cols} rows={rows} sort="w" limit={120} rowKey={(r) => r.id} onRow={(r) => pickRow(r.id)} />
+          <AcwiTable className="aa-tbl" cols={cols} rows={rows} sort={isEtf ? null : "w"} limit={120} rowKey={(r) => r.id} onRow={(r) => pickRow(r.id)} />
         </div>
         <p className="aa-sub aa-mt">
           10년 위치 색: 밸류에이션(PER·PBR·PSR)은 역사적으로 낮을수록, 배당수익률은 높을수록 빨강. 성장률·리비전은 높을수록 빨강.
@@ -544,15 +595,19 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
             })}
           </div>
           <h4 className="aa-h4">
-            {focus.etf ? `보유종목 중 ACWI 에 있는 종목 (${members.length}/${focus.etf.n_holdings})` : `구성 종목 (${members.length})`} — 비중 큰 순, 누르면 종목 상세
+            {focus.etf?.method === "보유종목"
+              ? `보유종목 중 ACWI 에 있는 종목 (${members.length}/${focus.etf.n_holdings})`
+              : `구성 종목 (${members.length})`}{" "}
+            — 비중 큰 순{onPick ? ", 누르면 종목 상세" : ""}
           </h4>
           <div className="aa-scroll aa-short">
-            <AcwiTable className="aa-tbl" cols={memberCols} rows={members} sort="w" limit={40} rowKey={(s) => s.c} onRow={(s) => onPick(s.c)} />
+            <AcwiTable className="aa-tbl" cols={memberCols} rows={members} sort="w" limit={40} rowKey={(s) => s.c} onRow={onPick ? (s) => onPick(s.c) : undefined} />
           </div>
         </Card>
       ) : null}
 
       <Card title="분류 기준 · 계산 방법">
+        {notes ?? (
         <ul className="aa-note">
           <li>
             <b>국가·지역</b>: 상장 거래소 기준 MSCI 국가(미국 상장 해외기업 예외 반영). 유럽 선진 = 선진 유럽 16개국.
@@ -567,17 +622,11 @@ export default function AcwiGroups({ A, G, onPick }: { A: AcwiSummary; G: AcwiGr
           <li>
             <b>한계</b>: 현재 구성종목 기준(과거 편출 종목 없음, 생존 편향). 과거 비중·이익의 통화 환산은 현재 환율 고정이라 여러 나라가 섞인 그룹의 과거 비중은 근사치입니다. 증자·감자로 주식 수가 크게 변한 종목({String(q.drift_capped_stocks ?? "–")}개)은 과거 비중 확대를 시장 대비 15배로 제한했고, 추정치 시계열이 한 달에 수 배 뛰는 단절(통화·단위 변경 의심, EPS {String(q.eps_breaks ?? "–")}·매출 {String(q.sal_breaks ?? "–")}종목)은 단절 이전을 버렸습니다.
           </li>
-          {M.etf_scopes?.length ? (
-            <li>
-              <b>ETF 룩스루 (프로토타입)</b>: 운용사가 공개한 보유종목·비중(iShares·SPDR, 기준일은 ETF 설명 참고)을 ACWI 종목에 붙여 같은 방식으로 합산했습니다.
-              ACWI 에 없는 소형주·비상장·현금은 빠지고 나머지 비중으로 다시 나눕니다 — 커버리지가 낮은 테마 ETF 는 대표성이 떨어집니다.
-              과거 값은 현재 보유종목·비중을 그대로 둔 채 되돌린 것이라 실제 ETF 의 과거 구성과 다릅니다.
-            </li>
-          ) : null}
           <li>
             빌드 {M.built_at.replace("T", " ")} · 원자료 {M.source} · Datastream/I/B/E/S 기반 내부용
           </li>
         </ul>
+        )}
       </Card>
     </div>
   );

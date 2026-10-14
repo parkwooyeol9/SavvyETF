@@ -3,7 +3,8 @@
 ACWI 유니버스(2,238종목)는 전 세계 대·중형주를 덮고, 종목마다 10년 월간 가격·EPS·BPS·DPS·매출 추정치 시계열이 있다.
 그러므로 **ETF 보유종목 × 비중**만 있으면 국가·업종·테마 집계(`factor/groups.py`)와 같은 방식으로 ETF 의 10년 PER·PBR·성장률을 조립할 수 있다.
 
-- 코드: `factor/etf_lookthrough.py` (목록·수집·매칭), `factor/groups.py` 의 `_etf_block` (집계), 웹앱 ACWI › 국가·업종·테마 › **ETF**
+- 코드: `factor/etf_lookthrough.py` (목록·수집·매칭), `factor/etf_valuation.py` (집계·근사)
+- **2026-10-14 이후**: ETF 화면은 ACWI 분석기에서 빠지고 **포트폴리오 › 밸류에이션** 탭으로 옮겨 예전 엑셀 데이터를 대체 → `docs/09`
 - 실행: `python -m Claude_DB.factor.etf_lookthrough --fetch` → `python -m Claude_DB.factor.groups` → `export_webapp`
 - 데이터: `Claude_DB/data/etf_holdings/` (raw 원본 · mapped 매칭 결과 · `_coverage.csv` · `_unmatched.csv`, gitignore)
 
