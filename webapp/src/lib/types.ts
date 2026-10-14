@@ -279,7 +279,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "etf",
     label: "ETF",
-    tabs: ["etf", "countryetf", "themeetf", "aietf"],
+    tabs: ["valuation", "etf", "countryetf", "themeetf", "aietf"],
     nested: [
       {
         id: "weights",
@@ -313,7 +313,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "portfolio",
     label: "포트폴리오",
-    tabs: ["acwi", "valuation", "usportfolio", "signals", "corridor"],
+    tabs: ["acwi", "usportfolio", "signals", "corridor"],
     nested: [
       {
         id: "derivs",
@@ -343,6 +343,9 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Leaf tabs kept routable but omitted from every nav (admin included). */
+export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["countryetf", "themeetf", "aietf"];
+
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "aiport",
@@ -367,7 +370,8 @@ export function visibleShellTabs(
   tabs: readonly ShellTabId[],
   isAdmin: boolean,
 ): ShellTabId[] {
-  return isAdmin ? [...tabs] : tabs.filter((id) => !isAdminOnlyTab(id));
+  const visible = isAdmin ? [...tabs] : tabs.filter((id) => !isAdminOnlyTab(id));
+  return visible.filter((id) => !(HIDDEN_NAV_TABS as readonly string[]).includes(id));
 }
 
 /** Nested nav groups with at least one visible leaf tab. */
