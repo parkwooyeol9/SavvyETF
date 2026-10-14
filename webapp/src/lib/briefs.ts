@@ -97,27 +97,34 @@ async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
     };
 
     const keys = await r2ListKeys(slotsPrefix(tab));
+    const listed = new Set<string>();
     await Promise.all(
       keys
         .filter((key) => key.endsWith(".json"))
         .map(async (key) => {
           const name = key.split("/").pop()?.replace(/\.json$/, "") || "";
           if (!name) return;
-          try {
-            const text = await r2GetObjectText(key);
-            if (!text) return;
-            const parsed = JSON.parse(text) as BriefSlot;
-            if (!parsed?.title || !parsed?.generated_at) return;
-            const slotKey = safeKeyPart(String(parsed.slot || name), name);
-            slots[slotKey] = stripUsSummaryMacroSlot({ ...parsed, slot: slotKey });
-            bumpUpdated(parsed.received_at);
-          } catch (exc) {
-            console.warn(`r2 skip corrupt slot ${key}:`, exc);
+          listed.add(name);
+          for (let attempt = 1; attempt <= 2; attempt += 1) {
+            try {
+              const text = await r2GetObjectText(key);
+              if (!text) return;
+              const parsed = JSON.parse(text) as BriefSlot;
+              if (!parsed?.title || !parsed?.generated_at) return;
+              const slotKey = safeKeyPart(String(parsed.slot || name), name);
+              listed.add(slotKey);
+              slots[slotKey] = stripUsSummaryMacroSlot({ ...parsed, slot: slotKey });
+              bumpUpdated(parsed.received_at);
+              return;
+            } catch (exc) {
+              if (attempt === 2) console.warn(`r2 skip slot ${key}:`, exc);
+            }
           }
         }),
     );
 
-    // Legacy monolith fills only missing slots (per-slot wins).
+    // Legacy monolith fills only slots that have no per-slot file; it can be months
+    // old, so a failed per-slot read must not fall back to it.
     try {
       const legacyText = await r2GetObjectText(legacyStorePath(tab));
       if (legacyText) {
@@ -125,7 +132,8 @@ async function readTabFromR2(tab: TabId): Promise<TabReadResult> {
         if (parsed && typeof parsed.slots === "object") {
           for (const [key, raw] of Object.entries(parsed.slots || {})) {
             const slotKey = safeKeyPart(String(raw?.slot || key), key);
-            if (slots[slotKey] || !raw?.title || !raw?.generated_at) continue;
+            if (slots[slotKey] || listed.has(slotKey) || listed.has(key)) continue;
+            if (!raw?.title || !raw?.generated_at) continue;
             slots[slotKey] = stripUsSummaryMacroSlot({ ...raw, slot: slotKey });
           }
           bumpUpdated(parsed.updated_at);
