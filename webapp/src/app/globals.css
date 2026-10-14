@@ -13568,6 +13568,16 @@ p.aa-note { padding-left: 0; }
 /* ACWI 팩터 백테스트 (components/acwi/AcwiBacktest.tsx) */
 .aa-bt-ctl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem 1.2rem; align-items: start; }
 .aa-bt-ctl .aa-seg { margin-bottom: 0; }
+/* ACWI 국가·업종·테마 (components/acwi/AcwiGroups.tsx) */
+.aa-gctl { display: flex; flex-wrap: wrap; gap: 0.8rem 1.4rem; align-items: flex-start; }
+.aa-gctl .aa-seg { margin-bottom: 0; }
+.aa-gctl .aa-field { min-width: 0; }
+.aa-gctl .aa-gwide { flex: 1 1 100%; }
+.aa-dot { display: inline-block; width: 8px; height: 8px; margin-right: 0.4rem; border-radius: 50%; border: 1px solid var(--border); vertical-align: middle; }
+.aa-selchips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+.aa-selchips .chip { font-size: 0.74rem; }
+.aa-spark { display: block; }
+.aa-themes { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
 @media (max-width: 1100px) {
   .aa-lists, .aa-g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

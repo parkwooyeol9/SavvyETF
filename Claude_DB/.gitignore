@@ -9,4 +9,5 @@ web/data.js
 __pycache__/
 web/analyzer_data.js
 web/backtest_data.js
+web/groups_data.js
 .env.local

@@ -4,6 +4,7 @@ import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
 import {
   seriesBucket,
   type AcwiBacktest,
+  type AcwiGroups,
   type AcwiPublic,
   type AcwiSeries,
   type AcwiSummary,
@@ -75,7 +76,8 @@ function toPublic(B: AcwiBacktest, S: AcwiSummary | null): AcwiPublic {
  * Datastream/Refinitiv + MSCI-derived analytics.
  * `?part=public` → 비로그인 공개분 (집계 백테스트·리뷰 일정, CDN 캐시 허용).
  * 나머지는 관리자 전용·no-store: `?part=summary` → screener/breadth/events;
- * `?part=series&code=XXX` → one stock's charts; `?part=backtest` → 10년 팩터 백테스트 전체.
+ * `?part=series&code=XXX` → one stock's charts; `?part=backtest` → 10년 팩터 백테스트 전체;
+ * `?part=groups` → 국가·지역·섹터·산업·테마별 10년 밸류에이션 집계 (구성종목 목록 포함).
  */
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -114,7 +116,12 @@ export async function GET(request: Request) {
       if (!data) return fail(503, "백테스트 결과가 아직 업로드되지 않았습니다. (python -m Claude_DB.factor.export_webapp --upload)");
       return NextResponse.json({ ok: true, data }, { headers: PRIVATE_NO_STORE });
     }
-    return fail(400, "part 는 public · summary · series · backtest 입니다.");
+    if (part === "groups") {
+      const data = await readSealedJson<AcwiGroups>(`${PREFIX}/groups.bin`);
+      if (!data) return fail(503, "그룹 집계가 아직 업로드되지 않았습니다. (python -m Claude_DB.factor.groups → export_webapp --upload)");
+      return NextResponse.json({ ok: true, data }, { headers: PRIVATE_NO_STORE });
+    }
+    return fail(400, "part 는 public · summary · series · backtest · groups 입니다.");
   } catch (e) {
     return fail(500, part === "public" ? "읽기 실패" : e instanceof Error ? e.message : "읽기 실패");
   }

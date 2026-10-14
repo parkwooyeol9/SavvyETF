@@ -9,6 +9,7 @@
   out/analyzer_standalone.html    데이터 인라인 단일 파일 (서버 없이 열기)
   out/analyzer/*.csv              종목 전체 지표·브레드스·이벤트·편출입 대기·관찰 리스트
   out/analyzer/quality.json       데이터 점검 결과
+  web/groups_data.js, out/groups/ 국가·지역·섹터·산업·테마별 10년 PER·PBR·성장률 (factor/groups.py, 월간 10년 시트 있을 때)
 """
 from __future__ import annotations
 
@@ -245,6 +246,9 @@ def build(xlsx: Path, as_of: str, skip_pit: bool = False, skip_scoreboard: bool 
     (WEB / "analyzer_data.js").write_text(js, encoding="utf-8")
     write_standalone()
     meta["size_js_mb"] = round(len(js.encode()) / 1e6, 2)
+    if getattr(ts, "ri_m", None) is not None and not ts.ri_m.empty and not ts.sal.empty:
+        from . import groups as GR                             # 국가·섹터·테마별 10년 밸류에이션 → web/groups_data.js
+        meta["groups"] = {k: v for k, v in GR.build(d, ts, as_of, xlsx.name).items() if k in ("n_groups", "size_js_mb")}
     return meta
 
 

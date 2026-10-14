@@ -17,6 +17,10 @@ Claude_DB/
 │   ├── technicals.py    수익률·변동성·MDD·52주·MA·크로스·RSI·MACD·볼린저·베타·추세점수 + 거래량(거래대금·거래량비·OBV)
 │   ├── fundamentals_ts.py EPS·매출 리비전·BPS/DPS 성장·배당 삭감·근사 PER/PBR/배당 3년·10년 위치·브레드스
 │   ├── backtest.py      10년 팩터 백테스트 (월간, 5분위, PIT 유니버스·대형중형·현재고정 비교) → web/backtest_data.js
+│   ├── themes.py        종목 분류 사전: GICS 산업 → 산업그룹·한글명, 투자 테마 33개(코드·산업 규칙, 다중 분류)
+│   ├── groups.py        국가·지역·섹터(×국가)·산업그룹·산업·테마별 10년 월간 PER·PBR·PSR·배당·ROE·EPS/매출 성장 합산
+│   ├── etf_lookthrough.py  ETF 72개(iShares 58·SPDR 14) 보유종목 받기 → ACWI 코드 매칭 → groups.py 가 'ETF' 분류로 같은 방식 합산 (docs/07)
+│   │                    → web/groups_data.js, out/groups/ (classification.csv · latest.csv · series_long.csv)
 │   ├── export_webapp.py 분석기·백테스트 결과 → 웹앱용 봉인 파일 (R2 private/acwi/latest/)
 │   ├── index_link.py    MSCI 편출입 연동: 종목별 편입 이력·미반영 변경·이벤트 스터디·편출 관찰 리스트
 │   ├── analyzer.py      종목 분석기 빌드 (위 모듈 + 팩터 → web/analyzer_data.js, out/analyzer/)
@@ -48,7 +52,9 @@ Claude_DB/
 │   ├── 03_ACWI_종목분석기.md   2026-10-02 시계열 파일 점검·모델 변경·MSCI 연동 결과
 │   ├── 04_홈페이지_배포_인수인계.md   Cursor 검토·웹앱(관리자 탭) 배포 인수인계
 │   ├── 05_팩터_백테스트.md         2026-10-06 파일 점검 · 10년 백테스트 방법·결과·한계
-│   └── 06_Cursor_커밋_인수인계.md  2026-10-06 작업분 검토·빌드·GitHub 커밋·배포 절차
+│   ├── 06_Cursor_커밋_인수인계.md  2026-10-06 작업분 검토·빌드·GitHub 커밋·배포 절차
+│   ├── 07_ETF_룩스루_프로토타입.md  ETF 조사·보유종목 확보 경로·매칭·검증(SPY=미국 집계) 결과
+│   └── 08_Cursor_커밋_인수인계_국가업종테마_ETF.md  국가·업종·테마·ETF 작업분 검토·커밋·업로드·QA 절차
 └── tests/test_engine.py, test_analyzer.py
 ```
 
@@ -68,6 +74,10 @@ python -m Claude_DB.factor.analyzer --xlsx Claude_DB/data/ACWI_v3.xlsx --as-of 2
 # 3-1) 10년 팩터 백테스트 (Price_(Monthly_10Y)·EPS·BPS·DPS·SALE 월간 시트 필요) — 약 6~7분
 python -m Claude_DB.factor.backtest --xlsx Claude_DB/data/ACWI_v3.xlsx            # --lag 1 = 신호 1개월 지연
 python -m Claude_DB.factor.analyzer --xlsx ... --skip-pit     # 편출입 재구성 생략(약 1분)
+# 3-2) 국가·업종·테마별 10년 밸류에이션 (analyzer 끝에서 자동 실행, 분류만 고쳤을 때 단독으로 약 3초)
+python -m Claude_DB.factor.groups                             # out/stocks.csv + 시계열 캐시 사용
+# 3-3) ETF 룩스루 (프로토타입): 보유종목 받기·매칭 후 groups 다시 실행 → 웹 'ETF' 분류
+python -m Claude_DB.factor.etf_lookthrough --fetch            # data/etf_holdings/ (약 1분, 네트워크)
 
 # 4) 화면
 open Claude_DB/web/index.html       # 팩터 스코어보드
@@ -137,3 +147,16 @@ SELECT code, name, currency, report_ccy, fx_method, ROUND(pe,1) FROM stocks WHER
 
 - `data/`, `excel/`, `out/`, `web/data.js`, `web/analyzer_data.js` 에는 Datastream/Refinitiv 라이선스 데이터가 들어 있습니다.
   공개 저장소에 올리지 않도록 `.gitignore` 에 넣어 두었습니다 (`web/data.js` 포함). 공개 배포가 필요하면 범위를 따로 정하세요.
+
+## 국가·업종·테마 밸류에이션 (factor/groups.py, 웹앱 ACWI › 국가·업종·테마)
+
+1. **분류**: 국가·지역(상장 기준 MSCI 국가) · GICS 섹터/산업그룹/산업 · 투자 테마 33개(`themes.py`, 한 종목 여러 테마).
+   결과는 `out/groups/classification.csv`. 정기변경 후에는 `python -m Claude_DB.factor.groups` 출력의 `theme_missing_codes`
+   (사전에 있는데 유니버스에 없는 코드)를 보고 `themes.py` 를 고친다. 섹터는 ACWI·미국·선진(미국 외)·유럽 선진·신흥·일본·중국·인도·대만·한국 범위별로도 집계.
+2. **합산 (MSCI 지수 방식)**: 그룹 PER = Σ유동시총 ÷ Σ선행 순이익. 과거 유동시총 = 현재 ACWI 비중 × 가격 변화(RI, 배당 재투자분 제거),
+   과거 이익·자본·배당·매출 = 현재 값 × 종목 추정치 시계열 변화. 성장률(YoY)은 같은 종목 묶음끼리 비교.
+   검증: ACWI Fwd PER 2020-10 20.6 · 2022-10 14.0, 미국 23.2 · 16.4 (공표 수준과 일치).
+3. **보정**: 추정치가 한 달에 수 배 뛰는 단절(통화·단위 변경)은 단절 이전을 버림, 증자·감자로 과거 비중이 시장 대비 15배 넘게 부풀려지는
+   종목(BMPS 등 13개)은 비중만 줄임, 현재 비중의 60% 미만만 데이터가 있는 달은 화면에서 비움.
+4. **한계**: 현재 구성종목 기준(생존 편향), 과거 통화 환산은 현재 환율 고정(국가 안 비율은 정확, 다국가 그룹 비중은 근사), 현지통화 성장률.
+

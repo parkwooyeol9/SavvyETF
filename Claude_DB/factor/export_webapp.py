@@ -8,6 +8,7 @@
   series/NN.bin      종목별 주간 RI(3년)·월간 RI(10년, rim)·EPS/BPS/DPS/매출/PER, 코드 문자 합 % 32 묶음
                      (webapp/src/lib/acwiAnalyzer.ts 의 seriesBucket 과 같은 규칙)
   backtest.bin       10년 팩터 백테스트 결과 (web/backtest_data.js, factor/backtest.py) — 있을 때만
+  groups.bin         국가·지역·섹터·산업·테마별 10년 밸류에이션 (web/groups_data.js, factor/groups.py) — 있을 때만
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from .. import sealed_r2
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "web" / "analyzer_data.js"
 BT_SRC = ROOT / "web" / "backtest_data.js"
+GROUPS_SRC = ROOT / "web" / "groups_data.js"
 OUT = ROOT / "out" / "webapp_export"
 LOCAL = ROOT / "out" / "sealed_local"      # 버킷과 같은 경로 구조 → 웹앱 SEALED_DATA_LOCAL_DIR 로 로컬 미리보기 (scripts/local_preview.sh)
 PREFIX = "private/acwi/latest"
@@ -59,6 +61,8 @@ def main():
     files = split(load(Path(a.src)))
     if BT_SRC.exists():
         files[f"{PREFIX}/backtest.bin"] = load(BT_SRC)
+    if GROUPS_SRC.exists():
+        files[f"{PREFIX}/groups.bin"] = load(GROUPS_SRC)
     blobs = {k: sealed_r2.seal(v) for k, v in files.items()}
     OUT.mkdir(parents=True, exist_ok=True)
     for k, b in blobs.items():
@@ -70,8 +74,10 @@ def main():
         q.write_bytes(b)
     raw = {k: len(json.dumps(v, ensure_ascii=False, separators=(",", ":")).encode()) for k, v in files.items()}
     series_raw = [v for k, v in raw.items() if "/series/" in k]
-    if f"{PREFIX}/backtest.bin" in raw:
-        print(f"backtest {raw[PREFIX + '/backtest.bin'] / 1e6:.2f}MB (봉인 {len(blobs[PREFIX + '/backtest.bin']) / 1e6:.2f}MB)")
+    for name in ("backtest", "groups"):
+        k = f"{PREFIX}/{name}.bin"
+        if k in raw:
+            print(f"{name} {raw[k] / 1e6:.2f}MB (봉인 {len(blobs[k]) / 1e6:.2f}MB)")
     print(f"summary {raw[PREFIX + '/summary.bin'] / 1e6:.2f}MB (봉인 {len(blobs[PREFIX + '/summary.bin']) / 1e6:.2f}MB) · "
           f"series {len(series_raw)}개 최대 {max(series_raw) / 1e3:.0f}KB → {OUT}")
     print(f"로컬 미리보기용 → {LOCAL} (webapp 을 SEALED_DATA_LOCAL_DIR={LOCAL} 로 실행)")

@@ -7,6 +7,7 @@ import ExcelButton from "@/components/ExcelButton";
 import AcwiBacktest from "@/components/acwi/AcwiBacktest";
 import AcwiData from "@/components/acwi/AcwiData";
 import AcwiDetail from "@/components/acwi/AcwiDetail";
+import AcwiGroups from "@/components/acwi/AcwiGroups";
 import AcwiMarket from "@/components/acwi/AcwiMarket";
 import AcwiMsci from "@/components/acwi/AcwiMsci";
 import AcwiPublic from "@/components/acwi/AcwiPublic";
@@ -18,15 +19,17 @@ import {
   isNum,
   type AcwiApiResponse,
   type AcwiBacktest as AcwiBacktestData,
+  type AcwiGroups as AcwiGroupsData,
   type AcwiSeries,
   type AcwiSummary,
 } from "@/lib/acwiAnalyzer";
 import { downloadAcwiExcel } from "@/lib/acwiExcel";
 import { adminAuthHeaders } from "@/lib/adminSession";
 
-type View = "market" | "screen" | "detail" | "msci" | "backtest" | "data";
+type View = "market" | "groups" | "screen" | "detail" | "msci" | "backtest" | "data";
 const VIEWS: [View, string][] = [
   ["market", "시장 개요"],
+  ["groups", "국가·업종·테마"],
   ["screen", "스크리너"],
   ["detail", "종목 상세"],
   ["msci", "MSCI 편출입"],
@@ -45,6 +48,8 @@ export default function AcwiAnalyzerTab() {
   const seriesCache = useRef(new Map<string, AcwiSeries>());
   const [bt, setBt] = useState<{ data?: AcwiBacktestData; error?: string } | null>(null);
   const btPromise = useRef<Promise<AcwiBacktestData> | null>(null);
+  const [grp, setGrp] = useState<{ data?: AcwiGroupsData; error?: string } | null>(null);
+  const grpStarted = useRef(false);
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,6 +89,22 @@ export default function AcwiAnalyzerTab() {
   useEffect(() => {
     if (view === "backtest" && secret) loadBacktest().catch(() => {});
   }, [view, secret, loadBacktest]);
+
+  // 국가·업종·테마 집계(약 2.5MB)도 탭을 처음 열 때만 받는다
+  useEffect(() => {
+    if (view !== "groups" || !secret || grpStarted.current) return;
+    grpStarted.current = true;
+    fetch("/api/acwi-analyzer?part=groups", { cache: "no-store", headers: adminAuthHeaders(secret) })
+      .then(async (res) => {
+        const json = (await res.json().catch(() => ({}))) as AcwiApiResponse<AcwiGroupsData>;
+        if (!res.ok || !json.ok || !json.data) throw new Error(json.error || `HTTP ${res.status}`);
+        setGrp({ data: json.data });
+      })
+      .catch((e: unknown) => {
+        grpStarted.current = false;
+        setGrp({ error: e instanceof Error ? e.message : "불러오기 실패" });
+      });
+  }, [view, secret]);
 
   const excel = useCallback(async () => {
     if (!A) return;
@@ -212,6 +233,12 @@ export default function AcwiAnalyzerTab() {
             <div key={id} hidden={view !== id}>
               {id === "market" ? (
                 <AcwiMarket A={A} onPick={pick} />
+              ) : id === "groups" ? (
+                grp?.data ? (
+                  <AcwiGroups A={A} G={grp.data} onPick={pick} />
+                ) : (
+                  <p className="empty">{grp?.error ?? "국가·업종·테마 집계 불러오는 중…"}</p>
+                )
               ) : id === "screen" ? (
                 <AcwiScreener A={A} onPick={pick} />
               ) : id === "detail" ? (
