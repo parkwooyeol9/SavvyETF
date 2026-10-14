@@ -10,4 +10,6 @@ __pycache__/
 web/analyzer_data.js
 web/backtest_data.js
 web/groups_data.js
+web/etf_valuation.js
+web/etf_valuation_stocks.js
 .env.local

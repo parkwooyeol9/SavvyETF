@@ -135,6 +135,8 @@ export default function AcwiAnalyzerTab() {
     top.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, []);
 
+  const stockMap = useMemo(() => new Map((A?.stocks ?? []).map((s) => [s.c, s])), [A]);
+
   const facts = useMemo(() => {
     if (!A) return null;
     const M = A.meta;
@@ -235,7 +237,7 @@ export default function AcwiAnalyzerTab() {
                 <AcwiMarket A={A} onPick={pick} />
               ) : id === "groups" ? (
                 grp?.data ? (
-                  <AcwiGroups A={A} G={grp.data} onPick={pick} />
+                  <AcwiGroups G={grp.data} stocks={stockMap} onPick={pick} />
                 ) : (
                   <p className="empty">{grp?.error ?? "국가·업종·테마 집계 불러오는 중…"}</p>
                 )

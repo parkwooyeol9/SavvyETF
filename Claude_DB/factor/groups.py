@@ -65,9 +65,11 @@ METRICS = [
     ("roe", "Fwd ROE", "%", "Σ선행 순이익 / Σ선행 자기자본", 0),
     ("eg", "EPS 성장률", "%", "12개월 선행 순이익 전년 대비 (같은 종목, 현지통화)", 0),
     ("sg", "매출 성장률", "%", "12개월 선행 매출 전년 대비 (같은 종목, 현지통화)", 0),
+    ("er1", "EPS 리비전 1M", "%", "12개월 선행 순이익 1개월 변화", 0),
     ("er3", "EPS 리비전 3M", "%", "12개월 선행 순이익 3개월 변화", 0),
     ("tr", "총수익 지수", "pt", "유동시총 가중 월간 총수익(현지통화) 누적, 시작=100", 0),
 ]
+MAX_PE = 150       # 그룹 PER 상한: 넘으면 결측 (이익수익률 0.67% 미만 — 적자·흑자가 상쇄된 테마 등)
 MIN_N = 3          # 그룹 표본이 이보다 적으면 결측 (그룹 크기가 작으면 그 크기)
 DRIFT_CAP = 15    # 과거 비중 확대 상한 (시장 중앙값 대비 가격 상대 배수)
 BREAK = {"eps": math.log(10), "bps": math.log(4), "dps": math.log(10), "sal": math.log(4)}   # 월간 단절(통화·단위 변경) 기준
@@ -224,6 +226,7 @@ def aggregate(P: dict, M: np.ndarray, sizes: np.ndarray) -> dict[str, np.ndarray
 
     vw = fin(W)
     out["pe"], n_pe = ratio(W, E, vw & fin(E))
+    out["pe"] = np.where(out["pe"] > MAX_PE, np.nan, out["pe"])   # Σ이익 ≈ 0 (흑자·적자 상쇄) 이면 PER 이 수천으로 튐 → 의미 없음
     vb = vw & fin(B) & (B > 0)
     out["pb"], _ = ratio(W, B, vb)
     out["ps"], _ = ratio(W, S, vw & fin(S) & (S > 0))
@@ -241,6 +244,7 @@ def aggregate(P: dict, M: np.ndarray, sizes: np.ndarray) -> dict[str, np.ndarray
 
     out["eg"] = growth(E, 12)
     out["sg"] = growth(S, 12)
+    out["er1"] = growth(E, 1)
     out["er3"] = growth(E, 3)
 
     Wp = np.full_like(W, np.nan)
@@ -275,28 +279,6 @@ def snapshot_cy(P: dict, M: np.ndarray, sizes: np.ndarray) -> dict[str, np.ndarr
     return out
 
 
-def _etf_block(d: pd.DataFrame, ts, cl: pd.DataFrame) -> list[dict]:
-    """etf_lookthrough 매칭 결과 → 그룹 정의 (vec = 종목별 ETF 비중 %, cl 순서)."""
-    from . import etf_lookthrough as X
-    out = []
-    idx = {c: i for i, c in enumerate(cl["code"])}
-    for e in X.load_mapped():
-        vec = np.zeros(len(cl))
-        for c, wt in e["weights"].items():
-            if c in idx and np.isfinite(wt) and wt > 0:
-                vec[idx[c]] += wt
-        if vec.sum() <= 0:
-            continue
-        mapped = sum(v for v in e["weights"].values() if np.isfinite(v))
-        cov = e["coverage"] * vec.sum() / mapped if mapped else None        # 팩터 제외 종목만큼 다시 깎는다
-        out.append({"id": f"etf:{e['ticker']}", "dim": "etf", "scope": e["category"], "key": e["ticker"],
-                    "label": f"{e['ticker']} · {e['label']}", "mask": vec > 0, "vec": vec,
-                    "desc": f"{e['issuer']} · 보유종목 {e['asof'][:4]}-{e['asof'][4:6]}-{e['asof'][6:]} · ACWI 커버리지 {cov:.0f}%",
-                    "etf": {"ticker": e["ticker"], "issuer": e["issuer"], "asof": e["asof"], "coverage": _c(cov, 3),
-                            "n_holdings": e["n_holdings"], "compare": e["compare"]}})
-    return out
-
-
 def _hist_stats(s: np.ndarray) -> dict:
     v = s[np.isfinite(s)]
     if len(v) < 24 or not np.isfinite(s[-1]):
@@ -320,31 +302,14 @@ def build(d: pd.DataFrame, ts, as_of: str | None = None, source: str = "") -> di
     A = aggregate(P, M, sizes)
     Y = snapshot_cy(P, M, sizes)
     wtot = np.nansum(P["w"])
-    etfs = _etf_block(d, ts, cl)
-    if etfs:                                   # ETF 룩스루: 비중 1 패널 × ETF 비중 (etf_lookthrough.py 매칭 결과)
-        Pu, _ = _stock_panels(d.assign(wgt=1.0), ts)
-        Me = np.stack([e["vec"] for e in etfs], axis=1)
-        se = (Me > 0).sum(axis=0).astype(float)
-        Ae, Ye = aggregate(Pu, Me, se), snapshot_cy(Pu, Me, se)
-        A = {k: np.concatenate([A[k], Ae[k]], axis=1) for k in A}
-        Y = {k: np.concatenate([Y[k], Ye[k]]) for k in Y}
-        sizes = np.concatenate([sizes, se])
-        defs = defs + etfs
     months = info["months"]
     keys = [m[0] for m in METRICS]
 
     groups, series, rows, long = [], {}, [], []
     for j, g in enumerate(defs):
         snap = {k: _c(Y[k][j], 4) for k in Y}
-        if g["dim"] == "etf":
-            order = np.argsort(-g["vec"])
-            order = order[g["vec"][order] > 0]
-            codes = cl["code"].to_numpy()[order].tolist()
-            extra = {"etf": g["etf"], "wts": [_c(x, 4) for x in g["vec"][order]]}
-            w = None
-        else:
-            codes = cl.loc[g["mask"], ["code", "wgt"]].sort_values("wgt", ascending=False)["code"].tolist()
-            extra, w = {}, _c(np.nansum(P["w"][g["mask"]]) / wtot * 100, 4)
+        codes = cl.loc[g["mask"], ["code", "wgt"]].sort_values("wgt", ascending=False)["code"].tolist()
+        extra, w = {}, _c(np.nansum(P["w"][g["mask"]]) / wtot * 100, 4)
         groups.append({"id": g["id"], "dim": g["dim"], "scope": g["scope"], "key": g["key"], "label": g["label"],
                        **({"desc": g["desc"]} if "desc" in g else {}),
                        "n": int(sizes[j]), "w": w,
@@ -377,10 +342,8 @@ def build(d: pd.DataFrame, ts, as_of: str | None = None, source: str = "") -> di
         "metrics": [{"key": k, "label": l, "unit": u, "desc": de, "dir": di} for k, l, u, de, di in METRICS],
         "dims": [{"key": "region", "label": "지역"}, {"key": "country", "label": "국가"},
                  {"key": "sector", "label": "섹터"}, {"key": "igroup", "label": "산업그룹"},
-                 {"key": "industry", "label": "산업"}, {"key": "theme", "label": "테마"}]
-                + ([{"key": "etf", "label": "ETF"}] if etfs else []),
+                 {"key": "industry", "label": "산업"}, {"key": "theme", "label": "테마"}],
         "sector_scopes": SECTOR_SCOPES,
-        "etf_scopes": list(dict.fromkeys(e["scope"] for e in etfs)),
         "themes": [{"key": k, "label": t["label"], "desc": t.get("desc", "")} for k, t in T.THEMES.items()],
         "quality": {k: v for k, v in info.items() if k != "months"} | {
             "theme_missing_codes": cl.attrs["theme_missing"],

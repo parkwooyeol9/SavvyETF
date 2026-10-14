@@ -131,9 +131,10 @@ export type AcwiBacktest = {
 };
 
 // ───────── 국가·업종·테마 집계 (Claude_DB/factor/groups.py → private/acwi/latest/groups.bin) ─────────
-/** pe·pb·ps 배, dy·roe %, eg·sg·er3 % (같은 종목 묶음 변화율), tr 총수익 지수(시작=100). */
-export type GroupMetricKey = "pe" | "pb" | "ps" | "dy" | "roe" | "eg" | "sg" | "er3" | "tr";
-export type GroupDim = "region" | "country" | "sector" | "igroup" | "industry" | "theme" | "etf";
+/** pe·pb·ps 배, dy·roe %, eg·sg·er1·er3 % (같은 종목 묶음 변화율), tr 총수익 지수(시작=100). */
+export type GroupMetricKey = "pe" | "pb" | "ps" | "dy" | "roe" | "eg" | "sg" | "er1" | "er3" | "tr";
+/** cmp = ETF 비교선 전용 ACWI 그룹 (표에는 안 나옴) */
+export type GroupDim = "region" | "country" | "sector" | "igroup" | "industry" | "theme" | "etf" | "cmp";
 export type AcwiGroup = {
   id: string;
   dim: GroupDim;
@@ -146,14 +147,22 @@ export type AcwiGroup = {
   n: number;
   /** ACWI 내 비중 % */
   w: number | null;
-  /** 컨센서스 연도 성장률 %: eg26 = EPS CY26/CY25, eg27 = CY27/CY26, sg = 매출 */
-  cy: Partial<Record<"eg26" | "eg27" | "sg26" | "sg27", number>>;
+  /** 컨센서스 연도 성장률 %: eg26 = EPS CY26/CY25, eg27 = CY27/CY26, sg = 매출. peg = PER ÷ eg27 (ETF 만) */
+  cy: Partial<Record<"eg26" | "eg27" | "sg26" | "sg27" | "peg", number>>;
   /** 비중 큰 순 */
   codes: string[];
   /** ETF 룩스루만: codes 와 같은 순서의 ETF 내 비중 % */
   wts?: (number | null)[];
-  /** ETF 룩스루만: 운용사·보유종목 기준일·ACWI 로 덮은 주식 비중 %·비교할 ACWI 그룹 id */
-  etf?: { ticker: string; issuer: string; asof: string; coverage: number | null; n_holdings: number; compare: string | null };
+  /** ETF 만: 운용사·보유종목 기준일(근사는 null)·ACWI 로 덮은 주식 비중 %·비교할 ACWI 그룹 id·방법 */
+  etf?: {
+    ticker: string;
+    issuer: string;
+    asof: string | null;
+    coverage: number | null;
+    n_holdings: number;
+    compare: string | null;
+    method?: "보유종목" | "ACWI 근사";
+  };
 };
 export type AcwiGroupSeries = Partial<Record<GroupMetricKey | "cov", (number | null)[]>> & { n?: number[] };
 export type AcwiGroups = {
@@ -173,9 +182,25 @@ export type AcwiGroups = {
   };
   groups: AcwiGroup[];
   series: Record<string, AcwiGroupSeries>;
-  /** 종목 → 산업그룹(ig)·테마 키(th) */
-  stocks: Record<string, { ig?: string; th?: string[] }>;
+  /** 종목 → 산업그룹(ig)·테마 키(th). ETF 밸류에이션 공개분은 이름(n)·국가(ct)도 */
+  stocks: Record<string, { ig?: string; th?: string[]; n?: string; ct?: string }>;
 };
+
+/**
+ * 밸류에이션 탭 (Claude_DB/factor/etf_valuation.py → private/acwi/latest/etf_valuation.bin, 공개 API).
+ * AcwiGroups 와 같은 모양: groups 의 dim 은 "etf"(scope = 분류) 와 "cmp"(비교선).
+ */
+export type EtfValuation = AcwiGroups & {
+  meta: AcwiGroups["meta"] & {
+    n_etfs: number;
+    quality: { unavailable?: { ticker: string; label: string; reason: string }[]; n_holdings_based?: number; n_proxy?: number } & Record<
+      string,
+      unknown
+    >;
+  };
+};
+/** 관리자 전용: 구성종목 지표 (AcwiStock 과 같은 짧은 키) */
+export type EtfValuationStocks = Record<string, Partial<Record<"pe" | "pb" | "dy" | "roe" | "eg" | "sg" | "er3" | "r12m" | "pep10" | "w", number>> & { n?: string; ct?: string; s?: string }>;
 
 /** 비로그인 공개분: 집계 백테스트 + MSCI 리뷰 일정만. 종목별 값·구성/비중은 없다. */
 export type AcwiPublic = {

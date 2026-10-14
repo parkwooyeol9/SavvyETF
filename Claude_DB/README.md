@@ -19,7 +19,8 @@ Claude_DB/
 │   ├── backtest.py      10년 팩터 백테스트 (월간, 5분위, PIT 유니버스·대형중형·현재고정 비교) → web/backtest_data.js
 │   ├── themes.py        종목 분류 사전: GICS 산업 → 산업그룹·한글명, 투자 테마 33개(코드·산업 규칙, 다중 분류)
 │   ├── groups.py        국가·지역·섹터(×국가)·산업그룹·산업·테마별 10년 월간 PER·PBR·PSR·배당·ROE·EPS/매출 성장 합산
-│   ├── etf_lookthrough.py  ETF 72개(iShares 58·SPDR 14) 보유종목 받기 → ACWI 코드 매칭 → groups.py 가 'ETF' 분류로 같은 방식 합산 (docs/07)
+│   ├── etf_lookthrough.py  iShares·SPDR ETF 89개 보유종목 받기 → ACWI 코드 매칭 (docs/07)
+│   ├── etf_valuation.py    웹앱 포트폴리오 › 밸류에이션: ETF 123개 = 보유종목 룩스루 84 + ACWI 근사 39 → web/etf_valuation*.js (docs/09)
 │   │                    → web/groups_data.js, out/groups/ (classification.csv · latest.csv · series_long.csv)
 │   ├── export_webapp.py 분석기·백테스트 결과 → 웹앱용 봉인 파일 (R2 private/acwi/latest/)
 │   ├── index_link.py    MSCI 편출입 연동: 종목별 편입 이력·미반영 변경·이벤트 스터디·편출 관찰 리스트
@@ -54,7 +55,8 @@ Claude_DB/
 │   ├── 05_팩터_백테스트.md         2026-10-06 파일 점검 · 10년 백테스트 방법·결과·한계
 │   ├── 06_Cursor_커밋_인수인계.md  2026-10-06 작업분 검토·빌드·GitHub 커밋·배포 절차
 │   ├── 07_ETF_룩스루_프로토타입.md  ETF 조사·보유종목 확보 경로·매칭·검증(SPY=미국 집계) 결과
-│   └── 08_Cursor_커밋_인수인계_국가업종테마_ETF.md  국가·업종·테마·ETF 작업분 검토·커밋·업로드·QA 절차
+│   ├── 08_Cursor_커밋_인수인계_국가업종테마_ETF.md  국가·업종·테마·ETF 작업분 검토·커밋·업로드·QA 절차
+│   └── 09_Cursor_인수인계_밸류에이션탭_ETF.md  밸류에이션 탭을 엑셀(savvyDB) → ACWI ETF 집계로 교체한 작업분
 └── tests/test_engine.py, test_analyzer.py
 ```
 
@@ -76,8 +78,9 @@ python -m Claude_DB.factor.backtest --xlsx Claude_DB/data/ACWI_v3.xlsx          
 python -m Claude_DB.factor.analyzer --xlsx ... --skip-pit     # 편출입 재구성 생략(약 1분)
 # 3-2) 국가·업종·테마별 10년 밸류에이션 (analyzer 끝에서 자동 실행, 분류만 고쳤을 때 단독으로 약 3초)
 python -m Claude_DB.factor.groups                             # out/stocks.csv + 시계열 캐시 사용
-# 3-3) ETF 룩스루 (프로토타입): 보유종목 받기·매칭 후 groups 다시 실행 → 웹 'ETF' 분류
+# 3-3) 밸류에이션 탭 ETF: 보유종목 받기·매칭 (주 1회 정도) → ETF 집계 (analyzer 끝에서도 자동)
 python -m Claude_DB.factor.etf_lookthrough --fetch            # data/etf_holdings/ (약 1분, 네트워크)
+python -m Claude_DB.factor.etf_valuation                      # web/etf_valuation.js · etf_valuation_stocks.js (약 5초)
 
 # 4) 화면
 open Claude_DB/web/index.html       # 팩터 스코어보드
@@ -159,4 +162,14 @@ SELECT code, name, currency, report_ccy, fx_method, ROUND(pe,1) FROM stocks WHER
 3. **보정**: 추정치가 한 달에 수 배 뛰는 단절(통화·단위 변경)은 단절 이전을 버림, 증자·감자로 과거 비중이 시장 대비 15배 넘게 부풀려지는
    종목(BMPS 등 13개)은 비중만 줄임, 현재 비중의 60% 미만만 데이터가 있는 달은 화면에서 비움.
 4. **한계**: 현재 구성종목 기준(생존 편향), 과거 통화 환산은 현재 환율 고정(국가 안 비율은 정확, 다국가 그룹 비중은 근사), 현지통화 성장률.
+
+## 밸류에이션 탭 ETF (factor/etf_valuation.py, 웹앱 포트폴리오 › 밸류에이션 — 공개)
+
+예전 엑셀 수기 계산 → savvyDB 업로드를 대체 (2026-10-14). ETF 123개 · 분류 6개(국가·지역·섹터(미국)·섹터(글로벌)·섹터(일본)·테마).
+- **보유종목** (84): iShares·SPDR 공시 보유종목을 ACWI 에 붙여 합산. ACWI 커버리지 40% 미만이면 근사로 바꾸거나 제외
+- **ACWI 근사** (39): 보유종목을 스크립트로 못 받는 운용사(Global X·VanEck·Invesco·First Trust …)와 일본 TOPIX-17 업종 ETF →
+  같은 성격의 ACWI 종목 묶음(국가·GICS·테마 규칙, 유동시총 가중, 테마는 한 종목 8% 상한). `PROXIES` 에 정의
+- **제외** (10): QTUM·SIXG·MOO(근사 규칙 없음), ARGT·VNM·PAK(ACWI 미편입), KRE·XTL·XME·XOP(커버리지 부족)
+- 그룹 PER 이 150 을 넘으면(이익 합이 0 근처) 결측. PER 은 지수 방식(조화평균) — 예전 엑셀의 가중 산술평균보다 낮게 나옴 (SOXX 30.1 → 19.3)
+- 공개 API `/api/etf-valuation?part=public` 은 ETF 단위 집계와 구성종목 이름·비중만, 종목별 지표는 `?part=stocks`(관리자)
 
