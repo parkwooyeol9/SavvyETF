@@ -130,6 +130,53 @@ export type AcwiBacktest = {
   coverage: { date: string; n_pit: number; n_static: number; n_pit_large: number; members_upper: number | null; members_confirmed: number | null }[];
 };
 
+// ───────── 국가·업종·테마 집계 (Claude_DB/factor/groups.py → private/acwi/latest/groups.bin) ─────────
+/** pe·pb·ps 배, dy·roe %, eg·sg·er3 % (같은 종목 묶음 변화율), tr 총수익 지수(시작=100). */
+export type GroupMetricKey = "pe" | "pb" | "ps" | "dy" | "roe" | "eg" | "sg" | "er3" | "tr";
+export type GroupDim = "region" | "country" | "sector" | "igroup" | "industry" | "theme" | "etf";
+export type AcwiGroup = {
+  id: string;
+  dim: GroupDim;
+  /** 섹터만: 범위(ACWI·미국·신흥·국가 …) */
+  scope: string | null;
+  key: string;
+  label: string;
+  desc?: string;
+  /** 구성 종목 수 */
+  n: number;
+  /** ACWI 내 비중 % */
+  w: number | null;
+  /** 컨센서스 연도 성장률 %: eg26 = EPS CY26/CY25, eg27 = CY27/CY26, sg = 매출 */
+  cy: Partial<Record<"eg26" | "eg27" | "sg26" | "sg27", number>>;
+  /** 비중 큰 순 */
+  codes: string[];
+  /** ETF 룩스루만: codes 와 같은 순서의 ETF 내 비중 % */
+  wts?: (number | null)[];
+  /** ETF 룩스루만: 운용사·보유종목 기준일·ACWI 로 덮은 주식 비중 %·비교할 ACWI 그룹 id */
+  etf?: { ticker: string; issuer: string; asof: string; coverage: number | null; n_holdings: number; compare: string | null };
+};
+export type AcwiGroupSeries = Partial<Record<GroupMetricKey | "cov", (number | null)[]>> & { n?: number[] };
+export type AcwiGroups = {
+  meta: {
+    built_at: string;
+    as_of: string;
+    source: string;
+    months: string[];
+    n_stocks: number;
+    metrics: { key: GroupMetricKey; label: string; unit: string; desc: string; dir: -1 | 0 | 1 }[];
+    dims: { key: GroupDim; label: string }[];
+    sector_scopes: string[];
+    /** ETF 분류 (국가·지역·섹터(미국)·섹터(글로벌)·산업·테마) */
+    etf_scopes?: string[];
+    themes: { key: string; label: string; desc: string }[];
+    quality: Record<string, unknown>;
+  };
+  groups: AcwiGroup[];
+  series: Record<string, AcwiGroupSeries>;
+  /** 종목 → 산업그룹(ig)·테마 키(th) */
+  stocks: Record<string, { ig?: string; th?: string[] }>;
+};
+
 /** 비로그인 공개분: 집계 백테스트 + MSCI 리뷰 일정만. 종목별 값·구성/비중은 없다. */
 export type AcwiPublic = {
   backtest: AcwiBacktest;
