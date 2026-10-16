@@ -752,14 +752,14 @@ def push_to_webapp(
 ) -> dict[str, Any]:
     """POST slim JSON (+ xlsx_base64) to Vercel /api/etf-flow-weekly (ESG carbon 과 동일 패턴)."""
     import base64
-    import urllib.request
 
     body = dict(slim)
     body["xlsx_base64"] = base64.b64encode(xlsx_bytes).decode("ascii")
     day = (slim.get("generated_at") or "")[:10] or datetime.now(KST).date().isoformat()
     body["as_of_kst"] = day
     url = base_url.rstrip("/") + "/api/etf-flow-weekly"
-    req = urllib.request.Request(
+    # requests(+certifi) — macOS 시스템 Python urllib 은 SSL verify 실패하는 경우가 있음
+    res = requests.post(
         url,
         data=json.dumps(body, ensure_ascii=False, default=str).encode("utf-8"),
         headers={
@@ -767,10 +767,10 @@ def push_to_webapp(
             "Authorization": f"Bearer {secret}",
             "User-Agent": UA,
         },
-        method="POST",
+        timeout=60,
     )
-    with urllib.request.urlopen(req, timeout=60) as res:
-        return json.loads(res.read().decode("utf-8"))
+    res.raise_for_status()
+    return res.json()
 
 
 def publish_weekly(*, publish: bool = False, push: bool = False) -> dict[str, Any]:
