@@ -3,10 +3,12 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 
 import { cdnCacheHeader } from "@/lib/apiCache";
-import type {
-  CarbonBar,
-  CarbonSeries,
-  EsgCarbonPayload,
+import {
+  buildCarbonSpreadComment,
+  type CarbonBar,
+  type CarbonSeries,
+  type CarbonSpread,
+  type EsgCarbonPayload,
 } from "@/lib/esgCarbon";
 import { r2Configured, r2GetObjectText, r2PutJsonDaily } from "@/lib/r2";
 import { siteAdminAuthorized } from "@/lib/siteAdmin";
@@ -33,13 +35,7 @@ type DomesticCachePayload = {
   note?: string;
 };
 
-const GLOBAL_ETFS = [
-  {
-    symbol: "KRBN",
-    name: "KraneShares Global Carbon",
-    note: "글로벌 탄소배출권 선물 바스켓",
-  },
-] as const;
+const SENDECO2_CSV = "https://www.sendeco2.com/site_sendeco/service/download-csv.php";
 
 function parseNumber(raw: unknown): number | null {
   if (raw == null) return null;
@@ -300,95 +296,155 @@ async function loadDomesticFromR2(): Promise<{
   }
 }
 
-type YahooChart = {
-  chart?: {
-    result?: Array<{
-      meta?: {
-        regularMarketPrice?: number;
-        previousClose?: number;
-        chartPreviousClose?: number;
-        currency?: string;
-        shortName?: string;
-        longName?: string;
-      };
-      timestamp?: number[];
-      indicators?: {
-        quote?: Array<{
-          close?: Array<number | null>;
-          volume?: Array<number | null>;
-          open?: Array<number | null>;
-          high?: Array<number | null>;
-          low?: Array<number | null>;
-        }>;
-      };
-    }>;
-    error?: { description?: string };
-  };
-};
+function parseSendeco2Date(raw: string): string | null {
+  // DD-MM-YYYY
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw.trim());
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
 
-async function fetchYahooEtf(
-  symbol: string,
-  name: string
-): Promise<CarbonSeries> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    symbol
-  )}?interval=1d&range=1y&includePrePost=false`;
-  const res = await fetch(url, {
+async function fetchSendeco2Year(year: number): Promise<CarbonBar[]> {
+  const res = await fetch(`${SENDECO2_CSV}?year=${year}`, {
     headers: {
       "User-Agent": UA,
-      Accept: "application/json",
+      Accept: "text/csv,*/*",
+      Referer: "https://www.sendeco2.com/es/precios-co2/",
     },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Yahoo HTTP ${res.status} for ${symbol}`);
-  const json = (await res.json()) as YahooChart;
-  const result = json.chart?.result?.[0];
-  if (!result?.timestamp?.length) {
-    throw new Error(json.chart?.error?.description || `Yahoo empty for ${symbol}`);
+  if (!res.ok) throw new Error(`Sendeco2 HTTP ${res.status} for ${year}`);
+  const text = await res.text();
+  if (/<!DOCTYPE|<html/i.test(text.slice(0, 80))) {
+    throw new Error(`Sendeco2 returned HTML for ${year}`);
   }
-  const q = result.indicators?.quote?.[0];
   const bars: CarbonBar[] = [];
-  for (let i = 0; i < result.timestamp.length; i++) {
-    const close = q?.close?.[i];
-    if (close == null || !Number.isFinite(close)) continue;
-    const ts = result.timestamp[i] * 1000;
-    const d = new Date(ts);
-    const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-    bars.push({
-      date,
-      close,
-      volume: q?.volume?.[i] ?? 0,
-      open: q?.open?.[i] ?? null,
-      high: q?.high?.[i] ?? null,
-      low: q?.low?.[i] ?? null,
-    });
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || /^fecha;/i.test(trimmed)) continue;
+    const [dateRaw, euaRaw] = trimmed.split(";");
+    const date = parseSendeco2Date(dateRaw || "");
+    const close = parseNumber((euaRaw || "").replace(",", "."));
+    if (!date || close == null || close <= 0) continue;
+    bars.push({ date, close, volume: 0 });
   }
-  bars.sort((a, b) => a.date.localeCompare(b.date));
+  return bars;
+}
+
+/** EU ETS allowance (EUA) spot from Sendeco2 daily CSV — not a carbon ETF. */
+async function fetchEuropeanEua(): Promise<CarbonSeries> {
+  const y = Number(kstYmdParts().y);
+  const years = [y, y - 1];
+  const settled = await Promise.allSettled(years.map((yr) => fetchSendeco2Year(yr)));
+  const byDate = new Map<string, CarbonBar>();
+  const errs: string[] = [];
+  for (let i = 0; i < settled.length; i++) {
+    const s = settled[i];
+    if (s.status === "fulfilled") {
+      for (const b of s.value) byDate.set(b.date, b);
+    } else {
+      errs.push(
+        `${years[i]}: ${s.reason instanceof Error ? s.reason.message : String(s.reason)}`,
+      );
+    }
+  }
+  const bars = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  if (!bars.length) {
+    throw new Error(
+      errs.length ? `EUA empty (${errs.join("; ")})` : "EUA empty from Sendeco2",
+    );
+  }
 
   const last = bars[bars.length - 1];
-  const meta = result.meta || {};
-  const lastPx = meta.regularMarketPrice ?? last?.close ?? null;
-  const prevClose =
-    meta.previousClose ?? meta.chartPreviousClose ?? bars[bars.length - 2]?.close ?? null;
-  const change =
-    lastPx != null && prevClose != null ? lastPx - prevClose : null;
+  const prev = bars.length >= 2 ? bars[bars.length - 2] : null;
+  const change = prev ? last.close - prev.close : null;
   const changePct =
-    change != null && prevClose ? (change / prevClose) * 100 : null;
+    prev && prev.close ? ((last.close - prev.close) / prev.close) * 100 : null;
 
   return {
-    symbol,
-    name: meta.shortName || meta.longName || name,
-    market: "US",
-    currency: meta.currency || "USD",
-    unit: "USD",
+    symbol: "EUA",
+    name: "EU ETS 배출권 (EUA)",
+    market: "EU",
+    currency: "EUR",
+    unit: "€/톤",
     quote: {
-      last: lastPx,
+      last: last.close,
       change,
       change_pct: changePct,
-      volume: last?.volume ?? null,
+      volume: null,
     },
     daily: bars,
-    source: "Yahoo Finance (탄소배출권 ETF 프록시)",
+    source: "Sendeco2 (EUA spot)",
+  };
+}
+
+async function fetchEurKrw(): Promise<number> {
+  const url =
+    "https://query1.finance.yahoo.com/v8/finance/chart/EURKRW=X?interval=1d&range=5d&includePrePost=false";
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA, Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Yahoo EURKRW HTTP ${res.status}`);
+  const json = (await res.json()) as {
+    chart?: {
+      result?: Array<{
+        meta?: { regularMarketPrice?: number };
+        indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+      }>;
+    };
+  };
+  const result = json.chart?.result?.[0];
+  const metaPx = result?.meta?.regularMarketPrice;
+  if (metaPx != null && Number.isFinite(metaPx) && metaPx > 0) return metaPx;
+  const closes = result?.indicators?.quote?.[0]?.close || [];
+  for (let i = closes.length - 1; i >= 0; i--) {
+    const c = closes[i];
+    if (c != null && Number.isFinite(c) && c > 0) return c;
+  }
+  throw new Error("EURKRW empty");
+}
+
+function buildSpread(
+  domestic: CarbonSeries | null,
+  european: CarbonSeries | null,
+  fxEurKrw: number | null,
+): CarbonSpread {
+  const kauKrw = domestic?.quote.last ?? null;
+  const euaEur = european?.quote.last ?? null;
+  const euaKrw =
+    euaEur != null && fxEurKrw != null && fxEurKrw > 0 ? euaEur * fxEurKrw : null;
+  const spreadKrw =
+    kauKrw != null && euaKrw != null ? kauKrw - euaKrw : null;
+  const spreadPct =
+    kauKrw != null && euaKrw != null && euaKrw > 0
+      ? ((kauKrw / euaKrw) - 1) * 100
+      : null;
+  const ratio =
+    kauKrw != null && euaKrw != null && euaKrw > 0 ? kauKrw / euaKrw : null;
+
+  let label: CarbonSpread["label"] = "n/a";
+  if (spreadPct != null) {
+    if (Math.abs(spreadPct) < 3) label = "flat";
+    else if (spreadPct > 0) label = "premium";
+    else label = "discount";
+  }
+
+  return {
+    kau_krw: kauKrw,
+    eua_eur: euaEur,
+    eua_krw: euaKrw,
+    fx_eurkrw: fxEurKrw,
+    spread_krw: spreadKrw,
+    spread_pct: spreadPct,
+    kau_vs_eua_ratio: ratio,
+    label,
+    comment: buildCarbonSpreadComment({
+      kauKrw,
+      euaEur,
+      euaKrw,
+      spreadPct,
+      label,
+    }),
   };
 }
 
@@ -466,17 +522,24 @@ export async function POST(request: Request) {
 export async function GET() {
   const generated_at = new Date().toISOString();
   try {
-    const [domesticSettled, r2Settled, ...globalSettled] = await Promise.allSettled([
-      fetchDomesticCarbon(),
-      loadDomesticFromR2(),
-      ...GLOBAL_ETFS.map((e) => fetchYahooEtf(e.symbol, e.name)),
-    ]);
+    const [domesticSettled, r2Settled, euaSettled, fxSettled] =
+      await Promise.allSettled([
+        fetchDomesticCarbon(),
+        loadDomesticFromR2(),
+        fetchEuropeanEua(),
+        fetchEurKrw(),
+      ]);
 
     let domestic =
       domesticSettled.status === "fulfilled" ? domesticSettled.value : null;
     const r2Cache =
-      r2Settled.status === "fulfilled" ? r2Settled.value : { series: null, generatedAt: null };
-    const global: CarbonSeries[] = [];
+      r2Settled.status === "fulfilled"
+        ? r2Settled.value
+        : { series: null, generatedAt: null };
+    const european =
+      euaSettled.status === "fulfilled" ? euaSettled.value : null;
+    const fxEurKrw =
+      fxSettled.status === "fulfilled" ? fxSettled.value : null;
     const errors: string[] = [];
 
     if (domesticSettled.status === "rejected") {
@@ -485,51 +548,61 @@ export async function GET() {
           domesticSettled.reason instanceof Error
             ? domesticSettled.reason.message
             : String(domesticSettled.reason)
-        }`
+        }`,
       );
     }
     if (!domestic && r2Cache.series) {
       domestic = r2Cache.series;
     } else if (!domestic) {
       errors.push(
-        "국내: KRX 실시간·R2 캐시 모두 없음 (봇에서 `python 06_ESG/esg_carbon.py --upload` 실행 필요)"
+        "국내: KRX 실시간·R2 캐시 모두 없음 (봇에서 `python 06_ESG/esg_carbon.py --upload` 실행 필요)",
       );
     }
-    for (let i = 0; i < globalSettled.length; i++) {
-      const s = globalSettled[i];
-      if (s.status === "fulfilled") global.push(s.value);
-      else {
-        errors.push(
-          `${GLOBAL_ETFS[i].symbol}: ${
-            s.reason instanceof Error ? s.reason.message : String(s.reason)
-          }`
-        );
-      }
+    if (euaSettled.status === "rejected") {
+      errors.push(
+        `EUA: ${
+          euaSettled.reason instanceof Error
+            ? euaSettled.reason.message
+            : String(euaSettled.reason)
+        }`,
+      );
+    }
+    if (fxSettled.status === "rejected") {
+      errors.push(
+        `EURKRW: ${
+          fxSettled.reason instanceof Error
+            ? fxSettled.reason.message
+            : String(fxSettled.reason)
+        }`,
+      );
     }
 
-    if (!domestic && !global.length) {
+    if (!domestic && !european) {
       return NextResponse.json(
         {
           ok: false,
           generated_at,
           error: errors.join(" · ") || "탄소배출권 데이터 로드 실패",
         } satisfies EsgCarbonPayload,
-        { status: 502 }
+        { status: 502 },
       );
     }
 
     const usedR2 = Boolean(
       domestic &&
         domesticSettled.status !== "fulfilled" &&
-        r2Cache.series
+        r2Cache.series,
     );
+    const spread = buildSpread(domestic, european, fxEurKrw);
     const payload: EsgCarbonPayload = {
       ok: true,
       generated_at,
       domestic,
-      global,
+      european,
+      global: european ? [european] : [],
+      spread,
       note:
-        "국내는 KRX 배출권(KAU) 일별 종가·거래량, 해외는 탄소배출권 ETF(KRBN)로 대체합니다." +
+        "국내는 KRX KAU, 유럽은 EU ETS EUA(Sendeco2 spot). 스프레드는 EUR/KRW 환산 후 비교합니다." +
         (usedR2
           ? ` 국내는 R2 캐시${r2Cache.generatedAt ? ` (${r2Cache.generatedAt})` : ""}.`
           : "") +
@@ -545,7 +618,7 @@ export async function GET() {
         generated_at,
         error: exc instanceof Error ? exc.message : "탄소배출권 로드 실패",
       } satisfies EsgCarbonPayload,
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
