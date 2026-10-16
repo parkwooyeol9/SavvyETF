@@ -2641,6 +2641,13 @@ a.geo-choke-hl:hover {
   border-top: 1px solid rgba(43, 54, 72, 0.85);
 }
 
+.esg-carbon-top {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  padding-top: 0;
+  border-top: none;
+}
+
 .esg-carbon-support-head {
   display: flex;
   justify-content: space-between;

@@ -60,6 +60,16 @@ def fetch_esg_carbon_payload() -> dict[str, Any]:
     return _fetch_json(f"{base}/api/esg-carbon")
 
 
+def refresh_esg_carbon_cache() -> dict[str, Any]:
+    """Scrape KRX KAU from this host and mirror to R2 for the Vercel dashboard."""
+    try:
+        from esg_carbon import publish_esg_carbon
+
+        return publish_esg_carbon()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def collect_esg_geo_snapshot() -> dict[str, Any]:
     """Gather climate (bot-native) + geo/themes/carbon (webapp APIs)."""
     from climate_data import build_climate_monitor_bundle
@@ -71,6 +81,11 @@ def collect_esg_geo_snapshot() -> dict[str, Any]:
     carbon: dict[str, Any] = {}
     accident: dict[str, Any] = {}
     errors: list[str] = []
+
+    # Refresh domestic KAU on R2 first so /api/esg-carbon can serve it from cloud.
+    cache_result = refresh_esg_carbon_cache()
+    if not cache_result.get("ok"):
+        errors.append(f"carbon_cache: {cache_result.get('error') or cache_result}")
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         fut_climate = pool.submit(build_climate_monitor_bundle)
