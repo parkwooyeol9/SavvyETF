@@ -108,3 +108,9 @@ export async function withServerCache<T>(
   inflight.set(key, run);
   return run;
 }
+
+/** Drop a process-local cache entry (e.g. after an ingest write). */
+export function invalidateServerCache(key: string): void {
+  mem.delete(key);
+  inflight.delete(key);
+}

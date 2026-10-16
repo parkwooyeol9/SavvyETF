@@ -43,9 +43,10 @@ def run_etf_flow_weekly_job() -> bool:
     from etf_flow_weekly import publish_weekly
 
     try:
-        result = publish_weekly()
+        result = publish_weekly(publish=True)
         print(f"Scheduled etf_flow_weekly done: {result}")
-        return bool(result.get("json"))
+        pushed = result.get("push") or {}
+        return bool(pushed.get("ok") or result.get("json"))
     except Exception as exc:  # noqa: BLE001
         print(f"Scheduled etf_flow_weekly failed: {exc}")
         update_scheduler_state(last_etf_flow_weekly_error=str(exc))

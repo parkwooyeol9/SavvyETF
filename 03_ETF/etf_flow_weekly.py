@@ -727,8 +727,60 @@ def build_payload() -> dict[str, Any]:
     }
 
 
-def publish_weekly(*, publish: bool = True) -> dict[str, Any]:
-    """수집 → 00_exports/etf_flow_weekly/ 에 json·xlsx 저장 → (publish) R2 업로드."""
+def _slim_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    slim = {k: v for k, v in payload.items() if k != "raw_us"}
+    slim["raw_us_top"] = (payload.get("raw_us") or [])[:300]
+    return slim
+
+
+def _webapp_base_url() -> str:
+    import os
+
+    return (
+        os.environ.get("WEBAPP_PUBLIC_URL")
+        or os.environ.get("WEB_PUBLISH_URL", "").replace("/api/ingest", "")
+        or "https://savvyetf.com"
+    ).strip()
+
+
+def push_to_webapp(
+    slim: dict[str, Any],
+    xlsx_bytes: bytes,
+    *,
+    base_url: str,
+    secret: str,
+) -> dict[str, Any]:
+    """POST slim JSON (+ xlsx_base64) to Vercel /api/etf-flow-weekly (ESG carbon 과 동일 패턴)."""
+    import base64
+    import urllib.request
+
+    body = dict(slim)
+    body["xlsx_base64"] = base64.b64encode(xlsx_bytes).decode("ascii")
+    day = (slim.get("generated_at") or "")[:10] or datetime.now(KST).date().isoformat()
+    body["as_of_kst"] = day
+    url = base_url.rstrip("/") + "/api/etf-flow-weekly"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body, ensure_ascii=False, default=str).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Bearer {secret}",
+            "User-Agent": UA,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as res:
+        return json.loads(res.read().decode("utf-8"))
+
+
+def publish_weekly(*, publish: bool = False, push: bool = False) -> dict[str, Any]:
+    """수집 → 00_exports 저장 → (push/publish) 웹 수신 API 또는 R2.
+
+    WEB_INGEST_SECRET + WEBAPP_PUBLIC_URL 이 있으면 push 우선(Vercel R2).
+    없을 때만 로컬/Render R2_* 직접 쓰기. put_* 가 False 면 예외.
+    """
+    import os
+
     from etf_flow_weekly_excel import write_workbook
 
     payload = build_payload()
@@ -740,27 +792,55 @@ def publish_weekly(*, publish: bool = True) -> dict[str, Any]:
     write_workbook(payload, xpath)
     print(f"saved {jpath}\nsaved {xpath}")
     result: dict[str, Any] = {"json_path": str(jpath), "xlsx_path": str(xpath)}
-    if publish:
-        import r2_data
 
-        slim = {k: v for k, v in payload.items() if k != "raw_us"}
-        slim["raw_us_top"] = payload["raw_us"][:300]
-        result["json"] = r2_data.put_json(R2_LATEST_JSON, slim)
-        result["snapshot"] = r2_data.put_json(f"{R2_SNAP_PREFIX}{datetime.now(KST).date().isoformat()}.json", slim)
-        result["xlsx"] = r2_data.put_bytes(
-            R2_LATEST_XLSX, xpath.read_bytes(),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        print(f"R2 publish {result}")
+    if not (publish or push):
+        return result
+
+    slim = _slim_payload(payload)
+    xlsx_bytes = xpath.read_bytes()
+    base = _webapp_base_url()
+    secret = (os.environ.get("WEB_INGEST_SECRET") or "").strip()
+
+    # 운영 경로: Vercel 수신 API → Vercel R2 (로컬 R2 키 불필요)
+    if push or (publish and secret and base):
+        if not secret:
+            raise RuntimeError("WEB_INGEST_SECRET required for web push")
+        pushed = push_to_webapp(slim, xlsx_bytes, base_url=base, secret=secret)
+        result["push"] = pushed
+        print(f"web push {pushed}")
+        if not pushed.get("ok"):
+            raise RuntimeError(f"web push failed: {pushed}")
+        return result
+
+    # 폴백: R2 직접 쓰기 (키 없으면 False → 예외)
+    import r2_data
+
+    ok_json = r2_data.put_json(R2_LATEST_JSON, slim)
+    ok_snap = r2_data.put_json(
+        f"{R2_SNAP_PREFIX}{datetime.now(KST).date().isoformat()}.json", slim
+    )
+    ok_xlsx = r2_data.put_bytes(
+        R2_LATEST_XLSX,
+        xlsx_bytes,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    result.update({"json": ok_json, "snapshot": ok_snap, "xlsx": ok_xlsx})
+    print(f"R2 publish {result}")
+    if not (ok_json and ok_snap and ok_xlsx):
+        from r2_briefs import r2_configured
+
+        raise RuntimeError(f"R2 publish returned False (configured={r2_configured()})")
     return result
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--publish", action="store_true", help="R2 업로드")
+    ap.add_argument("--publish", action="store_true", help="원격 반영(웹 push 우선, 없으면 R2)")
+    ap.add_argument("--push", action="store_true", help="Vercel /api/etf-flow-weekly 로 POST (WEB_INGEST_SECRET)")
     ap.add_argument("--cached-only", action="store_true", help="미국 일별 이력은 오늘 캐시만 사용(추가 호출 없음)")
     args = ap.parse_args()
     _state["cached_only"] = args.cached_only
-    publish_weekly(publish=args.publish)
+    publish_weekly(publish=args.publish, push=args.push)
 
 
 if __name__ == "__main__":
