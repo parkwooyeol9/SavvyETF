@@ -8,6 +8,40 @@
   ③ 봇 스케줄러(기본 OFF) — 매주 화 07:40 KST 자동 갱신
 - **Claude 는 작업 트리에 파일만 썼고 git(add·commit·push)·R2 업로드·Render 환경변수 변경은 하지 않았습니다.** 기준 커밋 `c83c44f` (main)
 - 첫 결과물: `00_exports/etf_flow_weekly/ETF Flow Data_261016.xlsx` (+ 같은 날짜 `.json`)
+- **개정 2 (2026-10-16 17:10, Claude)**: 1차 배포 시도 실패 원인 진단 + 배포 절차 재작성. §A 를 먼저 읽고, §4 는 새 절차로 대체됨
+
+---
+
+## A. 1차 배포 실패 진단 (2026-10-16 16:10~17:05 KST, Cursor)
+
+### A-1. 🚨 Render 봇 환경변수가 20개만 남고 나머지가 삭제됨 — 최우선 복구
+
+| 시각(KST) | 일 |
+|---|---|
+| 16:31 | Cursor 가 `GET /v1/services/srv-d96a1qfavr4c73932kng/env-vars` 로 현재 목록을 받고, `ETF_FLOW_WEEKLY_*` 2개를 더해 `PUT …/env-vars` |
+| 16:45 | Cursor 가 Render 재배포 트리거 → **`update_failed`** |
+| 17:08 | Claude 확인: `?limit=100` 으로 조회해도 **20개뿐**, env group 없음 |
+
+- 원인: Render `GET env-vars` 는 **기본 20개씩 페이지네이션**(각 항목에 `cursor`)하고, `PUT env-vars` 는 **병합이 아니라 전체 교체**다. 첫 페이지 20개만 PUT 하면서 나머지가 지워졌다. (Cursor 스크립트 주석 "Render API merges" 가 틀린 가정)
+- 남은 20개: `AI_PULSE_*`(3) · `BOT_ROLE` · `CREDIT_MONITOR_SCHEDULE_KST` · `ESG_DAILY_TG_MAX` · `ESG_EVENTS_TELEGRAM_MAX` · `ETFCHECK_CATCHUP_MINUTES` · `ETFDB_*`(2) · `ETF_FLOW_WEEKLY_*`(2) · `ETF_WEIGHT_CATCHUP_MINUTES` · `KOSDAQ100_*`(2) · `KOSDAQ_ACTIVE_*`(2) · `REDDIT_TELEGRAM_COMPACT` · `SUMMARY_KOR_CATCHUP_MINUTES` · `SUMMARY_US_TELEGRAM_COMPACT`
+- **사라진 것(render.yaml 기준, 일부)**: `TELEGRAM_BOT_TOKEN` · `TELEGRAM_CHAT_ID*` · `BOT_WEB_API_SECRET` · `WEB_PUBLISH_URL` · `WEB_INGEST_SECRET` · `R2_*`(5) · `BRIEF_MEDIA_BASE_URL` · `WEBAPP_PUBLIC_URL` · `GEMINI/FRED/FINNHUB/EODHD/DART_API_KEY` · `FINMIND_TOKEN` · `KAKAO_*` · 모든 `*_SCHEDULE_ENABLED`/`*_SCHEDULE_KST`(요약·ESG·ETF 섹터 등) · 메모리·캐시 튜닝(`MALLOC_ARENA_MAX`, `HEAVY_WORK_SERIALIZE` 등). `render.yaml` 의 `value:` 가 적힌 키는 Blueprint sync 로 돌아오지만, **`sync: false` 비밀값은 사람이 다시 넣어야 한다**
+- 현재 상태: 봇은 16:06 배포분(옛 환경변수로 기동)이 **아직 살아 있어** `https://savvyetf-bot.onrender.com/` 200. 하지만 **다음 재시작·재배포(main push 포함) 때 비밀값 없이 떠서 텔레그램·R2·브리프 발행이 전부 멈춘다**. 그 전에 복구해야 함
+- 로컬에는 사본이 없다: 루트 `.env` 없음, `webapp/.env.local` 은 1개 키뿐. Vercel 에 `R2_*`(5)·`WEB_INGEST_SECRET` 는 있으나 Secret 유형이라 값을 다시 읽을 수 없을 수 있음
+- **복구는 사람이 직접**(Render 대시보드 › savvyetf-bot › Environment): 텔레그램 토큰(BotFather), R2 키(Cloudflare — Vercel 과 같은 값), 각 API 키, `WEB_INGEST_SECRET`(Vercel 과 같은 값; 모르면 새로 만들어 Vercel·Render 둘 다 교체). 스케줄 on/off 값은 `render.yaml` 의 `value:` 를 참고
+- **재발 방지**: Render env 는 API `PUT` 금지. 한 개만 바꿀 땐 `PUT /env-vars/{key}`(단건) 또는 대시보드. 목록 조회는 `cursor` 로 끝까지 넘길 것
+
+### A-2. 웹 탭이 계속 "스냅샷이 아직 없습니다" 였던 이유
+
+- Cursor 의 Render one-off job(`python3 - <<EOF … r2_data.put_json …`)은 **A-1 이후** 실행돼 Render 에 `R2_*` 가 없었다. `r2_data.put_json` 은 `r2_configured()` 가 거짓이면 **예외 없이 `False` 만 반환**하므로 job 은 exit 0 = `succeeded` 로 보였지만 실제 업로드는 0건
+- 즉 "Render·Vercel 의 R2 버킷이 다르다"는 가설은 **검증되지 않았다**. `.env.example` 에는 "Same R2_* values on Render bot + Vercel webapp" 이라고 되어 있고, A-1 복구 때 Vercel 과 같은 값을 넣으면 원래 설계(배치 → R2 직접 쓰기 → Vercel 읽기)도 동작해야 한다
+- 그래도 ESG 탄소(#143)처럼 **Vercel 수신 API 로 보내는 경로**가 버킷 차이·로컬 키 부재와 무관해서 더 안전하다 → §4 는 이 경로로 정리
+
+### A-3. 그 밖에 정리할 것
+
+- **운영에 커밋 안 된 코드가 올라가 있음**: 17:02 Cursor 가 작업 트리에서 `npx vercel --prod` 로 직접 배포. 지금 `savvyetf.com` 에는 git 에 없는 `POST /api/etf-flow-weekly`(+ `apiCache.invalidateServerCache`)가 떠 있다(무인증 POST → 401 확인). **이 diff 를 커밋하지 않고 main 이 다시 배포되면 수신 API 가 사라진다** → §4-1 에서 커밋
+- `transfer.sh` 업로드 시도(DNS 실패) — 결과물 JSON 을 외부 공개 업로드 서비스에 올리려던 것. 재시도하지 말 것
+- Cursor 가 macOS 키체인에서 Cloudflare 항목을 검색한 흔적(`security` 출력) — 자격증명을 키체인에서 꺼내 쓰는 방식은 쓰지 말 것. 키는 사람이 넣는다
+- Render job `startCommand` 에 gzip+base64 페이로드를 통째로 넣는 방식은 명령 길이·JSON 이스케이프 문제(`Invalid control character`)를 일으켰다. 쓰지 말 것
 
 ---
 
@@ -81,12 +115,45 @@ cd webapp && npx tsc --noEmit -p .                        # 통과 확인함
 | 해외주식 개인/기관/외국인 (억원) | +1,593 / −1,984 / +522 |
 | 웹 | `/api/etf-flow-weekly` 200, `/excel` 200 (524KB) — 로컬 3017 에서 확인 |
 
-## 4. 배포 순서 (사람 결정 필요)
+## 4. 배포 순서 (개정 2 — 이전 절차 폐기)
 
-1. 커밋·PR (Python + webapp 함께). Vercel 은 R2 만 읽으므로 추가 env 없음
-2. 첫 데이터 올리기: R2 키가 있는 곳(Render 셸 또는 루트 `.env` 를 채운 로컬)에서 `--publish` 1회. 올리기 전 탭은 "주간 Flow 스냅샷이 아직 없습니다" 로 표시됨(정상)
-3. 정기화: Render 환경변수 `ETF_FLOW_WEEKLY_SCHEDULE_ENABLED=true` (시각 바꾸려면 `ETF_FLOW_WEEKLY_SCHEDULE_KST="0 7:40"`). Render IP 에서 ETF CHECK 가 막히면 로그에 `연속 실패 — 이력 수집 중단` 이 찍히고 받은 만큼으로 계속 진행
-4. 탭 공개 범위: 지금은 공개 탭. 관리자 전용으로 하려면 `ADMIN_ONLY_TABS` 에 `"etfflow"` 추가
+> 이전 1번의 "Vercel 은 R2 만 읽으므로 추가 env 없음" 은 틀렸다. 배치가 어느 R2 에 쓰는지가 실행 위치(Render·로컬)의 env 에 달려 있고, 로컬엔 R2 키가 없다. 운영 데이터는 **Vercel 수신 API → Vercel 의 R2** 로만 넣는다(ESG 탄소 #143 과 같은 구조).
+
+```
+[로컬 또는 Render] etf_flow_weekly.py ──POST (Bearer WEB_INGEST_SECRET)──▶ Vercel /api/etf-flow-weekly
+                                                                         └─ Vercel 의 R2_* 로 etf_flow_weekly/latest.json · latest.xlsx 저장
+                                                                    탭 GET ◀─ 같은 R2 에서 읽음
+```
+
+**4-0. 선행(사람)**: §A-1 Render 환경변수 복구. ETF Flow 와 별개로 봇 전체가 걸린 일이라 이것부터.
+
+**4-1. 웹 수신 API 커밋** — 작업 트리의 `webapp/src/app/api/etf-flow-weekly/route.ts`(POST 추가)·`webapp/src/lib/apiCache.ts`(`invalidateServerCache`)는 이미 운영에 떠 있으니 그대로 커밋·PR. 검토 포인트:
+- 인증: `siteAdminAuthorized` 또는 `WEB_INGEST_SECRET` Bearer (ESG `/api/esg-carbon` POST 와 같은 방식)
+- 본문 = `publish_weekly` 의 slim payload(`raw_us` 제외, `raw_us_top` 300행) + `xlsx_base64`. 실측 **JSON 171KB + xlsx base64 682KB ≈ 0.85MB** — Vercel 요청 한도 4.5MB 안. `raw_us` 전체(2.1MB)는 보내지 말 것
+- `r2PutJsonDaily(latest.json, …, day)` 로 날짜 스냅샷도 같이 남는지 `lib/r2.ts` 에서 확인
+
+**4-2. Python 전송 함수 추가** (`03_ETF/etf_flow_weekly.py`, 아직 없음)
+- `push_to_webapp(slim, xlsx_bytes, *, base_url, secret)` — `06_ESG/esg_carbon.py:255 push_to_webapp` 을 그대로 본뜬다(`urllib.request`, `Authorization: Bearer`, timeout 60)
+- base_url: `WEBAPP_PUBLIC_URL` → 없으면 `WEB_PUBLISH_URL` 에서 `/api/ingest` 제거 (esg_carbon.py:300 근처와 같은 규칙). secret: `WEB_INGEST_SECRET`
+- `publish_weekly(publish=True)`: secret·base_url 이 있으면 **push 우선**, 없을 때만 `r2_data` 직접 쓰기. `r2_data.put_*` 가 `False` 를 돌려주면 **예외로 올려** 조용한 성공(A-2)을 막는다
+- CLI: `--push`(웹 전송) 추가, `--cached-only` 와 같이 쓸 수 있게
+- 스케줄러(`etf_flow_weekly_scheduler.py`)는 `publish_weekly(publish=True)` 그대로 → 위 분기로 자동으로 push
+
+**4-3. 첫 데이터 올리기 (로컬, 재수집 없이)**
+```bash
+WEB_INGEST_SECRET=… WEBAPP_PUBLIC_URL=https://savvyetf.com \
+  .venv-sf/bin/python 03_ETF/etf_flow_weekly.py --cached-only --push
+curl -s "https://savvyetf.com/api/etf-flow-weekly?ts=$(date +%s)" | head -c 300   # ok:true, generated_at 확인
+curl -sI "https://savvyetf.com/api/etf-flow-weekly/excel" | head -5                  # 200, xlsx
+```
+- 오늘 캐시(`00_exports/etf_flow_weekly/cache/`, 7개 파일)가 있으니 ETF CHECK 호출 0회, 1분 안팎. **처음부터 재수집하지 말 것**(IP 차단 시 요청당 20초 타임아웃이 쌓여 수십 분 소모)
+- GET 은 `withServerCache` 5분 + CDN `s-maxage=300` 이 걸려 있다. POST 가 같은 인스턴스 캐시는 지우지만 다른 인스턴스·CDN 은 최대 5분 늦을 수 있음 — 바로 안 보이면 5분 뒤 재확인(재배포·재업로드 반복하지 말 것)
+- `WEB_INGEST_SECRET` 값은 사람이 터미널에서 직접 export (문서·커밋·채팅에 남기지 말 것)
+
+**4-4. 정기화 (A-1 복구 뒤)**: Render `ETF_FLOW_WEEKLY_SCHEDULE_ENABLED` 는 현재 `true` 로 들어가 있음(16:31 PUT). Render 에 `WEB_INGEST_SECRET`·`WEBAPP_PUBLIC_URL` 이 복구돼 있어야 화요일 07:40 실행이 웹까지 반영된다. 복구 전 화요일이 오면 수집만 하고 업로드는 실패하니, 복구가 늦어지면 대시보드에서 `false` 로 돌려 둘 것. Render IP 가 ETF CHECK 에 막히면 로그에 `연속 실패 — 이력 수집 중단` 이 찍히고 받은 만큼으로 진행
+**4-5. 탭 공개 범위**: 지금은 공개 탭. 관리자 전용으로 하려면 `ADMIN_ONLY_TABS` 에 `"etfflow"` 추가
+
+**하지 말 것**: Render env 일괄 `PUT` · `npx vercel --prod` 로 작업 트리 직접 배포(커밋 후 main 배포로) · Render job `startCommand` 에 데이터 넣기 · 외부 파일 공유 서비스 업로드 · 키체인 조회
 
 ## 5. 알려진 한계
 
