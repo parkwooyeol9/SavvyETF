@@ -19,6 +19,7 @@ import {
   EtfHoldingsTab,
   EtfKor15Tab,
   EtfNewTab,
+  EtfFlowWeeklyTab,
   EtfSupplyPanel,
   EtfWeightMonitorTab,
   KosdaqActiveTab,
@@ -593,6 +594,8 @@ function DashboardInner({
         <EtfDbTab />
       ) : tab === "etfdbus" ? (
         <EtfDbUsTab />
+      ) : tab === "etfflow" ? (
+        <EtfFlowWeeklyTab />
       ) : tab === "datacatalog" ? (
         <DataCatalogTab />
       ) : tab === "etfholdings" ? (

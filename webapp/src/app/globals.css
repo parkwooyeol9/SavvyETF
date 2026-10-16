@@ -13554,3 +13554,68 @@ p.aa-note { padding-left: 0; }
 .ap-frame {
   border-radius: 12px;
 }
+
+/* ── ETF Flow 주간 (EtfFlowWeeklyTab) ───────────────────────────── */
+.etfflow-sec-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 22px 0 8px;
+}
+.etfflow-sec-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.etfflow-table th.etfflow-rowhead {
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.etfflow-table .etfflow-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etfflow-barcell {
+  width: 110px;
+  min-width: 80px;
+}
+.etfflow-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  margin-top: 4px;
+  background: var(--line, rgba(127, 127, 127, 0.15));
+  border-radius: 3px;
+}
+.etfflow-barcell .etfflow-bar {
+  margin-top: 0;
+}
+.etfflow-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+}
+.etfflow-bar-fill.pos {
+  background: #425288;
+}
+.etfflow-bar-fill.neg {
+  background: #b2b2b2;
+}
+.etfflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 900px) {
+  .etfflow-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.etfflow-notes {
+  margin: 18px 0 0;
+  padding-left: 18px;
+}

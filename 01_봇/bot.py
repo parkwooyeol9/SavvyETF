@@ -36,6 +36,7 @@ from etf_sector_scheduler import start_etf_sector_scheduler
 from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
 from etf_kor15_scheduler import start_etf_kor15_scheduler
+from etf_flow_weekly_scheduler import start_etf_flow_weekly_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from credit_monitor_scheduler import start_credit_monitor_scheduler
 from challenge_trading_scheduler import start_challenge_trading_scheduler
@@ -3742,6 +3743,7 @@ def start_all_schedulers(token: str) -> None:
     start_etfcheck_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_kor15_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_db_scheduler()
+    start_etf_flow_weekly_scheduler()
     start_challenge_trading_scheduler()
     start_credit_monitor_scheduler()
     start_etf_weight_monitor_scheduler()

@@ -83,6 +83,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/nextrade": { limit: 20, windowMs: 60_000 },
   "/api/nextrade/excel": { limit: 8, windowMs: 60_000 },
   "/api/etf-valuation": { limit: 40, windowMs: 60_000 },
+  "/api/etf-flow-weekly": { limit: 20, windowMs: 60_000 },
   "/api/tv/oauth/start": { limit: 6, windowMs: 60_000 },
   "/api/tv/overview": { limit: 12, windowMs: 60_000 },
   "/api/tv/watchlist-sync": { limit: 6, windowMs: 60_000 },
