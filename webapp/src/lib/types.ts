@@ -356,6 +356,7 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "bookclubboard",
   "corridor",
   "datacatalog",
+  "etfflow",
   "heatpick",
   "moneyflow",
   "round",
