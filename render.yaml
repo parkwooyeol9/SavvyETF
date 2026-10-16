@@ -91,6 +91,10 @@ services:
         value: "16:20"
       - key: ETFCHECK_CATCHUP_MINUTES
         value: "45"
+      - key: ETF_FLOW_WEEKLY_SCHEDULE_ENABLED
+        value: "false"
+      - key: ETF_FLOW_WEEKLY_SCHEDULE_KST
+        value: "1 7:40"
       - key: ETF_KOR15_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_WEIGHT_SCHEDULE_ENABLED
