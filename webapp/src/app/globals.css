@@ -2648,6 +2648,58 @@ a.geo-choke-hl:hover {
   border-top: none;
 }
 
+.esg-carbon-spread {
+  margin: 0.85rem 0 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(43, 54, 72, 0.9);
+  border-radius: 10px;
+  background: rgba(20, 29, 43, 0.55);
+}
+
+.esg-carbon-spread-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.esg-carbon-spread-badge {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.esg-carbon-spread-badge.discount {
+  color: #f87171;
+}
+
+.esg-carbon-spread-badge.premium {
+  color: #3dd68c;
+}
+
+.esg-carbon-spread-badge.flat {
+  color: #5eead4;
+}
+
+.esg-carbon-spread-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.esg-carbon-spread-comment {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #d7e0ea;
+}
+
 .esg-carbon-support-head {
   display: flex;
   justify-content: space-between;

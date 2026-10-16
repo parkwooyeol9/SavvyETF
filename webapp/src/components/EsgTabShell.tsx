@@ -38,7 +38,7 @@ export default function EsgTabShell({
             <div>
               <h3 className="esg-carbon-support-title">탄소배출권</h3>
               <p className="esg-carbon-support-sub">
-                국내 KAU(KRX)와 해외 탄소 ETF(KRBN) 가격·거래량. ESG 시황 진입 시 바로
+                국내 KAU와 유럽 EUA, 원화 환산 스프레드·CBAM 함의. ESG 시황 진입 시 바로
                 보입니다.
               </p>
             </div>

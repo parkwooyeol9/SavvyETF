@@ -33,6 +33,17 @@ function toneClass(n?: number | null): string {
   return n > 0 ? "up" : "down";
 }
 
+function formatMoney(
+  value: number | null | undefined,
+  currency: string,
+  digits: number,
+): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  if (currency === "KRW") return `${fmtCarbonPrice(value, 0)}원`;
+  if (currency === "EUR") return `€${fmtCarbonPrice(value, digits)}`;
+  return `$${fmtCarbonPrice(value, digits)}`;
+}
+
 function SeriesChart({
   series,
   priceDigits,
@@ -40,6 +51,7 @@ function SeriesChart({
   series: CarbonSeries;
   priceDigits: number;
 }) {
+  const showVolume = series.daily.some((b) => (b.volume || 0) > 0);
   const data = useMemo(
     () =>
       series.daily.slice(-180).map((b) => ({
@@ -47,7 +59,7 @@ function SeriesChart({
         close: b.close,
         volume: b.volume,
       })),
-    [series.daily]
+    [series.daily],
   );
 
   const q = series.quote;
@@ -68,16 +80,18 @@ function SeriesChart({
         </div>
         <div className={`kr-quote ${toneClass(q.change)}`}>
           <div className="kr-last">
-            {series.currency === "KRW"
-              ? `${fmtCarbonPrice(q.last, 0)}원`
-              : `$${fmtCarbonPrice(q.last, priceDigits)}`}
+            {formatMoney(q.last, series.currency, priceDigits)}
           </div>
           <div className="kr-chg">
             {series.currency === "KRW"
               ? `${fmtCarbonPrice(q.change, 0)} (${fmtPct(q.change_pct)})`
               : `${fmtCarbonPrice(q.change, priceDigits)} (${fmtPct(q.change_pct)})`}
           </div>
-          <div className="kr-status">거래량 {fmtCarbonVol(q.volume)}</div>
+          {showVolume ? (
+            <div className="kr-status">거래량 {fmtCarbonVol(q.volume)}</div>
+          ) : (
+            <div className="kr-status">일별 종가</div>
+          )}
         </div>
       </div>
 
@@ -97,37 +111,36 @@ function SeriesChart({
               width={series.currency === "KRW" ? 64 : 48}
               domain={["auto", "auto"]}
             />
-            <YAxis
-              yAxisId="vol"
-              orientation="right"
-              tick={{ fill: "#8b98a8", fontSize: 11 }}
-              tickFormatter={(v: number) => fmtCarbonVol(v)}
-              width={48}
-            />
+            {showVolume ? (
+              <YAxis
+                yAxisId="vol"
+                orientation="right"
+                tick={{ fill: "#8b98a8", fontSize: 11 }}
+                tickFormatter={(v: number) => fmtCarbonVol(v)}
+                width={48}
+              />
+            ) : null}
             <Tooltip
               contentStyle={tooltipStyle}
               labelStyle={{ color: "#c5d0dc" }}
               formatter={(value: number, name: string) => {
                 if (name === "종가") {
-                  return [
-                    series.currency === "KRW"
-                      ? `${Math.round(value).toLocaleString("ko-KR")}원`
-                      : `$${Number(value).toFixed(priceDigits)}`,
-                    name,
-                  ];
+                  return [formatMoney(value, series.currency, priceDigits), name];
                 }
                 return [fmtCarbonVol(value), name];
               }}
             />
             <Legend wrapperStyle={{ color: "#c5d0dc", fontSize: 12 }} />
-            <Bar
-              yAxisId="vol"
-              dataKey="volume"
-              name="거래량"
-              fill="#3d5a80"
-              opacity={0.55}
-              maxBarSize={10}
-            />
+            {showVolume ? (
+              <Bar
+                yAxisId="vol"
+                dataKey="volume"
+                name="거래량"
+                fill="#3d5a80"
+                opacity={0.55}
+                maxBarSize={10}
+              />
+            ) : null}
             <Line
               yAxisId="price"
               type="monotone"
@@ -181,8 +194,8 @@ export default function EsgCarbonTab({
           <div>
             <h2 className="kr-hero-title">탄소배출권 모니터</h2>
             <p className="kr-hero-sub">
-              국내 KAU(KRX)와 해외 탄소배출권 ETF(KRBN) 가격·거래량 추이를
-              라이브로 봅니다.
+              국내 KAU(KRX)와 유럽 EUA(EU ETS) 종가, 원화 환산 스프레드·CBAM 함의를
+              함께 봅니다.
             </p>
           </div>
           <div className="kr-hero-actions">
@@ -211,7 +224,7 @@ export default function EsgCarbonTab({
           <section className="esg-carbon-section">
             <div className="kr-grid-2 esg-carbon-pair">
               <div>
-                <h3 className="esg-carbon-section-title">국내 배출권 (KRX)</h3>
+                <h3 className="esg-carbon-section-title">국내 배출권 (KAU)</h3>
                 {data.domestic ? (
                   <SeriesChart series={data.domestic} priceDigits={0} />
                 ) : (
@@ -219,18 +232,62 @@ export default function EsgCarbonTab({
                 )}
               </div>
               <div>
-                <h3 className="esg-carbon-section-title">해외 배출권 (KRBN)</h3>
-                {data.global?.[0] ? (
-                  <SeriesChart series={data.global[0]} priceDigits={2} />
+                <h3 className="esg-carbon-section-title">유럽 배출권 (EUA)</h3>
+                {data.european || data.global?.[0] ? (
+                  <SeriesChart
+                    series={(data.european || data.global?.[0])!}
+                    priceDigits={2}
+                  />
                 ) : (
-                  <p className="empty">해외 탄소 ETF 데이터를 불러오지 못했습니다.</p>
+                  <p className="empty">유럽 EUA 데이터를 불러오지 못했습니다.</p>
                 )}
               </div>
             </div>
           </section>
 
+          {data.spread ? (
+            <section className="esg-carbon-spread">
+              <div className="esg-carbon-spread-head">
+                <h3 className="esg-carbon-section-title">KAU vs EUA 스프레드</h3>
+                <p className={`esg-carbon-spread-badge ${data.spread.label}`}>
+                  {data.spread.label === "discount"
+                    ? "디스카운트"
+                    : data.spread.label === "premium"
+                      ? "프리미엄"
+                      : data.spread.label === "flat"
+                        ? "유사"
+                        : "비교 불가"}
+                  {data.spread.spread_pct != null
+                    ? ` · ${fmtPct(data.spread.spread_pct)}`
+                    : ""}
+                </p>
+              </div>
+              <div className="esg-carbon-spread-metrics">
+                <span>
+                  KAU {fmtCarbonPrice(data.spread.kau_krw, 0)}원/톤
+                </span>
+                <span>
+                  EUA €{fmtCarbonPrice(data.spread.eua_eur, 2)}
+                  {data.spread.eua_krw != null
+                    ? ` ≈ ${fmtCarbonPrice(data.spread.eua_krw, 0)}원/톤`
+                    : ""}
+                </span>
+                <span>
+                  EUR/KRW {fmtCarbonPrice(data.spread.fx_eurkrw, 1)}
+                </span>
+                <span>
+                  갭{" "}
+                  {data.spread.spread_krw != null
+                    ? `${fmtCarbonPrice(data.spread.spread_krw, 0)}원/톤`
+                    : "—"}
+                </span>
+              </div>
+              <p className="esg-carbon-spread-comment">{data.spread.comment}</p>
+            </section>
+          ) : null}
+
           <p className="kr-foot">
-            출처: KRX ETS · Yahoo Finance · 약 60초마다 갱신 ·{" "}
+            출처: KRX ETS · Sendeco2 (EUA) · Yahoo EURKRW · 약 60초마다 갱신 ·{" "}
             {data.generated_at
               ? new Date(data.generated_at).toLocaleString("ko-KR", {
                   hour12: false,
