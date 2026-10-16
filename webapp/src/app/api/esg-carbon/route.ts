@@ -377,7 +377,7 @@ async function fetchEuropeanEua(): Promise<CarbonSeries> {
   };
 }
 
-async function fetchEurKrw(): Promise<number> {
+async function fetchEurKrwYahoo(): Promise<number> {
   const url =
     "https://query1.finance.yahoo.com/v8/finance/chart/EURKRW=X?interval=1d&range=5d&includePrePost=false";
   const res = await fetch(url, {
@@ -401,7 +401,42 @@ async function fetchEurKrw(): Promise<number> {
     const c = closes[i];
     if (c != null && Number.isFinite(c) && c > 0) return c;
   }
-  throw new Error("EURKRW empty");
+  throw new Error("Yahoo EURKRW empty");
+}
+
+async function fetchEurKrwFallback(): Promise<number> {
+  // Frankfurter (ECB reference) — follow redirects
+  try {
+    const res = await fetch(
+      "https://api.frankfurter.app/latest?from=EUR&to=KRW",
+      { headers: { Accept: "application/json" }, cache: "no-store", redirect: "follow" },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { rates?: { KRW?: number } };
+      const n = json.rates?.KRW;
+      if (n != null && Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    /* try next */
+  }
+  // jsDelivr currency-api mirror
+  const res = await fetch(
+    "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json",
+    { headers: { Accept: "application/json" }, cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`FX fallback HTTP ${res.status}`);
+  const json = (await res.json()) as { eur?: { krw?: number } };
+  const n = json.eur?.krw;
+  if (n != null && Number.isFinite(n) && n > 0) return n;
+  throw new Error("EURKRW fallback empty");
+}
+
+async function fetchEurKrw(): Promise<number> {
+  try {
+    return await fetchEurKrwYahoo();
+  } catch {
+    return fetchEurKrwFallback();
+  }
 }
 
 function buildSpread(
