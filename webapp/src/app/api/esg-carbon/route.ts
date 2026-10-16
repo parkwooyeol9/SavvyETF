@@ -1,23 +1,37 @@
 import { NextResponse } from "next/server";
 
+import { timingSafeEqual } from "crypto";
+
 import { cdnCacheHeader } from "@/lib/apiCache";
 import type {
   CarbonBar,
   CarbonSeries,
   EsgCarbonPayload,
 } from "@/lib/esgCarbon";
+import { r2Configured, r2GetObjectText, r2PutJsonDaily } from "@/lib/r2";
+import { siteAdminAuthorized } from "@/lib/siteAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** KRX ETS rejects the SavvyETF bot UA with HTTP 403. */
 const UA =
-  "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 const ETS_ORIGIN = "https://ets.krx.co.kr";
 const ETS_PAGE = "/contents/ETS/03/03010000/ETS03010000.jsp";
 const ETS_OTP = `${ETS_ORIGIN}/contents/COM/GenerateOTP.jspx`;
 const ETS_DATA = `${ETS_ORIGIN}/contents/ETS/99/ETS99000001.jspx`;
-const FALLBACK_KAU = { isu_cd: "KRD050032501", isu_abbrv: "KAU25" };
+/** Front-month fallback when item search fails (update yearly). */
+const FALLBACK_KAU = { isu_cd: "KRD050042609", isu_abbrv: "KAU26" };
+const R2_DOMESTIC_KEY = "esg_carbon/latest.json";
+
+type DomesticCachePayload = {
+  ok?: boolean;
+  generated_at?: string;
+  domestic?: CarbonSeries | null;
+  note?: string;
+};
 
 const GLOBAL_ETFS = [
   {
@@ -226,6 +240,10 @@ async function fetchDomesticCarbon(): Promise<CarbonSeries> {
       ? ((last.close - prev.close) / prev.close) * 100
       : null;
 
+  if (!bars.length) {
+    throw new Error(`KRX ETS empty history for ${isu.isu_abbrv}`);
+  }
+
   return {
     symbol: isu.isu_abbrv,
     name: `한국 배출권 ${isu.isu_abbrv}`,
@@ -241,6 +259,45 @@ async function fetchDomesticCarbon(): Promise<CarbonSeries> {
     daily: bars,
     source: "KRX ETS (ets.krx.co.kr)",
   };
+}
+
+function isCarbonSeries(value: unknown): value is CarbonSeries {
+  if (!value || typeof value !== "object") return false;
+  const s = value as CarbonSeries;
+  return (
+    typeof s.symbol === "string" &&
+    typeof s.name === "string" &&
+    Array.isArray(s.daily) &&
+    s.daily.length > 0 &&
+    s.quote != null &&
+    typeof s.quote === "object"
+  );
+}
+
+/** Bot/local scrape mirror — KRX blocks most cloud IPs (incl. Vercel). */
+async function loadDomesticFromR2(): Promise<{
+  series: CarbonSeries | null;
+  generatedAt: string | null;
+}> {
+  if (!r2Configured()) return { series: null, generatedAt: null };
+  try {
+    const text = await r2GetObjectText(R2_DOMESTIC_KEY);
+    if (!text) return { series: null, generatedAt: null };
+    const parsed = JSON.parse(text) as DomesticCachePayload;
+    if (!isCarbonSeries(parsed.domestic)) {
+      return { series: null, generatedAt: parsed.generated_at || null };
+    }
+    return {
+      series: {
+        ...parsed.domestic,
+        source: `${parsed.domestic.source || "KRX ETS"} · R2 cache`,
+      },
+      generatedAt: parsed.generated_at || null,
+    };
+  } catch (exc) {
+    console.warn("esg-carbon R2 cache read failed:", exc);
+    return { series: null, generatedAt: null };
+  }
 }
 
 type YahooChart = {
@@ -335,26 +392,107 @@ async function fetchYahooEtf(
   };
 }
 
+function ingestAuthorized(request: Request): boolean {
+  if (siteAdminAuthorized(request)) return true;
+  const secret = process.env.WEB_INGEST_SECRET?.trim();
+  if (!secret) return false;
+  const header = request.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token || token.length !== secret.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
+  } catch {
+    return false;
+  }
+}
+
+/** Bot/local scrape → R2 mirror (Vercel cannot reach ets.krx.co.kr). */
+export async function POST(request: Request) {
+  if (!ingestAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!r2Configured()) {
+    return NextResponse.json(
+      { error: "R2 is not configured" },
+      { status: 503 },
+    );
+  }
+  try {
+    const body = (await request.json()) as DomesticCachePayload & {
+      domestic?: CarbonSeries | null;
+    };
+    const domestic = body.domestic;
+    if (!isCarbonSeries(domestic)) {
+      return NextResponse.json(
+        { error: "body.domestic CarbonSeries required" },
+        { status: 400 },
+      );
+    }
+    const generated_at = body.generated_at || new Date().toISOString();
+    const asOf =
+      /^\d{4}-\d{2}-\d{2}$/.test(String((body as { as_of_kst?: string }).as_of_kst || ""))
+        ? String((body as { as_of_kst?: string }).as_of_kst)
+        : generated_at.slice(0, 10);
+    const payload = {
+      ok: true,
+      generated_at,
+      as_of_kst: asOf,
+      domestic,
+      note: body.note || "Ingested domestic KAU cache",
+    };
+    await r2PutJsonDaily(
+      R2_DOMESTIC_KEY,
+      JSON.stringify(payload),
+      asOf,
+    );
+    return NextResponse.json({
+      ok: true,
+      key: R2_DOMESTIC_KEY,
+      symbol: domestic.symbol,
+      bars: domestic.daily.length,
+      quote: domestic.quote,
+    });
+  } catch (exc) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: exc instanceof Error ? exc.message : "ingest failed",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 export async function GET() {
   const generated_at = new Date().toISOString();
   try {
-    const [domesticSettled, ...globalSettled] = await Promise.allSettled([
+    const [domesticSettled, r2Settled, ...globalSettled] = await Promise.allSettled([
       fetchDomesticCarbon(),
+      loadDomesticFromR2(),
       ...GLOBAL_ETFS.map((e) => fetchYahooEtf(e.symbol, e.name)),
     ]);
 
-    const domestic =
+    let domestic =
       domesticSettled.status === "fulfilled" ? domesticSettled.value : null;
+    const r2Cache =
+      r2Settled.status === "fulfilled" ? r2Settled.value : { series: null, generatedAt: null };
     const global: CarbonSeries[] = [];
     const errors: string[] = [];
 
     if (domesticSettled.status === "rejected") {
       errors.push(
-        `국내: ${
+        `국내 live: ${
           domesticSettled.reason instanceof Error
             ? domesticSettled.reason.message
             : String(domesticSettled.reason)
         }`
+      );
+    }
+    if (!domestic && r2Cache.series) {
+      domestic = r2Cache.series;
+    } else if (!domestic) {
+      errors.push(
+        "국내: KRX 실시간·R2 캐시 모두 없음 (봇에서 `python 06_ESG/esg_carbon.py --upload` 실행 필요)"
       );
     }
     for (let i = 0; i < globalSettled.length; i++) {
@@ -380,6 +518,11 @@ export async function GET() {
       );
     }
 
+    const usedR2 = Boolean(
+      domestic &&
+        domesticSettled.status !== "fulfilled" &&
+        r2Cache.series
+    );
     const payload: EsgCarbonPayload = {
       ok: true,
       generated_at,
@@ -387,6 +530,9 @@ export async function GET() {
       global,
       note:
         "국내는 KRX 배출권(KAU) 일별 종가·거래량, 해외는 탄소배출권 ETF(KRBN)로 대체합니다." +
+        (usedR2
+          ? ` 국내는 R2 캐시${r2Cache.generatedAt ? ` (${r2Cache.generatedAt})` : ""}.`
+          : "") +
         (errors.length ? ` 일부 실패: ${errors.join(" · ")}` : ""),
     };
     return NextResponse.json(payload, {

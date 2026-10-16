@@ -2,6 +2,7 @@
 
 import BriefSlotView from "@/components/BriefSlotView";
 import EsgBriefStrip from "@/components/EsgBriefStrip";
+import EsgCarbonTab from "@/components/EsgCarbonTab";
 import EsgEtfChips from "@/components/EsgEtfChips";
 import EsgEventsMonitor from "@/components/EsgEventsMonitor";
 import EsgRiskMap from "@/components/EsgRiskMap";
@@ -31,6 +32,20 @@ export default function EsgTabShell({
 
   return (
     <>
+      {isFullEsgTab ? (
+        <section className="esg-carbon-support esg-carbon-top">
+          <div className="esg-carbon-support-head">
+            <div>
+              <h3 className="esg-carbon-support-title">탄소배출권</h3>
+              <p className="esg-carbon-support-sub">
+                국내 KAU(KRX)와 해외 탄소 ETF(KRBN) 가격·거래량. ESG 시황 진입 시 바로
+                보입니다.
+              </p>
+            </div>
+          </div>
+          <EsgCarbonTab embedded />
+        </section>
+      ) : null}
       <EsgRiskMap briefSlots={briefSlotsRecord} />
       {isFullEsgTab ? <EsgEventsMonitor /> : null}
       {children}

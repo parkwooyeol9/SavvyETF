@@ -9,7 +9,6 @@ import {
   YAxis,
 } from "recharts";
 
-import EsgCarbonTab from "@/components/EsgCarbonTab";
 import type {
   EsgThemePillar,
   EsgThemeSignal,
@@ -142,7 +141,6 @@ function PillarCard({ pillar }: { pillar: EsgThemePillar }) {
 export default function EsgThemesTab() {
   const [data, setData] = useState<EsgThemesPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showCarbon, setShowCarbon] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -211,25 +209,6 @@ export default function EsgThemesTab() {
           </p>
         </>
       ) : null}
-
-      <section className="esg-carbon-support">
-        <div className="esg-carbon-support-head">
-          <div>
-            <h3 className="esg-carbon-support-title">보조 시그널 · 탄소배출권</h3>
-            <p className="esg-carbon-support-sub">
-              전환·탄소가격은 기후·에너지 테마를 보완합니다 (KAU / KRBN).
-            </p>
-          </div>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => setShowCarbon((v) => !v)}
-          >
-            {showCarbon ? "접기" : "열기"}
-          </button>
-        </div>
-        {showCarbon ? <EsgCarbonTab embedded /> : null}
-      </section>
     </div>
   );
 }
