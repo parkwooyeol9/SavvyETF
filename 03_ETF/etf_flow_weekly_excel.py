@@ -74,16 +74,18 @@ def _bar(title: str, *, horizontal=False, y_fmt="#,##0.0", colors: list[str] | N
     ch.grouping = "clustered"
     ch.title = title
     ch.style = 2
-    ch.width, ch.height = width, height
+    # 데이터 라벨이 있으면 하단 범례와 겹치므로 여유 높이 + 범례를 오른쪽으로
+    ch.width, ch.height = width, (height + 1.0 if labels else height)
     ch.gapWidth = gap
     ch.y_axis.numFmt = y_fmt
     ch.y_axis.majorGridlines.spPr = GraphicalProperties(ln=LineProperties(solidFill="E7E6E6"))
     ch.y_axis.delete = False
     ch.x_axis.delete = False
     ch.x_axis.tickLblPos = "low"
-    ch.legend.position = "b"
+    ch.legend.position = "r" if labels else "b"
     ch._colors = colors or [NAVY, GRAY, GOLD]
     ch._labels = labels
+    ch._horizontal = horizontal
     return ch
 
 
@@ -95,7 +97,14 @@ def _finish(ch: BarChart) -> BarChart:
         if ch._labels:
             s.dLbls = DataLabelList()
             s.dLbls.showVal = True
+            s.dLbls.showCatName = False
+            s.dLbls.showSerName = False
             s.dLbls.numFmt = ch.y_axis.numFmt
+            # 막대 바깥쪽 — 하단 범례·축과 겹침 완화
+            s.dLbls.dLblPos = "outEnd"
+    # 시리즈 1개면 범례 불필요(이미 None 인 차트는 유지)
+    if len(ch.series) <= 1 and ch.legend is not None:
+        ch.legend = None
     return ch
 
 
