@@ -2,7 +2,7 @@
  * Daily trading ideas — portfolio sleeve suggestions from existing
  * SavvyETF rule signals (trend/momentum/RS/vol/macro) + mega-cap stock tilt,
  * blended with Graph + NLP AI 시황 candidates.
- * Designed as the feed for future AI auto-trading and AI포트 tracking.
+ * Designed as the feed for the public AI Pick tab.
  */
 
 import { buildAiBrief, emptyAiBrief, type AiBrief, type BriefCandidate } from "@/lib/aiBrief";
@@ -46,7 +46,7 @@ export type TradingIdeasPayload = {
   schedule_note: string;
   /** Graph + NLP 시황 paragraph shown on AI Pick */
   comment: string;
-  /** Flattened long weights for AI포트 (cash excluded) — sums to invested_pct */
+  /** Flattened long weights (cash excluded) — sums to invested_pct */
   target_weights: Array<{ symbol: string; weight_pct: number; name: string }>;
   error?: string;
 };

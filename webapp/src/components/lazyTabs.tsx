@@ -48,13 +48,8 @@ export const InsiderTradingTab = dynamic(() => import("@/components/InsiderTradi
 export const SimulateTab = dynamic(() => import("@/components/SimulateTab"), { loading });
 export const UsPortfolioTab = dynamic(() => import("@/components/UsPortfolioTab"), { loading });
 export const MpTab = dynamic(() => import("@/components/MpTab"), { loading });
-export const AiPortTab = dynamic(() => import("@/components/AiPortTab"), { loading });
 export const MinuteForecastTab = dynamic(
   () => import("@/components/MinuteForecastTab"),
-  { loading },
-);
-export const StockFeatureBoardTab = dynamic(
-  () => import("@/components/StockFeatureBoardTab"),
   { loading },
 );
 export const ValuationTab = dynamic(

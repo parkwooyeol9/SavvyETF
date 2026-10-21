@@ -45,9 +45,7 @@ export type ShellTabId =
   | "thirteenf"
   | "signals"
   | "eventstudy"
-  | "aiport"
   | "minutepred"
-  | "stockboard"
   | "aipulse"
   | "nlp"
   | "nlphistory"
@@ -143,9 +141,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "signals",
   "ideas",
   "weightopt",
-  "aiport",
   "minutepred",
-  "stockboard",
   "aipulse",
   "nlp",
   "nlphistory",
@@ -235,9 +231,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   eventstudy: "이벤트 스터디",
   kosdaq100: "코스닥100",
   moneyflow: "자금 흐름",
-  aiport: "AI포트",
   minutepred: "단기예측",
-  stockboard: "종목보드",
   aipulse: "AI 시황",
   nlp: "NLP",
   nlphistory: "NLP",
@@ -304,7 +298,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "ai",
     label: "AI",
-    tabs: ["aipulse", "nlp", "graph", "ideas", "weightopt", "aiport", "minutepred", "stockboard"],
+    tabs: ["aipulse", "nlp", "graph", "ideas", "weightopt", "minutepred"],
     nested: [
       {
         id: "politics",
@@ -351,7 +345,6 @@ export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "countryetf",
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
-  "aiport",
   "corridor",
   "datacatalog",
   "etfflow",
@@ -359,7 +352,6 @@ export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "moneyflow",
   "round",
   "signals",
-  "stockboard",
   "vault",
   "weightopt",
 ];
@@ -512,6 +504,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   ) {
     return "research";
   }
+  if (v === "aiport" || v === "stockboard") return "ideas";
   if (isShellTabId(v)) return canonicalShellTab(v);
   if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
   if (v === "aietf" || v === "ai-etf" || v === "ai_etf") return "aietf";

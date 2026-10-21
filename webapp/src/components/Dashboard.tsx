@@ -48,9 +48,7 @@ import {
   ThirteenFTab,
   InsiderTradingTab,
   MpTab,
-  AiPortTab,
   MinuteForecastTab,
-  StockFeatureBoardTab,
   ValuationTab,
   CorridorTab,
   AcwiAnalyzerTab,
@@ -228,8 +226,8 @@ function DashboardInner({
   useEffect(() => {
     if (!ready) return;
     if (!isAdminOnlyTab(tab) || unlocked) return;
-    // AI포트 stays next to AI Pick; 나머지는 같은 대분류의 첫 공개 탭으로.
-    if (tab === "aiport" || tab === "weightopt") {
+    // 잠긴 비중 최적화는 AI Pick 으로, 나머지는 같은 대분류의 첫 공개 탭으로.
+    if (tab === "weightopt") {
       setTab("ideas");
       return;
     }
@@ -397,7 +395,6 @@ function DashboardInner({
       tab === "indexmonitor" ||
       tab === "countryetf" ||
       tab === "etf" ||
-      tab === "aiport" ||
       tab === "minutepred" ||
       tab === "nlp" ||
       tab === "nlphistory" ||
@@ -564,12 +561,8 @@ function DashboardInner({
         <TradingIdeasTab />
       ) : tab === "weightopt" ? (
         unlocked ? <WeightOptimizeTab /> : null
-      ) : tab === "aiport" ? (
-        unlocked ? <AiPortTab /> : null
       ) : tab === "minutepred" ? (
         <MinuteForecastTab />
-      ) : tab === "stockboard" ? (
-        unlocked ? <StockFeatureBoardTab /> : null
       ) : tab === "corridor" ? (
         unlocked ? <CorridorTab /> : null
       ) : tab === "acwi" ? (

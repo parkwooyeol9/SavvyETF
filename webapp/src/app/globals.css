@@ -488,33 +488,11 @@ a.tab-btn {
   }
 }
 
-.stockboard-theme-grid,
-.stockboard-pick-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.75rem;
-}
-
 .stockboard-card-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.35rem 0.65rem;
-}
-
-.stockboard-score {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted, #8b9bb4);
-  font-size: 0.85rem;
-}
-
-.stockboard-up {
-  border-color: rgba(91, 159, 212, 0.35);
-}
-
-.stockboard-down {
-  border-color: rgba(201, 123, 132, 0.4);
 }
 
 .nxt-panel {
