@@ -3,7 +3,7 @@
  * Best-effort on serverless (per-instance); still stops casual script abuse.
  */
 
-type Bucket = { count: number; resetAt: number };
+type Bucket = { count: number; resetAt: number; limit: number };
 
 const buckets = new Map<string, Bucket>();
 
@@ -22,7 +22,7 @@ export function rateLimit(
   const now = Date.now();
   let bucket = buckets.get(key);
   if (!bucket || now >= bucket.resetAt) {
-    bucket = { count: 0, resetAt: now + windowMs };
+    bucket = { count: 0, resetAt: now + windowMs, limit };
     buckets.set(key, bucket);
   }
   bucket.count += 1;
@@ -41,4 +41,11 @@ export function rateLimit(
     }
   }
   return { ok: true, remaining, retryAfterSec: 0 };
+}
+
+/** True when a previous `rateLimit` call for `key` already used up its window. Does not increment. */
+export function rateLimitBlocked(key: string): boolean {
+  const bucket = buckets.get(key);
+  if (!bucket || Date.now() >= bucket.resetAt) return false;
+  return bucket.count >= bucket.limit;
 }

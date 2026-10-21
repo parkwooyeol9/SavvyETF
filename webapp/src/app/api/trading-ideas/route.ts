@@ -10,7 +10,7 @@ import {
   IDEAS_SCHEDULE_NOTE,
   type TradingIdeasPayload,
 } from "@/lib/tradingIdeas";
-import type { TradingSignalsPayload } from "@/lib/tradingSignals";
+import { loadTradingSignals } from "@/lib/tradingSignalsBuild";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
       600_000,
       async () => {
         const [signals, nlp, chain] = await Promise.all([
-          fetchJson<TradingSignalsPayload>(req, "/api/trading-signals", 28_000),
+          loadTradingSignals().catch(() => null),
           fetchJson<NlpPulsePayload>(req, "/api/nlp-pulse", 28_000),
           fetchJson<ChainPayload>(req, "/api/chain", 28_000),
         ]);

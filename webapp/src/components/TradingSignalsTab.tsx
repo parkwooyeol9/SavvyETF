@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
 import type {
   AssetSignal,
   CryptoIndicator,
@@ -132,6 +134,7 @@ function CryptoIndicatorGrid({ items }: { items: CryptoIndicator[] }) {
 }
 
 export default function TradingSignalsTab() {
+  const { secret } = useAdminSession();
   const [data, setData] = useState<TradingSignalsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,7 +143,10 @@ export default function TradingSignalsTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/trading-signals");
+      const res = await fetch("/api/trading-signals", {
+        cache: "no-store",
+        headers: adminAuthHeaders(secret),
+      });
       const json = (await res.json()) as TradingSignalsPayload;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || `HTTP ${res.status}`);
@@ -152,7 +158,7 @@ export default function TradingSignalsTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [secret]);
 
   useEffect(() => {
     void load();

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
+import { adminAuthHeaders } from "@/lib/adminSession";
 import type { HeatmapCell } from "@/lib/heatmap";
 import type { TvAlertFire, TvAlertSummary, TvWatchlistSummary } from "@/lib/tvMcp/operator";
 import { PICK_GROUPS, PICK_SOURCES, type PickItem } from "@/lib/tvPicks";
@@ -226,6 +227,7 @@ export default function TvOperatorPanel({
       ticker: pickTicker,
       heatmap: heatmapCells,
       universeLabel,
+      headers: adminAuthHeaders(secret),
     };
     const items = await run(() => source.load(ctx));
     if (!items) return;

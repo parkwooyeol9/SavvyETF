@@ -7,6 +7,7 @@ export type PickContext = {
   ticker: string;
   heatmap: HeatmapCell[];
   universeLabel: string;
+  headers?: HeadersInit;
 };
 
 export type PickSource = {
@@ -39,8 +40,8 @@ type KospiRow = {
 type ThemeProduct = { symbol: string; name?: string; name_ko?: string; change_3m_pct?: number | null };
 type PoliBasket = { symbol: string; name_ko?: string; name?: string; party?: string; theme?: string };
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, headers?: HeadersInit): Promise<T> {
+  const res = await fetch(url, headers ? { headers, cache: "no-store" } : undefined);
   const data = (await res.json()) as T & { ok?: boolean; error?: string };
   if (!res.ok || data.ok === false) {
     throw new Error(data.error || `${url} 불러오기 실패 (HTTP ${res.status})`);
@@ -114,9 +115,10 @@ export const PICK_SOURCES: PickSource[] = [
     label: "룰 시그널 Buy (코어·섹터·테마)",
     short: () => "시그널 Buy",
     defaultCount: 10,
-    load: async ({ count }) => {
+    load: async ({ count, headers }) => {
       const d = await getJson<{ core?: Signal[]; sectors?: Signal[]; themes?: Signal[] }>(
         "/api/trading-signals",
+        headers,
       );
       return [...(d.core || []), ...(d.sectors || []), ...(d.themes || [])]
         .filter((s) => s.signal === "buy")

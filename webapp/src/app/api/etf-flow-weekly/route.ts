@@ -2,7 +2,8 @@ import { timingSafeEqual } from "crypto";
 
 import { NextResponse } from "next/server";
 
-import { cdnCacheHeader, invalidateServerCache, withServerCache } from "@/lib/apiCache";
+import { PRIVATE_NO_STORE, requireSiteAdmin } from "@/lib/adminGuard";
+import { invalidateServerCache, withServerCache } from "@/lib/apiCache";
 import {
   ETF_FLOW_WEEKLY_JSON_KEY,
   ETF_FLOW_WEEKLY_XLSX_KEY,
@@ -33,16 +34,21 @@ function ingestAuthorized(request: Request): boolean {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireSiteAdmin(request);
+  if (denied) return denied;
   try {
     const payload = await withServerCache(CACHE_KEY, 300_000, 900_000, loadEtfFlowWeekly);
     return NextResponse.json(payload, {
       status: payload.ok ? 200 : 503,
-      headers: { "Cache-Control": cdnCacheHeader("etfSlow") },
+      headers: PRIVATE_NO_STORE,
     });
   } catch (exc) {
     const message = exc instanceof Error ? exc.message : String(exc);
-    return NextResponse.json(emptyEtfFlowWeekly(message), { status: 500 });
+    return NextResponse.json(emptyEtfFlowWeekly(message), {
+      status: 500,
+      headers: PRIVATE_NO_STORE,
+    });
   }
 }
 

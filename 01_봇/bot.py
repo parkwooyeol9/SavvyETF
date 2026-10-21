@@ -3043,6 +3043,50 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                 self._send_cors_json(body, status=status)
                 return
 
+            if path == "/api/web/seasonality":
+                from seasonality import DEFAULT_FOCUS_MONTHS, seasonality_web_payload
+
+                query = parse_qs(urlparse(self.path).query)
+                ticker = (query.get("ticker") or [""])[0].strip()
+                if not ticker:
+                    self._send_cors_json(
+                        json.dumps(
+                            {"ok": False, "error": "ticker query param required"},
+                            ensure_ascii=False,
+                        ).encode("utf-8"),
+                        status=400,
+                    )
+                    return
+                months_raw = (query.get("months") or [""])[0].strip()
+                focus_months = DEFAULT_FOCUS_MONTHS
+                if months_raw:
+                    try:
+                        focus_months = tuple(
+                            sorted(
+                                {
+                                    int(m)
+                                    for m in months_raw.split(",")
+                                    if m.strip()
+                                }
+                            )
+                        )
+                        if not focus_months or any(m < 1 or m > 12 for m in focus_months):
+                            raise ValueError("months must be 1-12")
+                    except ValueError as exc:
+                        self._send_cors_json(
+                            json.dumps(
+                                {"ok": False, "error": str(exc)},
+                                ensure_ascii=False,
+                            ).encode("utf-8"),
+                            status=400,
+                        )
+                        return
+                payload = seasonality_web_payload(ticker, focus_months=focus_months)
+                status = 200 if payload.get("ok") else 400
+                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+                self._send_cors_json(body, status=status)
+                return
+
             if path == "/api/web/heatmap.png":
                 from web_api import heatmap_png
 
@@ -3434,50 +3478,6 @@ background:#fee500;color:#191919;text-decoration:none;border-radius:8px;font-wei
                         ensure_ascii=False,
                     ).encode("utf-8")
                     self._send(err, "application/json; charset=utf-8", 400)
-                return
-
-            if path == "/api/web/seasonality":
-                from seasonality import DEFAULT_FOCUS_MONTHS, seasonality_web_payload
-
-                query = parse_qs(urlparse(self.path).query)
-                ticker = (query.get("ticker") or [""])[0].strip()
-                if not ticker:
-                    self._send_cors_json(
-                        json.dumps(
-                            {"ok": False, "error": "ticker query param required"},
-                            ensure_ascii=False,
-                        ).encode("utf-8"),
-                        status=400,
-                    )
-                    return
-                months_raw = (query.get("months") or [""])[0].strip()
-                focus_months = DEFAULT_FOCUS_MONTHS
-                if months_raw:
-                    try:
-                        focus_months = tuple(
-                            sorted(
-                                {
-                                    int(m)
-                                    for m in months_raw.split(",")
-                                    if m.strip()
-                                }
-                            )
-                        )
-                        if not focus_months or any(m < 1 or m > 12 for m in focus_months):
-                            raise ValueError("months must be 1-12")
-                    except ValueError as exc:
-                        self._send_cors_json(
-                            json.dumps(
-                                {"ok": False, "error": str(exc)},
-                                ensure_ascii=False,
-                            ).encode("utf-8"),
-                            status=400,
-                        )
-                        return
-                payload = seasonality_web_payload(ticker, focus_months=focus_months)
-                status = 200 if payload.get("ok") else 400
-                body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-                self._send_cors_json(body, status=status)
                 return
 
             if path == "/api/web/simulate":

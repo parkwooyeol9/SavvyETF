@@ -90,6 +90,14 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/tv/alerts": { limit: 10, windowMs: 60_000 },
   "/api/tv/watchlist-delete": { limit: 10, windowMs: 60_000 },
   "/api/tv/alerts/bulk": { limit: 3, windowMs: 60_000 },
+  "/api/data-catalog": { limit: 30, windowMs: 60_000 },
+  "/api/private-upload": { limit: 30, windowMs: 60_000 },
+  "/api/series": { limit: 30, windowMs: 60_000 },
+  "/api/index-monitor": { limit: 30, windowMs: 60_000 },
+  "/api/acwi-analyzer": { limit: 30, windowMs: 60_000 },
+  "/api/mp/track": { limit: 30, windowMs: 60_000 },
+  "/api/mp/portfolio": { limit: 30, windowMs: 60_000 },
+  "/api/tv/disconnect": { limit: 30, windowMs: 60_000 },
 };
 
 const WRITE_PATH =

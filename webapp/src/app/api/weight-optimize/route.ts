@@ -5,7 +5,7 @@ import { withServerCache } from "@/lib/apiCache";
 import type { ChainPayload } from "@/lib/chainGraph";
 import type { MoneyFlowPayload } from "@/lib/moneyFlow";
 import type { NlpPulsePayload } from "@/lib/nlpPulse";
-import type { TradingSignalsPayload } from "@/lib/tradingSignals";
+import { loadTradingSignals } from "@/lib/tradingSignalsBuild";
 import { simulateWeightOptBuyHold } from "@/lib/weightOptSim";
 import {
   buildWeightOptimize,
@@ -78,7 +78,7 @@ export async function GET(req: Request) {
       600_000,
       async () => {
         const [signals, nlp, chain, flow] = await Promise.all([
-          fetchJson<TradingSignalsPayload>(req, "/api/trading-signals", 28_000),
+          loadTradingSignals().catch(() => null),
           fetchJson<NlpPulsePayload>(req, "/api/nlp-pulse", 28_000),
           fetchJson<ChainPayload>(req, "/api/chain", 28_000),
           // money-flow is admin-only too; pass the caller's (already verified) admin header on.
