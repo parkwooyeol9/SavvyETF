@@ -549,7 +549,7 @@ function DashboardInner({
       {tab === "main" ? (
         <MainTab />
       ) : tab === "bookclub" ? (
-        unlocked ? <BookClubTab /> : null
+        <BookClubTab />
       ) : tab === "usportfolio" || tab === "simulate" ? (
         <MpTab etf={tab === "simulate"} onEtfChange={(etf) => setTab(etf ? "simulate" : "usportfolio")} />
       ) : tab === "signals" ? (

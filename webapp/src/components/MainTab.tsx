@@ -187,7 +187,7 @@ export default function MainTab() {
             ["kr", "국내시황"],
             ["etf", "ETF 시황"],
             ["nlp", "NLP"],
-            ["cardnews", "카드뉴스"],
+            ["bookclub", "북클럽"],
             ["eventstudy", "이벤트 스터디"],
             ["usmidterm", "정치분석"],
             ["etfholdings", "편입비"],
