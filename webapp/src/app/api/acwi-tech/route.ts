@@ -160,7 +160,7 @@ async function buildBoard(country: string, sector: string, range: QuantRange): P
     country_chips: COUNTRIES.slice(0, 12),
     sectors: SECTORS,
     rows,
-    note: "국가·업종 비중 상위입니다. 행을 누르거나 티커·RIC를 입력하면 같은 기술적 분석이 열립니다.",
+    note: "고른 국가·업종에서 ACWI 비중이 큰 종목만 펼칩니다. 행을 누르거나 티커를 넣으면 그 종목의 볼린저, 낙폭, RSI와 매수·관망·매도 코멘트가 열립니다.",
   };
 }
 

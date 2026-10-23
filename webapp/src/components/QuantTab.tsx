@@ -207,7 +207,9 @@ export default function QuantTab() {
         <div className="kr-hero">
           <div>
             <h2 className="kr-hero-title">ETF 기술적분석</h2>
-            <p className="macro-subhead">지수·업종·국가 ETF와 매크로 프록시입니다.</p>
+            <p className="macro-subhead">
+              같은 계산을 지수·업종·국가 ETF와 금리·원자재에 적용한 것입니다. 개별 기업은 위쪽을 보세요.
+            </p>
           </div>
           <div className="kr-hero-actions">
             <button type="button" className="ghost-btn" onClick={() => void load(range)} disabled={loading}>

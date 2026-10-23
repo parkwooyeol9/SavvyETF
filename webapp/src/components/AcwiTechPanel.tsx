@@ -159,8 +159,11 @@ export default function AcwiTechPanel() {
           <div>
             <h2 className="kr-hero-title">기술적분석</h2>
             <p className="macro-subhead">
-              ACWI 편입 종목. {board?.source || "Yahoo Finance"}
-              {board?.as_of ? ` · 기준 ${board.as_of}` : ""}
+              MSCI ACWI에 들어 있는 전 세계 투자 가능 종목을 국가·업종으로 나누고, 가격이 추세의 어디쯤인지,
+              모멘텀이 살아 있는지, 낙폭이 과도한지를 같은 기준으로 봅니다.
+              {" "}
+              시세 {board?.source || "Yahoo Finance"}
+              {board?.as_of ? ` · 기준 ${board.as_of}` : ""}.
             </p>
           </div>
           <div className="kr-hero-actions">
