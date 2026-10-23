@@ -10,6 +10,20 @@ export type AcwiUniverseRow = {
   weight: number;
 };
 
+/** Snapshot ratios safe to show. No estimates, factor scores, ISIN, or MSCI status. */
+export type AcwiTechFacts = Partial<{
+  pe: number;
+  pb: number;
+  dy: number;
+  roe: number;
+  pep: number;
+  pep10: number;
+  r12m: number;
+  dd52: number;
+  vol: number;
+  ts: number;
+}>;
+
 export type AcwiTechRow = {
   ric: string;
   yahoo: string;
@@ -18,6 +32,7 @@ export type AcwiTechRow = {
   sector: string;
   weight: number;
   snapshot: QuantSnapshot | null;
+  facts: AcwiTechFacts | null;
 };
 
 export type AcwiTechBoard = {
@@ -31,12 +46,15 @@ export type AcwiTechBoard = {
   country_chips: string[];
   sectors: string[];
   rows: AcwiTechRow[];
+  facts_as_of: string | null;
   note: string;
 };
 
 export type AcwiTechLookup = {
   ok: true;
   snapshot: QuantSnapshot | null;
+  facts: AcwiTechFacts | null;
+  facts_as_of: string | null;
   error?: string;
 };
 

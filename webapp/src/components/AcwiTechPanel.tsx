@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
-import type { AcwiTechBoard, AcwiTechLookup, AcwiTechRow } from "@/lib/acwiTech";
+import type { AcwiTechBoard, AcwiTechFacts, AcwiTechLookup, AcwiTechRow } from "@/lib/acwiTech";
 import { QUANT_RANGES, type QuantRange, type QuantSnapshot } from "@/lib/quantDesk";
 
 function fmtPx(n: number | null | undefined): string {
@@ -33,6 +33,21 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}`;
+}
+
+function factBits(facts: AcwiTechFacts): Array<{ label: string; title: string }> {
+  const bits: Array<{ label: string; title: string }> = [];
+  if (facts.pe != null) bits.push({ label: `PER ${facts.pe.toFixed(1)}`, title: "주가수익비율" });
+  if (facts.pb != null) bits.push({ label: `PBR ${facts.pb.toFixed(2)}`, title: "주가순자산비율" });
+  if (facts.dy != null) bits.push({ label: `배당 ${facts.dy.toFixed(2)}%`, title: "배당수익률" });
+  if (facts.roe != null) bits.push({ label: `ROE ${facts.roe.toFixed(1)}%`, title: "자기자본이익률" });
+  if (facts.pep != null) bits.push({ label: `PER 3년 ${facts.pep.toFixed(0)}`, title: "0이면 최근 3년 중 가장 낮은 PER" });
+  if (facts.pep10 != null) bits.push({ label: `PER 10년 ${facts.pep10.toFixed(0)}`, title: "0이면 최근 10년 중 가장 낮은 PER" });
+  if (facts.r12m != null) bits.push({ label: `12개월 ${fmtPct(facts.r12m)}`, title: "12개월 수익률" });
+  if (facts.dd52 != null) bits.push({ label: `52주 고점 ${fmtPct(facts.dd52)}`, title: "52주 고점 대비" });
+  if (facts.vol != null) bits.push({ label: `변동성 ${facts.vol.toFixed(0)}%`, title: "1년 변동성" });
+  if (facts.ts != null) bits.push({ label: `추세 ${facts.ts.toFixed(0)}/6`, title: "종가와 이평, MACD, RSI, 3개월 수익률 여섯 조건" });
+  return bits;
 }
 
 function tone(n?: number | null): string {
@@ -69,6 +84,7 @@ export default function AcwiTechPanel() {
   const [picked, setPicked] = useState<string | null>(null);
   const [tickerInput, setTickerInput] = useState("");
   const [lookup, setLookup] = useState<QuantSnapshot | null>(null);
+  const [lookupFacts, setLookupFacts] = useState<AcwiTechFacts | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
@@ -105,8 +121,12 @@ export default function AcwiTechPanel() {
     return board?.rows.find((r) => r.yahoo === picked)?.snapshot ?? null;
   }, [board, picked, lookup]);
 
+  const focusFacts = lookup ? lookupFacts : (board?.rows.find((r) => r.yahoo === picked)?.facts ?? null);
+  const factsAsOf = board?.facts_as_of ?? null;
+
   function selectRow(row: AcwiTechRow) {
     setLookup(null);
+    setLookupFacts(null);
     setLookupError(null);
     setTickerInput("");
     setPicked(row.yahoo);
@@ -135,13 +155,16 @@ export default function AcwiTechPanel() {
       const body = (await res.json()) as AcwiTechLookup & { error?: string };
       if (!res.ok || !body.snapshot) {
         setLookup(null);
+        setLookupFacts(null);
         setLookupError(body.error || "시세를 찾지 못했습니다.");
         return;
       }
       setLookup(body.snapshot);
+      setLookupFacts(body.facts ?? null);
       setPicked(null);
     } catch (exc) {
       setLookup(null);
+      setLookupFacts(null);
       setLookupError(exc instanceof Error ? exc.message : "조회에 실패했습니다.");
     } finally {
       setLookupLoading(false);
@@ -352,6 +375,20 @@ export default function AcwiTechPanel() {
                 <span className={`quant-pill quant-${focus.timing}`}>{focus.timing_ko}</span>
               </div>
               <p className={`quant-timing-comment quant-timing-${focus.timing}`}>{focus.timing_comment}</p>
+              {focusFacts && factBits(focusFacts).length ? (
+                <>
+                  <div className="quant-timing-flags">
+                    {factBits(focusFacts).map((bit) => (
+                      <span key={bit.label} className="quant-pill quant-neutral" title={bit.title}>
+                        {bit.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="macro-schedule">
+                    PER·배당·ROE·12개월·52주 고점은 {factsAsOf || "마지막 편입 스냅샷"} 기준입니다. 위 차트 가격은 최신 일봉입니다.
+                  </p>
+                </>
+              ) : null}
             </div>
           </div>
           <div className="geo-chart-wrap nlp-live-wrap">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import factsFile from "@/data/acwiTechFacts.json";
 import universeFile from "@/data/acwiYahooUniverse.json";
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import {
@@ -9,6 +10,7 @@ import {
   pickAcwiMajors,
   sliceAcwiSeries,
   type AcwiTechBoard,
+  type AcwiTechFacts,
   type AcwiTechLookup,
   type AcwiTechRow,
   type AcwiUniverseRow,
@@ -32,6 +34,14 @@ const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 const R2_KEY = "acwi_px/latest.json";
 const UNIVERSE = (universeFile.rows || []) as AcwiUniverseRow[];
+const FACTS_AS_OF = factsFile.as_of || null;
+const FACTS = factsFile.rows as Record<string, AcwiTechFacts>;
+
+function factsFor(ric: string | undefined): AcwiTechFacts | null {
+  if (!ric) return null;
+  const row = FACTS[ric];
+  return row && Object.keys(row).length ? row : null;
+}
 const COUNTRIES = acwiCountries(UNIVERSE);
 const SECTORS = acwiSectors(UNIVERSE);
 
@@ -148,6 +158,7 @@ async function buildBoard(country: string, sector: string, range: QuantRange): P
     sector: row.sector,
     weight: row.weight,
     snapshot: snaps[i] ?? null,
+    facts: factsFor(row.ric),
   }));
   return {
     ok: true,
@@ -160,13 +171,14 @@ async function buildBoard(country: string, sector: string, range: QuantRange): P
     country_chips: COUNTRIES.slice(0, 12),
     sectors: SECTORS,
     rows,
+    facts_as_of: FACTS_AS_OF,
     note: "고른 국가·업종에서 ACWI 비중이 큰 종목만 펼칩니다. 행을 누르거나 티커를 넣으면 그 종목의 볼린저, 낙폭, RSI와 매수·관망·매도 코멘트가 열립니다.",
   };
 }
 
 async function buildLookup(raw: string, range: QuantRange): Promise<AcwiTechLookup> {
   const ticker = parseQuantTicker(raw);
-  if (!ticker) return { ok: true, snapshot: null, error: "티커 형식이 아닙니다." };
+  if (!ticker) return { ok: true, snapshot: null, facts: null, facts_as_of: FACTS_AS_OF, error: "티커 형식이 아닙니다." };
   const row = findAcwiRow(UNIVERSE, ticker) || findAcwiRow(UNIVERSE, raw);
   const yahoo = row?.yahoo || ticker;
   const stored = await loadStored();
@@ -175,7 +187,7 @@ async function buildLookup(raw: string, range: QuantRange): Promise<AcwiTechLook
     seriesFor("SPY", range, stored?.series ?? null),
   ]);
   if (prices.length < 30) {
-    return { ok: true, snapshot: null, error: `${yahoo} 시세를 가져오지 못했습니다.` };
+    return { ok: true, snapshot: null, facts: factsFor(row?.ric), facts_as_of: FACTS_AS_OF, error: `${yahoo} 시세를 가져오지 못했습니다.` };
   }
   const spec = row
     ? specFor(row)
@@ -183,6 +195,8 @@ async function buildLookup(raw: string, range: QuantRange): Promise<AcwiTechLook
   return {
     ok: true,
     snapshot: buildQuantSnapshot(spec, prices, null, spy.length ? spy : null),
+    facts: factsFor(row?.ric),
+    facts_as_of: FACTS_AS_OF,
   };
 }
 
