@@ -1,10 +1,13 @@
-"""ETF Flow 주간 업데이트 스케줄러 — 기본 OFF (ETF_FLOW_WEEKLY_SCHEDULE_ENABLED=true 로 켬).
+"""ETF Flow 일별 업데이트 스케줄러.
 
-매주 화요일 07:40 KST(ETF_FLOW_WEEKLY_SCHEDULE_KST)에 `etf_flow_weekly` 를 돌려
-R2 `etf_flow_weekly/latest.{json,xlsx}` 를 갱신한다. ETF CHECK 미국 일별 순유입은 약 2일
-늦게 들어오므로(금 15시 KST 기준 최신이 수요일분) 화요일 아침이면 직전 월~금이 '이번주'가 되고,
-국내도 같은 날짜 구간으로 합산한다.
-ETF CHECK 호출을 1초 간격으로 순차 실행하므로 20~30분 걸린다 — heavy_work 락은 잡지 않는다.
+매일 03:40 KST(ETF_FLOW_WEEKLY_SCHEDULE_KST)에 `publish_weekly` 를 돌려
+JSON·요청 양식 엑셀을 만들고 R2 `etf_flow_weekly/latest.{json,xlsx}` 를 갱신한다.
+주(週) 창은 실행 요일과 무관한 롤링 5거래일이라, 하루 한 번이면 최신 영업일이 반영된다.
+
+03:40 은 전날 Reddit(21:00, catch-up ~23:00) 과 당일 AI Pulse(05:10) 사이의 빈 구간이다.
+ETF CHECK 를 쓰는 다른 작업(ETF 비중 08:20, /etfcheck 16:20)과도 겹치지 않는다.
+호출은 1초 간격 순차라 20~30분 걸린다. catch-up 은 45분(04:25 종료)이라
+늦게 떠도 AI Pulse 전에 끝난다. heavy_work 락은 잡지 않는다(네트워크 대기).
 """
 
 from __future__ import annotations
@@ -23,20 +26,46 @@ from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
 POLL_SECONDS = 60
+DEFAULT_HOUR_KST = 3
+DEFAULT_MINUTE_KST = 40
+DEFAULT_CATCHUP_MINUTES = 45
 
 
-def _schedule() -> tuple[int, int, int]:
-    """(weekday, hour, minute) — weekday 0=월, 기본 1=화."""
-    raw = os.environ.get("ETF_FLOW_WEEKLY_SCHEDULE_KST", "1 7:40").strip()
+def _schedule_time_kst() -> tuple[int, int]:
+    """Daily (hour, minute) KST. Legacy 'weekday HH:MM' falls back to 03:40."""
+    raw = os.environ.get("ETF_FLOW_WEEKLY_SCHEDULE_KST", "3:40").strip()
+    if " " in raw:
+        print(
+            f"etf_flow_weekly: ignoring legacy weekly spec {raw!r}; "
+            f"using daily {DEFAULT_HOUR_KST:02d}:{DEFAULT_MINUTE_KST:02d} KST"
+        )
+        return DEFAULT_HOUR_KST, DEFAULT_MINUTE_KST
     try:
-        wd_s, hm = raw.split(" ", 1)
-        h_s, m_s = hm.split(":", 1)
-        wd, h, m = int(wd_s), int(h_s), int(m_s)
-        if 0 <= wd <= 6 and 0 <= h <= 23 and 0 <= m <= 59:
-            return wd, h, m
+        h_s, m_s = raw.split(":", 1)
+        hour, minute = int(h_s), int(m_s)
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return hour, minute
     except ValueError:
         pass
-    return 1, 7, 40
+    return DEFAULT_HOUR_KST, DEFAULT_MINUTE_KST
+
+
+def _catchup_minutes() -> int:
+    raw = os.environ.get(
+        "ETF_FLOW_WEEKLY_CATCHUP_MINUTES", str(DEFAULT_CATCHUP_MINUTES)
+    ).strip()
+    try:
+        return max(15, int(raw))
+    except ValueError:
+        return DEFAULT_CATCHUP_MINUTES
+
+
+def _enabled() -> bool:
+    return os.environ.get("ETF_FLOW_WEEKLY_SCHEDULE_ENABLED", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def run_etf_flow_weekly_job() -> bool:
@@ -54,20 +83,28 @@ def run_etf_flow_weekly_job() -> bool:
 
 
 def start_etf_flow_weekly_scheduler() -> None:
-    if os.environ.get("ETF_FLOW_WEEKLY_SCHEDULE_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+    if not _enabled():
         print("etf_flow_weekly scheduler disabled.")
         return
-    weekday, hour, minute = _schedule()
+    hour, minute = _schedule_time_kst()
+    catchup = _catchup_minutes()
 
     def _loop() -> None:
-        print(f"etf_flow_weekly scheduler started (weekday {weekday} {hour:02d}:{minute:02d} KST).")
+        print(
+            f"etf_flow_weekly scheduler started "
+            f"(daily {hour:02d}:{minute:02d} KST, {catchup}m catch-up, json+xlsx)."
+        )
         while True:
             try:
                 now = datetime.now(KST)
-                if past_startup_grace() and now.weekday() == weekday:
-                    slot = due_slot_id(now, hour, minute,
-                                       last_slot=_load_state().get("last_etf_flow_weekly_slot"),
-                                       window_minutes=360)
+                if past_startup_grace():
+                    slot = due_slot_id(
+                        now,
+                        hour,
+                        minute,
+                        last_slot=_load_state().get("last_etf_flow_weekly_slot"),
+                        window_minutes=catchup,
+                    )
                     if slot and run_etf_flow_weekly_job():
                         update_scheduler_state(last_etf_flow_weekly_slot=slot)
             except Exception as exc:  # noqa: BLE001

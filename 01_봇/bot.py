@@ -2526,6 +2526,9 @@ def start_web_server():
                         "etfcheck_kst": os.environ.get(
                             "ETFCHECK_SCHEDULE_KST", "16:20"
                         ),
+                        "etf_flow_kst": os.environ.get(
+                            "ETF_FLOW_WEEKLY_SCHEDULE_KST", "3:40"
+                        ),
                         "etf_kor15_kst": os.environ.get(
                             "ETF_KOR15_SCHEDULE_KST", "9:10"
                         ),
@@ -2545,7 +2548,8 @@ def start_web_server():
                             "ESG_BRIEF_SCHEDULE_KST", "11:00"
                         ),
                         "note": (
-                            "ON: ai_pulse@05:10 (R2, every day), summary@07:00 (compact Telegram), reddit@21:00 "
+                            "ON: ai_pulse@05:10 (R2, every day), etf_flow@03:40 (json+xlsx, every day), "
+                            "summary@07:00 (compact Telegram), reddit@21:00 "
                             "(compact Telegram), summary_kor@15:40 "
                             "(compact Telegram), etfcheck@16:20, "
                             "summary_nxt@16:40 (web-only), "
