@@ -50,6 +50,7 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/nlp-chart": { limit: 30, windowMs: 60_000 },
   "/api/chain": { limit: 20, windowMs: 60_000 },
   "/api/quant": { limit: 20, windowMs: 60_000 },
+  "/api/acwi-tech": { limit: 20, windowMs: 60_000 },
   "/api/wall-street-gurus": { limit: 12, windowMs: 60_000 },
   "/api/13f": { limit: 30, windowMs: 60_000 },
   "/api/insider": { limit: 20, windowMs: 60_000 },

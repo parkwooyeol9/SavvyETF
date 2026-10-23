@@ -6,12 +6,10 @@ import {
   ddayFrom,
   fmt,
   heatStyle,
-  isDeleted,
   isNum,
   type AcwiBreadthRow,
-  type AcwiNumKey,
-  type AcwiStock,
-  type AcwiSummary,
+  type AcwiIdea,
+  type AcwiMarketView,
 } from "@/lib/acwiAnalyzer";
 
 import AcwiChart from "./AcwiChart";
@@ -56,14 +54,20 @@ function BreadthTable({ rows, label, limit = 60 }: { rows: AcwiBreadthRow[]; lab
   );
 }
 
-function IdeaList({ title, sub, rows, cells, onPick }: { title: string; sub: string; rows: AcwiStock[]; cells: ((s: AcwiStock) => ReactNode)[]; onPick: (c: string) => void }) {
+function IdeaList({ title, sub, rows, cells, onPick }: { title: string; sub: string; rows: AcwiIdea[]; cells: ((s: AcwiIdea) => ReactNode)[]; onPick?: (c: string) => void }) {
   return (
     <Card title={title} sub={sub}>
       <table className="aa-tbl aa-mini">
         <tbody>
           {rows.length ? (
             rows.slice(0, 10).map((s) => (
-              <tr key={s.c} className="aa-click" tabIndex={0} onClick={() => onPick(s.c)} onKeyDown={(e) => e.key === "Enter" && onPick(s.c)}>
+              <tr
+                key={s.c}
+                className={onPick ? "aa-click" : undefined}
+                tabIndex={onPick ? 0 : undefined}
+                onClick={onPick ? () => onPick(s.c) : undefined}
+                onKeyDown={onPick ? (e) => e.key === "Enter" && onPick(s.c) : undefined}
+              >
                 <td className="aa-name">
                   {s.n}
                   <small>
@@ -88,36 +92,23 @@ function IdeaList({ title, sub, rows, cells, onPick }: { title: string; sub: str
   );
 }
 
-export default function AcwiMarket({ A, onPick }: { A: AcwiSummary; onPick: (code: string) => void }) {
-  const M = A.meta;
-  const lists = useMemo(() => {
-    const all = A.stocks.filter((s) => !s.xr && !s.susp && !isDeleted(s));
-    const by = (fn: (s: AcwiStock) => boolean, k: AcwiNumKey, desc = true) =>
-      all.filter(fn).sort((a, b) => (desc ? (b[k] ?? 0) - (a[k] ?? 0) : (a[k] ?? 0) - (b[k] ?? 0)));
-    const ok3 = (s: AcwiStock) => isNum(s.er3) && Math.abs(s.er3) <= 150;
-    return {
-      revTrend: by((s) => (s.ts ?? 0) >= 5 && ok3(s), "er3"),
-      lowPe: by((s) => isNum(s.pep) && s.pep <= 20 && ok3(s) && (s.er3 ?? 0) > 0, "er3"),
-      high52: by((s) => isNum(s.dd52) && s.dd52 > -3 && isNum(s.mom), "mom"),
-      oversold: by((s) => isNum(s.rsi) && s.rsi < 30 && ok3(s) && (s.er3 ?? 0) > 0, "er3"),
-      dividend: by((s) => (s.dy ?? 0) >= 3 && s.cuts === 0 && isNum(s.dg12) && s.dg12 <= 150, "dg12"),
-      revDown: by((s) => ok3(s) && (s.w ?? 0) >= 0.0005, "er3", false),
-    };
-  }, [A.stocks]);
+export default function AcwiMarket({ M: view, onPick }: { M: AcwiMarketView; onPick?: (code: string) => void }) {
+  const M = view.meta;
+  const lists = view.ideas;
 
   return (
     <div className="aa-view">
       <div className="aa-grid aa-g2">
         <Card title="벤치마크 (유니버스 ACWI 비중가중, 현지통화 총수익)" sub="주간, 마지막 값 = 1,000. ACWI 공식 지수가 아닌 이 파일 종목·비중으로 만든 근사치">
           <AcwiChart
-            x={A.series.weeks}
-            series={[{ y: A.series.bench, color: "var(--accent)", name: "벤치마크" }]}
+            x={view.series.weeks}
+            series={[{ y: view.series.bench, color: "var(--accent)", name: "벤치마크" }]}
             yfmt={(v) => fmt(v, 0)}
             xfmt={(v) => String(v).slice(2, 7)}
           />
         </Card>
         <Card title="지역별 브레드스" sub="리비전 = EPS NTM 3개월 상향−하향 비율(%p). 열 제목을 누르면 정렬">
-          <BreadthTable rows={A.breadth.region} label="지역" />
+          <BreadthTable rows={view.breadth.region} label="지역" />
           <h3 className="aa-h aa-mt">MSCI 리뷰 일정</h3>
           <p className="aa-sub">MSCI 공지(ir_dates) 기준</p>
           <table className="aa-tbl aa-mini">
@@ -135,13 +126,13 @@ export default function AcwiMarket({ A, onPick }: { A: AcwiSummary; onPick: (cod
         </Card>
       </div>
       <Card title="섹터별 브레드스" sub="기술적(이동평균·RSI)과 이익 추정치 흐름을 한 표에서 비교">
-        <BreadthTable rows={A.breadth.sector} label="섹터" />
+        <BreadthTable rows={view.breadth.sector} label="섹터" />
       </Card>
       <Card title="국가별 브레드스" sub="종목 수 많은 순">
-        <BreadthTable rows={A.breadth.country} label="국가" />
+        <BreadthTable rows={view.breadth.country} label="국가" />
       </Card>
       <h3 className="aa-h aa-mt">
-        아이디어 리스트 <span className="meta-soft">(편출 확정·거래정지 제외, 변화율 ±150% 초과 극단치 제외, 클릭하면 상세)</span>
+        아이디어 리스트 <span className="meta-soft">(편출 확정·거래정지 제외, 변화율 ±150% 초과 극단치 제외{onPick ? ", 클릭하면 상세" : ""})</span>
       </h3>
       <div className="aa-lists">
         <IdeaList

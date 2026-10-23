@@ -7,7 +7,6 @@ import ExcelButton from "@/components/ExcelButton";
 import AcwiBacktest from "@/components/acwi/AcwiBacktest";
 import AcwiData from "@/components/acwi/AcwiData";
 import AcwiDetail from "@/components/acwi/AcwiDetail";
-import AcwiGroups from "@/components/acwi/AcwiGroups";
 import AcwiMarket from "@/components/acwi/AcwiMarket";
 import AcwiMsci from "@/components/acwi/AcwiMsci";
 import AcwiPublic from "@/components/acwi/AcwiPublic";
@@ -16,20 +15,18 @@ import { Sg } from "@/components/acwi/parts";
 import {
   ddayFrom,
   fmt,
-  isNum,
+  toMarketView,
   type AcwiApiResponse,
   type AcwiBacktest as AcwiBacktestData,
-  type AcwiGroups as AcwiGroupsData,
   type AcwiSeries,
   type AcwiSummary,
 } from "@/lib/acwiAnalyzer";
 import { downloadAcwiExcel } from "@/lib/acwiExcel";
 import { adminAuthHeaders } from "@/lib/adminSession";
 
-type View = "market" | "groups" | "screen" | "detail" | "msci" | "backtest" | "data";
+type View = "market" | "screen" | "detail" | "msci" | "backtest" | "data";
 const VIEWS: [View, string][] = [
   ["market", "시장 개요"],
-  ["groups", "국가·업종·테마"],
   ["screen", "스크리너"],
   ["detail", "종목 상세"],
   ["msci", "MSCI 편출입"],
@@ -48,8 +45,6 @@ export default function AcwiAnalyzerTab() {
   const seriesCache = useRef(new Map<string, AcwiSeries>());
   const [bt, setBt] = useState<{ data?: AcwiBacktestData; error?: string } | null>(null);
   const btPromise = useRef<Promise<AcwiBacktestData> | null>(null);
-  const [grp, setGrp] = useState<{ data?: AcwiGroupsData; error?: string } | null>(null);
-  const grpStarted = useRef(false);
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,22 +85,6 @@ export default function AcwiAnalyzerTab() {
     if (view === "backtest" && secret) loadBacktest().catch(() => {});
   }, [view, secret, loadBacktest]);
 
-  // 국가·업종·테마 집계(약 2.5MB)도 탭을 처음 열 때만 받는다
-  useEffect(() => {
-    if (view !== "groups" || !secret || grpStarted.current) return;
-    grpStarted.current = true;
-    fetch("/api/acwi-analyzer?part=groups", { cache: "no-store", headers: adminAuthHeaders(secret) })
-      .then(async (res) => {
-        const json = (await res.json().catch(() => ({}))) as AcwiApiResponse<AcwiGroupsData>;
-        if (!res.ok || !json.ok || !json.data) throw new Error(json.error || `HTTP ${res.status}`);
-        setGrp({ data: json.data });
-      })
-      .catch((e: unknown) => {
-        grpStarted.current = false;
-        setGrp({ error: e instanceof Error ? e.message : "불러오기 실패" });
-      });
-  }, [view, secret]);
-
   const excel = useCallback(async () => {
     if (!A) return;
     const B = await loadBacktest().catch(() => null);
@@ -135,19 +114,12 @@ export default function AcwiAnalyzerTab() {
     top.current?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, []);
 
-  const stockMap = useMemo(() => new Map((A?.stocks ?? []).map((s) => [s.c, s])), [A]);
-
+  const market = useMemo(() => (A ? toMarketView(A) : null), [A]);
   const facts = useMemo(() => {
-    if (!A) return null;
-    const M = A.meta;
-    const all = A.stocks.filter((s) => !s.xr);
-    const ma = all.filter((s) => isNum(s.ma200));
-    const above = ma.length ? (ma.filter((s) => (s.ma200 as number) > 0).length / ma.length) * 100 : NaN;
-    const rev = all.filter((s) => isNum(s.erd));
-    const revB = rev.length ? (rev.reduce((a, s) => a + (s.erd as number), 0) / rev.length) * 100 : NaN;
-    const nr = (M.next_reviews ?? []).find((r) => r.announce >= M.as_of);
-    return { M, above, revB, nr };
-  }, [A]);
+    if (!A || !market) return null;
+    const nr = market.meta.next_reviews.find((r) => r.announce >= market.meta.as_of);
+    return { M: A.meta, market, nr };
+  }, [A, market]);
 
   if (!ready) return null;
   if (!unlocked) return <AcwiPublic />;
@@ -188,12 +160,12 @@ export default function AcwiAnalyzerTab() {
             </div>
             <div className="aa-fact">
               <span>MA200 위 비율</span>
-              <b>{fmt(facts.above, 0, "%")}</b>
+              <b>{fmt(facts.market.meta.above_ma200, 0, "%")}</b>
             </div>
             <div className="aa-fact">
               <span>EPS 리비전 브레드스(3M)</span>
               <b>
-                <Sg v={facts.revB} d={0} suf="%p" />
+                <Sg v={facts.market.meta.rev_breadth_3m} d={0} suf="%p" />
               </b>
             </div>
             <div className="aa-fact">
@@ -234,13 +206,7 @@ export default function AcwiAnalyzerTab() {
         ? VIEWS.filter(([id]) => visited.has(id)).map(([id]) => (
             <div key={id} hidden={view !== id}>
               {id === "market" ? (
-                <AcwiMarket A={A} onPick={pick} />
-              ) : id === "groups" ? (
-                grp?.data ? (
-                  <AcwiGroups G={grp.data} stocks={stockMap} onPick={pick} />
-                ) : (
-                  <p className="empty">{grp?.error ?? "국가·업종·테마 집계 불러오는 중…"}</p>
-                )
+                market ? <AcwiMarket M={market} onPick={pick} /> : null
               ) : id === "screen" ? (
                 <AcwiScreener A={A} onPick={pick} />
               ) : id === "detail" ? (

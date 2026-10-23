@@ -10,6 +10,7 @@ import {
   type AcwiSummary,
   type BtRegionResult,
   type BtSignalResult,
+  toMarketView,
 } from "@/lib/acwiAnalyzer";
 import { readSealedJson, sealedSourceConfigured } from "@/lib/sealedData";
 
@@ -75,6 +76,7 @@ function toPublic(B: AcwiBacktest, S: AcwiSummary | null): AcwiPublic {
 /**
  * Datastream/Refinitiv + MSCI-derived analytics.
  * `?part=public` → 비로그인 공개분 (집계 백테스트·리뷰 일정, CDN 캐시 허용).
+ * `?part=market` → 비로그인 시장 개요 (벤치마크·브레드스·상위 10 리스트만, 종목 원장 없음).
  * 나머지는 관리자 전용·no-store: `?part=summary` → screener/breadth/events;
  * `?part=series&code=XXX` → one stock's charts; `?part=backtest` → 10년 팩터 백테스트 전체;
  * `?part=groups` → 국가·지역·섹터·산업·테마별 10년 밸류에이션 집계 (구성종목 목록 포함).
@@ -83,7 +85,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const part = params.get("part") ?? "summary";
 
-  if (part !== "public") {
+  if (part !== "public" && part !== "market") {
     const denied = requireSiteAdmin(request);
     if (denied) return denied;
   }
@@ -97,6 +99,11 @@ export async function GET(request: Request) {
       ]);
       if (!B) return fail(503, "백테스트 결과가 아직 준비되지 않았습니다.");
       return NextResponse.json({ ok: true, data: toPublic(B, S) }, { headers: PUBLIC_CACHE });
+    }
+    if (part === "market") {
+      const S = await readSealedJson<AcwiSummary>(`${PREFIX}/summary.bin`);
+      if (!S) return fail(503, "시장 개요가 아직 준비되지 않았습니다.");
+      return NextResponse.json({ ok: true, data: toMarketView(S, PUBLIC_SOURCE) }, { headers: PUBLIC_CACHE });
     }
     if (part === "summary") {
       const data = await readSealedJson<AcwiSummary>(`${PREFIX}/summary.bin`);
@@ -121,8 +128,8 @@ export async function GET(request: Request) {
       if (!data) return fail(503, "그룹 집계가 아직 업로드되지 않았습니다. (python -m Claude_DB.factor.groups → export_webapp --upload)");
       return NextResponse.json({ ok: true, data }, { headers: PRIVATE_NO_STORE });
     }
-    return fail(400, "part 는 public · summary · series · backtest · groups 입니다.");
+    return fail(400, "part 는 public · market · summary · series · backtest · groups 입니다.");
   } catch (e) {
-    return fail(500, part === "public" ? "읽기 실패" : e instanceof Error ? e.message : "읽기 실패");
+    return fail(500, part === "public" || part === "market" ? "읽기 실패" : e instanceof Error ? e.message : "읽기 실패");
   }
 }

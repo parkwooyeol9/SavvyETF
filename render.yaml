@@ -119,6 +119,12 @@ services:
         value: "5:10"
       - key: AI_PULSE_CATCHUP_MINUTES
         value: "50"
+      - key: ACWI_PX_SCHEDULE_ENABLED
+        value: "true"
+      - key: ACWI_PX_SCHEDULE_KST
+        value: "6:30"
+      - key: ACWI_PX_CATCHUP_MINUTES
+        value: "12"
       - key: ETFDB_SCHEDULE_KST
         value: "18:20"
       - key: ETFDB_CATCHUP_MINUTES

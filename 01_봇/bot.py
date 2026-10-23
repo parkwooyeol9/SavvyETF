@@ -49,6 +49,7 @@ from nlp_history import start_nlp_history_scheduler
 from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from ai_pulse_scheduler import start_ai_pulse_scheduler
+from acwi_px_scheduler import start_acwi_px_scheduler
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
 from summary_kor_scheduler import start_summary_kor_scheduler
@@ -2500,6 +2501,7 @@ def start_web_server():
                     },
                     "schedule": {
                         "ai_pulse_kst": os.environ.get("AI_PULSE_SCHEDULE_KST", "5:10"),
+                        "acwi_px_kst": os.environ.get("ACWI_PX_SCHEDULE_KST", "6:30"),
                         "summary_kst": os.environ.get(
                             "SUMMARY_SCHEDULE_HOURS_KST", "7:00"
                         ),
@@ -3755,6 +3757,7 @@ def start_all_schedulers(token: str) -> None:
     start_esg_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_ai_pulse_scheduler()
+    start_acwi_px_scheduler()
 
 
 if __name__ == "__main__":

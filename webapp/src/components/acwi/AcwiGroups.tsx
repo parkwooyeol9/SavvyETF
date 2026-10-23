@@ -18,9 +18,8 @@ import AcwiTable, { type Col } from "./AcwiTable";
 import { Card, Kpi, Legend, nameCol, Sg } from "./parts";
 
 /**
- * 그룹별 10년 밸류에이션 보기. 두 곳에서 쓴다:
- *  - ACWI 분석기 › 국가·업종·테마 (Claude_DB/factor/groups.py, 관리자)
- *  - 포트폴리오 › 밸류에이션 (Claude_DB/factor/etf_valuation.py, dim "etf" 하나 + 비교선 "cmp")
+ * 그룹별 10년 밸류에이션 보기.
+ * 포트폴리오 › 밸류에이션 (Claude_DB/factor/etf_valuation.py, dim "etf" 하나 + 비교선 "cmp").
  * 그룹 값은 유동시총 가중 합산(ΣW/ΣE) — 종목 PER 의 단순 평균·중앙값이 아니다.
  */
 

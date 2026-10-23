@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
+import AcwiTechPanel from "@/components/AcwiTechPanel";
 import {
   QUANT_METHODOLOGY,
   QUANT_RANGES,
@@ -199,11 +200,14 @@ export default function QuantTab() {
   }
 
   return (
+    <>
+    <AcwiTechPanel />
     <div className="geo-tab quant-tab">
       <section className="geo-section geo-featured">
         <div className="kr-hero">
           <div>
-            <h2 className="kr-hero-title">기술적분석</h2>
+            <h2 className="kr-hero-title">ETF 기술적분석</h2>
+            <p className="macro-subhead">지수·업종·국가 ETF와 매크로 프록시입니다.</p>
           </div>
           <div className="kr-hero-actions">
             <button type="button" className="ghost-btn" onClick={() => void load(range)} disabled={loading}>
@@ -466,5 +470,6 @@ export default function QuantTab() {
         </p>
       </section>
     </div>
+    </>
   );
 }

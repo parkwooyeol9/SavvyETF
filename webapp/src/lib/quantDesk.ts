@@ -176,6 +176,7 @@ export function parseQuantTicker(raw: string | null | undefined): string | null 
   let s = raw.trim().toUpperCase();
   if (/^\d{6}$/.test(s)) s = `${s}.KS`;
   if (s.length < 1 || s.length > 16) return null;
+  if (/^\d{1,6}\.[A-Z]{1,4}$/.test(s)) return s;
   if (!/^[A-Z^][A-Z0-9.^_=/-]*$/.test(s)) return null;
   if (s.includes("..") || s.includes("//") || s.includes("--")) return null;
   return s;

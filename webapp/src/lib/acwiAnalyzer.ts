@@ -1,6 +1,7 @@
 /**
- * ACWI 종목 분석기 (포트폴리오 › ACWI, 관리자 전용).
+ * ACWI 종목 분석기 (포트폴리오 › ACWI).
  * 데이터는 Claude_DB/factor/analyzer.py → export_webapp.py 가 R2 에 봉인해 올린다.
+ * 시장 개요는 집계·상위 리스트만 공개하고, 스크리너·종목 상세·MSCI 편출입·원자료는 관리자 전용.
  * 종목 레코드의 짧은 키는 analyzer.py 의 KEYS 가 원본이다.
  */
 
@@ -202,6 +203,50 @@ export type EtfValuation = AcwiGroups & {
 /** 관리자 전용: 구성종목 지표 (AcwiStock 과 같은 짧은 키) */
 export type EtfValuationStocks = Record<string, Partial<Record<"pe" | "pb" | "dy" | "roe" | "eg" | "sg" | "er3" | "r12m" | "pep10" | "w", number>> & { n?: string; ct?: string; s?: string }>;
 
+/** 시장 개요 공개분. 종목 원장 없이 집계와 리스트 표시에 필요한 칸만 담는다. */
+export type AcwiIdea = {
+  c: string;
+  n?: string;
+  ct?: string;
+  er3?: number;
+  ts?: number;
+  pe?: number;
+  mom?: number;
+  dd52?: number;
+  rsi?: number;
+  dy?: number;
+  dg12?: number;
+  r3m?: number;
+};
+
+export type AcwiMarketView = {
+  meta: {
+    as_of: string;
+    built_at: string;
+    source: string;
+    ri_last: string;
+    bench_r12m?: number;
+    bench_r3m?: number;
+    next_reviews: AcwiReview[];
+    n_stocks: number;
+    n_scored: number;
+    /** MA200 위 종목 비율(%) */
+    above_ma200: number | null;
+    /** EPS NTM 3개월 리비전 방향의 평균(%p). 상향 +, 하향 − */
+    rev_breadth_3m: number | null;
+  };
+  series: { weeks: string[]; bench: (number | null)[] };
+  breadth: { region: AcwiBreadthRow[]; sector: AcwiBreadthRow[]; country: AcwiBreadthRow[] };
+  ideas: {
+    revTrend: AcwiIdea[];
+    lowPe: AcwiIdea[];
+    high52: AcwiIdea[];
+    oversold: AcwiIdea[];
+    dividend: AcwiIdea[];
+    revDown: AcwiIdea[];
+  };
+};
+
 /** 비로그인 공개분: 집계 백테스트 + MSCI 리뷰 일정만. 종목별 값·구성/비중은 없다. */
 export type AcwiPublic = {
   backtest: AcwiBacktest;
@@ -272,3 +317,99 @@ export function ddayFrom(asOf: string, d: string): number {
 }
 
 export const isDeleted = (s: AcwiStock) => (s.ms ?? "").startsWith("편출");
+
+const BREADTH_KEYS = [
+  "n",
+  "rev_breadth_3m",
+  "eps_rev_3m_med",
+  "above_ma200",
+  "golden",
+  "r_1m_med",
+  "r_3m_med",
+  "r_12m_med",
+  "rsi_med",
+  "pe_med",
+  "pe_pct_3y_med",
+  "dy_med",
+] as const;
+
+const IDEA_FIELDS = ["er3", "ts", "pe", "mom", "dd52", "rsi", "dy", "dg12", "r3m"] as const;
+
+function finiteOrNull(v: unknown): number | null {
+  return isNum(v) ? v : null;
+}
+
+function publicBreadth(rows: AcwiBreadthRow[]): AcwiBreadthRow[] {
+  return rows.map((r) => {
+    const out: AcwiBreadthRow = { g: String(r.g ?? "") };
+    for (const k of BREADTH_KEYS) {
+      const v = r[k];
+      if (isNum(v)) out[k] = v;
+    }
+    return out;
+  });
+}
+
+function ideaOf(s: AcwiStock): AcwiIdea {
+  const row: AcwiIdea = { c: s.c };
+  if (s.n) row.n = s.n;
+  if (s.ct) row.ct = s.ct;
+  for (const k of IDEA_FIELDS) {
+    const v = s[k];
+    if (isNum(v)) row[k] = v;
+  }
+  return row;
+}
+
+/**
+ * 시장 개요에 그리는 값만 남긴다. 종목 원장·ISIN·비중·팩터 점수·시계열 버킷은 넣지 않는다.
+ * 아이디어 리스트 조건은 AcwiMarket 과 같다 (편출·거래정지·팩터 제외·리비전 ±150% 초과 제외, 상위 10).
+ */
+export function toMarketView(A: AcwiSummary, source = A.meta.source): AcwiMarketView {
+  const universe = A.stocks.filter((s) => !s.xr);
+  const listed = universe.filter((s) => !s.susp && !isDeleted(s));
+  const ma = universe.filter((s) => isNum(s.ma200));
+  const above = ma.length ? (ma.filter((s) => (s.ma200 as number) > 0).length / ma.length) * 100 : null;
+  const rev = universe.filter((s) => isNum(s.erd));
+  const revB = rev.length ? (rev.reduce((a, s) => a + (s.erd as number), 0) / rev.length) * 100 : null;
+  const ok3 = (s: AcwiStock) => isNum(s.er3) && Math.abs(s.er3) <= 150;
+  const by = (fn: (s: AcwiStock) => boolean, k: (typeof IDEA_FIELDS)[number], desc = true) =>
+    listed
+      .filter(fn)
+      .sort((a, b) => (desc ? (b[k] ?? 0) - (a[k] ?? 0) : (a[k] ?? 0) - (b[k] ?? 0)))
+      .slice(0, 10)
+      .map(ideaOf);
+
+  return {
+    meta: {
+      as_of: A.meta.as_of,
+      built_at: A.meta.built_at,
+      source,
+      ri_last: A.meta.ri_last,
+      bench_r12m: A.meta.bench_r12m,
+      bench_r3m: A.meta.bench_r3m,
+      next_reviews: (A.meta.next_reviews ?? []).map(({ review, announce, effective }) => ({ review, announce, effective })),
+      n_stocks: A.stocks.length,
+      n_scored: A.quality.n_scored,
+      above_ma200: above,
+      rev_breadth_3m: revB,
+    },
+    series: {
+      weeks: A.series.weeks.slice(),
+      bench: A.series.bench.map(finiteOrNull),
+    },
+    breadth: {
+      region: publicBreadth(A.breadth.region ?? []),
+      sector: publicBreadth(A.breadth.sector ?? []),
+      country: publicBreadth(A.breadth.country ?? []),
+    },
+    ideas: {
+      revTrend: by((s) => (s.ts ?? 0) >= 5 && ok3(s), "er3"),
+      lowPe: by((s) => isNum(s.pep) && s.pep <= 20 && ok3(s) && (s.er3 ?? 0) > 0, "er3"),
+      high52: by((s) => isNum(s.dd52) && s.dd52 > -3 && isNum(s.mom), "mom"),
+      oversold: by((s) => isNum(s.rsi) && s.rsi < 30 && ok3(s) && (s.er3 ?? 0) > 0, "er3"),
+      dividend: by((s) => (s.dy ?? 0) >= 3 && s.cuts === 0 && isNum(s.dg12) && s.dg12 <= 150, "dg12"),
+      revDown: by((s) => ok3(s) && (s.w ?? 0) >= 0.0005, "er3", false),
+    },
+  };
+}
