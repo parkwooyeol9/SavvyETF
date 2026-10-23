@@ -145,8 +145,12 @@ def load_universe() -> list[dict[str, Any]]:
     return [row for row in rows or [] if row.get("yahoo")]
 
 
-def major_yahoos(rows: list[dict[str, Any]], per_country: int = 12, per_sector: int = 12) -> set[str]:
-    """표에 쓰는 주요 종목. 국가·업종 각각의 비중 상위."""
+def major_yahoos(rows: list[dict[str, Any]], per_country: int = 15, per_sector: int = 15) -> set[str]:
+    """표에 쓰는 주요 종목. 국가·업종 각각의 비중 상위.
+
+    15 는 웹 `pickAcwiMajors` 의 한쪽 필터 상한과 같다. 국가×업종 조합(상위 12)은
+    저장본에 없으면 웹이 Yahoo 에서 바로 받는다.
+    """
     by_c: dict[str, list[dict[str, Any]]] = {}
     by_s: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -177,12 +181,14 @@ def fetch_closes(symbol: str, rng: str, session: requests.Session) -> list[list[
         return []
     stamps = result.get("timestamp") or []
     closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    # 일봉 타임스탬프는 현지 개장 시각이다. UTC 로 자르면 시드니(UTC+11) 같은 시장은 하루 앞당겨진다.
+    offset = int(((result.get("meta") or {}).get("gmtoffset")) or 0)
     out: list[list[Any]] = []
     for i, stamp in enumerate(stamps):
         close = closes[i] if i < len(closes) else None
         if close is None or not isinstance(close, (int, float)) or close <= 0:
             continue
-        day = datetime.fromtimestamp(int(stamp), timezone.utc).strftime("%Y-%m-%d")
+        day = datetime.fromtimestamp(int(stamp) + offset, timezone.utc).strftime("%Y-%m-%d")
         out.append([day, round(float(close), 6)])
     return out
 
@@ -190,6 +196,9 @@ def fetch_closes(symbol: str, rng: str, session: requests.Session) -> list[list[
 def build_payload(rows: list[dict[str, Any]] | None = None, *, deadline: float | None = None) -> dict[str, Any]:
     """주요 종목은 2년 일봉, 나머지는 최근 종가만. SPY 는 베타용으로 항상 넣는다."""
     universe = rows if rows is not None else load_universe()
+    if not universe:
+        # 이미지에 유니버스 JSON 이 빠지면 SPY 하나만 받고 '성공'으로 끝나던 문제를 막는다.
+        raise RuntimeError(f"ACWI universe is empty: {UNIVERSE_PATH}")
     majors = major_yahoos(universe)
     symbols = []
     seen: set[str] = set()

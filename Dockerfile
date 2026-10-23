@@ -42,6 +42,8 @@ COPY Claude_Work/ Claude_Work/
 COPY assets/ assets/
 COPY colab/ colab/
 COPY data/universes/ data/universes/
+# 06:30 ACWI 종가 작업(10_공통/acwi_px.py)이 읽는 종목 목록. webapp/ 전체는 넣지 않는다.
+COPY webapp/src/data/acwiYahooUniverse.json webapp/src/data/acwiYahooUniverse.json
 COPY web/ web/
 RUN mkdir -p data/fonts \
     && cp assets/fonts/NanumGothic.ttf data/fonts/NanumGothic.ttf

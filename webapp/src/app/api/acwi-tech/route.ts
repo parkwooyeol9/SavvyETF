@@ -48,6 +48,7 @@ const SECTORS = acwiSectors(UNIVERSE);
 type YahooChart = {
   chart?: {
     result?: Array<{
+      meta?: { gmtoffset?: number };
       timestamp?: number[];
       indicators?: { quote?: Array<{ close?: Array<number | null> }> };
     }>;
@@ -56,7 +57,14 @@ type YahooChart = {
 
 type StoredSeries = Record<string, Array<[string, number]>>;
 
-async function loadStored(): Promise<{ as_of: string | null; series: StoredSeries } | null> {
+type Stored = { as_of: string | null; series: StoredSeries };
+
+/** 저장본은 수 MB 라 표·티커 조회마다 R2 에서 다시 받지 않는다. 하루 한 번 갱신된다. */
+function loadStored(): Promise<Stored | null> {
+  return withServerCache("acwi-tech:stored", 10 * 60_000, 60 * 60_000, readStored);
+}
+
+async function readStored(): Promise<Stored | null> {
   const text = await r2GetObjectText(R2_KEY);
   if (!text) return null;
   try {
@@ -95,12 +103,14 @@ async function fetchYahoo(symbol: string, range: QuantRange): Promise<GsPoint[]>
   if (!result) return [];
   const timestamps = result.timestamp || [];
   const closes = result.indicators?.quote?.[0]?.close || [];
+  // 일봉 타임스탬프는 현지 개장 시각. UTC 로 자르면 UTC+10 이상 시장이 하루 앞당겨진다.
+  const offset = Number(result.meta?.gmtoffset) || 0;
   const series: GsPoint[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (close == null || !Number.isFinite(close) || !(close > 0)) continue;
     series.push({
-      date: new Date(timestamps[i]! * 1000).toISOString().slice(0, 10),
+      date: new Date((timestamps[i]! + offset) * 1000).toISOString().slice(0, 10),
       value: close,
     });
   }
@@ -203,7 +213,7 @@ async function buildLookup(raw: string, range: QuantRange): Promise<AcwiTechLook
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const range = parseQuantRange(url.searchParams.get("range"));
-  const ticker = (url.searchParams.get("ticker") || "").trim();
+  const ticker = (url.searchParams.get("ticker") || "").trim().toUpperCase().slice(0, 32);
   try {
     if (ticker) {
       const body = await withServerCache(`acwi-tech:t:${ticker}:${range}`, 90_000, 10 * 60_000, () =>

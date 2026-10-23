@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CartesianGrid,
   ComposedChart,
@@ -33,6 +33,16 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n == null || Number.isNaN(n)) return "—";
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}`;
+}
+
+/** 429(요청 제한)·HTML 오류 페이지처럼 JSON 이 아닌 응답도 읽을 수 있는 메시지로 바꾼다. */
+async function readJson<T>(res: Response): Promise<T & { ok?: boolean; error?: string }> {
+  if (res.status === 429) return { ok: false, error: "요청이 많습니다. 잠시 뒤 다시 눌러 주세요." } as T & { ok: false; error: string };
+  try {
+    return (await res.json()) as T & { ok?: boolean; error?: string };
+  } catch {
+    return { ok: false, error: `응답을 읽지 못했습니다 (HTTP ${res.status}).` } as T & { ok: false; error: string };
+  }
 }
 
 function factBits(facts: AcwiTechFacts): Array<{ label: string; title: string }> {
@@ -87,8 +97,14 @@ export default function AcwiTechPanel() {
   const [lookupFacts, setLookupFacts] = useState<AcwiTechFacts | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  /** 조회 중인 티커. 기간을 바꾸면 이 티커를 새 기간으로 다시 받는다. */
+  const [lookupTicker, setLookupTicker] = useState<string | null>(null);
+  // 칩을 빠르게 바꾸면 먼저 보낸 응답이 늦게 와서 최신 표를 덮어쓴다. 마지막 요청만 반영한다.
+  const boardSeq = useRef(0);
+  const lookupSeq = useRef(0);
 
   const load = useCallback(async (nextCountry: string, nextSector: string, nextRange: QuantRange) => {
+    const seq = ++boardSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -98,7 +114,8 @@ export default function AcwiTechPanel() {
         range: nextRange,
       });
       const res = await fetch(`/api/acwi-tech?${qs.toString()}`, { cache: "no-store" });
-      const body = (await res.json()) as AcwiTechBoard & { error?: string };
+      const body = await readJson<AcwiTechBoard>(res);
+      if (seq !== boardSeq.current) return;
       if (!res.ok || !body.ok) throw new Error(body.error || "표를 읽지 못했습니다.");
       setBoard(body);
       setPicked((cur) => {
@@ -106,9 +123,10 @@ export default function AcwiTechPanel() {
         return body.rows.find((r) => r.snapshot)?.yahoo ?? null;
       });
     } catch (exc) {
+      if (seq !== boardSeq.current) return;
       setError(exc instanceof Error ? exc.message : "표를 읽지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (seq === boardSeq.current) setLoading(false);
     }
   }, []);
 
@@ -125,6 +143,9 @@ export default function AcwiTechPanel() {
   const factsAsOf = board?.facts_as_of ?? null;
 
   function selectRow(row: AcwiTechRow) {
+    lookupSeq.current++;
+    setLookupTicker(null);
+    setLookupLoading(false);
     setLookup(null);
     setLookupFacts(null);
     setLookupError(null);
@@ -147,12 +168,19 @@ export default function AcwiTechPanel() {
       setTickerInput(raw);
       return;
     }
+    await runLookup(raw, range);
+  }
+
+  async function runLookup(raw: string, nextRange: QuantRange) {
+    const seq = ++lookupSeq.current;
+    setLookupTicker(raw);
     setLookupLoading(true);
     setLookupError(null);
     try {
-      const qs = new URLSearchParams({ ticker: raw, range });
+      const qs = new URLSearchParams({ ticker: raw, range: nextRange });
       const res = await fetch(`/api/acwi-tech?${qs.toString()}`, { cache: "no-store" });
-      const body = (await res.json()) as AcwiTechLookup & { error?: string };
+      const body = await readJson<AcwiTechLookup>(res);
+      if (seq !== lookupSeq.current) return;
       if (!res.ok || !body.snapshot) {
         setLookup(null);
         setLookupFacts(null);
@@ -163,13 +191,24 @@ export default function AcwiTechPanel() {
       setLookupFacts(body.facts ?? null);
       setPicked(null);
     } catch (exc) {
+      if (seq !== lookupSeq.current) return;
       setLookup(null);
       setLookupFacts(null);
       setLookupError(exc instanceof Error ? exc.message : "조회에 실패했습니다.");
     } finally {
-      setLookupLoading(false);
+      if (seq === lookupSeq.current) setLookupLoading(false);
     }
   }
+
+  // 티커 조회 중에 기간을 바꾸면 조회 차트도 같은 기간으로 맞춘다.
+  const lookupRange = useRef(range);
+  useEffect(() => {
+    if (lookupRange.current === range) return;
+    lookupRange.current = range;
+    if (lookupTicker) void runLookup(lookupTicker, range);
+    // runLookup 은 매 렌더 새로 만들어지지만 기간이 바뀔 때만 다시 돌면 된다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
   const chips = board?.country_chips ?? ["미국"];
   const countries = board?.countries ?? chips;
@@ -206,10 +245,7 @@ export default function AcwiTechPanel() {
               key={r.id}
               type="button"
               className={`tab-btn sub ${range === r.id ? "active" : ""}`}
-              onClick={() => {
-                setLookup(null);
-                setRange(r.id);
-              }}
+              onClick={() => setRange(r.id)}
             >
               {r.label}
             </button>
