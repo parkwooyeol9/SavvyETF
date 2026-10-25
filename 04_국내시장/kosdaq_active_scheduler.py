@@ -42,6 +42,12 @@ def _poll_seconds() -> int:
         return DEFAULT_POLL_SECONDS
 
 
+def _should_skip_kr_non_trading(now_kst: datetime) -> bool:
+    from kr_calendar import is_kr_equity_trading_day
+
+    return not is_kr_equity_trading_day(now_kst.date())
+
+
 def run_scheduled_kosdaq_active() -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
     from kosdaq_active_monitor import collect_all
@@ -128,9 +134,14 @@ def start_kosdaq_active_scheduler() -> None:
                     last_slot=last_slot,
                     window_minutes=catchup_minutes,
                 )
-                if slot and run_scheduled_kosdaq_active():
-                    last_slot = slot
-                    update_scheduler_state(last_kosdaq_active_slot=slot)
+                if slot:
+                    if _should_skip_kr_non_trading(now):
+                        print(f"Scheduled kosdaq_active skipped ({slot}): weekend or KRX holiday")
+                        last_slot = slot
+                        update_scheduler_state(last_kosdaq_active_slot=slot)
+                    elif run_scheduled_kosdaq_active():
+                        last_slot = slot
+                        update_scheduler_state(last_kosdaq_active_slot=slot)
             except Exception as exc:
                 print(f"kosdaq_active scheduler loop error: {exc}")
 

@@ -1,0 +1,42 @@
+name: python check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.py"
+      - "requirements.txt"
+      - "data/**"
+      - "webapp/src/data/**"
+      - "scripts/sync_shared_data.py"
+      - ".github/workflows/python-check.yml"
+  pull_request:
+    paths:
+      - "**/*.py"
+      - "requirements.txt"
+      - "data/**"
+      - "webapp/src/data/**"
+      - "scripts/sync_shared_data.py"
+      - ".github/workflows/python-check.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Shared data is in sync
+        run: python scripts/sync_shared_data.py --check
+      - name: Compile Python modules
+        run: |
+          python -m compileall -q bot.py scripts \
+            01_봇 02_시황 03_ETF 04_국내시장 05_매크로 \
+            06_ESG 07_공시 08_ADR 09_매매 10_공통
+      - name: Import bot launcher
+        run: python -c "import bot"

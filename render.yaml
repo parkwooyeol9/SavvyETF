@@ -91,6 +91,8 @@ services:
         value: "16:20"
       - key: ETFCHECK_CATCHUP_MINUTES
         value: "45"
+      - key: ETF_FLOW_DAILY_SCHEDULE_ENABLED
+        value: "true"
       - key: ETF_FLOW_WEEKLY_SCHEDULE_ENABLED
         value: "true"
       - key: ETF_FLOW_WEEKLY_SCHEDULE_KST
@@ -168,7 +170,7 @@ services:
       - key: ESG_BRIEF_SCHEDULE_KST
         value: "11:00"
       - key: WEBAPP_PUBLIC_URL
-        value: "https://savvyetf.vercel.app"
+        value: "https://savvyetf.com"
       - key: GEMINI_API_KEY
         sync: false
       - key: FRED_API_KEY

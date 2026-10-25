@@ -736,11 +736,13 @@ def _slim_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _webapp_base_url() -> str:
     import os
 
-    return (
+    raw = (
         os.environ.get("WEBAPP_PUBLIC_URL")
         or os.environ.get("WEB_PUBLISH_URL", "").replace("/api/ingest", "")
         or "https://savvyetf.com"
     ).strip()
+    # savvyetf.vercel.app 307-redirects to savvyetf.com; requests strips Authorization across hosts.
+    return raw.replace("://savvyetf.vercel.app", "://savvyetf.com").rstrip("/")
 
 
 def push_to_webapp(
@@ -801,34 +803,42 @@ def publish_weekly(*, publish: bool = False, push: bool = False) -> dict[str, An
     base = _webapp_base_url()
     secret = (os.environ.get("WEB_INGEST_SECRET") or "").strip()
 
-    # 운영 경로: Vercel 수신 API → Vercel R2 (로컬 R2 키 불필요)
+    import r2_data
+    from r2_briefs import r2_configured
+
+    r2_ok = False
+    if publish and r2_configured():
+        ok_json = r2_data.put_json(R2_LATEST_JSON, slim)
+        ok_snap = r2_data.put_json(
+            f"{R2_SNAP_PREFIX}{datetime.now(KST).date().isoformat()}.json", slim
+        )
+        ok_xlsx = r2_data.put_bytes(
+            R2_LATEST_XLSX,
+            xlsx_bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        r2_ok = bool(ok_json and ok_snap and ok_xlsx)
+        result.update({"json": ok_json, "snapshot": ok_snap, "xlsx": ok_xlsx})
+        print(f"R2 publish {result}")
+
     if push or (publish and secret and base):
         if not secret:
-            raise RuntimeError("WEB_INGEST_SECRET required for web push")
-        pushed = push_to_webapp(slim, xlsx_bytes, base_url=base, secret=secret)
-        result["push"] = pushed
-        print(f"web push {pushed}")
-        if not pushed.get("ok"):
-            raise RuntimeError(f"web push failed: {pushed}")
+            if not r2_ok:
+                raise RuntimeError("WEB_INGEST_SECRET required for web push")
+        else:
+            try:
+                pushed = push_to_webapp(slim, xlsx_bytes, base_url=base, secret=secret)
+                result["push"] = pushed
+                print(f"web push {pushed}")
+                if not pushed.get("ok") and not r2_ok:
+                    raise RuntimeError(f"web push failed: {pushed}")
+            except Exception as exc:
+                print(f"web push warning (r2_ok={r2_ok}): {exc}")
+                if not r2_ok:
+                    raise
         return result
 
-    # 폴백: R2 직접 쓰기 (키 없으면 False → 예외)
-    import r2_data
-
-    ok_json = r2_data.put_json(R2_LATEST_JSON, slim)
-    ok_snap = r2_data.put_json(
-        f"{R2_SNAP_PREFIX}{datetime.now(KST).date().isoformat()}.json", slim
-    )
-    ok_xlsx = r2_data.put_bytes(
-        R2_LATEST_XLSX,
-        xlsx_bytes,
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    result.update({"json": ok_json, "snapshot": ok_snap, "xlsx": ok_xlsx})
-    print(f"R2 publish {result}")
-    if not (ok_json and ok_snap and ok_xlsx):
-        from r2_briefs import r2_configured
-
+    if not r2_ok:
         raise RuntimeError(f"R2 publish returned False (configured={r2_configured()})")
     return result
 

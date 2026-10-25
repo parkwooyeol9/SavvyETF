@@ -2437,6 +2437,10 @@ def start_web_server():
                             "esg-scheduler": "esg-scheduler" in thread_names,
                             "esg-brief-scheduler": "esg-brief-scheduler" in thread_names,
                             "ai-pulse-scheduler": "ai-pulse-scheduler" in thread_names,
+                            "acwi-px-scheduler": "acwi-px-scheduler" in thread_names,
+                            "etf-flow-weekly-scheduler": (
+                                "etf-flow-weekly-scheduler" in thread_names
+                            ),
                         },
                         "last_fixed_slot": state.get("last_fixed_slot"),
                         "last_summary_pre_slot": state.get("last_summary_pre_slot"),
@@ -2476,6 +2480,25 @@ def start_web_server():
                         "last_ai_pulse_error": state.get("last_ai_pulse_error"),
                         "ai_pulse_scheduler_heartbeat": state.get(
                             "ai_pulse_scheduler_heartbeat"
+                        ),
+                        "last_acwi_px_slot": state.get("last_acwi_px_slot"),
+                        "last_acwi_px_as_of": state.get("last_acwi_px_as_of"),
+                        "last_acwi_px_ok_at": state.get("last_acwi_px_ok_at"),
+                        "last_acwi_px_error": state.get("last_acwi_px_error"),
+                        "acwi_px_scheduler_heartbeat": state.get(
+                            "acwi_px_scheduler_heartbeat"
+                        ),
+                        "last_etf_flow_weekly_slot": state.get(
+                            "last_etf_flow_weekly_slot"
+                        ),
+                        "last_etf_flow_weekly_ok_at": state.get(
+                            "last_etf_flow_weekly_ok_at"
+                        ),
+                        "last_etf_flow_weekly_error": state.get(
+                            "last_etf_flow_weekly_error"
+                        ),
+                        "etf_flow_weekly_scheduler_heartbeat": state.get(
+                            "etf_flow_weekly_scheduler_heartbeat"
                         ),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
                         "last_esg_overview_error": state.get("last_esg_overview_error"),

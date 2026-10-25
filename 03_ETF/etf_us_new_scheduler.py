@@ -135,11 +135,11 @@ def start_etf_us_new_scheduler(token: str, broadcast_fn) -> None:
                     continue
                 state = _load_state()
                 slot = due_slot_id(
-                    now_kst=now,
-                    hour=hour,
-                    minute=minute,
-                    last_slot_id=state.get("last_etf_us_new_slot"),
-                    catchup_minutes=catchup_minutes,
+                    now,
+                    hour,
+                    minute,
+                    last_slot=state.get("last_etf_us_new_slot"),
+                    window_minutes=catchup_minutes,
                 )
                 if slot:
                     ok = run_scheduled_etf_us_new(token, broadcast_fn)

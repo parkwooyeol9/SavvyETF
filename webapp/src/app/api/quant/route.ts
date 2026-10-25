@@ -31,6 +31,7 @@ type YahooChart = {
         shortName?: string;
         longName?: string;
         symbol?: string;
+        gmtoffset?: number;
       };
       timestamp?: number[];
       indicators?: { quote?: Array<{ close?: Array<number | null> }> };
@@ -61,12 +62,16 @@ async function fetchYahooCloses(
   if (!result) return { price: null, series: [], name: null };
   const timestamps = result.timestamp || [];
   const closes = result.indicators?.quote?.[0]?.close || [];
+  const gmtOffset =
+    typeof result.meta?.gmtoffset === "number" && Number.isFinite(result.meta.gmtoffset)
+      ? result.meta.gmtoffset
+      : 0;
   const series: GsPoint[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (close == null || !Number.isFinite(close) || !(close > 0)) continue;
     series.push({
-      date: new Date(timestamps[i]! * 1000).toISOString().slice(0, 10),
+      date: new Date((timestamps[i]! + gmtOffset) * 1000).toISOString().slice(0, 10),
       value: close,
     });
   }

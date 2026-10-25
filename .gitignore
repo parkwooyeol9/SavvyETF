@@ -61,3 +61,10 @@ data/fonts/
 obsidian/.obsidian/workspace.json
 obsidian/.obsidian/workspace-mobile.json
 obsidian/.trash/
+.claude/
+.next/
+00_exports/
+11_받은자료/
+research/**/cache/
+research/**/data/*.pkl
+research/**/data/*.csv

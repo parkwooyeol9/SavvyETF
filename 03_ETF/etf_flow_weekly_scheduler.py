@@ -61,24 +61,42 @@ def _catchup_minutes() -> int:
 
 
 def _enabled() -> bool:
-    return os.environ.get("ETF_FLOW_WEEKLY_SCHEDULE_ENABLED", "true").lower() in {
-        "1",
-        "true",
-        "yes",
-    }
+    # Prefer ETF_FLOW_DAILY_SCHEDULE_ENABLED so a stale ETF_FLOW_WEEKLY_SCHEDULE_ENABLED=false
+    # from the earlier opt-in weekly setup does not silently keep the daily 03:40 job off.
+    raw = os.environ.get("ETF_FLOW_DAILY_SCHEDULE_ENABLED", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _published_today() -> bool:
+    try:
+        from etf_flow_weekly import R2_LATEST_JSON
+        from r2_data import get_json
+
+        doc = get_json(R2_LATEST_JSON)
+        gen = str((doc or {}).get("generated_at") or "")[:10] if isinstance(doc, dict) else ""
+        return gen == datetime.now(KST).date().isoformat()
+    except Exception:
+        return False
 
 
 def run_etf_flow_weekly_job() -> bool:
     from etf_flow_weekly import publish_weekly
 
+    update_scheduler_state(last_etf_flow_weekly_attempt_at=datetime.now(KST).isoformat())
     try:
         result = publish_weekly(publish=True)
         print(f"Scheduled etf_flow_weekly done: {result}")
         pushed = result.get("push") or {}
-        return bool(pushed.get("ok") or result.get("json"))
+        ok = bool(pushed.get("ok") or result.get("json"))
+        if ok:
+            update_scheduler_state(
+                last_etf_flow_weekly_ok_at=datetime.now(KST).isoformat(),
+                last_etf_flow_weekly_error=None,
+            )
+        return ok
     except Exception as exc:  # noqa: BLE001
         print(f"Scheduled etf_flow_weekly failed: {exc}")
-        update_scheduler_state(last_etf_flow_weekly_error=str(exc))
+        update_scheduler_state(last_etf_flow_weekly_error=str(exc)[:300])
         return False
 
 
@@ -90,6 +108,7 @@ def start_etf_flow_weekly_scheduler() -> None:
     catchup = _catchup_minutes()
 
     def _loop() -> None:
+        bootstrapped = False
         print(
             f"etf_flow_weekly scheduler started "
             f"(daily {hour:02d}:{minute:02d} KST, {catchup}m catch-up, json+xlsx)."
@@ -97,7 +116,18 @@ def start_etf_flow_weekly_scheduler() -> None:
         while True:
             try:
                 now = datetime.now(KST)
+                update_scheduler_state(
+                    etf_flow_weekly_scheduler_heartbeat=now.isoformat()
+                )
                 if past_startup_grace():
+                    if not bootstrapped:
+                        bootstrapped = True
+                        if not _published_today():
+                            print("etf_flow_weekly bootstrap: R2 latest JSON is not today's, refreshing…")
+                            if run_etf_flow_weekly_job():
+                                update_scheduler_state(
+                                    last_etf_flow_weekly_slot=f"bootstrap-{now.strftime('%Y%m%d')}"
+                                )
                     slot = due_slot_id(
                         now,
                         hour,
