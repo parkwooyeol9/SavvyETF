@@ -87,9 +87,10 @@ def main() -> None:
         print(f"저장: {out.relative_to(ROOT)} ({out.stat().st_size / 1e3:.0f} KB)")
     if a.upload:
         repo = Path(os.environ.get("SAVVYETF_DIR", Path.home() / "GitHub" / "SavvyETF"))
-        sys.path.insert(0, str(repo))
+        # r2_data.py moved from the repo root to 10_공통/ on 2026-10-12 (68035ad). Keep the root for older checkouts.
+        sys.path[:0] = [str(repo / "10_공통"), str(repo)]
         try:
-            import r2_data  # SavvyETF/r2_data.py — reads R2_* env vars
+            import r2_data  # SavvyETF/10_공통/r2_data.py — reads R2_* env vars
         except ImportError as e:
             sys.exit(f"r2_data.py를 찾지 못함 ({repo}): {e}")
         for page, P in payloads.items():

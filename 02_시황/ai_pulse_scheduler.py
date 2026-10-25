@@ -191,6 +191,7 @@ def run_scheduled_ai_pulse() -> bool:
         exported = _run_step("export_web.py", "--upload", timeout=180)
         save_state()
         fresh = exported and _published_today()
+        reason = "export_web.py --upload failed" if not exported else "R2 latest JSON is not today's"
         if fresh:
             update_scheduler_state(
                 last_ai_pulse_ok_at=datetime.now(KST).isoformat(),
@@ -198,7 +199,7 @@ def run_scheduled_ai_pulse() -> bool:
             )
             print("Scheduled ai_pulse: R2 latest JSON is today")
         else:
-            update_scheduler_state(last_ai_pulse_error="export did not publish today's JSON")
+            update_scheduler_state(last_ai_pulse_error=f"export did not publish today's JSON ({reason})")
             print("Scheduled ai_pulse: publish check failed")
         return fresh
     except Exception as exc:
@@ -207,6 +208,27 @@ def run_scheduled_ai_pulse() -> bool:
         return False
     finally:
         end_heavy_work("scheduled-ai-pulse")
+
+
+def _bootstrap_export_from_state() -> bool:
+    """If today's R2 state archive exists (05:10 ran) but R2 latest JSON is stale, export & upload now."""
+    try:
+        if _published_today():
+            return True
+        if not restore_state():
+            return False
+        exported = _run_step("export_web.py", "--upload", timeout=180)
+        fresh = exported and _published_today()
+        if fresh:
+            update_scheduler_state(
+                last_ai_pulse_ok_at=datetime.now(KST).isoformat(),
+                last_ai_pulse_error=None,
+            )
+            print("ai_pulse bootstrap: exported and published today's JSON from R2 state")
+        return fresh
+    except Exception as exc:
+        print(f"ai_pulse bootstrap export failed: {exc}")
+        return False
 
 
 def start_ai_pulse_scheduler() -> None:
@@ -219,6 +241,7 @@ def start_ai_pulse_scheduler() -> None:
 
     def loop() -> None:
         last_slot = _load_state().get("last_ai_pulse_slot")
+        bootstrapped = False
         print(
             f"ai_pulse scheduler active — daily {hour:02d}:{minute:02d} KST "
             f"({catchup_minutes}m catch-up)"
@@ -228,6 +251,9 @@ def start_ai_pulse_scheduler() -> None:
                 if not past_startup_grace():
                     time.sleep(DEFAULT_POLL_SECONDS)
                     continue
+                if not bootstrapped:
+                    bootstrapped = True
+                    _bootstrap_export_from_state()
                 now = datetime.now(KST)
                 update_scheduler_state(ai_pulse_scheduler_heartbeat=now.isoformat())
                 slot = due_slot_id(
