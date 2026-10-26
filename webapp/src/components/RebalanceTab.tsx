@@ -607,7 +607,7 @@ export default function RebalanceTab() {
         </div>
       </section>
 
-      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="forecast" /> : null}
+      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="forecast" today={today} /> : null}
 
       <RebalanceFlowMatrix data={data} choice={choice} today={today} onExcel={excel} />
 
@@ -745,7 +745,7 @@ export default function RebalanceTab() {
         )}
       </section>
 
-      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="history" /> : null}
+      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="history" today={today} /> : null}
 
       {data.event_study?.rows.length ? <EventStudySection study={data.event_study} onExcel={excel} /> : null}
 

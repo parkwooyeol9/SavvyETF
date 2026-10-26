@@ -31,6 +31,24 @@ import {
 
 type Market = "KR" | "US";
 
+/**
+ * 백서 기준일(10/14·10/16) 이후 생겨 숫자에 반영되지 않은 사안 — 그룹 id 별 안내.
+ * 백서 JSON 을 다시 내보내면(export_webapp.py) 반영 여부를 보고 지운다.
+ */
+const NOT_REFLECTED: Record<string, { tag: string; note: string }> = {
+  NDX: {
+    tag: "ANT 미반영",
+    note:
+      "Anthropic(ANT, 10/26 S-1 공개) 나스닥100 조기 편입은 반영되지 않았습니다. 11/16 첫 거래면 15번째 거래일인 12/7 종가에 " +
+      "Fast Entry로 편입될 수 있고(기존 종목 제외 없이 101종목), 국내 나스닥100 ETF 매수는 약 2,900억~5,300억원으로 추정됩니다" +
+      "(7/6 SpaceX 편입 때 국내 ETF 6종 실측 매수 약 3,720억원 기준, 유통 약 5% 가정). 상장일·공모 규모는 미확정 · 2026-10-27 추가 안내.",
+  },
+};
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
 function fmtNum(v: number | null | undefined, digits = 0): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString("ko-KR", { maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -284,7 +302,7 @@ function ForecastDetail({ row }: { row: ForecastRow }) {
   );
 }
 
-function ForecastSection({ wp, selected }: { wp: RebalanceWhitepaper; selected: string | null }) {
+function ForecastSection({ wp, selected, today }: { wp: RebalanceWhitepaper; selected: string | null; today: string }) {
   const rows = useMemo(() => forecastRows(wp), [wp]);
   const [market, setMarket] = useState<Market | "ALL">("KR");
   const [open, setOpen] = useState<string | null>(null);
@@ -334,16 +352,28 @@ function ForecastSection({ wp, selected }: { wp: RebalanceWhitepaper; selected: 
             {shown.map((r) => {
               const hi = r.buy_range?.[1] ?? r.buy_eok;
               const isOpen = open === r.key;
+              const passed = r.date < today;
+              const later = r.group ? NOT_REFLECTED[r.group.id] : undefined;
               return (
                 <Fragment key={r.key}>
                   <tr
-                    className={`rb-wp-row${r.date === selected ? " sel" : ""}${isOpen ? " open" : ""}`}
+                    className={`rb-wp-row${r.date === selected ? " sel" : ""}${isOpen ? " open" : ""}${passed ? " passed" : ""}`}
                     onClick={() => setOpen(isOpen ? null : r.key)}
                   >
                     <td>
                       <span className="rb-wp-caret">{isOpen ? "▾" : "▸"}</span>
                       <span className="meta-soft">{md(r.date)}</span> <strong>{r.short}</strong>
                       {r.market === "US" ? <span className="rb-tag idx">해외</span> : null}
+                      {passed ? (
+                        <span className="rb-tag" title="매매일이 지났지만 이 표는 기준일 예상치 그대로입니다">
+                          지남 · 실측 대기
+                        </span>
+                      ) : null}
+                      {later ? (
+                        <span className="rb-tag exp" title={later.note}>
+                          {later.tag}
+                        </span>
+                      ) : null}
                       <div className="meta-soft rb-note">{r.scheme}</div>
                     </td>
                     <td>{fmtNum(r.aum_jo, 1)}조</td>
@@ -377,6 +407,13 @@ function ForecastSection({ wp, selected }: { wp: RebalanceWhitepaper; selected: 
                   {isOpen ? (
                     <tr className="rb-wp-open">
                       <td colSpan={7}>
+                        {later ? <p className="rb-warn rb-flow-meta">{later.note}</p> : null}
+                        {passed ? (
+                          <p className="rb-warn rb-flow-meta">
+                            매매일({r.date})이 지났습니다. 아래는 {wp.as_of} 기준 예상이며 실제 결과는 운용사 PDF 실측 후
+                            반영됩니다.
+                          </p>
+                        ) : null}
                         <ForecastDetail row={r} />
                       </td>
                     </tr>
@@ -396,6 +433,11 @@ function ForecastSection({ wp, selected }: { wp: RebalanceWhitepaper; selected: 
           신뢰도 · 가중 ‘높음’ = 방법론 공개 규칙 재현, 교체 ‘근사’ = 시총·유동시총 순위로 후보를 추림(KRX 산업군·상장기간
           심사 미반영), ‘미반영’ = 종목 교체 없이 비중 조정만 계산 → 실제 매매는 이보다 클 수 있음.
         </li>
+        {Object.values(NOT_REFLECTED).map((x) => (
+          <li key={x.tag} className="rb-warn">
+            {x.note}
+          </li>
+        ))}
         <li>해외 그룹은 백만달러 추정을 {WP_FX_DEFAULT.toLocaleString()}원/달러로 환산. 충격 기준 국내 ADV 30%↑, 해외 5%↑.</li>
       </ul>
     </section>
@@ -430,9 +472,10 @@ function CombinedBars({ rows, side }: { rows: CombinedStockRow[]; side: "buy" | 
   );
 }
 
-function CombinedSection({ wp }: { wp: RebalanceWhitepaper }) {
+function CombinedSection({ wp, today }: { wp: RebalanceWhitepaper; today: string }) {
   const { buys, sells } = wp.addendum.combined;
   const n = 15;
+  const lastDate = wp.addendum.events.reduce((m, e) => (e.date > m ? e.date : m), "");
   return (
     <section className="geo-section geo-featured">
       <h3 className="geo-section-title">12월 집중 주간(12/10~12/15) 종목별 합산 수요</h3>
@@ -440,6 +483,9 @@ function CombinedSection({ wp }: { wp: RebalanceWhitepaper }) {
         KOSPI200·KOSDAQ150·고배당·반도체·2차전지 등 여러 그룹이 같은 주에 매매해 한 종목에 수요가 쌓입니다. 국내
         그룹의 종목 단위 추정만 합산(억원). 오른쪽은 20일 평균 거래대금 대비 — 30%↑ 빨강. 종목을 누르면 그룹별 내역.
       </p>
+      {lastDate && lastDate < today ? (
+        <p className="rb-warn">이 주간은 지났습니다. 아래는 {wp.as_of} 기준 예상치이며 실측으로 바뀌지 않았습니다.</p>
+      ) : null}
       <div className="rb-two">
         <div>
           <h4 className="tone-up rb-wp-h4">매수 · 거래대금 대비 충격 상위</h4>
@@ -456,7 +502,7 @@ function CombinedSection({ wp }: { wp: RebalanceWhitepaper }) {
 
 const FAMILY_ORDER = ["시장대표", "반도체", "대형주·그룹", "테마", "배당·인컴", "미국 대표지수", "미국 섹터·테마", "미국 배당"];
 
-function HistorySection({ wp }: { wp: RebalanceWhitepaper }) {
+function HistorySection({ wp, today }: { wp: RebalanceWhitepaper; today: string }) {
   const groups = useMemo(
     () =>
       [...wp.groups].sort(
@@ -487,7 +533,7 @@ function HistorySection({ wp }: { wp: RebalanceWhitepaper }) {
       <p className="geo-thesis">
         운용사 일자별 구성종목(PDF) {fmtNum(wp.appendix.counts.pdf_files)}개를 비교해 실제 변경일·회전율·매수 규모를
         찾았습니다({wp.months[0]?.slice(0, 7)}~{wp.hist_as_of}). 막대 = 매수 규모, 선 = 단방향 회전율, 옅은 막대 = 다음
-        예상(E). 이벤트를 누르면 종목별 매매 상위.
+        예상(E). 이벤트를 누르면 종목별 매매 상위. {wp.hist_as_of} 이후 정기변경은 자동으로 추가되지 않습니다.
       </p>
       <div className="chip-row rb-wp-groups">
         {groups.map((x) => (
@@ -523,6 +569,7 @@ function HistorySection({ wp }: { wp: RebalanceWhitepaper }) {
           </li>
         </ul>
       </div>
+      {NOT_REFLECTED[g.id] ? <p className="rb-warn rb-flow-meta">{NOT_REFLECTED[g.id].note}</p> : null}
       <div className="rb-es-chart">
         <ResponsiveContainer width="100%" height={240}>
           <ComposedChart data={chart} margin={{ top: 8, right: 8, bottom: 0, left: -4 }}>
@@ -582,7 +629,12 @@ function HistorySection({ wp }: { wp: RebalanceWhitepaper }) {
                     <td>
                       <span className="rb-wp-caret">{isOpen ? "▾" : "▸"}</span>
                       {e.date}
-                      {e.fc ? <span className="rb-tag idx">예상 {e.tier}</span> : null}
+                      {e.fc ? (
+                        <span className="rb-tag idx">
+                          예상 {e.tier}
+                          {e.date < today ? " · 지남, 실측 대기" : ""}
+                        </span>
+                      ) : null}
                       {e.irr ? <span className="rb-tag exp">비정기</span> : null}
                     </td>
                     <td>{fmtNum(e.aum, 1)}조</td>
@@ -628,28 +680,39 @@ export default function RebalanceWhitepaperSections({
   wp,
   selected,
   part,
+  today,
 }: {
   wp: RebalanceWhitepaper;
   selected: string | null;
   part: "forecast" | "history";
+  /** KST YYYY-MM-DD — 경과일·지난 예상 행 판단 */
+  today: string;
 }) {
   if (part === "forecast") {
+    const age = daysBetween(wp.as_of, today);
     return (
       <>
         <div className="rb-wp-divider">
-          <span>리서치 백서 · 지수 그룹 단위</span>
+          <span>
+            리서치 백서 · 지수 그룹 단위 <span className="rb-chip wait">고정 스냅샷</span>
+          </span>
           <span className="meta-soft">
             실측 {wp.hist_as_of} · 정밀예상 {wp.as_of} · 국내 15 + 해외 6 그룹
           </span>
         </div>
-        <ForecastSection wp={wp} selected={selected} />
-        <CombinedSection wp={wp} />
+        <p className={`rb-wp-stale${age > 14 ? " old" : ""}`}>
+          이 영역은 {wp.as_of} 기준으로 고정된 리서치 결과입니다({age > 0 ? `${age}일 경과` : "오늘 기준"}). 매일 갱신되지 않으며,
+          기준일 이후의 지수 산출기관 발표(편출입 확정 등)·신규 상장·주가 변화는 반영돼 있지 않습니다. 아래쪽 ETF별 섹션은 거래일
+          18:10에 매일 갱신되므로 두 영역의 기준일이 다릅니다.
+        </p>
+        <ForecastSection wp={wp} selected={selected} today={today} />
+        <CombinedSection wp={wp} today={today} />
       </>
     );
   }
   return (
     <>
-      <HistorySection wp={wp} />
+      <HistorySection wp={wp} today={today} />
       <section className="geo-section geo-featured">
         <details className="rb-details">
           <summary>백서 모델 검증·수정 내역</summary>
