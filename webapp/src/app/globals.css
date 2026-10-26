@@ -6182,6 +6182,9 @@ button.community-post-title {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
+.rb-day.wp {
+  border-style: dashed;
+}
 .rb-day.past {
   opacity: 0.5;
 }
@@ -6462,6 +6465,118 @@ button.community-post-title {
   }
   .rb-kpi-value {
     font-size: 1.2rem;
+  }
+}
+
+/* Rebalance — 리서치 백서 섹션 */
+.rb-wp-divider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 1.4rem;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+.rb-wp-row {
+  cursor: pointer;
+}
+.rb-wp-row:hover td {
+  background: var(--panel-2);
+}
+.rb-wp-row.sel td {
+  background: rgba(77, 163, 255, 0.1);
+}
+.rb-wp-row.sel td:first-child {
+  box-shadow: 3px 0 0 var(--accent) inset;
+}
+.rb-wp-row .rb-tag {
+  margin-left: 6px;
+}
+.rb-wp-caret {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.rb-wp-table td {
+  vertical-align: top;
+}
+.rb-wp-bar {
+  min-width: 72px;
+  margin-top: 4px;
+}
+.rb-wp-open > td {
+  padding: 4px 8px 14px;
+  background: rgba(20, 28, 39, 0.6);
+  text-align: left !important;
+  white-space: normal !important;
+}
+.rb-wp-detail .rb-notes {
+  margin: 4px 0 8px;
+}
+.rb-wp-cands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.rb-wp-sides h4,
+.rb-wp-h4 {
+  margin: 8px 0 4px;
+  font-size: 0.85rem;
+}
+.rb-wp-sides {
+  gap: 0.85rem;
+}
+.rb-wp-comb {
+  display: grid;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 64px;
+  align-items: center;
+  row-gap: 6px;
+  font-size: 0.82rem;
+}
+.rb-wp-comb-row {
+  display: contents;
+}
+.rb-wp-comb .rb-tag {
+  margin-left: 4px;
+}
+.rb-wp-neg .rb-bar {
+  background: #ff6b6b;
+}
+.rb-wp-method {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 6px 16px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.85rem;
+}
+.rb-wp-method .rb-notes {
+  margin: 0;
+}
+.rb-wp-groups .chip {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+@media (max-width: 1000px) {
+  .rb-wp-method {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .rb-wp-comb {
+    grid-template-columns: minmax(0, 110px) minmax(0, 1fr) 56px;
   }
 }
 

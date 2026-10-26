@@ -16,14 +16,19 @@ import {
 import {
   impactLevel,
   unverifiedText,
+  WP_FX_DEFAULT,
   type EventStudy,
   type FlowStatus,
   type RebalanceFlow,
   type RebalancePayload,
   type RebalanceResponse,
+  type RebalanceTradeDay,
+  type RebalanceWhitepaper,
+  type RebalanceWhitepaperResponse,
 } from "@/lib/rebalance";
 import ExcelButton from "@/components/ExcelButton";
 import RebalanceFlowMatrix from "@/components/RebalanceFlowMatrix";
+import RebalanceWhitepaperSections from "@/components/RebalanceWhitepaper";
 import { downloadRebalanceExcel } from "@/lib/rebalanceExcel";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -71,6 +76,13 @@ function StatusChip({ status, kind }: { status: FlowStatus; kind: "etf" | "index
   if (status === "no_holdings" || status === "no_aum") return <span className="rb-chip wait">비중 필요</span>;
   if (status === "rule_unknown") return <span className="rb-chip off">일정 미확인</span>;
   return <span className="rb-chip off">비중 규칙 없음</span>;
+}
+
+type CalDay = RebalanceTradeDay & { wpOnly?: boolean; wpAum?: number };
+
+/** 막대·최대일 비교용: 스냅샷 ETF 순자산과 백서 그룹 AUM 중 큰 값 */
+function dayAum(d: CalDay): number {
+  return Math.max(d.aum_eok, d.wpAum ?? 0);
 }
 
 type ImpactRow = {
@@ -330,7 +342,69 @@ export default function RebalanceTab() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [choice, setChoice] = useState<Record<string, string>>({});
+  const [wp, setWp] = useState<RebalanceWhitepaper | null>(null);
   const today = useMemo(() => kstToday(), []);
+
+  // 백서는 정적·대용량이라 별도 라우트로 한 번만 받는다 (실패해도 기존 화면은 그대로).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/rebalance/whitepaper")
+      .then((r) => r.json() as Promise<RebalanceWhitepaperResponse>)
+      .then((j) => {
+        if (alive && j.ok) setWp(j.whitepaper);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /**
+   * 매매일 → 백서 그룹 예상 (국내 addendum 억원 + 해외 fc 원화 환산, AUM 조원 → 억원).
+   * 해외 그룹은 국내 종목 수급이 아니므로 막대·최대 매매일 비교(aum_kr)에서는 뺀다.
+   */
+  const wpByDate = useMemo(() => {
+    type Agg = { n: number; buy: number; aum_kr: number; aum_us: number; names: string[] };
+    const map = new Map<string, Agg>();
+    if (!wp) return map;
+    const add = (d: string, name: string, buy: number, aumJo: number, us: boolean) => {
+      const c = map.get(d) || { n: 0, buy: 0, aum_kr: 0, aum_us: 0, names: [] };
+      map.set(d, {
+        n: c.n + 1,
+        buy: c.buy + buy,
+        aum_kr: c.aum_kr + (us ? 0 : aumJo * 10_000),
+        aum_us: c.aum_us + (us ? aumJo * 10_000 : 0),
+        names: [...c.names, us ? `${name}(해외)` : name],
+      });
+    };
+    for (const e of wp.addendum.events) add(e.date, e.short, e.buy, e.aum_jo, false);
+    for (const g of wp.groups) {
+      if (g.market !== "US") continue;
+      const fc = g.events.find((e) => e.fc);
+      if (fc) add(fc.date, g.short, (fc.buy * (fc.fx ?? WP_FX_DEFAULT)) / 100, fc.aum, true);
+    }
+    return map;
+  }, [wp]);
+
+  /** 스냅샷 매매일 + 백서에만 있는 매매일(11/30 MSCI, 12/14·15 국내, 12/18 해외 등) */
+  const days = useMemo<CalDay[]>(() => {
+    const base: CalDay[] = data?.trade_days || [];
+    const have = new Set(base.map((d) => d.trade_date));
+    const extra: CalDay[] = [...wpByDate.entries()]
+      .filter(([d]) => !have.has(d))
+      .map(([d, v]) => ({
+        trade_date: d,
+        status: d >= today ? "upcoming" : "past",
+        etfs: [],
+        aum_eok: 0,
+        has_index: false,
+        wpOnly: true,
+        wpAum: v.aum_kr,
+      }));
+    return [...base.map((d) => ({ ...d, wpAum: wpByDate.get(d.trade_date)?.aum_kr ?? 0 })), ...extra].sort((a, b) =>
+      a.trade_date.localeCompare(b.trade_date),
+    );
+  }, [data, wpByDate, today]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -352,17 +426,18 @@ export default function RebalanceTab() {
     void load();
   }, [load]);
 
-  const upcoming = useMemo(
-    () => (data?.trade_days || []).filter((d) => d.trade_date >= today),
-    [data, today],
-  );
+  const upcoming = useMemo(() => days.filter((d) => d.trade_date >= today), [days, today]);
 
   useEffect(() => {
     if (!data) return;
     const primary: Record<string, string> = {};
     for (const f of data.flows) if (f.primary) primary[f.etf_code] = f.scenario_id;
     setChoice(primary);
-    const biggest = [...upcoming].sort((a, b) => b.aum_eok - a.aum_eok)[0];
+  }, [data]);
+
+  useEffect(() => {
+    if (!data) return;
+    const biggest = [...upcoming].sort((a, b) => dayAum(b) - dayAum(a))[0];
     setSelected(biggest?.trade_date || data.trade_days[data.trade_days.length - 1]?.trade_date || null);
   }, [data, upcoming]);
 
@@ -383,33 +458,59 @@ export default function RebalanceTab() {
   const etfByCode = new Map(data.etfs.map((e) => [e.code, e]));
   const expirySet = new Set(data.expiries.map((e) => e.expiry));
   const next = upcoming[0];
-  const biggest = [...upcoming].sort((a, b) => b.aum_eok - a.aum_eok)[0];
+  const biggest = [...upcoming].sort((a, b) => dayAum(b) - dayAum(a))[0];
   const computed = new Set(data.flows.map((f) => f.etf_code)).size;
   const totalEtf = data.etfs.filter((e) => e.kind === "etf").length;
-  const maxAum = Math.max(1, ...data.trade_days.map((d) => d.aum_eok));
+  const maxAum = Math.max(1, ...days.map(dayAum));
   const sel = selected ? dayLabel(selected) : null;
   const dayEvents = data.events.filter((e) => e.trade_date === selected);
   const selDay = data.trade_days.find((d) => d.trade_date === selected);
+  const selWp = selected ? wpByDate.get(selected) : undefined;
+  const wpHint = selWp
+    ? `리서치 백서 그룹 예상: ${selWp.names.join("·")} · 매수 ${fmtEok(selWp.buy)} (위 ‘지수 그룹별 11·12월 정기변경 예상’ 표)`
+    : null;
   const dayFlows = data.flows.filter((f) => f.trade_date === selected);
   const chosenFlows = dayFlows.filter((f) => choice[f.etf_code] === f.scenario_id);
   const scenarioGroups = new Map<string, RebalanceFlow[]>();
   for (const f of dayFlows) scenarioGroups.set(f.etf_code, [...(scenarioGroups.get(f.etf_code) || []), f]);
   const multiScenario = [...scenarioGroups.entries()].filter(([, fs]) => fs.length > 1);
   const top = rows[0];
-  const excel = () => downloadRebalanceExcel(data, selected, rows, choice, today);
+  // 스냅샷에 계산된 ETF가 없으면 백서 국내 그룹 예상에서 그날 |순매매| 최대 종목
+  const wpTop = (() => {
+    if (top || !wp || !selected) return null;
+    const net = new Map<string, { name: string; net: number }>();
+    for (const e of wp.addendum.events) {
+      if (e.date !== selected) continue;
+      for (const r of [...e.buys, ...e.sells]) {
+        const c = net.get(r.code) || { name: r.name, net: 0 };
+        net.set(r.code, { name: r.name, net: c.net + r.flow });
+      }
+    }
+    return [...net.values()].sort((a, b) => Math.abs(b.net) - Math.abs(a.net))[0] ?? null;
+  })();
+  const excel = () =>
+    downloadRebalanceExcel(wp ? { ...data, whitepaper: wp } : data, selected, rows, choice, today);
 
   const kpis: [string, string, string][] = [
     [
       "다음 매매일",
       next ? `${dayLabel(next.trade_date).md} (${dayLabel(next.trade_date).w})` : "—",
-      next ? `D-${daysUntil(next.trade_date, today)} · ETF ${next.etfs.length}개` : "",
+      next
+        ? `D-${daysUntil(next.trade_date, today)} · ${
+            next.wpOnly ? `${wpByDate.get(next.trade_date)?.names.join("·")} (백서)` : `ETF ${next.etfs.length}개`
+          }`
+        : "",
     ],
     [
       "최대 매매일",
       biggest ? dayLabel(biggest.trade_date).md : "—",
-      biggest ? `정기변경 ETF 순자산 ${fmtEok(biggest.aum_eok)}` : "",
+      biggest ? `정기변경 ETF 순자산 ${fmtEok(dayAum(biggest))}` : "",
     ],
-    ["선택일 최대 순매매", top ? top.name : "—", top ? `${fmtSigned(top.net)}억원` : "계산된 ETF 없음"],
+    top
+      ? ["선택일 최대 순매매", top.name, `${fmtSigned(top.net)}억원`]
+      : wpTop
+        ? ["선택일 최대 순매매", wpTop.name, `${fmtSigned(wpTop.net)}억원 · 백서 그룹 예상`]
+        : ["선택일 최대 순매매", "—", "계산된 ETF 없음"],
     ["계산 커버리지", `${computed} / ${totalEtf}`, "규칙·비중이 있는 ETF 수"],
   ];
 
@@ -452,27 +553,38 @@ export default function RebalanceTab() {
       <section className="geo-section geo-featured">
         <h3 className="geo-section-title">매매일 캘린더</h3>
         <p className="geo-thesis">
-          막대는 그날 정기변경하는 ETF 순자산 합계. 날짜를 누르면 아래 표가 바뀝니다.
+          막대는 그날 정기변경하는 ETF 순자산 합계(백서 국내 지수 그룹 AUM이 더 크면 그 값). 날짜를 누르면 아래
+          표가 바뀝니다. 점선 칸은 리서치 백서에만 있는 매매일(해외형 그룹은 막대에서 제외).
         </p>
         <div className="rb-timeline">
-          {data.trade_days.map((d) => {
+          {days.map((d) => {
             const x = dayLabel(d.trade_date);
             const past = d.trade_date < today;
             return (
               <button
                 key={d.trade_date}
                 type="button"
-                className={`rb-day${d.trade_date === selected ? " active" : ""}${past ? " past" : ""}`}
+                className={`rb-day${d.trade_date === selected ? " active" : ""}${past ? " past" : ""}${d.wpOnly ? " wp" : ""}`}
                 onClick={() => setSelected(d.trade_date)}
               >
                 <span className="rb-day-d">{x.md}</span>
                 <span className="rb-day-w">{x.w}</span>
                 <div className="rb-day-n">
-                  ETF {d.etfs.length}개 ·{" "}
-                  {d.aum_eok ? fmtEok(d.aum_eok) : d.has_index ? "지수 추종 전체" : "—"}
+                  {d.wpOnly ? (
+                    d.wpAum ? (
+                      <>백서 그룹 · {fmtEok(d.wpAum)}</>
+                    ) : (
+                      <>해외형 그룹 · {fmtEok(wpByDate.get(d.trade_date)?.aum_us)}</>
+                    )
+                  ) : (
+                    <>
+                      ETF {d.etfs.length}개 ·{" "}
+                      {d.aum_eok ? fmtEok(d.aum_eok) : d.has_index ? "지수 추종 전체" : "—"}
+                    </>
+                  )}
                 </div>
                 <div className="rb-day-bar">
-                  <span style={{ width: `${((d.aum_eok / maxAum) * 100).toFixed(1)}%` }} />
+                  <span style={{ width: `${((dayAum(d) / maxAum) * 100).toFixed(1)}%` }} />
                 </div>
                 <div className="rb-tags">
                   {expirySet.has(d.trade_date) ? <span className="rb-tag exp">옵션만기</span> : null}
@@ -483,12 +595,19 @@ export default function RebalanceTab() {
                       반영 {(d.computed_etfs || []).length}/{d.n_etfs}
                     </span>
                   ) : null}
+                  {wpByDate.get(d.trade_date) ? (
+                    <span className="rb-tag idx" title="리서치 백서 지수 그룹 예상 매수 합 (편출입 포함)">
+                      백서 {wpByDate.get(d.trade_date)!.n}그룹 {fmtEok(wpByDate.get(d.trade_date)!.buy)}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             );
           })}
         </div>
       </section>
+
+      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="forecast" /> : null}
 
       <RebalanceFlowMatrix data={data} choice={choice} today={today} onExcel={excel} />
 
@@ -505,7 +624,8 @@ export default function RebalanceTab() {
             <p className="rb-warn">
               계산 반영 ETF {(selDay.computed_etfs || []).length} / {selDay.n_etfs}개
               {selDay.coverage_aum_pct != null ? ` · 순자산 기준 ${selDay.coverage_aum_pct}%` : ""} · 나머지 ETF 매매는
-              합계에 없음 · 종목 편출입 미반영(편출 종목은 전량 매도가 추가로 생김)
+              합계에 없음 · 종목 편출입 미반영(편출 종목은 전량 매도가 추가로 생김
+              {wp ? " — 편출입 포함 그룹 예상은 위 ‘지수 그룹별 11·12월 정기변경 예상’" : ""})
             </p>
           ) : null}
           {multiScenario.length ? (
@@ -534,7 +654,7 @@ export default function RebalanceTab() {
             <p className="empty">
               {chosenFlows.length
                 ? "계산된 ETF의 비중이 이미 규칙 안에 있어 예상 매매가 없습니다."
-                : "이 날 계산할 수 있는 ETF가 없습니다."}
+                : wpHint || "이 날 계산할 수 있는 ETF가 없습니다."}
             </p>
           )}
         </section>
@@ -610,7 +730,7 @@ export default function RebalanceTab() {
               </table>
             </div>
           ) : (
-            <p className="empty">이 날 정기변경하는 ETF가 없습니다.</p>
+            <p className="empty">{wpHint || "이 날 정기변경하는 ETF가 없습니다."}</p>
           )}
         </section>
       </div>
@@ -624,6 +744,8 @@ export default function RebalanceTab() {
           <p className="empty">선택한 날짜에 계산된 ETF가 없습니다.</p>
         )}
       </section>
+
+      {wp ? <RebalanceWhitepaperSections wp={wp} selected={selected} part="history" /> : null}
 
       {data.event_study?.rows.length ? <EventStudySection study={data.event_study} onExcel={excel} /> : null}
 

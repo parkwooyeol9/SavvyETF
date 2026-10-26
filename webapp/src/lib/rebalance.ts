@@ -154,6 +154,203 @@ export type BrokerEstimate = {
   items: { code: string; name: string; amount_eok: number; note?: string }[];
 };
 
+export type WhitepaperRowTuple = [
+  name: string,
+  code: string,
+  pre_w: number,
+  post_w: number,
+  dw: number,
+  flow: number,
+  adv: number | null,
+  imp: number | null,
+  mcap: number | null,
+  status: string,
+  float_pct?: number | null,
+  close_px?: number | null,
+];
+
+export type WhitepaperEvent = {
+  date: string;
+  dates: string[];
+  turn: number;
+  aum: number;
+  buy: number;
+  sell?: number;
+  nin: number | null;
+  nout: number | null;
+  irr: boolean;
+  fc?: boolean;
+  tier?: "A" | "B" | "C";
+  hi: number | null;
+  mid: number | null;
+  max: [string, number] | null;
+  fx?: number;
+  range?: [number, number, number] | null;
+  turn_range?: [number, number, number] | null;
+  assume?: string;
+  cands?: { add: [string, number | null][]; del: [string, number | null][] } | null;
+  scheme?: string;
+  fit_dist?: number;
+  conf_w?: string;
+  conf_s?: string;
+  sel_note?: string;
+  target_note?: string;
+  adds?: string[];
+  dels?: string[];
+  buy_1014?: number | null;
+  turn_1014?: number | null;
+  range_1014?: [number, number, number] | null;
+  turn_range_1014?: [number, number, number] | null;
+  assume_1014?: string | null;
+  rows: WhitepaperRowTuple[];
+};
+
+export type WhitepaperMethod = {
+  provider: string;
+  freq: string;
+  timing: string;
+  weight: string;
+  source: string;
+  verified: boolean;
+  extra?: string;
+};
+
+export type WhitepaperGroup = {
+  id: string;
+  short: string;
+  title: string;
+  family: string;
+  market: "KR" | "US";
+  members: [code: string, name: string, aum_jo: number][];
+  method: WhitepaperMethod;
+  next: string | null;
+  pdf: string;
+  events: WhitepaperEvent[];
+  aum_hist: number[];
+};
+
+export type AddendumStockRow = {
+  name: string;
+  code: string;
+  w0: number;
+  w1: number;
+  dw: number;
+  flow: number;
+  adv: number | null;
+  imp: number | null;
+  status: string;
+  float: number | null;
+  close: number | null;
+};
+
+export type AddendumEvent = {
+  gid: string;
+  short: string;
+  date: string;
+  label: string;
+  aum_jo: number;
+  members: string[];
+  pdf_date: string;
+  scheme: string;
+  fit_dist: number;
+  fit_date: string;
+  range?: boolean;
+  sel_note: string;
+  target_note: string;
+  n_add: number;
+  n_del: number;
+  adds: string[];
+  dels: string[];
+  turn: number;
+  buy: number;
+  sell: number;
+  buy_range?: [number, number];
+  n30: number;
+  buys: AddendumStockRow[];
+  sells: AddendumStockRow[];
+  conf_w: string;
+  conf_s: string;
+};
+
+export type CombinedStockRow = {
+  name: string;
+  code: string;
+  flow: number;
+  adv: number | null;
+  groups: string[];
+  imp: number | null;
+};
+
+export type EtfRankRow = {
+  code: string;
+  name: string;
+  aum_eok: number;
+  tv20_eok: number;
+  tv1_eok: number;
+  rank_tv?: number;
+};
+
+export type TvGroupRow = {
+  gid: string;
+  short: string;
+  aum_eok: number;
+  events: string;
+  cycle: string;
+  scheme: string;
+  nov_dec: string;
+};
+
+export type AppendixCompareRow = {
+  gid: string;
+  short: string;
+  date: string;
+  scheme: string;
+  fit: number;
+  conf_w: string;
+  conf_s: string;
+  old_tier: string;
+  old_buy: number | null;
+  new_buy: number | null;
+  new_range: [number, number] | null;
+  new_turn: number;
+  hist_last_buy: number | null;
+  hist_last_date: string | null;
+  hist_turn: [number, number] | null;
+};
+
+export type RebalanceWhitepaper = {
+  as_of: string;
+  hist_as_of: string;
+  months: string[];
+  groups: WhitepaperGroup[];
+  addendum: {
+    asof: string;
+    events: AddendumEvent[];
+    combined: {
+      buys: CombinedStockRow[];
+      sells: CombinedStockRow[];
+    };
+    rank: {
+      asof: string;
+      by_aum: EtfRankRow[];
+      by_tv: EtfRankRow[];
+      all: EtfRankRow[];
+    };
+    tv_groups: TvGroupRow[];
+    tv_lead: string;
+    tv_bullets: string[];
+  };
+  appendix: {
+    compare: AppendixCompareRow[];
+    counts: {
+      pdf_files: number;
+      wise: number;
+      bars: number;
+    };
+    fixes: [string, string, string][];
+  };
+};
+
 export type RebalancePayload = {
   generated_at: string;
   as_of: string;
@@ -170,11 +367,19 @@ export type RebalancePayload = {
   rule_legend: Record<string, string>;
   event_study?: EventStudy | null;
   broker_estimates?: BrokerEstimate[];
+  /** `/api/rebalance/whitepaper` 를 따로 받아 화면에서 붙인다 (엑셀 시트용) */
+  whitepaper?: RebalanceWhitepaper;
 };
 
 export type RebalanceResponse =
   | ({ ok: true; source: "r2" | "bundled" } & RebalancePayload)
   | { ok: false; error: string };
+
+export type RebalanceWhitepaperResponse =
+  | { ok: true; whitepaper: RebalanceWhitepaper }
+  | { ok: false; error: string };
+
+export const WP_FX_DEFAULT = 1400;
 
 export const REBALANCE_R2_KEY = "rebalance/latest.json";
 
