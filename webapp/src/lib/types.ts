@@ -341,7 +341,7 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** Leaf tabs kept routable but omitted from every nav (admin included). */
-export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "countryetf", "themeetf", "aietf"];
+export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "countryetf", "themeetf", "aietf", "graph"];
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
