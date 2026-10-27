@@ -335,8 +335,11 @@ async function seedFromEtfDbUs(
   // Public API fallback (no R2 in some agent/dev envs)
   if (!points.length) {
     try {
+      const headers: Record<string, string> = { "User-Agent": UA, Accept: "application/json" };
+      const secret = process.env.CRON_SECRET?.trim();
+      if (secret) headers.Authorization = `Bearer ${secret}`;
       const res = await fetch("https://savvyetf.vercel.app/api/etf-db-us?full=1", {
-        headers: { "User-Agent": UA, Accept: "application/json" },
+        headers,
         cache: "no-store",
         signal: AbortSignal.timeout(45_000),
       });

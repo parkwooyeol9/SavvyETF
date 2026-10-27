@@ -32,6 +32,22 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* Copy guard (see CopyGuard.tsx); admins get .copy-ok on <html>. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body img {
+  -webkit-user-drag: none;
+}
+
+html.copy-ok body,
+body input,
+body textarea,
+body [contenteditable="true"],
+body [data-allow-copy] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 a {

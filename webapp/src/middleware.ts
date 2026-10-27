@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { checkAccess } from "@/lib/botGate";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { updateSession } from "@/lib/supabase/middleware";
 
@@ -133,6 +134,21 @@ export async function middleware(request: NextRequest) {
       "form-action 'self' https://accounts.google.com https://*.supabase.co",
     ].join("; "),
   );
+
+  const access = checkAccess(request, pathname, request.nextUrl.host);
+  if (!access.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Forbidden" },
+      {
+        status: 403,
+        headers: {
+          "Cache-Control": "private, no-store",
+          "X-Robots-Tag": "noindex, nofollow",
+          ...Object.fromEntries(responseHeaders.entries()),
+        },
+      },
+    );
+  }
 
   if (rule) {
     const ip = clientIp(request);

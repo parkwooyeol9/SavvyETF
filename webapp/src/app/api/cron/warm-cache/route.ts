@@ -56,7 +56,11 @@ async function warmOne(
   const started = Date.now();
   try {
     const res = await fetch(`${base}${path}`, {
-      headers: { Accept: "application/json" },
+      // Same bearer the middleware's bot gate accepts for server-to-server calls.
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET?.trim() || ""}`,
+      },
       signal: AbortSignal.timeout(timeoutMs),
     });
     return { path, status: res.status, ms: Date.now() - started };
