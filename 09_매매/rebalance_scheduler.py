@@ -67,6 +67,31 @@ def _published_as_of() -> str | None:
     return str(doc.get("as_of") or "") if isinstance(doc, dict) else None
 
 
+def _run_wp_forecast() -> None:
+    """백서 국내 그룹 예상(R2 ``rebalance/whitepaper_live.json``) — 실패해도 본 작업 결과는 유지."""
+    if os.environ.get("WP_FORECAST_ENABLED", "true").lower() in {"0", "false", "no", "off"}:
+        return
+    try:
+        from Claude_Work.rebalance import wp_forecast
+
+        res = wp_forecast.run(upload=True)
+        print(
+            f"Scheduled wp_forecast: as_of={res['as_of']} events={len(res['events'])} "
+            f"errors={len(res['errors'])} r2={'ok' if res.get('uploaded') else 'skipped'}"
+        )
+        if res.get("uploaded"):
+            update_scheduler_state(
+                last_wp_forecast_ok_at=datetime.now(KST).isoformat(),
+                last_wp_forecast_as_of=res["as_of"],
+                last_wp_forecast_error="; ".join(res["errors"]) or None,
+            )
+        else:
+            update_scheduler_state(last_wp_forecast_error="R2 not configured or upload failed")
+    except Exception as exc:
+        print(f"Scheduled wp_forecast failed: {exc}")
+        update_scheduler_state(last_wp_forecast_error=str(exc))
+
+
 def run_scheduled_rebalance() -> bool:
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
@@ -102,6 +127,7 @@ def run_scheduled_rebalance() -> bool:
             )
         else:
             update_scheduler_state(last_rebalance_error="R2 not configured or upload failed")
+        _run_wp_forecast()
         return ok
     except Exception as exc:
         print(f"Scheduled rebalance failed: {exc}")

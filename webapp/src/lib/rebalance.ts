@@ -270,6 +270,9 @@ export type AddendumEvent = {
   sells: AddendumStockRow[];
   conf_w: string;
   conf_s: string;
+  /** 매매일이 지나 직전 계산값을 유지 / 오늘 계산 실패로 직전 값 사용 */
+  frozen?: boolean;
+  stale?: boolean;
 };
 
 export type CombinedStockRow = {
@@ -318,7 +321,24 @@ export type AppendixCompareRow = {
   hist_turn: [number, number] | null;
 };
 
+/** R2 rebalance/whitepaper_live.json (봇 wp_forecast.py) */
+export type WhitepaperLiveDoc = {
+  as_of: string;
+  generated_at: string;
+  float_asof?: string;
+  events: (AddendumEvent & { all?: AddendumStockRow[] })[];
+  combined: { buys: CombinedStockRow[]; sells: CombinedStockRow[] };
+  combined_window?: [string, string];
+  errors?: string[];
+};
+
+export type WhitepaperLiveMeta =
+  | { source: "r2"; as_of: string; generated_at: string; float_asof?: string; errors: string[]; bundled_as_of: string }
+  | { source: "bundled"; reason: string };
+
 export type RebalanceWhitepaper = {
+  /** 국내 그룹 예상 기준일 (R2 매일 갱신분이 있으면 그 날짜) */
+  live?: WhitepaperLiveMeta;
   as_of: string;
   hist_as_of: string;
   months: string[];

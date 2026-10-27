@@ -313,7 +313,7 @@ function ForecastSection({ wp, selected, today }: { wp: RebalanceWhitepaper; sel
     <section className="geo-section geo-featured">
       <h3 className="geo-section-title">지수 그룹별 11·12월 정기변경 예상</h3>
       <p className="geo-thesis">
-        같은 기초지수를 따르는 ETF를 합산한 그룹 단위 예상. 국내는 {wp.as_of} 유동시총·유동비율로 편입·편출 후보까지
+        같은 기초지수를 따르는 ETF를 합산한 그룹 단위 예상. 국내는 {wp.as_of} 종가·운용사 PDF와 유동비율로 편입·편출 후보까지
         반영(국내 합계 매수 약 {fmtNum(krTotal / 10_000, 2)}조원). 행을 누르면 종목별 매수·매도 상위를 봅니다. 위
         캘린더에서 고른 날짜의 행은 강조됩니다.
       </p>
@@ -369,6 +369,11 @@ function ForecastSection({ wp, selected, today }: { wp: RebalanceWhitepaper; sel
                           지남 · 실측 대기
                         </span>
                       ) : null}
+                      {r.ad?.stale ? (
+                        <span className="rb-tag exp" title="오늘 계산에 실패해 직전 계산값을 보여줍니다">
+                          직전 값
+                        </span>
+                      ) : null}
                       {later ? (
                         <span className="rb-tag exp" title={later.note}>
                           {later.tag}
@@ -410,8 +415,8 @@ function ForecastSection({ wp, selected, today }: { wp: RebalanceWhitepaper; sel
                         {later ? <p className="rb-warn rb-flow-meta">{later.note}</p> : null}
                         {passed ? (
                           <p className="rb-warn rb-flow-meta">
-                            매매일({r.date})이 지났습니다. 아래는 {wp.as_of} 기준 예상이며 실제 결과는 운용사 PDF 실측 후
-                            반영됩니다.
+                            매매일({r.date})이 지났습니다. 아래는 매매일 전 마지막 예상
+                            {r.ad?.pdf_date ? `(PDF ${r.ad.pdf_date})` : ""}이며 실제 결과는 운용사 PDF 실측 후 반영됩니다.
                           </p>
                         ) : null}
                         <ForecastDetail row={r} />
@@ -484,7 +489,7 @@ function CombinedSection({ wp, today }: { wp: RebalanceWhitepaper; today: string
         그룹의 종목 단위 추정만 합산(억원). 오른쪽은 20일 평균 거래대금 대비 — 30%↑ 빨강. 종목을 누르면 그룹별 내역.
       </p>
       {lastDate && lastDate < today ? (
-        <p className="rb-warn">이 주간은 지났습니다. 아래는 {wp.as_of} 기준 예상치이며 실측으로 바뀌지 않았습니다.</p>
+        <p className="rb-warn">이 주간은 지났습니다. 아래는 매매일 전 마지막 예상치이며 실측으로 바뀌지 않았습니다.</p>
       ) : null}
       <div className="rb-two">
         <div>
@@ -690,21 +695,38 @@ export default function RebalanceWhitepaperSections({
 }) {
   if (part === "forecast") {
     const age = daysBetween(wp.as_of, today);
+    const live = wp.live?.source === "r2" ? wp.live : null;
+    // 매일 갱신분: 주말·연휴를 감안해 4일 넘게 멈추면 경고. 번들 대체: 항상 고정 스냅샷 경고.
+    const stalled = live ? age > 4 : true;
     return (
       <>
         <div className="rb-wp-divider">
           <span>
-            리서치 백서 · 지수 그룹 단위 <span className="rb-chip wait">고정 스냅샷</span>
+            리서치 백서 · 지수 그룹 단위{" "}
+            {live ? (
+              <span className={`rb-chip ${stalled ? "wait" : "ok"}`}>{stalled ? "갱신 지연" : "매일 갱신"}</span>
+            ) : (
+              <span className="rb-chip wait">고정 스냅샷</span>
+            )}
           </span>
           <span className="meta-soft">
-            실측 {wp.hist_as_of} · 정밀예상 {wp.as_of} · 국내 15 + 해외 6 그룹
+            국내 예상 {wp.as_of} · 과거 실측 {wp.hist_as_of} · 국내 15 + 해외 6 그룹
           </span>
         </div>
-        <p className={`rb-wp-stale${age > 14 ? " old" : ""}`}>
-          이 영역은 {wp.as_of} 기준으로 고정된 리서치 결과입니다({age > 0 ? `${age}일 경과` : "오늘 기준"}). 매일 갱신되지 않으며,
-          기준일 이후의 지수 산출기관 발표(편출입 확정 등)·신규 상장·주가 변화는 반영돼 있지 않습니다. 아래쪽 ETF별 섹션은 거래일
-          18:10에 매일 갱신되므로 두 영역의 기준일이 다릅니다.
-        </p>
+        {live ? (
+          <p className={stalled ? "rb-wp-stale old" : "meta-soft rb-wp-livenote"}>
+            {stalled ? `국내 그룹 예상이 ${age}일째 갱신되지 않았습니다(마지막 ${live.as_of}). ` : ""}
+            국내 그룹 예상은 거래일 18:10 이후 운용사 PDF·종가로 다시 계산합니다(마지막 계산{" "}
+            {live.generated_at.replace("T", " ").slice(0, 16)}). 유동비율은 {live.float_asof ?? "—"} 수집값, 과거 실측 이력과
+            해외 그룹 예상은 {wp.hist_as_of} 기준 고정입니다.
+            {live.errors.length ? ` 오늘 계산 실패 그룹은 직전 값: ${live.errors.map((e) => e.split(":")[0]).join(", ")}.` : ""}
+          </p>
+        ) : (
+          <p className={`rb-wp-stale${age > 14 ? " old" : ""}`}>
+            매일 갱신 데이터를 불러오지 못해 {wp.as_of} 기준 고정 결과를 보여줍니다({age > 0 ? `${age}일 경과` : "오늘 기준"}).
+            기준일 이후의 지수 산출기관 발표(편출입 확정 등)·신규 상장·주가 변화는 반영돼 있지 않습니다.
+          </p>
+        )}
         <ForecastSection wp={wp} selected={selected} today={today} />
         <CombinedSection wp={wp} today={today} />
       </>

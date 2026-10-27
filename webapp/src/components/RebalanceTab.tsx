@@ -348,7 +348,7 @@ export default function RebalanceTab() {
   // 백서는 정적·대용량이라 별도 라우트로 한 번만 받는다 (실패해도 기존 화면은 그대로).
   useEffect(() => {
     let alive = true;
-    fetch("/api/rebalance/whitepaper")
+    fetch("/api/rebalance/whitepaper", { cache: "no-cache" })
       .then((r) => r.json() as Promise<RebalanceWhitepaperResponse>)
       .then((j) => {
         if (alive && j.ok) setWp(j.whitepaper);
