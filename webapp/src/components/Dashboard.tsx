@@ -257,7 +257,7 @@ function DashboardInner({
     }
     if (tab === "aipulse") {
       const view = prev.get("view");
-      if (view === "pulse" || view === "economy") nextParams.set("view", view);
+      if (view === "anthropic-s1" || view === "pulse" || view === "economy") nextParams.set("view", view);
     }
     if (tab === "midtermstudy") {
       const sc = prev.get("scenario");
