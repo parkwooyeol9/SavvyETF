@@ -537,8 +537,8 @@ function HistorySection({ wp, today }: { wp: RebalanceWhitepaper; today: string 
       <h3 className="geo-section-title">과거 정기변경 실측 이력</h3>
       <p className="geo-thesis">
         운용사 일자별 구성종목(PDF) {fmtNum(wp.appendix.counts.pdf_files)}개를 비교해 실제 변경일·회전율·매수 규모를
-        찾았습니다({wp.months[0]?.slice(0, 7)}~{wp.hist_as_of}). 막대 = 매수 규모, 선 = 단방향 회전율, 옅은 막대 = 다음
-        예상(E). 이벤트를 누르면 종목별 매매 상위. {wp.hist_as_of} 이후 정기변경은 자동으로 추가되지 않습니다.
+        찾았습니다. 막대 = 매수 규모, 선 = 단방향 회전율, 옅은 막대 = 다음
+        예상(E). 이벤트를 누르면 종목별 매매 상위. 이 이력은 자동으로 추가되지 않습니다.
       </p>
       <div className="chip-row rb-wp-groups">
         {groups.map((x) => (
@@ -710,15 +710,14 @@ export default function RebalanceWhitepaperSections({
             )}
           </span>
           <span className="meta-soft">
-            국내 예상 {wp.as_of} · 과거 실측 {wp.hist_as_of} · 국내 15 + 해외 6 그룹
+            국내 예상 {wp.as_of} · 국내 15 + 해외 6 그룹
           </span>
         </div>
         {live ? (
           <p className={stalled ? "rb-wp-stale old" : "meta-soft rb-wp-livenote"}>
             {stalled ? `국내 그룹 예상이 ${age}일째 갱신되지 않았습니다(마지막 ${live.as_of}). ` : ""}
             국내 그룹 예상은 거래일 18:10 이후 운용사 PDF·종가로 다시 계산합니다(마지막 계산{" "}
-            {live.generated_at.replace("T", " ").slice(0, 16)}). 유동비율은 {live.float_asof ?? "—"} 수집값, 과거 실측 이력과
-            해외 그룹 예상은 {wp.hist_as_of} 기준 고정입니다.
+            {live.generated_at.replace("T", " ").slice(0, 16)}). 유동비율·과거 실측·해외 그룹 예상은 고정입니다.
             {live.errors.length ? ` 오늘 계산 실패 그룹은 직전 값: ${live.errors.map((e) => e.split(":")[0]).join(", ")}.` : ""}
           </p>
         ) : (
