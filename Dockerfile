@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Cache-bust marker so Render rebuilds app layers after feature drops.
-ARG APP_BUILD_ID=esg-brief-20260724
+ARG APP_BUILD_ID=etf-universe-px-20261028
 ENV APP_BUILD_ID=${APP_BUILD_ID}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,6 +44,8 @@ COPY colab/ colab/
 COPY data/universes/ data/universes/
 # 06:30 ACWI 종가 작업(10_공통/acwi_px.py)이 읽는 종목 목록. webapp/ 전체는 넣지 않는다.
 COPY webapp/src/data/acwiYahooUniverse.json webapp/src/data/acwiYahooUniverse.json
+# 20:10 ETF 수익률 작업(03_ETF/etf_universe_px.py)이 읽는 상장 시장 스냅샷.
+COPY webapp/src/data/etfUniverse/ webapp/src/data/etfUniverse/
 COPY web/ web/
 RUN mkdir -p data/fonts \
     && cp assets/fonts/NanumGothic.ttf data/fonts/NanumGothic.ttf

@@ -50,6 +50,7 @@ from esg_scheduler import start_esg_scheduler
 from esg_brief_scheduler import start_esg_brief_scheduler
 from ai_pulse_scheduler import start_ai_pulse_scheduler
 from acwi_px_scheduler import start_acwi_px_scheduler
+from etf_universe_px_scheduler import start_etf_universe_px_scheduler
 from reddit_scheduler import start_reddit_scheduler
 from summary_kor_intra_scheduler import start_summary_kor_intra_scheduler
 from summary_kor_scheduler import start_summary_kor_scheduler
@@ -2438,6 +2439,9 @@ def start_web_server():
                             "esg-brief-scheduler": "esg-brief-scheduler" in thread_names,
                             "ai-pulse-scheduler": "ai-pulse-scheduler" in thread_names,
                             "acwi-px-scheduler": "acwi-px-scheduler" in thread_names,
+                            "etf-universe-px-scheduler": (
+                                "etf-universe-px-scheduler" in thread_names
+                            ),
                             "etf-flow-weekly-scheduler": (
                                 "etf-flow-weekly-scheduler" in thread_names
                             ),
@@ -2491,6 +2495,13 @@ def start_web_server():
                         "acwi_px_scheduler_heartbeat": state.get(
                             "acwi_px_scheduler_heartbeat"
                         ),
+                        "last_etf_universe_px_slot": state.get("last_etf_universe_px_slot"),
+                        "last_etf_universe_px_as_of": state.get("last_etf_universe_px_as_of"),
+                        "last_etf_universe_px_ok_at": state.get("last_etf_universe_px_ok_at"),
+                        "last_etf_universe_px_error": state.get("last_etf_universe_px_error"),
+                        "etf_universe_px_scheduler_heartbeat": state.get(
+                            "etf_universe_px_scheduler_heartbeat"
+                        ),
                         "last_etf_flow_weekly_slot": state.get(
                             "last_etf_flow_weekly_slot"
                         ),
@@ -2528,6 +2539,9 @@ def start_web_server():
                     "schedule": {
                         "ai_pulse_kst": os.environ.get("AI_PULSE_SCHEDULE_KST", "5:10"),
                         "acwi_px_kst": os.environ.get("ACWI_PX_SCHEDULE_KST", "6:30"),
+                        "etf_universe_px_kst": os.environ.get(
+                            "ETF_UNIVERSE_PX_SCHEDULE_KST", "20:10"
+                        ),
                         "summary_kst": os.environ.get(
                             "SUMMARY_SCHEDULE_HOURS_KST", "7:00"
                         ),
@@ -3788,6 +3802,7 @@ def start_all_schedulers(token: str) -> None:
     start_esg_brief_scheduler(token=token, broadcast_fn=broadcast_messages_esg)
     start_ai_pulse_scheduler()
     start_acwi_px_scheduler()
+    start_etf_universe_px_scheduler()
 
 
 if __name__ == "__main__":

@@ -232,6 +232,9 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
                 <div>
                   <div className="etfdb-stat-k">기준</div>
                   <div className="etfdb-stat-v etfu-asof">{file.as_of}</div>
+                  {file.returns_as_of ? (
+                    <div className="meta-soft">수익률 {file.returns_as_of}</div>
+                  ) : null}
                 </div>
               </div>
 
@@ -379,7 +382,8 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
                   ))}
                 </ul>
                 <p className="meta-soft">
-                  원본 {file.source} · 수익률은 가격수익률(분배금 제외) · 순자산 단위 {unit}
+                  원본 {file.source} · 수익률은 가격수익률(분배금 제외)
+                  {file.returns_source ? ` · ${file.returns_source}` : ""} · 순자산 단위 {unit}
                   {file.adv_unit !== unit ? ` · 거래대금 ${file.adv_unit}` : ""}
                 </p>
               </details>

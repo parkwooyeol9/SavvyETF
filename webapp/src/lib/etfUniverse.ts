@@ -69,6 +69,9 @@ export type EtfUniverseFile = {
   notes: string[];
   cols: Array<keyof EtfUniverseRow>;
   rows: unknown[][];
+  /** Latest close date used for 1W/1M/3M/1Y, when the daily overlay is present. */
+  returns_as_of?: string | null;
+  returns_source?: string | null;
   error?: string;
 };
 
