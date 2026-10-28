@@ -20,6 +20,8 @@ export const CACHE_TIER = {
   heavy: { sMaxAge: 180, swr: 600 },
   /** KRX short balance — updates slowly intraday */
   krxShort: { sMaxAge: 600, swr: 900 },
+  /** Bundled snapshots that only change on deploy (ETF universe) */
+  snapshot: { sMaxAge: 3_600, swr: 86_400 },
 } as const;
 
 export type CacheTier = keyof typeof CACHE_TIER;

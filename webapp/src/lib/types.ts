@@ -196,7 +196,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   round: "모의투자",
   cardnews: "카드뉴스",
   derivedu: "파생상품",
-  etfdb: "한국 상장 ETF",
+  etfdb: "상장 시장별 ETF",
   etfdbus: "미국 상장 ETF",
   etfflow: "ETF Flow",
   datacatalog: "적재 현황",
@@ -286,7 +286,8 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "db",
         label: "DB",
-        tabs: ["etfdb", "etfdbus", "datacatalog"],
+        // etfdbus stays a valid deep link (opens the US market) but is no longer a separate menu item
+        tabs: ["etfdb", "datacatalog"],
       },
       {
         id: "rebal",

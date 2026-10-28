@@ -1,0 +1,95 @@
+{
+ "generated_at": "2026-10-28T16:19:56",
+ "markets": [
+  {
+   "market": "kr",
+   "label": "한국",
+   "as_of": "2026-10-28 15:21:34",
+   "unit": "억원",
+   "count": 1088,
+   "total_aum": 4087163.9,
+   "passive_count": 791,
+   "passive_aum": 3039768.9,
+   "top": [
+    "KODEX 200",
+    "TIGER 미국S&P500",
+    "KODEX 머니마켓액티브"
+   ]
+  },
+  {
+   "market": "us",
+   "label": "미국",
+   "as_of": "2026-10-28 15:38 (파일 저장 시각)",
+   "unit": "$M",
+   "count": 4335,
+   "total_aum": 16383309.9,
+   "passive_count": 4209,
+   "passive_aum": 16128458.9,
+   "top": [
+    "Vanguard 500 Index Fund",
+    "iShares Core S&P 500 ETF",
+    "SPDR S&P 500 ETF Trust"
+   ]
+  },
+  {
+   "market": "eu",
+   "label": "유럽",
+   "as_of": "2026-10-28 15:38 (파일 저장 시각)",
+   "unit": "$M",
+   "count": 1613,
+   "total_aum": 2344722.3,
+   "passive_count": 1598,
+   "passive_aum": 2335961.8,
+   "top": [
+    "iShares Core S&P 500 UCITS ETF USD (Acc)",
+    "iShares Core MSCI World UCITS ETF USD (Acc)",
+    "Vanguard S&P 500 UCITS ETF"
+   ]
+  },
+  {
+   "market": "jp",
+   "label": "일본",
+   "as_of": "2026-10-28 15:38 (파일 저장 시각)",
+   "unit": "$M",
+   "count": 421,
+   "total_aum": 877344.4,
+   "passive_count": 412,
+   "passive_aum": 877075.9,
+   "top": [
+    "Nomura NF TOPIX ETF",
+    "Nomura NF Nikkei 225 ETF",
+    "Amova Listed IDX Fund TOPIX"
+   ]
+  },
+  {
+   "market": "hk",
+   "label": "홍콩",
+   "as_of": "2026-10-28 15:38 (파일 저장 시각)",
+   "unit": "$M",
+   "count": 221,
+   "total_aum": 81800.1,
+   "passive_count": 209,
+   "passive_aum": 77809.4,
+   "top": [
+    "Tracker Fund of Hong Kong Ltd",
+    "CSOP Hang Seng Tech Index ETF",
+    "iShares Core MSCI Asia ex Japan ETF USD"
+   ]
+  },
+  {
+   "market": "cn",
+   "label": "중국",
+   "as_of": "2026-10-28 15:38 (파일 저장 시각)",
+   "unit": "$M",
+   "count": 930,
+   "total_aum": 582810.5,
+   "passive_count": 930,
+   "passive_aum": 582810.5,
+   "top": [
+    "Huatai-PB CSI 300 ETF",
+    "E Fund CSI 300 Index ETF",
+    "Hua An YiFu Gold ETF"
+   ]
+  }
+ ]
+}

@@ -59,8 +59,7 @@ import {
   ThemeEtfTab,
   AiEtfTab,
   AiPulseTab,
-  EtfDbTab,
-  EtfDbUsTab,
+  EtfUniverseTab,
   DataCatalogTab,
   AdminVaultTab,
 } from "@/components/lazyTabs";
@@ -584,9 +583,9 @@ function DashboardInner({
       ) : tab === "vault" ? (
         unlocked ? <AdminVaultTab /> : null
       ) : tab === "etfdb" ? (
-        <EtfDbTab />
+        <EtfUniverseTab />
       ) : tab === "etfdbus" ? (
-        <EtfDbUsTab />
+        <EtfUniverseTab initialMarket="us" />
       ) : tab === "etfflow" ? (
         <EtfFlowWeeklyTab />
       ) : tab === "datacatalog" ? (

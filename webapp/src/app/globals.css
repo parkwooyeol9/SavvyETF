@@ -4828,6 +4828,97 @@ button.community-post-title {
   }
 }
 
+/* —— ETF 유니버스 (상장 시장별 스냅샷) —— */
+.etfu-markets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+}
+
+.etfu-market {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  line-height: 1.2;
+}
+
+.etfu-market .meta-soft {
+  font-size: 0.72rem;
+}
+
+.etfu-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.etfu-asof {
+  font-size: 0.95rem;
+}
+
+.etfu-cats {
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.etfu-table-wrap {
+  max-height: 640px;
+}
+
+.etfu-table th {
+  white-space: nowrap;
+}
+
+.etfu-table td:nth-child(2) {
+  min-width: 14rem;
+}
+
+.etfu-tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.etfu-tag.warn {
+  color: #f0b85a;
+  border-color: rgba(240, 184, 90, 0.45);
+}
+
+.etfu-more {
+  margin-top: 0.6rem;
+}
+
+.etfu-notes {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.etfu-notes summary {
+  cursor: pointer;
+  color: var(--text, inherit);
+}
+
+.etfu-notes ul {
+  margin: 0.5rem 0;
+  padding-left: 1.1rem;
+}
+
+@media (max-width: 900px) {
+  .etfu-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .etfu-cats {
+    max-height: 280px;
+  }
+}
+
 /* —— Macro / 경제 tab —— */
 .macro-subhead {
   margin: 0.25rem 0 0;
