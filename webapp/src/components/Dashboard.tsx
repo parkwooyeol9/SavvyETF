@@ -549,7 +549,7 @@ function DashboardInner({
       ) : tab === "signals" ? (
         unlocked ? <TradingSignalsTab /> : null
       ) : tab === "graph" ? (
-        <GraphTab />
+        unlocked ? <GraphTab /> : null
       ) : tab === "valuation" ? (
         <ValuationTab />
       ) : tab === "nlp" || tab === "nlphistory" ? (
