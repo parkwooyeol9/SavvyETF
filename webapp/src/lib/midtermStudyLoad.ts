@@ -1,8 +1,15 @@
 import { inflateRawSync } from "node:zlib";
 
+import krxBundle from "@/data/krSectorMidterm.json";
 import { withServerCache } from "@/lib/apiCache";
 import {
+  KR_MARKET_SPECS,
+  KR_SECTOR_SPECS,
   MARKET_SPECS,
+  MIDTERM_ELECTIONS,
+  WINDOW_POST_DAYS,
+  WINDOW_PRE_DAYS,
+  addCalendarDays,
   buildMidtermStudyPayload,
   emptyMidtermStudyPayload,
   parseFrench12DailyCsv,
@@ -15,8 +22,28 @@ const UA =
 const YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart";
 const FRENCH_ZIP =
   "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/12_Industry_Portfolios_daily_CSV.zip";
+const NAVER_SISE = "https://api.finance.naver.com/siseJson.naver";
 const SERIES_START = "1950-01-01";
-const CACHE_KEY = "midterm-study:v3";
+const CACHE_KEY = "midterm-study:v4";
+
+/** Daily closes around each midterm (election −30d … +400d), for the Excel raw sheets. */
+export type MidtermRawWindow = {
+  election: string;
+  dates: string[];
+  closes: Record<string, Array<number | null>>;
+};
+
+export type MidtermStudyBundle = {
+  payload: MidtermStudyPayload;
+  raw: MidtermRawWindow[];
+};
+
+type KrxBundle = {
+  generated_at: string | null;
+  source: string;
+  first_seen: Record<string, string>;
+  windows: Array<{ election: string; dates: string[]; closes: Record<string, Array<number | null>> }>;
+};
 
 function unzipFirstFile(buf: Buffer): string {
   let offset = 0;
@@ -90,6 +117,90 @@ async function fetchYahooDaily(symbol: string): Promise<PricePoint[]> {
     .map(([date, close]) => ({ date, close }));
 }
 
+/** Naver siseJson: header row is EUC-KR text, data rows are ["YYYYMMDD", o, h, l, c, ...]. */
+async function fetchNaverDaily(symbol: string, start: string): Promise<PricePoint[]> {
+  const url =
+    `${NAVER_SISE}?symbol=${encodeURIComponent(symbol)}&requestType=1` +
+    `&startTime=${start.replace(/-/g, "")}&endTime=${new Date().toISOString().slice(0, 10).replace(/-/g, "")}` +
+    `&timeframe=day`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA, Referer: "https://finance.naver.com/" },
+    signal: AbortSignal.timeout(25_000),
+  });
+  if (!res.ok) throw new Error(`Naver ${symbol}: HTTP ${res.status}`);
+  const text = await res.text();
+  const out: PricePoint[] = [];
+  const re = /\["(\d{8})",\s*([-\d.]+),\s*([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const close = Number(m[5]);
+    if (!(close > 0)) continue;
+    const d = m[1]!;
+    out.push({ date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, close });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** KRX index windows bundled by 04_국내시장/krx_sector_midterm.py, keyed by KRX code. */
+function krxSeries(): Record<string, PricePoint[]> {
+  const bundle = krxBundle as KrxBundle;
+  const byCode: Record<string, Map<string, number>> = {};
+  for (const w of bundle.windows || []) {
+    for (const [code, closes] of Object.entries(w.closes || {})) {
+      const m = byCode[code] || new Map<string, number>();
+      w.dates.forEach((date, i) => {
+        const v = closes[i];
+        if (v != null && v > 0) m.set(date, v);
+      });
+      byCode[code] = m;
+    }
+  }
+  const out: Record<string, PricePoint[]> = {};
+  for (const [code, m] of Object.entries(byCode)) {
+    out[code] = [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, close]) => ({ date, close }));
+  }
+  return out;
+}
+
+/** Splice: live series wins on overlapping dates; older bundle points fill the front. */
+function splice(live: PricePoint[], older: PricePoint[]): PricePoint[] {
+  if (!older.length) return live;
+  const first = live[0]?.date ?? "9999-12-31";
+  return [...older.filter((p) => p.date < first), ...live];
+}
+
+function seriesSpan(points: PricePoint[]): string {
+  return points.length
+    ? `${points[0]!.date}–${points[points.length - 1]!.date} (${points.length}일)`
+    : "시계열 없음";
+}
+
+function rawWindows(seriesMap: Record<string, PricePoint[]>): MidtermRawWindow[] {
+  return MIDTERM_ELECTIONS.map((e) => {
+    const lo = addCalendarDays(e.date, -WINDOW_PRE_DAYS);
+    const hi = addCalendarDays(e.date, WINDOW_POST_DAYS);
+    const byAsset: Record<string, Map<string, number>> = {};
+    const dates = new Set<string>();
+    for (const [id, points] of Object.entries(seriesMap)) {
+      const m = new Map<string, number>();
+      for (const p of points) {
+        if (p.date < lo) continue;
+        if (p.date > hi) break;
+        m.set(p.date, p.close);
+        dates.add(p.date);
+      }
+      if (m.size) byAsset[id] = m;
+    }
+    const sorted = [...dates].sort();
+    const closes: Record<string, Array<number | null>> = {};
+    for (const [id, m] of Object.entries(byAsset)) {
+      closes[id] = sorted.map((d) => m.get(d) ?? null);
+    }
+    return { election: e.date, dates: sorted, closes };
+  });
+}
+
 async function fetchFrenchIndustries(): Promise<Record<string, PricePoint[]>> {
   const res = await fetch(FRENCH_ZIP, {
     headers: { "User-Agent": UA, Accept: "application/zip,*/*" },
@@ -101,7 +212,7 @@ async function fetchFrenchIndustries(): Promise<Record<string, PricePoint[]>> {
   return parseFrench12DailyCsv(csv);
 }
 
-async function buildPayload(): Promise<MidtermStudyPayload> {
+async function buildBundle(): Promise<MidtermStudyBundle> {
   const coverage: string[] = [];
   const seriesMap: Record<string, PricePoint[]> = {};
 
@@ -146,12 +257,41 @@ async function buildPayload(): Promise<MidtermStudyPayload> {
     coverage.push(`업종 대용(Ken French) 실패: ${exc instanceof Error ? exc.message : String(exc)}`);
   }
 
-  if (!(seriesMap.spx && seriesMap.spx.length >= 200)) {
-    return emptyMidtermStudyPayload("S&P 500 일별 시계열을 불러오지 못했습니다.");
+  const krx = krxSeries();
+  const krxNote = (krxBundle as KrxBundle).generated_at
+    ? `KRX 업종지수 번들 ${(krxBundle as KrxBundle).generated_at!.slice(0, 10)} 수집`
+    : "KRX 업종지수 번들 없음(04_국내시장/krx_sector_midterm.py 실행 전)";
+  for (const spec of KR_MARKET_SPECS) {
+    let live: PricePoint[] = [];
+    try {
+      live = await fetchNaverDaily(spec.naver!, "1990-01-01");
+    } catch (exc) {
+      coverage.push(`${spec.label} 네이버 실패: ${exc instanceof Error ? exc.message : String(exc)}`);
+    }
+    seriesMap[spec.id] = splice(live, krx[spec.krx!] || []);
+    coverage.push(`${spec.label} ${seriesSpan(seriesMap[spec.id]!)}`);
   }
-  return buildMidtermStudyPayload(seriesMap, coverage);
+  let krSectors = 0;
+  for (const spec of KR_SECTOR_SPECS) {
+    const points = krx[spec.krx!] || [];
+    seriesMap[spec.id] = points;
+    if (points.length) krSectors += 1;
+  }
+  coverage.push(krSectors ? `${krxNote} · 업종 ${krSectors}개` : krxNote);
+
+  if (!(seriesMap.spx && seriesMap.spx.length >= 200)) {
+    return {
+      payload: emptyMidtermStudyPayload("S&P 500 일별 시계열을 불러오지 못했습니다."),
+      raw: [],
+    };
+  }
+  return { payload: buildMidtermStudyPayload(seriesMap, coverage), raw: rawWindows(seriesMap) };
+}
+
+export async function loadMidtermStudyBundle(): Promise<MidtermStudyBundle> {
+  return withServerCache(CACHE_KEY, 24 * 3_600_000, 48 * 3_600_000, buildBundle);
 }
 
 export async function loadMidtermStudyPayload(): Promise<MidtermStudyPayload> {
-  return withServerCache(CACHE_KEY, 24 * 3_600_000, 48 * 3_600_000, buildPayload);
+  return (await loadMidtermStudyBundle()).payload;
 }

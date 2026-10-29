@@ -21,6 +21,8 @@ import {
   DEFAULT_SCENARIO,
   GROUPING_META,
   HORIZON_META,
+  KR_MARKET_SPECS,
+  KR_SECTOR_SPECS,
   MARKET_SPECS,
   MIDTERM_ELECTIONS,
   SECTOR_SPECS,
@@ -58,7 +60,10 @@ const MARKET_COLOR: Record<string, string> = {
   spx: "#60a5fa",
   nasdaq: "#c084fc",
   dow: "#fbbf24",
+  kospi: "#f472b6",
 };
+
+const KR_PATH_IDS = ["spx", ...KR_MARKET_SPECS.map((k) => k.id)];
 
 const OVERLAY_N_MAX = 6;
 
@@ -152,6 +157,7 @@ export default function MidtermStudyTab() {
   const [grouping, setGrouping] = useState<GroupingId>(DEFAULT_GROUPING);
   const [scenario, setScenario] = useState<ScenarioId>(DEFAULT_SCENARIO);
   const [horizon, setHorizon] = useState<HorizonDay>(90);
+  const [krHorizon, setKrHorizon] = useState<HorizonDay>(90);
   const [urlReady, setUrlReady] = useState(false);
   const [excelBusy, setExcelBusy] = useState(false);
   const [excelError, setExcelError] = useState<string | null>(null);
@@ -268,6 +274,42 @@ export default function MidtermStudyTab() {
       .sort((a, b) => (b.ret ?? 0) - (a.ret ?? 0));
   }, [sectorAssets, horizon]);
 
+  const krPathAssets = useMemo(
+    () =>
+      KR_PATH_IDS.map((id) => sc?.assets.find((a) => a.id === id)).filter(
+        (a): a is NonNullable<typeof a> => Boolean(a && a.n > 0),
+      ),
+    [sc],
+  );
+  const hasKospi = krPathAssets.some((a) => a.kind === "kr_market");
+
+  const krChartRows = useMemo(() => {
+    const byT = new Map<number, Record<string, number>>();
+    for (const asset of krPathAssets) {
+      for (const p of asset.path) {
+        const row = byT.get(p.t) || { t: p.t };
+        row[asset.id] = p.v;
+        byT.set(p.t, row);
+      }
+    }
+    return [...byT.values()].sort((a, b) => a.t - b.t);
+  }, [krPathAssets]);
+
+  const krSectorAssets = useMemo(
+    () => (sc?.assets || []).filter((a) => a.kind === "kr_sector" && a.n > 0),
+    [sc],
+  );
+
+  const krSectorBars = useMemo(() => {
+    return krSectorAssets
+      .map((a) => {
+        const h = pickHorizon(a, krHorizon);
+        return { id: a.id, name: a.label, ret: h?.return_pct ?? null, n: h?.n ?? 0 };
+      })
+      .filter((r) => r.ret != null)
+      .sort((a, b) => (b.ret ?? 0) - (a.ret ?? 0));
+  }, [krSectorAssets, krHorizon]);
+
   const catalog = data?.elections?.length ? data.elections : MIDTERM_ELECTIONS;
   const inScenario = catalog.filter((e) => electionMatches(e, scenario));
 
@@ -317,8 +359,8 @@ export default function MidtermStudyTab() {
             <h2 className="panel-title">중간선거 이벤트 스터디</h2>
             <p className="macro-subhead">
               1950년 트루먼 중간선거부터, 선거 당일 이후 첫 거래일을 100으로 두고 S&amp;P 500 ·
-              나스닥 · 다우와 장기 업종 지수를 시나리오별로 평균합니다. 기본값은 여당이 하원을 잃고
-              상원을 유지한 경우(1982, 2010, 2018, 2022)입니다.
+              나스닥 · 다우와 장기 업종 지수, 코스피·코스피 업종지수를 시나리오별로 평균합니다.
+              기본값은 여당이 하원을 잃고 상원을 유지한 경우(1982, 2010, 2018, 2022)입니다.
             </p>
           </div>
           <div className="eventstudy-hero-actions">
@@ -331,7 +373,7 @@ export default function MidtermStudyTab() {
               onClick={() => void downloadExcel()}
               disabled={excelBusy || !data?.ok}
             >
-              {excelBusy ? "엑셀 만드는 중…" : "엑셀 다운로드"}
+              {excelBusy ? "엑셀 만드는 중…" : "엑셀 다운로드 (원자료 포함)"}
             </button>
           </div>
         </div>
@@ -612,9 +654,191 @@ export default function MidtermStudyTab() {
           <section className="panel">
             <div className="panel-head">
               <div>
+                <h3 className="panel-title">한국 영향 (코스피 · 코스피 업종)</h3>
+                <p className="macro-subhead">
+                  같은 시나리오·같은 t=0으로 코스피와 S&amp;P 500을 겹쳤습니다. 미국 선거일(화) 한국 장
+                  마감은 개표 전이라 그날 종가가 100입니다. 코스피는 1990년부터라 1950–1986 선거는
+                  빠지고, n이 미국과 다를 수 있습니다.
+                </p>
+              </div>
+            </div>
+            {hasKospi && krChartRows.length ? (
+              <div className="eventstudy-chart eventstudy-chart-lg">
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={krChartRows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      domain={["auto", "auto"]}
+                      tickFormatter={(v: number) => v.toFixed(0)}
+                    />
+                    <ReferenceLine y={100} stroke="#64748b" strokeDasharray="4 4" />
+                    <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelFormatter={(v) => `거래일 ${v}`}
+                      formatter={(value: number, name: string) => [fmtRebased(value, 2), name]}
+                    />
+                    <Legend />
+                    {krPathAssets.map((a) => (
+                      <Line
+                        key={a.id}
+                        type="monotone"
+                        dataKey={a.id}
+                        name={`${a.label} (n=${a.n})`}
+                        stroke={MARKET_COLOR[a.id] || "#94a3b8"}
+                        dot={false}
+                        strokeWidth={2}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="empty">이 시나리오에는 코스피(1990~)가 덮는 선거가 없습니다.</p>
+            )}
+
+            {hasKospi ? (
+              <div className="eventstudy-table-wrap midterm-study-table-wrap">
+                <table className="eventstudy-table eventstudy-heat">
+                  <thead>
+                    <tr>
+                      <th>지수</th>
+                      <th>n</th>
+                      {HORIZON_META.map((h) => (
+                        <th key={h.id}>{h.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {krPathAssets.map((a) => (
+                      <tr key={a.id}>
+                        <td>
+                          <span className="eventstudy-asset-name">{a.label}</span>
+                          {KR_MARKET_SPECS.find((m) => m.id === a.id)?.note ? (
+                            <span className="eventstudy-asset-note">
+                              {KR_MARKET_SPECS.find((m) => m.id === a.id)?.note}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>{a.n}</td>
+                        {HORIZON_META.map((h) => {
+                          const cell = pickHorizon(a, h.days);
+                          return (
+                            <td key={h.id} className={retClass(cell?.return_pct)}>
+                              {fmtRebased(cell?.rebased)}
+                              <span className="eventstudy-asset-note">{fmtPct(cell?.return_pct)}</span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <h4 className="panel-title" style={{ marginTop: "1.1rem", fontSize: "0.95rem" }}>
+              코스피 업종지수 (KRX)
+            </h4>
+            {krSectorAssets.length ? (
+              <>
+                <div className="eventstudy-cat-row">
+                  {HORIZON_META.map((h) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      className={`eventstudy-cat ${krHorizon === h.days ? "active" : ""}`}
+                      onClick={() => setKrHorizon(h.days)}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="eventstudy-chart eventstudy-chart-lg">
+                  <ResponsiveContainer width="100%" height={Math.max(260, krSectorBars.length * 22)}>
+                    <BarChart
+                      data={krSectorBars}
+                      layout="vertical"
+                      margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      <XAxis
+                        type="number"
+                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                        tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={76}
+                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(value: number) => [fmtPct(value), "평균 수익률"]}
+                      />
+                      <Bar dataKey="ret" radius={[0, 4, 4, 0]}>
+                        {krSectorBars.map((row) => (
+                          <Cell key={row.id} fill={(row.ret ?? 0) >= 0 ? "#34d399" : "#f87171"} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="eventstudy-table-wrap midterm-study-table-wrap" style={{ marginTop: "0.9rem" }}>
+                  <table className="eventstudy-table eventstudy-heat">
+                    <thead>
+                      <tr>
+                        <th>업종</th>
+                        <th>n</th>
+                        {HORIZON_META.map((h) => (
+                          <th key={h.id}>{h.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {krSectorAssets.map((a) => (
+                        <tr key={a.id}>
+                          <td>
+                            <span className="eventstudy-asset-name">{a.label}</span>
+                            {KR_SECTOR_SPECS.find((s) => s.id === a.id)?.note ? (
+                              <span className="eventstudy-asset-note">
+                                {KR_SECTOR_SPECS.find((s) => s.id === a.id)?.note}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td>{a.n}</td>
+                          {HORIZON_META.map((h) => {
+                            const cell = pickHorizon(a, h.days);
+                            return (
+                              <td key={h.id} className={retClass(cell?.return_pct)}>
+                                {fmtPct(cell?.return_pct)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="empty">
+                코스피 업종지수는 KRX 로그인이 필요해 아직 번들되지 않았습니다. 수집 스크립트를 한 번
+                돌리면 같은 방식으로 업종별 평균이 채워집니다.
+              </p>
+            )}
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
                 <h3 className="panel-title">이 시나리오에 들어간 선거</h3>
                 <p className="macro-subhead">
-                  각 해의 S&amp;P 500 / 나스닥을 같은 100 기준으로 풀어 놓은 값입니다. 행을 누르면
+                  각 해의 S&amp;P 500 / 나스닥 / 코스피를 같은 100 기준으로 풀어 놓은 값입니다. 행을 누르면
                   그 해가 속한 분할로 이동합니다.
                 </p>
               </div>
@@ -630,6 +854,8 @@ export default function MidtermStudyTab() {
                     <th>S&amp;P +1y</th>
                     <th>나스닥 +3m</th>
                     <th>나스닥 +1y</th>
+                    <th>코스피 +3m</th>
+                    <th>코스피 +1y</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -639,6 +865,8 @@ export default function MidtermStudyTab() {
                     const spx12 = eventHorizon(ev, "spx", 365);
                     const nq3 = eventHorizon(ev, "nasdaq", 90);
                     const nq12 = eventHorizon(ev, "nasdaq", 365);
+                    const ks3 = eventHorizon(ev, "kospi", 90);
+                    const ks12 = eventHorizon(ev, "kospi", 365);
                     return (
                       <tr
                         key={ev.date}
@@ -661,6 +889,8 @@ export default function MidtermStudyTab() {
                         <td className={retClass(spx12?.return_pct)}>{fmtPct(spx12?.return_pct)}</td>
                         <td className={retClass(nq3?.return_pct)}>{fmtPct(nq3?.return_pct)}</td>
                         <td className={retClass(nq12?.return_pct)}>{fmtPct(nq12?.return_pct)}</td>
+                        <td className={retClass(ks3?.return_pct)}>{fmtPct(ks3?.return_pct)}</td>
+                        <td className={retClass(ks12?.return_pct)}>{fmtPct(ks12?.return_pct)}</td>
                       </tr>
                     );
                   })}

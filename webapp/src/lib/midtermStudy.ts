@@ -1,6 +1,7 @@
 /**
  * US midterm event study: rebase election-session close to 100, then compare
  * S&P 500 / Nasdaq / Dow and long-history industry portfolios by chamber outcome.
+ * The same alignment is repeated for KOSPI and KOSPI sector indices (KRX).
  *
  * Alignment follows event_study.py: first session on/after election Tuesday is t=0.
  */
@@ -61,7 +62,7 @@ export type MidtermElection = {
   note: string;
 };
 
-export type AssetKind = "market" | "sector";
+export type AssetKind = "market" | "sector" | "kr_market" | "kr_sector";
 
 export type AssetSpec = {
   id: string;
@@ -69,6 +70,10 @@ export type AssetSpec = {
   kind: AssetKind;
   symbol?: string;
   french?: string;
+  /** KRX index code (group digit + 3), e.g. 1005 = 음식료품. */
+  krx?: string;
+  /** Naver chart symbol for the live daily series. */
+  naver?: string;
   start?: string;
   note?: string;
 };
@@ -124,6 +129,8 @@ export type MidtermStudyPayload = {
   scenarios: Record<ScenarioId, ScenarioResult>;
   markets: AssetSpec[];
   sectors: AssetSpec[];
+  kr_markets: AssetSpec[];
+  kr_sectors: AssetSpec[];
 };
 
 export type ScenarioMeta = {
@@ -253,7 +260,53 @@ export const SECTOR_SPECS: AssetSpec[] = [
   { id: "other", label: "기타", kind: "sector", french: "Other" },
 ];
 
-export const ALL_ASSET_SPECS: AssetSpec[] = [...MARKET_SPECS, ...SECTOR_SPECS];
+/** KOSPI: Naver daily from 1990, KRX bundle fills 1982·1986 when present. */
+export const KR_MARKET_SPECS: AssetSpec[] = [
+  {
+    id: "kospi",
+    label: "코스피",
+    kind: "kr_market",
+    naver: "KOSPI",
+    krx: "1001",
+    start: "1990-01-04",
+    note: "네이버 일봉 1990~ · 이전은 KRX",
+  },
+];
+
+/** KOSPI sector indices (KRX, base 1980-01-04). Event windows bundled by krx_sector_midterm.py. */
+export const KR_SECTOR_SPECS: AssetSpec[] = [
+  { id: "kr_1005", label: "음식료품", kind: "kr_sector", krx: "1005" },
+  { id: "kr_1006", label: "섬유의복", kind: "kr_sector", krx: "1006" },
+  { id: "kr_1007", label: "종이목재", kind: "kr_sector", krx: "1007" },
+  { id: "kr_1008", label: "화학", kind: "kr_sector", krx: "1008" },
+  { id: "kr_1009", label: "의약품", kind: "kr_sector", krx: "1009" },
+  { id: "kr_1010", label: "비금속광물", kind: "kr_sector", krx: "1010" },
+  { id: "kr_1011", label: "철강금속", kind: "kr_sector", krx: "1011" },
+  { id: "kr_1012", label: "기계", kind: "kr_sector", krx: "1012" },
+  { id: "kr_1013", label: "전기전자", kind: "kr_sector", krx: "1013", note: "반도체·IT 하드웨어" },
+  { id: "kr_1014", label: "의료정밀", kind: "kr_sector", krx: "1014" },
+  { id: "kr_1015", label: "운수장비", kind: "kr_sector", krx: "1015", note: "자동차·조선" },
+  { id: "kr_1016", label: "유통업", kind: "kr_sector", krx: "1016" },
+  { id: "kr_1017", label: "전기가스업", kind: "kr_sector", krx: "1017" },
+  { id: "kr_1018", label: "건설업", kind: "kr_sector", krx: "1018" },
+  { id: "kr_1019", label: "운수창고업", kind: "kr_sector", krx: "1019" },
+  { id: "kr_1020", label: "통신업", kind: "kr_sector", krx: "1020" },
+  { id: "kr_1021", label: "금융업", kind: "kr_sector", krx: "1021" },
+  { id: "kr_1024", label: "증권", kind: "kr_sector", krx: "1024" },
+  { id: "kr_1025", label: "보험", kind: "kr_sector", krx: "1025" },
+  { id: "kr_1026", label: "서비스업", kind: "kr_sector", krx: "1026", note: "인터넷·지주 포함" },
+];
+
+export const ALL_ASSET_SPECS: AssetSpec[] = [
+  ...MARKET_SPECS,
+  ...SECTOR_SPECS,
+  ...KR_MARKET_SPECS,
+  ...KR_SECTOR_SPECS,
+];
+
+export function assetSpec(id: string): AssetSpec | undefined {
+  return ALL_ASSET_SPECS.find((s) => s.id === id);
+}
 
 /**
  * Chamber control = majority of the Congress seated the following January.
@@ -572,7 +625,9 @@ export const MIDTERM_STUDY_NOTE =
   "기본 분류는 민주/공화 당명이 아니라 당시 대통령(여당) 대비 상·하원 결과입니다. " +
   "기본값 ‘여당 하원 패 · 상원 유지’는 1982·2010·2018·2022입니다(1982는 선거 전부터 하원이 야당). " +
   "업종은 GICS/섹터 ETF가 1990년대 이후에야 생기므로 Ken French 12산업 가치가중 포트폴리오를 대용합니다. " +
-  "나스닥은 1971-02, 다우는 Yahoo 기준으로 1992부터만 있습니다.";
+  "나스닥은 1971-02, 다우는 Yahoo 기준으로 1992부터만 있습니다. " +
+  "한국은 같은 방식으로 코스피(네이버 1990~, 이전은 KRX)와 KRX 코스피 업종지수를 맞췄습니다. " +
+  "미국 선거일(화) 한국 장 마감은 개표 전이므로 같은 날짜를 t=0으로 둡니다.";
 
 export function scenarioLabel(id: ScenarioId): string {
   return SCENARIO_META.find((s) => s.id === id)?.label ?? id;
@@ -835,6 +890,8 @@ export function buildMidtermStudyPayload(
     scenarios,
     markets: MARKET_SPECS,
     sectors: SECTOR_SPECS,
+    kr_markets: KR_MARKET_SPECS,
+    kr_sectors: KR_SECTOR_SPECS,
   };
 }
 
@@ -854,6 +911,8 @@ export function emptyMidtermStudyPayload(error: string): MidtermStudyPayload {
     scenarios,
     markets: MARKET_SPECS,
     sectors: SECTOR_SPECS,
+    kr_markets: KR_MARKET_SPECS,
+    kr_sectors: KR_SECTOR_SPECS,
   };
 }
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { DEFAULT_SCENARIO, emptyMidtermStudyPayload, scenariosForGrouping } from "@/lib/midtermStudy";
 import { buildMidtermStudyExcel, midtermStudyExcelFilename } from "@/lib/midtermStudyExcel";
-import { loadMidtermStudyPayload } from "@/lib/midtermStudyLoad";
+import { loadMidtermStudyBundle } from "@/lib/midtermStudyLoad";
 import { groupingForScenario, parseGroupingId, parseScenarioId } from "@/lib/midtermTape";
 
 export const runtime = "nodejs";
@@ -21,12 +21,12 @@ export async function GET(request: Request) {
         ? requestedGrouping
         : groupingForScenario(scenario);
 
-    const payload = await loadMidtermStudyPayload();
+    const { payload, raw } = await loadMidtermStudyBundle();
     if (!payload.ok) {
       return NextResponse.json(payload, { status: 503 });
     }
 
-    const buf = buildMidtermStudyExcel(payload, { scenario, grouping });
+    const buf = buildMidtermStudyExcel(payload, { scenario, grouping }, raw);
     const filename = midtermStudyExcelFilename(scenario);
     return new NextResponse(new Uint8Array(buf), {
       headers: {

@@ -18,34 +18,62 @@ import {
 import {
   buildXlsx,
   headerRow,
+  intval,
+  num,
+  sheetFormula,
+  a1Range,
   type CellInput,
+  type ChartSpec,
   type SheetSpec,
 } from "@/lib/xlsxWorkbook";
 
 const W = [12, 20, 16, 16, 16, 16, 48];
+const SPAN = W.length;
+
+/** Rows that read as prose span A:G; key-value rows span B:G. */
+const WIDE_ROWS = new WeakSet<CellInput[]>();
+const VALUE_ROWS = new WeakSet<CellInput[]>();
 
 function blank(): CellInput[] {
   return [];
 }
 
+function wide(row: CellInput[]): CellInput[] {
+  WIDE_ROWS.add(row);
+  return row;
+}
+
 function title(text: string): CellInput[] {
-  return [{ v: text, t: "header" }];
+  return wide([{ v: text, t: "header" }]);
 }
 
 function section(text: string): CellInput[] {
-  return headerRow([text]);
+  return wide(headerRow([text]));
 }
 
-function line(...cells: CellInput[]): CellInput[] {
-  return cells;
+function link(url: string): CellInput[] {
+  const row: CellInput[] = ["", url];
+  VALUE_ROWS.add(row);
+  return row;
 }
 
 function para(text: string): CellInput[] {
-  return [{ v: text, t: "text" }];
+  return wide([{ v: text, t: "text" }]);
 }
 
 function kv(label: string, value: CellInput): CellInput[] {
-  return [label, value];
+  const row: CellInput[] = [label, value];
+  VALUE_ROWS.add(row);
+  return row;
+}
+
+function mergesFor(rows: CellInput[][]): NonNullable<SheetSpec["merges"]> {
+  const out: NonNullable<SheetSpec["merges"]> = [];
+  rows.forEach((row, r) => {
+    if (WIDE_ROWS.has(row)) out.push({ r, c: 0, w: SPAN });
+    else if (VALUE_ROWS.has(row)) out.push({ r, c: 1, w: SPAN - 1 });
+  });
+  return out;
 }
 
 function pctTxt(v: number | null | undefined, digits = 0): string {
@@ -99,7 +127,7 @@ function coverBlock(payload: MidtermPayload): CellInput[][] {
     kv("갱신", payload.schedule_note || ""),
     blank(),
     para(
-      "이 파일은 대시보드 ‘정치분석 · 미 중간선거’ 화면을 하나의 리포트로 정리한 것임. 표는 본문 흐름 안에 끼워 두었고, 원자료 덤프가 아님.",
+      "이 시트는 대시보드 ‘정치분석 · 미 중간선거’ 화면을 하나의 리포트로 정리한 것임. 표 원자료는 뒤쪽 ‘원자료_’ 시트에 숫자 그대로 있음.",
     ),
   ];
 }
@@ -416,7 +444,7 @@ function headlinesChapter(payload: MidtermPayload): CellInput[][] {
       ? new Date(h.published).toLocaleDateString("ko-KR")
       : "";
     rows.push(para(`· [${h.source}${when ? ` · ${when}` : ""}] ${h.title}`));
-    if (h.link) rows.push(line("", h.link));
+    if (h.link) rows.push(link(h.link));
   }
   return rows;
 }
@@ -435,11 +463,11 @@ function closingChapter(
     para("■ 중간선거"),
   ];
   for (const s of payload.sources) {
-    rows.push(para(`· ${s.name} — ${s.role}`), line("", s.url));
+    rows.push(para(`· ${s.name} — ${s.role}`), link(s.url));
   }
   rows.push(blank(), para("■ 예산"));
   for (const s of budget.sources) {
-    rows.push(para(`· ${s.name}`), line("", s.url));
+    rows.push(para(`· ${s.name}`), link(s.url));
   }
   rows.push(
     blank(),
@@ -476,8 +504,133 @@ function reportSheet(payload: MidtermPayload): SheetSpec {
     name: "리서치노트",
     rows,
     widths: W,
-    freezeRows: 2,
+    merges: mergesFor(rows),
+    fitToWidth: true,
   };
+}
+
+/** Probability (0–1) → percent number with one decimal. */
+function pct(v: number | null | undefined): CellInput {
+  return num(v == null || Number.isNaN(v) ? null : Math.round(v * 1000) / 10);
+}
+
+function dataSheet(name: string, header: string[], body: CellInput[][], widths: number[]): SheetSpec {
+  return { name, rows: [headerRow(header), ...body], widths, freezeRows: 1, autoFilter: true };
+}
+
+function dataSheets(payload: MidtermPayload): SheetSpec[] {
+  const c = payload.composition;
+  const chamber = (label: string, m: MidtermPayload["senate"], r: number, d: number): CellInput[] => [
+    label,
+    intval(r),
+    intval(d),
+    pct(m?.dem_prob),
+    pct(m?.gop_prob),
+    pct(m?.change_1w_dem),
+    pct(m?.change_1m_dem),
+    num(m?.volume ?? null),
+    m?.updated_at || "",
+  ];
+
+  const hist = payload.seat_histogram;
+  const histSheet = dataSheet(
+    "원자료_상원의석분포",
+    ["버킷", "공화 의석 하한", "공화 의석 상한", "확률(%)", "1주 변화(%p)"],
+    hist.map((b) => [b.label, intval(b.seats_low), intval(b.seats_high), pct(b.probability), pct(b.change_1w)]),
+    [12, 14, 14, 12, 14],
+  );
+  if (hist.length) {
+    const sheet = "원자료_상원의석분포";
+    const last = hist.length + 1;
+    const chart: ChartSpec = {
+      type: "col",
+      title: "공화당 상원 의석 분포 (예측시장)",
+      yTitle: "확률(%)",
+      catRef: sheetFormula(sheet, a1Range(0, 2, 0, last)),
+      cats: { kind: "str", values: hist.map((b) => b.label) },
+      series: [
+        {
+          name: "확률(%)",
+          nameRef: sheetFormula(sheet, "$D$1"),
+          valRef: sheetFormula(sheet, a1Range(3, 2, 3, last)),
+          values: hist.map((b) => (b.probability == null ? null : Math.round(b.probability * 1000) / 10)),
+          color: "C0392B",
+        },
+      ],
+      from: { col: 6, row: 1 },
+      to: { col: 15, row: 20 },
+    };
+    histSheet.charts = [chart];
+  }
+
+  return [
+    dataSheet(
+      "원자료_의회",
+      ["원", "공화 의석", "민주 의석", "민주 확률(%)", "공화 확률(%)", "민주 1주(%p)", "민주 1개월(%p)", "거래량", "시장 갱신"],
+      [
+        chamber("상원", payload.senate, c.senate_r, c.senate_d),
+        chamber("하원", payload.house, c.house_r, c.house_d),
+      ],
+      [8, 10, 10, 12, 12, 12, 13, 14, 22],
+    ),
+    dataSheet(
+      "원자료_권력조합",
+      ["ID", "조합", "조합(영문)", "확률(%)", "1개월 변화(%p)"],
+      payload.power.map((p) => [p.id, p.label_ko, p.label, pct(p.probability), pct(p.change_1m)]),
+      [14, 22, 30, 10, 14],
+    ),
+    histSheet,
+    dataSheet(
+      "원자료_경합주",
+      ["주", "주(한글)", "등급", "현 보유", "보궐", "공석", "민주 후보", "공화 후보", "민주 확률(%)", "공화 확률(%)", "민주 1주(%p)", "거래량", "쟁점", "민주 입장", "공화 입장", "시장 함의", "관련 티커"],
+      payload.races.map((r) => [
+        r.state,
+        r.state_ko,
+        RATING_LABEL[r.rating],
+        r.held_by,
+        r.special ? "Y" : "",
+        r.open ? "Y" : "",
+        r.dem,
+        r.gop,
+        pct(r.dem_prob),
+        pct(r.gop_prob),
+        pct(r.change_1w_dem),
+        num(r.volume ?? null),
+        r.policy_issue,
+        r.policy_d,
+        r.policy_r,
+        r.market_implication,
+        (r.related_tickers || []).join(", "),
+      ]),
+      [6, 10, 10, 8, 6, 6, 16, 16, 11, 11, 11, 12, 18, 30, 30, 36, 16],
+    ),
+    dataSheet(
+      "원자료_등급보드",
+      ["주", "등급", "보궐"],
+      payload.map.map((m) => [m.state, RATING_LABEL[m.rating], m.special ? "Y" : ""]),
+      [8, 12, 8],
+    ),
+    dataSheet(
+      "원자료_ETF",
+      ["심볼", "테마", "각도", "가격", "1일(%)", "5일(%)", "오류"],
+      payload.etfs.map((e) => [
+        e.symbol,
+        e.label,
+        e.angle,
+        num(e.price),
+        num(e.change_1d_pct),
+        num(e.change_5d_pct),
+        e.error || "",
+      ]),
+      [8, 16, 44, 10, 9, 9, 16],
+    ),
+    dataSheet(
+      "원자료_중간선거역사",
+      ["연도", "대통령 정당", "하원 순증감", "상원 순증감", "노트"],
+      payload.history.map((h) => [intval(h.year), h.president_party, intval(h.house_net), intval(h.senate_net), h.note]),
+      [8, 12, 12, 12, 48],
+    ),
+  ];
 }
 
 export function usMidtermExcelFilename(generatedAt?: string): string {
@@ -486,8 +639,9 @@ export function usMidtermExcelFilename(generatedAt?: string): string {
 }
 
 export function buildUsMidtermExcel(payload: MidtermPayload): Buffer {
-  return buildXlsx([reportSheet(payload)], {
+  return buildXlsx([reportSheet(payload), ...dataSheets(payload)], {
     title: "SavvyETF — 2026 US Midterm Research Note",
     creator: "SavvyETF",
+    activeSheet: 0,
   });
 }

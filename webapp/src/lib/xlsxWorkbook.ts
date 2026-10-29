@@ -34,12 +34,18 @@ export type SheetSpec = {
   freezeRows?: number;
   autoFilter?: boolean;
   charts?: ChartSpec[];
+  /** Merged blocks: 0-based row/col, `w` columns wide. Row height follows the merged width. */
+  merges?: Array<{ r: number; c: number; w: number }>;
+  /** Print/PDF: fit all columns on one page width (A4 portrait). */
+  fitToWidth?: boolean;
 };
 
 export type WorkbookMeta = {
   title: string;
   creator?: string;
   created?: Date;
+  /** Sheet index opened first; defaults to the first sheet with charts. */
+  activeSheet?: number;
 };
 
 const NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -109,23 +115,34 @@ function stylesXml(): string {
 </styleSheet>`;
 }
 
-function estimateRowHeight(row: CellInput[], widths: number[]): number {
+/** Display width in column units: Hangul/CJK glyphs take ~1.7 digit widths. */
+function textUnits(text: string): number {
+  let units = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+    units += cp >= 0x1100 && (cp <= 0x115f || cp >= 0x2e80) ? 1.7 : 1;
+  }
+  return units;
+}
+
+function estimateRowHeight(row: CellInput[], widths: number[], spans?: Map<number, number>): number {
   let maxLines = 1;
   for (let j = 0; j < row.length; j++) {
     const cell = asCell(row[j]!);
     if (cell.v == null || cell.v === "") continue;
-    const text = String(cell.v);
-    const colW = widths[j] ?? 16;
-    // ~chars per line at 7pt Nanum (CJK denser than Latin)
-    const cpl = Math.max(6, Math.floor(colW * 1.35));
+    const span = spans?.get(j) ?? 1;
+    let colW = 0;
+    for (let k = j; k < j + span; k++) colW += widths[k] ?? 16;
+    // padding plus word-wrap slack
+    const capacity = Math.max(4, colW - 1);
     let lines = 0;
-    for (const part of text.split(/\n/)) {
-      lines += Math.max(1, Math.ceil([...part].length / cpl));
+    for (const part of String(cell.v).split(/\n/)) {
+      lines += Math.max(1, Math.ceil((textUnits(part) * 1.08) / capacity));
     }
     maxLines = Math.max(maxLines, lines);
   }
-  // ~10.5pt per wrapped line at font 7 with a little padding
-  return Math.min(140, Math.max(11, Math.round(maxLines * 10.5 + 2)));
+  // ~10pt per wrapped line at font 7 with a little padding; Excel caps rows at 409pt
+  return Math.min(409, Math.max(11, Math.round(maxLines * 10 + 3)));
 }
 
 function cellXml(col0: number, row1: number, input: CellInput | undefined): string {
@@ -165,13 +182,21 @@ function worksheetXml(sheet: SheetSpec, hasDrawing: boolean): string {
         ].slice(0, lastCol)
       : Array.from({ length: lastCol }, () => 16);
 
+  const spansByRow = new Map<number, Map<number, number>>();
+  for (const m of sheet.merges || []) {
+    if (m.w < 2) continue;
+    const spans = spansByRow.get(m.r) || new Map<number, number>();
+    spans.set(m.c, m.w);
+    spansByRow.set(m.r, spans);
+  }
+
   const rowXml = rows.map((row, i) => {
     const r = i + 1;
     const cells: string[] = [];
     for (let j = 0; j < lastCol; j++) {
       cells.push(cellXml(j, r, row[j]));
     }
-    const ht = estimateRowHeight(row, widths);
+    const ht = estimateRowHeight(row, widths, spansByRow.get(i));
     return `<row r="${r}" spans="1:${lastCol}" ht="${ht}" customHeight="1">${cells.join("")}</row>`;
   });
   const lastRow = Math.max(rows.length, 1);
@@ -187,14 +212,27 @@ function worksheetXml(sheet: SheetSpec, hasDrawing: boolean): string {
       ? `<autoFilter ref="A1:${colLetter(lastCol - 1)}${lastRow}"/>`
       : "";
   const drawing = hasDrawing ? `<drawing r:id="rId1"/>` : "";
+  const merges = (sheet.merges || []).filter((m) => m.w >= 2);
+  const mergeXml = merges.length
+    ? `<mergeCells count="${merges.length}">${merges
+        .map((m) => `<mergeCell ref="${colLetter(m.c)}${m.r + 1}:${colLetter(m.c + m.w - 1)}${m.r + 1}"/>`)
+        .join("")}</mergeCells>`
+    : "";
+  const sheetPr = sheet.fitToWidth ? `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` : "";
+  const pageSetup = sheet.fitToWidth
+    ? `<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>`
+    : "";
   return `${xmlHeader()}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">
+  ${sheetPr}
   <dimension ref="${dim}"/>
   <sheetViews>${freeze}</sheetViews>
   <sheetFormatPr defaultRowHeight="11" defaultColWidth="14"/>
   <cols>${cols}</cols>
   <sheetData>${rowXml.join("")}</sheetData>
   ${filter}
+  ${mergeXml}
   <pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+  ${pageSetup}
   ${drawing}
 </worksheet>`;
 }
@@ -474,7 +512,7 @@ export function buildXlsx(sheets: SheetSpec[], meta: WorkbookMeta): Buffer {
   });
 
   const chartsSheetIdx = sheets.findIndex((s) => (s.charts || []).length);
-  const activeTab = chartsSheetIdx >= 0 ? chartsSheetIdx : 0;
+  const activeTab = meta.activeSheet ?? (chartsSheetIdx >= 0 ? chartsSheetIdx : 0);
   const wb = `${xmlHeader()}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">
   <fileVersion appName="xl"/>
   <workbookPr/>

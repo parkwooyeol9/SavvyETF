@@ -2,9 +2,12 @@ import {
   ALL_SCENARIO,
   GROUPING_META,
   HORIZON_META,
+  KR_MARKET_SPECS,
+  KR_SECTOR_SPECS,
   MARKET_SPECS,
   SCENARIO_META,
   SECTOR_SPECS,
+  assetSpec,
   electionMatches,
   incumbentLabel,
   netDemSeats,
@@ -14,8 +17,10 @@ import {
   type GroupingId,
   type MidtermStudyPayload,
   type PathPoint,
+  type AssetKind,
   type ScenarioId,
 } from "@/lib/midtermStudy";
+import type { MidtermRawWindow } from "@/lib/midtermStudyLoad";
 import {
   a1,
   a1Range,
@@ -36,6 +41,7 @@ const MARKET_COLOR: Record<string, string> = {
   spx: "60A5FA",
   nasdaq: "C084FC",
   dow: "FBBF24",
+  kospi: "F472B6",
 };
 const HORIZON_COLOR = ["60A5FA", "34D399", "FBBF24", "C084FC"];
 const COMPARE_COLOR = ["64748B", "60A5FA", "34D399", "FBBF24", "F87171", "C084FC"];
@@ -98,6 +104,8 @@ function chartSlots(n: number): Array<{ from: { col: number; row: number }; to: 
     { from: { col: 0, row: 22 }, to: { col: 11, row: 39 } },
     { from: { col: 12, row: 22 }, to: { col: 23, row: 39 } },
     { from: { col: 0, row: 40 }, to: { col: 23, row: 57 } },
+    { from: { col: 0, row: 58 }, to: { col: 11, row: 75 } },
+    { from: { col: 12, row: 58 }, to: { col: 23, row: 75 } },
   ];
   return slots.slice(0, n);
 }
@@ -122,6 +130,7 @@ function readmeSheet(payload: MidtermStudyPayload, opts: MidtermExcelOpts): Shee
     ["데이터 범위", (payload.coverage || []).join(" · ")],
     [],
     ["시장 지수 출처", "Yahoo Finance Chart API (^GSPC, ^IXIC, ^DJI)"],
+    ["한국 지수 출처", "코스피: 네이버 금융 일봉(1990~), 1990 이전은 KRX. 업종: KRX 정보데이터시스템 [11003] 개별지수 시세 추이(코스피 업종지수)"],
     [
       "업종 출처",
       "Ken French 12 Industry Portfolios (value-weighted daily). GICS/섹터 ETF가 아님. https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html",
@@ -142,6 +151,10 @@ function readmeSheet(payload: MidtermStudyPayload, opts: MidtermExcelOpts): Shee
     ["Market_Paths", "전 시나리오 지수 평균 경로 (t, 리베이스)"],
     ["Sector_Paths", "전 시나리오 업종 평균 경로"],
     ["SPX_Overlays", "시나리오별 연도 S&P 500 경로"],
+    ["KR_Horizons", "전 시나리오 코스피·코스피 업종 평균 수익률"],
+    ["KR_Paths", "전 시나리오 코스피·업종 평균 경로"],
+    ["Raw_US", "원자료: 선거별 −30일~+400일 일별 종가 (S&P·나스닥·다우 종가, French 업종은 누적수익지수)"],
+    ["Raw_KR", "원자료: 같은 창의 코스피·코스피 업종지수 일별 종가"],
   ];
   return { name: "README", rows, widths: [22, 92], freezeRows: 1 };
 }
@@ -237,13 +250,16 @@ function scenariosSheet(payload: MidtermStudyPayload, grouping: GroupingId): She
   return { name: "Scenarios", rows, widths: [16, 18, 26, 28, 8, 48], freezeRows: 1, autoFilter: true };
 }
 
-function horizonSheets(payload: MidtermStudyPayload): { market: SheetSpec; sector: SheetSpec } {
+function horizonSheets(payload: MidtermStudyPayload): { market: SheetSpec; sector: SheetSpec; kr: SheetSpec } {
   const hLabels = HORIZON_META.flatMap((h) => [`${h.label} 리베이스`, `${h.label} 수익률(%)`]);
   const marketRows: CellInput[][] = [
     headerRow(["시나리오ID", "시나리오", "자산ID", "지수", "n", ...hLabels]),
   ];
   const sectorRows: CellInput[][] = [
     headerRow(["시나리오ID", "시나리오", "자산ID", "업종", "French", "n", ...hLabels]),
+  ];
+  const krRows: CellInput[][] = [
+    headerRow(["시나리오ID", "시나리오", "자산ID", "자산", "구분", "KRX코드", "n", ...hLabels]),
   ];
   for (const meta of SCENARIO_META) {
     const sc = payload.scenarios[meta.id];
@@ -252,6 +268,8 @@ function horizonSheets(payload: MidtermStudyPayload): { market: SheetSpec; secto
       const cells: CellInput[] = [meta.id, meta.label, asset.id, asset.label];
       if (asset.kind === "sector") {
         cells.push(SECTOR_SPECS.find((s) => s.id === asset.id)?.french || "");
+      } else if (asset.kind === "kr_market" || asset.kind === "kr_sector") {
+        cells.push(asset.kind === "kr_market" ? "지수" : "업종", assetSpec(asset.id)?.krx || "");
       }
       cells.push(intval(asset.n));
       for (const h of HORIZON_META) {
@@ -259,7 +277,8 @@ function horizonSheets(payload: MidtermStudyPayload): { market: SheetSpec; secto
         cells.push(num(cell?.rebased ?? null), num(cell?.return_pct ?? null));
       }
       if (asset.kind === "market") marketRows.push(cells);
-      else sectorRows.push(cells);
+      else if (asset.kind === "sector") sectorRows.push(cells);
+      else krRows.push(cells);
     }
   }
   return {
@@ -274,6 +293,13 @@ function horizonSheets(payload: MidtermStudyPayload): { market: SheetSpec; secto
       name: "Sector_Horizons",
       rows: sectorRows,
       widths: [16, 26, 12, 14, 12, 8, 14, 14, 14, 14, 14, 14, 14, 14],
+      freezeRows: 1,
+      autoFilter: true,
+    },
+    kr: {
+      name: "KR_Horizons",
+      rows: krRows,
+      widths: [16, 26, 12, 14, 8, 10, 8, 14, 14, 14, 14, 14, 14, 14, 14],
       freezeRows: 1,
       autoFilter: true,
     },
@@ -303,9 +329,7 @@ function eventHorizonsSheet(payload: MidtermStudyPayload): SheetSpec {
   for (const ev of all?.elections || []) {
     const row = catalog.find((e) => e.date === ev.date);
     for (const asset of ev.assets) {
-      const spec =
-        MARKET_SPECS.find((s) => s.id === asset.asset_id) ||
-        SECTOR_SPECS.find((s) => s.id === asset.asset_id);
+      const spec = assetSpec(asset.asset_id);
       for (const h of asset.horizons) {
         const label = HORIZON_META.find((m) => m.days === h.days)?.label || `+${h.days}d`;
         rows.push([
@@ -337,7 +361,7 @@ function eventHorizonsSheet(payload: MidtermStudyPayload): SheetSpec {
 
 function pathSheet(
   payload: MidtermStudyPayload,
-  kind: "market" | "sector",
+  kinds: AssetKind[],
   name: string,
 ): SheetSpec {
   const rows: CellInput[][] = [
@@ -347,7 +371,7 @@ function pathSheet(
     const sc = payload.scenarios[meta.id];
     if (!sc) continue;
     for (const asset of sc.assets) {
-      if (asset.kind !== kind) continue;
+      if (!kinds.includes(asset.kind)) continue;
       for (const p of asset.path) {
         rows.push([meta.id, meta.label, asset.id, asset.label, intval(asset.n), intval(p.t), num(p.v)]);
       }
@@ -614,6 +638,92 @@ function buildChartData(payload: MidtermStudyPayload, opts: MidtermExcelOpts): {
   rows.push([]);
   rows.push([]);
 
+  // Korea: KOSPI vs S&P 500 path, then KOSPI sectors at +3m.
+  const krPathAssets = ["spx", ...KR_MARKET_SPECS.map((k) => k.id)]
+    .map((id) => sc?.assets.find((a) => a.id === id))
+    .filter((a): a is NonNullable<typeof a> => Boolean(a && a.n > 0 && a.path.length));
+  if (krPathAssets.some((a) => a.kind === "kr_market")) {
+    const krT = unionT(krPathAssets.map((a) => a.path));
+    const krHeaderRow = rows.length + 1;
+    rows.push(headerRow(["t", ...krPathAssets.map((a) => `${a.label} (n=${a.n})`)]));
+    const krMaps = krPathAssets.map((a) => pathMap(a.path));
+    const krCols: Array<Array<number | null>> = krPathAssets.map(() => []);
+    for (const t of krT) {
+      const row: CellInput[] = [intval(t)];
+      krMaps.forEach((m, i) => {
+        const v = m.get(t) ?? null;
+        row.push(num(v));
+        krCols[i]!.push(v);
+      });
+      rows.push(row);
+    }
+    charts.push({
+      type: "line",
+      title: `코스피 vs S&P 500 · ${meta.label} (t=0 → 100)`,
+      yTitle: "리베이스",
+      catRef: sheetFormula(CHART_SHEET, a1Range(0, krHeaderRow + 1, 0, krHeaderRow + krT.length)),
+      cats: { kind: "num", values: krT },
+      series: krPathAssets.map((a, i) =>
+        seriesFromCol({
+          name: `${a.label} (n=${a.n})`,
+          headerRow: krHeaderRow,
+          col: i + 1,
+          first: krHeaderRow + 1,
+          last: krHeaderRow + krT.length,
+          values: krCols[i] || [],
+          color: MARKET_COLOR[a.id] || "64748B",
+        }),
+      ),
+      from: { col: 0, row: 0 },
+      to: { col: 0, row: 0 },
+    });
+    rows.push([]);
+    rows.push([]);
+  }
+
+  const krSectorRows = (sc?.assets || [])
+    .filter((a) => a.kind === "kr_sector")
+    .map((a) => ({
+      asset: a,
+      rets: HORIZON_META.map((h) => pickHorizon(a, h.days)?.return_pct ?? null),
+      ret3: pickHorizon(a, 90)?.return_pct ?? null,
+    }))
+    .filter((r) => r.rets.some((v) => v != null))
+    .sort((a, b) => (b.ret3 ?? -Infinity) - (a.ret3 ?? -Infinity));
+  if (krSectorRows.length) {
+    const krsHeaderRow = rows.length + 1;
+    rows.push(
+      headerRow(["코스피 업종", "KRX코드", "n", ...HORIZON_META.map((h) => `${h.label} 수익률(%)`)]),
+    );
+    for (const r of krSectorRows) {
+      rows.push([r.asset.label, assetSpec(r.asset.id)?.krx || "", intval(r.asset.n), ...r.rets.map((v) => num(v))]);
+    }
+    const first = krsHeaderRow + 1;
+    const last = krsHeaderRow + krSectorRows.length;
+    charts.push({
+      type: "col",
+      title: `코스피 업종 기간별 · ${meta.label}`,
+      yTitle: "수익률(%)",
+      catRef: sheetFormula(CHART_SHEET, a1Range(0, first, 0, last)),
+      cats: { kind: "str", values: krSectorRows.map((r) => r.asset.label) },
+      series: HORIZON_META.map((h, i) =>
+        seriesFromCol({
+          name: h.label,
+          headerRow: krsHeaderRow,
+          col: 3 + i,
+          first,
+          last,
+          values: krSectorRows.map((r) => r.rets[i] ?? null),
+          color: HORIZON_COLOR[i] || "64748B",
+        }),
+      ),
+      from: { col: 0, row: 0 },
+      to: { col: 0, row: 0 },
+    });
+    rows.push([]);
+    rows.push([]);
+  }
+
   const compareMetas = scenariosForGrouping(opts.grouping).filter((m) => {
     const asset = payload.scenarios[m.id]?.assets.find((a) => a.id === "spx");
     return Boolean(asset && asset.path.length);
@@ -680,6 +790,49 @@ function buildChartData(payload: MidtermStudyPayload, opts: MidtermExcelOpts): {
   };
 }
 
+/**
+ * Wide raw sheet: one row per date inside each election window.
+ * `t` counts sessions of the anchor index from the first session on/after election day.
+ */
+function rawSheet(
+  name: string,
+  raw: MidtermRawWindow[],
+  anchor: string,
+  assets: Array<{ id: string; label: string }>,
+): SheetSpec | null {
+  const cols = assets.filter((a) => raw.some((w) => w.closes[a.id]?.some((v) => v != null)));
+  if (!cols.length) return null;
+  const rows: CellInput[][] = [headerRow(["연도", "선거일", "날짜", `t (${assets.find((a) => a.id === anchor)?.label || anchor} 거래일)`, ...cols.map((a) => a.label)])];
+  for (const w of raw) {
+    const anchorCloses = w.closes[anchor] || [];
+    const sessions: number[] = [];
+    w.dates.forEach((_, i) => {
+      if (anchorCloses[i] != null) sessions.push(i);
+    });
+    const t0 = sessions.find((i) => w.dates[i]! >= w.election);
+    const t0Pos = t0 == null ? -1 : sessions.indexOf(t0);
+    for (let i = 0; i < w.dates.length; i++) {
+      const values = cols.map((a) => w.closes[a.id]?.[i] ?? null);
+      if (values.every((v) => v == null)) continue;
+      const pos = anchorCloses[i] != null && t0Pos >= 0 ? sessions.indexOf(i) - t0Pos : null;
+      rows.push([
+        w.election.slice(0, 4),
+        w.election,
+        w.dates[i]!,
+        intval(pos),
+        ...values.map((v) => num(v == null ? null : Math.round(v * 1e4) / 1e4)),
+      ]);
+    }
+  }
+  return {
+    name,
+    rows,
+    widths: [7, 11, 11, 12, ...cols.map(() => 11)],
+    freezeRows: 1,
+    autoFilter: true,
+  };
+}
+
 export function midtermStudyExcelFilename(scenario: ScenarioId): string {
   return `savvyetf-midterm-study-${scenario}.xlsx`;
 }
@@ -687,6 +840,7 @@ export function midtermStudyExcelFilename(scenario: ScenarioId): string {
 export function buildMidtermStudyExcel(
   payload: MidtermStudyPayload,
   opts: MidtermExcelOpts,
+  raw: MidtermRawWindow[] = [],
 ): Buffer {
   const horizons = horizonSheets(payload);
   const chart = buildChartData(payload, opts);
@@ -697,13 +851,14 @@ export function buildMidtermStudyExcel(
     {
       name: "Charts",
       rows: [
-        ["SavvyETF 중간선거 이벤트 스터디"],
+        [{ v: "SavvyETF 중간선거 이벤트 스터디", t: "header" }],
         [
           `${meta.label} · 표본 ${sc?.n ?? 0}회 · 생성 ${payload.generated_at || ""}`,
         ],
-        ["차트는 엑셀 기본 차트이며 ChartData 시트 값을 참조합니다. 데이터 시트를 수정하면 차트가 따라갑니다."],
+        ["차트는 엑셀 기본 차트이며 ChartData 시트 값을 참조합니다. 데이터 시트를 수정하면 차트가 따라갑니다. 원자료(일별 종가)는 Raw_US · Raw_KR 시트에 있습니다."],
       ],
-      widths: [28, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22],
+      widths: Array.from({ length: 24 }, () => 9),
+      merges: [0, 1, 2].map((r) => ({ r, c: 0, w: 24 })),
       charts: chart.charts,
     },
     chart.sheet,
@@ -712,10 +867,16 @@ export function buildMidtermStudyExcel(
     horizons.market,
     horizons.sector,
     eventHorizonsSheet(payload),
-    pathSheet(payload, "market", "Market_Paths"),
-    pathSheet(payload, "sector", "Sector_Paths"),
+    pathSheet(payload, ["market"], "Market_Paths"),
+    pathSheet(payload, ["sector"], "Sector_Paths"),
     overlaySheet(payload),
+    horizons.kr,
+    pathSheet(payload, ["kr_market", "kr_sector"], "KR_Paths"),
   ];
+  const rawUs = rawSheet("Raw_US", raw, "spx", [...MARKET_SPECS, ...SECTOR_SPECS.map((s) => ({ id: s.id, label: `${s.label}(French)` }))]);
+  const rawKr = rawSheet("Raw_KR", raw, "kospi", [...KR_MARKET_SPECS, ...KR_SECTOR_SPECS]);
+  if (rawUs) sheets.push(rawUs);
+  if (rawKr) sheets.push(rawKr);
   return buildXlsx(sheets, {
     title: `US Midterm Event Study — ${meta.label}`,
     creator: "SavvyETF",
