@@ -513,8 +513,8 @@ export function buildXlsx(sheets: SheetSpec[], meta: WorkbookMeta): Buffer {
 
   const chartsSheetIdx = sheets.findIndex((s) => (s.charts || []).length);
   const activeTab = meta.activeSheet ?? (chartsSheetIdx >= 0 ? chartsSheetIdx : 0);
+  // No <fileVersion appName="xl"/>: a bare fileVersion makes Excel offer to repair the file.
   const wb = `${xmlHeader()}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">
-  <fileVersion appName="xl"/>
   <workbookPr/>
   <bookViews><workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="16000" activeTab="${activeTab}"/></bookViews>
   <sheets>
