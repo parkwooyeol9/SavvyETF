@@ -276,7 +276,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "etf",
     label: "ETF",
-    tabs: ["valuation", "etf", "etfflow", "countryetf", "themeetf", "aietf"],
+    tabs: ["valuation", "etf", "etfflow", "themeetf", "aietf"],
     nested: [
       {
         id: "weights",
@@ -342,7 +342,7 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** Leaf tabs kept routable but omitted from every nav (admin included). */
-export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "countryetf", "themeetf", "aietf", "graph"];
+export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "themeetf", "aietf", "graph"];
 
 /** Tabs hidden from the public nav until the header admin session is unlocked. */
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
@@ -468,6 +468,8 @@ export function subNavTab(id: ShellTabId): ShellTabId {
 
 export function canonicalShellTab(id: ShellTabId): ShellTabId {
   if (id === "nlphistory") return "nlp";
+  // 국가 ETF 탭은 ETF·DB 첫 화면(등락·거래량 시그널)으로 합쳤다. 옛 링크는 그쪽으로 연다.
+  if (id === "countryetf") return "etfdb";
   if (id === "kosdaq100") return "kosdaqactive";
   if (id === "aigov" || id === "aiinfra") return "infra";
   if (id === "round") return "heatpick";

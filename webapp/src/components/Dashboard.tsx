@@ -25,7 +25,6 @@ import {
   KosdaqActiveTab,
   RebalanceTab,
   IndexMonitorTab,
-  CountryEtfTab,
   GeoTab,
   KrMarketTab,
   LeverageEtfTab,
@@ -392,7 +391,6 @@ function DashboardInner({
       tab === "kosdaqactive" ||
       tab === "rebalance" ||
       tab === "indexmonitor" ||
-      tab === "countryetf" ||
       tab === "etf" ||
       tab === "minutepred" ||
       tab === "nlp" ||
@@ -600,8 +598,6 @@ function DashboardInner({
         <RebalanceTab />
       ) : tab === "indexmonitor" ? (
         <IndexMonitorTab />
-      ) : tab === "countryetf" ? (
-        <CountryEtfTab />
       ) : tab === "themeetf" ? (
         <ThemeEtfTab />
       ) : tab === "aipulse" ? (

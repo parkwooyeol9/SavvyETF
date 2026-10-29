@@ -7682,43 +7682,6 @@ a.guru-idea:hover .guru-idea-title {
   font-size: 0.72rem;
 }
 
-.country-etf-filters {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.country-etf-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-button.country-etf-card {
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
-  font: inherit;
-  color: inherit;
-}
-
-.country-etf-card-active {
-  border-color: #60a5fa !important;
-  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.35);
-}
-
-.country-etf-split-3 {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-@media (max-width: 1100px) {
-  .country-etf-split-3 {
-    grid-template-columns: 1fr;
-  }
-}
-
 .etf-ms-chips {
   display: flex;
   flex-wrap: wrap;
@@ -14034,6 +13997,173 @@ p.aa-note { padding-left: 0; }
 }
 @media (max-width: 760px) {
   .aipick-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ETF·DB 등락·거래량 시그널 */
+.etfu-views {
+  margin: 0.4rem 0 0.8rem;
+}
+.etfmv-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+.etfmv-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.etfmv-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.etfmv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.etfmv-ac {
+  margin: 0.7rem 0 0.2rem;
+}
+.etfmv-stats .up {
+  color: var(--accent-2);
+}
+.etfmv-stats .down {
+  color: #f87171;
+}
+.etfmv-asof {
+  font-size: 0.95rem;
+}
+.etfmv-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+.etfmv-list {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 0.65rem 0.75rem;
+  min-width: 0;
+}
+.etfmv-list.is-up {
+  border-top: 3px solid var(--accent-2);
+}
+.etfmv-list.is-down {
+  border-top: 3px solid #f87171;
+}
+.etfmv-list:not(.is-up):not(.is-down) {
+  border-top: 3px solid var(--warn);
+}
+.etfmv-list h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+}
+.etfmv-list h4 .meta-soft {
+  font-weight: 400;
+  font-size: 0.72rem;
+}
+.etfmv-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.etfmv-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid rgba(43, 54, 72, 0.6);
+}
+.etfmv-list li:first-child {
+  border-top: 0;
+}
+.etfmv-name {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.etfmv-name code {
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+.etfmv-n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etfmv-sub {
+  grid-column: 2;
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.etfmv-val {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.etfmv-val strong {
+  font-size: 0.85rem;
+}
+.etfmv-note {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+}
+.etfmv-groups {
+  margin-top: 1.1rem;
+}
+.etfmv-groups .etfdb-table-wrap {
+  margin-top: 0.5rem;
+  max-height: 520px;
+}
+.etfmv-table td {
+  white-space: nowrap;
+}
+.etfmv-bar-col {
+  width: 22%;
+  min-width: 90px;
+}
+.etfmv-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  background: rgba(143, 163, 184, 0.12);
+  border-radius: 4px;
+}
+.etfmv-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+}
+.etfmv-bar.pos i {
+  left: 50%;
+  background: var(--accent-2);
+}
+.etfmv-bar.neg i {
+  right: 50%;
+  background: #f87171;
+}
+@media (max-width: 900px) {
+  .etfmv-cols {
     grid-template-columns: 1fr;
   }
 }

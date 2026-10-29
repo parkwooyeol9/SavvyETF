@@ -47,6 +47,12 @@ export type EtfUniverseRow = {
   r3m?: number | null;
   r6m?: number | null;
   r1y?: number | null;
+  /** Last-session return (%), from the 20:10 overlay. */
+  r1d?: number | null;
+  /** Volume: last session / mean of the 20 sessions before the last 5. */
+  vr1?: number | null;
+  /** Volume: mean of the last 5 sessions / mean of the 20 before them. */
+  vr5?: number | null;
   vol?: number | null;
   shp?: number | null;
   gap?: number | null;

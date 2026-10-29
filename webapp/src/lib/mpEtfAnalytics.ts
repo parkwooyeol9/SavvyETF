@@ -509,7 +509,7 @@ async function acwiCountryWeights(): Promise<{ weights: Record<string, number>; 
   if (snap?.countries?.length) {
     return {
       weights: withOther(Object.fromEntries(snap.countries.filter((c) => c.key !== "Other").map((c) => [c.key, c.weight_pct]))),
-      source: `국가 ETF 탭 ACWI 스냅샷 (${snap.as_of})`,
+      source: `저장된 ACWI 국가비중 스냅샷 (${snap.as_of})`,
     };
   }
   return { weights: withOther(ACWI_COUNTRY_STATIC), source: "iShares ACWI 2026-09-28 스냅샷(대체값)" };

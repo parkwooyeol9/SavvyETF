@@ -142,8 +142,7 @@ export const DATA_CATALOG: DatasetSpec[] = [
     hotWindow: "티커별 latest + 일자 스냅샷",
     archive: "스냅샷 유지 (자동 삭제 없음)",
     volatile: false,
-    insight: "국가/지역 ETF 노출. 한국 ETF DB 국가 차원과 별 시계열",
-    viewTab: "countryetf",
+    insight: "국가 ETF 탭(2026-10 종료) 때 쌓인 미국 상장 국가 ETF 편입 스냅샷. 새로 쓰지 않고, MP 탭이 ACWI 국가비중 대체값으로만 읽음",
   },
   {
     id: "money_flow",

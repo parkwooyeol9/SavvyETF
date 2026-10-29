@@ -28,9 +28,13 @@ import {
  */
 
 const liveLoading = () => <p className="empty">실시간 화면을 불러오는 중…</p>;
+const EtfMoversPanel = dynamic(() => import("@/components/EtfMoversPanel"), {
+  loading: () => <p className="empty">시그널을 계산하는 중…</p>,
+});
 const EtfDbTab = dynamic(() => import("@/components/EtfDbTab"), { loading: liveLoading });
 const EtfDbUsTab = dynamic(() => import("@/components/EtfDbUsTab"), { loading: liveLoading });
 
+type View = "signal" | "universe";
 type Preset = "all" | "passive" | "overseas" | "active";
 type SortKey = "aum" | "r1y" | "r3m" | "ter" | "name";
 
@@ -69,6 +73,7 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
   const [sort, setSort] = useState<SortKey>("aum");
   const [limit, setLimit] = useState(200);
   const [live, setLive] = useState(false);
+  const [view, setView] = useState<View>("signal");
 
   useEffect(() => {
     try {
@@ -173,8 +178,9 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
         <div>
           <h2 className="kr-hero-title">ETF 유니버스 · 상장 시장별</h2>
           <p className="kr-note">
-            한국·미국·유럽(UCITS)·일본·홍콩·중국 상장 ETF 전수 · 자산군 / 투자지역 / GICS 업종 / 전략·테마 /
-            운용사 / 레버리지 / 패시브·액티브 · Refinitiv 스냅샷(SavvyDB) 기준
+            한국·미국·유럽(UCITS)·일본·홍콩·중국 상장 ETF 전수 · 권역 안에서 크게 오르내리거나 거래량이 붙은 ETF를
+            먼저 보여 주고, 자산군 / 투자지역 / 업종 / 전략·테마 분류표는 두 번째 화면에 둡니다 · Refinitiv
+            스냅샷(SavvyDB) + 평일 20:10 종가·거래량
           </p>
         </div>
         {market === "kr" || market === "us" ? (
@@ -209,8 +215,36 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
         })}
       </div>
 
+      {!live ? (
+        <div className="tabs etfu-views" role="tablist" aria-label="화면">
+          {(
+            [
+              ["signal", "등락·거래량 시그널"],
+              ["universe", "전체 분류표"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className={`tab-btn sub ${view === v ? "active" : ""}`}
+              onClick={() => setView(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {live ? (
         market === "kr" ? <EtfDbTab /> : <EtfDbUsTab />
+      ) : view === "signal" ? (
+        <>
+          {loading && (!file || file.market !== market) ? <p className="empty">ETF 유니버스를 불러오는 중…</p> : null}
+          {error ? <p className="error">{error}</p> : null}
+          {file && file.market === market ? <EtfMoversPanel market={market} file={file} rows={rows} /> : null}
+        </>
       ) : (
         <>
           {loading && (!file || file.market !== market) ? <p className="empty">ETF 유니버스를 불러오는 중…</p> : null}
