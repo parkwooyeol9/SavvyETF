@@ -77,7 +77,7 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
     } catch {
       /* storage blocked — keep default */
     }
-    fetch("/api/etf-universe")
+    fetch("/api/etf-universe?rev=20261029")
       .then((r) => r.json())
       .then((j: { markets?: EtfUniverseIndexEntry[] }) => setIndex(j.markets || []))
       .catch(() => setIndex([]));
@@ -87,7 +87,7 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
     let alive = true;
     setLoading(true);
     setError(null);
-    fetch(`/api/etf-universe?market=${market}`)
+    fetch(`/api/etf-universe?market=${market}&rev=20261029`)
       .then(async (r) => {
         const j = (await r.json()) as EtfUniverseFile;
         if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
