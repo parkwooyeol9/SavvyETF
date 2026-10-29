@@ -141,40 +141,39 @@ def is_market_wide_noise(title: str, name: str = "") -> bool:
     return any(tok in text for tok in MARKET_CTX)
 
 
+# Pulls a lone keyword toward zero: one hit = ±50, two same-sign hits = ±67.
+SCORE_SHRINK = 1.0
+
+
+def _en_term_re(word: str) -> re.Pattern[str]:
+    return re.compile(rf"\b{re.escape(word)}(?:s|es|ed|ing)?\b")
+
+
+_EN_TERMS = {w: _en_term_re(w) for w in (*POS_EN, *NEG_EN)}
+
+
 def score_text(text: str, name: str = "") -> tuple[float, list[str]]:
-    raw = (text or "").lower()
+    """Keep in sync with webapp/src/lib/nlpPulse.ts scoreText."""
+    text = text or ""
+    raw = text.lower()
     if is_market_wide_noise(text, name):
         return 0.0, []
     skip_generic = any(tok in text for tok in MARKET_CTX)
-    matched: list[str] = []
-    pos = 0
-    neg = 0
-    for w in POS_KO:
-        if skip_generic and w in GENERIC_DIR:
-            continue
-        if w in text:
-            pos += 1
-            matched.append(w)
-    for w in NEG_KO:
-        if skip_generic and w in GENERIC_DIR:
-            continue
-        if w in text:
-            neg += 1
-            matched.append(w)
-    for w in POS_EN:
-        if skip_generic and w in GENERIC_DIR:
-            continue
-        if w in raw:
-            pos += 1
-            matched.append(w)
-    for w in NEG_EN:
-        if skip_generic and w in GENERIC_DIR:
-            continue
-        if w in raw:
-            neg += 1
-            matched.append(w)
+    hits: list[tuple[str, int]] = []
+    for words, sign, ko in ((POS_KO, 1, True), (NEG_KO, -1, True), (POS_EN, 1, False), (NEG_EN, -1, False)):
+        for w in words:
+            if skip_generic and w in GENERIC_DIR:
+                continue
+            found = (w in text) if ko else bool(_EN_TERMS[w].search(raw))
+            if found and all(w != h for h, _ in hits):
+                hits.append((w, sign))
+    # "흑자전환" also contains "흑자", "적자확대" contains "확대": count only the longest term.
+    hits = [(w, sg) for w, sg in hits if not any(w != o and w in o for o, _ in hits)]
+    pos = sum(1 for _, sg in hits if sg > 0)
+    neg = sum(1 for _, sg in hits if sg < 0)
+    matched = [w for w, _ in hits]
     denom = pos + neg
-    score = _clip(((pos - neg) / denom) * 100.0) if denom else 0.0
+    score = _clip(((pos - neg) / (denom + SCORE_SHRINK)) * 100.0) if denom else 0.0
     uniq: list[str] = []
     for w in matched:
         if w not in uniq:
@@ -425,7 +424,7 @@ def restore_seed_into_local() -> int:
         if not spec:
             continue
         prev = local.get(code) or {}
-        merged = merge_days(list(prev.get("days") or []), list(seeded.get("days") or []))
+        merged = merge_days(list(prev.get("days") or []), list(seeded.get("days") or []), name=spec["name"])
         if len(merged) <= len(prev.get("days") or []):
             continue
         payload = build_name_payload(spec, merged)
@@ -448,7 +447,12 @@ def _compact_day_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _merge_day_file(day: str, incoming: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _merge_day_file(
+    day: str,
+    incoming: dict[str, dict[str, Any]],
+    *,
+    replace: bool = False,
+) -> dict[str, Any]:
     path = DAYS_DIR / f"{day}.json"
     local = _read_json(path) if path.exists() else None
     remote = None
@@ -467,7 +471,7 @@ def _merge_day_file(day: str, incoming: dict[str, dict[str, Any]]) -> dict[str, 
                 names[str(code)] = row
     for code, row in incoming.items():
         prev = names.get(code)
-        if not prev or int(row.get("n") or 0) >= int(prev.get("n") or 0):
+        if replace or not prev or int(row.get("n") or 0) >= int(prev.get("n") or 0):
             names[code] = row
     payload = {
         "date": day,
@@ -490,8 +494,12 @@ def deposit_day_cross_sections(
     payloads: list[dict[str, Any]],
     *,
     only_dates: set[str] | None = None,
+    replace: bool = False,
 ) -> int:
-    """Write one immutable cross-section per calendar day. Existing names are merged, never dropped."""
+    """Write one cross-section per calendar day. Existing names are merged, never dropped.
+
+    replace=True lets a re-scored row overwrite a stored one even when it holds fewer titles.
+    """
     by_day: dict[str, dict[str, dict[str, Any]]] = {}
     for payload in payloads:
         code = str(payload.get("code") or "")
@@ -503,7 +511,7 @@ def deposit_day_cross_sections(
                 continue
             by_day.setdefault(day, {})[code] = _compact_day_row(row)
     for day, incoming in sorted(by_day.items()):
-        _merge_day_file(day, incoming)
+        _merge_day_file(day, incoming, replace=replace)
     return len(by_day)
 
 
@@ -683,6 +691,9 @@ def crawl_name_headlines(
             title = (row.get("title") or "").strip()
             if not title or title in seen:
                 continue
+            # Naver matches the query in the body too; keep only titles about this name.
+            if not title_matches_name(spec["name"], title):
+                continue
             if is_market_wide_noise(title, spec["name"]):
                 continue
             score, matched = score_text(title, spec["name"])
@@ -703,22 +714,33 @@ def crawl_name_headlines(
 
 
 def _pick_day_headlines(rows: list[dict[str, Any]], cap: int = MAX_HEADLINES_PER_DAY) -> list[dict[str, Any]]:
-    ranked = sorted(
-        rows,
-        key=lambda r: (abs(float(r.get("score") or 0)), str(r.get("title") or "")),
-        reverse=True,
-    )
-    return ranked[: max(1, cap)]
+    # Keep crawl order (newest first). Picking the most polar titles dropped the
+    # neutral ones and pushed every day score toward ±100.
+    return rows[: max(1, cap)]
+
+
+def _rescored_headline(row: dict[str, Any], name: str | None) -> dict[str, Any] | None:
+    """Re-score from the title so stored rows follow the current lexicon and name filter."""
+    if not name:
+        return row
+    title = str(row.get("title") or "")
+    if not title or not title_matches_name(name, title):
+        return None
+    score, matched = score_text(title, name)
+    return {**row, "score": round(score, 1), "matched": matched}
 
 
 def aggregate_days(
     headlines: list[dict[str, Any]],
     *,
     cap: int = MAX_HEADLINES_PER_DAY,
+    name: str | None = None,
 ) -> list[dict[str, Any]]:
     by_day: dict[str, list[dict[str, Any]]] = {}
     for row in headlines:
-        by_day.setdefault(str(row.get("date") or ""), []).append(row)
+        kept = _rescored_headline(row, name)
+        if kept is not None:
+            by_day.setdefault(str(kept.get("date") or ""), []).append(kept)
     days: list[dict[str, Any]] = []
     for day in sorted(by_day):
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
@@ -758,7 +780,26 @@ def aggregate_days(
     return days
 
 
-def merge_days(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _renormalize_day(row: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """Rebuild a day that still holds all its titles; compacted days keep their stored score."""
+    headlines = list(row.get("headlines") or [])
+    if not headlines or len(headlines) < int(row.get("n") or 0):
+        return row
+    day = str(row.get("date") or "")
+    rebuilt = aggregate_days(
+        [{**h, "date": day} for h in headlines],
+        cap=max(MAX_HEADLINES_PER_DAY, len(headlines)),
+        name=name,
+    )
+    return rebuilt[0] if rebuilt else None
+
+
+def merge_days(
+    old: list[dict[str, Any]],
+    new: list[dict[str, Any]],
+    *,
+    name: str | None = None,
+) -> list[dict[str, Any]]:
     by: dict[str, dict[str, Any]] = {}
     for row in old:
         day = str(row.get("date") or "")
@@ -792,9 +833,19 @@ def merge_days(old: list[dict[str, Any]], new: list[dict[str, Any]]) -> list[dic
                 for h in combined
             ],
             cap=max(MAX_HEADLINES_PER_DAY, min(MAX_HEADLINES_TOP, len(combined))),
+            name=name,
         )
         if rebuilt:
             by[day] = rebuilt[0]
+        else:
+            by.pop(day, None)
+    if name:
+        out = []
+        for k in sorted(by):
+            row = _renormalize_day(by[k], name)
+            if row is not None:
+                out.append(row)
+        return out
     return [by[k] for k in sorted(by)]
 
 
@@ -1027,7 +1078,7 @@ def _load_existing(code: str) -> dict[str, Any] | None:
         if spec:
             return build_name_payload(
                 spec,
-                merge_days(list(remote.get("days") or []), list(local.get("days") or [])),
+                merge_days(list(remote.get("days") or []), list(local.get("days") or []), name=spec["name"]),
             )
         if int(remote.get("n_days") or 0) > int(local.get("n_days") or 0):
             return remote
@@ -1068,7 +1119,9 @@ def hydrate_local_from_r2() -> int:
             if spec:
                 remote = build_name_payload(
                     spec,
-                    merge_days(list(remote.get("days") or []), list(local_p.get("days") or [])),
+                    merge_days(
+                        list(remote.get("days") or []), list(local_p.get("days") or []), name=spec["name"]
+                    ),
                 )
         _write_json(_local_path(code), remote)
         local[code] = remote
@@ -1101,7 +1154,7 @@ def save_payload(payload: dict[str, Any]) -> None:
         if spec:
             payload = build_name_payload(
                 spec,
-                merge_days(list(remote.get("days") or []), list(payload.get("days") or [])),
+                merge_days(list(remote.get("days") or []), list(payload.get("days") or []), name=spec["name"]),
             )
         elif int(remote.get("n_days") or 0) > int(payload.get("n_days") or 0):
             return
@@ -1122,10 +1175,10 @@ def backfill_one(
     headlines = crawl_google_rss(spec)
     if not google_only:
         headlines.extend(crawl_name_headlines(spec, start, end, stride=naver_stride))
-    days = aggregate_days(headlines, cap=MAX_HEADLINES_PER_DAY)
+    days = aggregate_days(headlines, cap=MAX_HEADLINES_PER_DAY, name=spec["name"])
     existing = _load_existing(spec["code"])
     if existing and isinstance(existing.get("days"), list):
-        days = merge_days(existing["days"], days)
+        days = merge_days(existing["days"], days, name=spec["name"])
     payload = build_name_payload(spec, days)
     save_payload(payload)
     return payload
@@ -1253,8 +1306,8 @@ def run_today_append() -> dict[str, Any]:
             if need
             else []
         )
-        new_days = aggregate_days(headlines, cap=cap) if headlines else []
-        merged = merge_days(prev.get("days") or [], new_days)
+        new_days = aggregate_days(headlines, cap=cap, name=spec["name"]) if headlines else []
+        merged = merge_days(prev.get("days") or [], new_days, name=spec["name"])
         payload = build_name_payload(spec, merged)
         save_payload(payload)
         payloads.append(payload)
@@ -1369,12 +1422,47 @@ def push_local_to_r2() -> dict[str, Any]:
     return index
 
 
+def rescore_archive(*, recent_days: int = 60) -> dict[str, Any]:
+    """Re-score stored titles with the current lexicon and name filter, then republish.
+
+    Days that still hold all their titles are rebuilt; compacted days (older than
+    KEEP_FULL_HEADLINES_DAYS) keep their stored score. Only the last `recent_days`
+    day cross-sections are rewritten.
+    """
+    hydrate_local_from_r2()
+    existing = load_local_payloads()
+    if not existing:
+        raise SystemExit("no local nlp_history payloads to rescore")
+    payloads: list[dict[str, Any]] = []
+    for spec in specs_from_payloads(existing):
+        prev = existing.get(spec["code"]) or {}
+        days = merge_days(list(prev.get("days") or []), [], name=spec["name"])
+        payload = build_name_payload(spec, days)
+        save_payload(payload)
+        payloads.append(_read_json(_local_path(spec["code"])) or payload)
+        print(f"  rescore {spec['code']} {spec['name']}: {payload['n_days']} days", flush=True)
+    payloads.sort(key=lambda r: (0 if r.get("market") == "kospi" else 1, str(r.get("code"))))
+    index = build_index(payloads)
+    save_index(index)
+    since = (datetime.now(KST).date() - timedelta(days=recent_days)).isoformat()
+    dates = {
+        str(d.get("date"))
+        for p in payloads
+        for d in (p.get("days") or [])
+        if str(d.get("date") or "") >= since
+    }
+    deposit_day_cross_sections(payloads, only_dates=dates, replace=True)
+    print(f"rescored {len(payloads)} names · {len(dates)} day files", flush=True)
+    return index
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="NLP news sentiment history")
     parser.add_argument("--backfill", action="store_true")
     parser.add_argument("--today", action="store_true")
     parser.add_argument("--push-local", action="store_true")
     parser.add_argument("--restore-seed", action="store_true")
+    parser.add_argument("--rescore", action="store_true", help="re-score stored titles and republish")
     parser.add_argument("--google-only", action="store_true")
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--market", choices=["all", "kosdaq", "kospi"], default="all")
@@ -1389,6 +1477,9 @@ def main() -> None:
         return
     if args.push_local:
         push_local_to_r2()
+        return
+    if args.rescore:
+        rescore_archive()
         return
     if args.today and not args.backfill:
         run_today_append()

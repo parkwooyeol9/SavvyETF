@@ -187,10 +187,12 @@ export default function NlpHistoryPanel({
 
   const hasPrice = chartRows.some((r) => r.close != null);
   const displayScore = series?.recent_score ?? series?.last_score ?? null;
+  const fmtR = (r: number | null, n: number) =>
+    r == null ? `표본 ${n}일 부족` : `r ${r >= 0 ? "+" : ""}${r.toFixed(2)} (n=${n}) ${nlpCorrLabel(r)}`;
   const corrText =
-    corr.r == null
+    corr.r == null && corr.rNext == null
       ? `표본 ${corr.n}일 · ${nlpCorrLabel(null)}`
-      : `r ${corr.r >= 0 ? "+" : ""}${corr.r.toFixed(2)} (n=${corr.n}) · ${nlpCorrLabel(corr.r)}`;
+      : `점수·당일 수익률 ${fmtR(corr.r, corr.n)} · 다음날 수익률 ${fmtR(corr.rNext, corr.nNext)}`;
 
   return (
     <>

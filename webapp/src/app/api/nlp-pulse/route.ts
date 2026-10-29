@@ -594,7 +594,7 @@ async function buildPayload(): Promise<NlpPulsePayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("nlp-pulse:v4", 1_080_000, 2_400_000, buildPayload);
+    const payload = await withServerCache("nlp-pulse:v5", 1_080_000, 2_400_000, buildPayload);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahooSlow") },
     });

@@ -39,7 +39,7 @@ async function fetchQuote(ticker: string): Promise<ChainQuote> {
   const symbol = toYahooChartSymbol(ticker);
   const url =
     `https://query1.finance.yahoo.com/v8/finance/chart/` +
-    `${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
+    `${encodeURIComponent(symbol)}?range=1mo&interval=1d&includePrePost=false`;
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     cache: "no-store",
@@ -48,22 +48,21 @@ async function fetchQuote(ticker: string): Promise<ChainQuote> {
   const payload = (await res.json()) as YahooChart;
   const result = payload.chart?.result?.[0];
   if (!result) return { price: null, ret1d: null, ret5d: null };
-  const closes = (result.indicators?.quote?.[0]?.close || []).filter(
-    (v): v is number => v != null && Number.isFinite(v) && v > 0,
-  );
+  const raw = result.indicators?.quote?.[0]?.close || [];
+  const closes = raw.filter((v): v is number => v != null && Number.isFinite(v) && v > 0);
   const price =
     result.meta?.regularMarketPrice ?? (closes.length ? closes[closes.length - 1]! : null);
-  const prev =
-    result.meta?.chartPreviousClose ??
-    result.meta?.previousClose ??
-    (closes.length >= 2 ? closes[closes.length - 2]! : null);
-  const first = closes.length ? closes[0]! : null;
+  // chartPreviousClose is the close before the range starts, not yesterday's close.
+  // The last daily bar is the latest session; if its close is still empty, the last
+  // valid close is already the previous session.
+  const lastBarOpen = raw.length > 0 && raw[raw.length - 1] == null;
+  const back = lastBarOpen ? 1 : 2;
+  const prev = closes.length >= back ? closes[closes.length - back]! : null;
+  const base5 = closes.length >= back + 4 ? closes[closes.length - back - 4]! : null;
   const ret1d =
     price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
   const ret5d =
-    price != null && first != null && first > 0 && closes.length >= 3
-      ? ((price - first) / first) * 100
-      : null;
+    price != null && base5 != null && base5 > 0 ? ((price - base5) / base5) * 100 : null;
   return { price, ret1d, ret5d };
 }
 
@@ -119,7 +118,7 @@ async function buildPayload(): Promise<ChainPayload> {
 
 export async function GET() {
   try {
-    const payload = await withServerCache("chain:v2", 180_000, 540_000, buildPayload);
+    const payload = await withServerCache("chain:v3", 180_000, 540_000, buildPayload);
     return NextResponse.json(payload, {
       headers: { "Cache-Control": cdnCacheHeader("yahoo") },
     });

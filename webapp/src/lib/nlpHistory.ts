@@ -335,18 +335,9 @@ export function nlpMapScore(name: NlpHistoryName): number | null {
   return name.last_score;
 }
 
-export function nlpPearsonStats(rows: NlpOverlayRow[]): { r: number | null; n: number } {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const row of rows) {
-    if (!row.news || row.close == null || row.score == null || !Number.isFinite(row.close) || !Number.isFinite(row.score)) {
-      continue;
-    }
-    xs.push(row.score);
-    ys.push(row.close);
-  }
+function pearson(xs: number[], ys: number[]): number | null {
   const n = xs.length;
-  if (n < 12) return { r: null, n };
+  if (n < 12) return null;
   const mx = xs.reduce((s, v) => s + v, 0) / n;
   const my = ys.reduce((s, v) => s + v, 0) / n;
   let num = 0;
@@ -360,8 +351,43 @@ export function nlpPearsonStats(rows: NlpOverlayRow[]): { r: number | null; n: n
     dy += b * b;
   }
   const den = Math.sqrt(dx * dy);
-  if (!den) return { r: null, n };
-  return { r: num / den, n };
+  return den ? num / den : null;
+}
+
+export type NlpCorrStats = {
+  /** News score vs that session's return (headlines often describe the move). */
+  r: number | null;
+  n: number;
+  /** News score vs the next session's return. */
+  rNext: number | null;
+  nNext: number;
+};
+
+/**
+ * Correlates the day's news score with returns, not price levels: two trending
+ * series correlate with anything, so a level r says nothing about the news.
+ */
+export function nlpPearsonStats(rows: NlpOverlayRow[]): NlpCorrStats {
+  const sx: number[] = [];
+  const sy: number[] = [];
+  const nx: number[] = [];
+  const ny: number[] = [];
+  const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v > 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (!row.news || row.score == null || !Number.isFinite(row.score) || !ok(row.close)) continue;
+    const prev = rows[i - 1]?.close;
+    const next = rows[i + 1]?.close;
+    if (ok(prev)) {
+      sx.push(row.score);
+      sy.push(row.close / prev - 1);
+    }
+    if (ok(next)) {
+      nx.push(row.score);
+      ny.push(next / row.close - 1);
+    }
+  }
+  return { r: pearson(sx, sy), n: sx.length, rNext: pearson(nx, ny), nNext: nx.length };
 }
 
 export function nlpPearson(rows: NlpOverlayRow[]): number | null {

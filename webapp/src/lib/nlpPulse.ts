@@ -286,46 +286,44 @@ export function isMarketWideNoise(text: string, name = ""): boolean {
   return MARKET_CTX.some((tok) => text.includes(tok));
 }
 
+/** Pulls a lone keyword toward zero: one hit = ±50, two same-sign hits = ±67. */
+const SCORE_SHRINK = 1;
+
+const EN_TERMS = new Map(
+  [...POS_EN, ...NEG_EN].map((w) => [
+    w,
+    new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:s|es|ed|ing)?\\b`),
+  ]),
+);
+
+/** Keep in sync with 02_시황/nlp_history.py score_text. */
 export function scoreText(text: string, name = ""): { score: number; matched: string[] } {
   const raw = text.toLowerCase();
   if (isMarketWideNoise(text, name)) {
     return { score: 0, matched: [] };
   }
   const skipGeneric = MARKET_CTX.some((tok) => text.includes(tok));
-  const matched: string[] = [];
-  let pos = 0;
-  let neg = 0;
-  for (const w of POS_KO) {
-    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
-    if (text.includes(w)) {
-      pos += 1;
-      matched.push(w);
+  let hits: Array<[string, number]> = [];
+  const groups: Array<[string[], number, boolean]> = [
+    [POS_KO, 1, true],
+    [NEG_KO, -1, true],
+    [POS_EN, 1, false],
+    [NEG_EN, -1, false],
+  ];
+  for (const [words, sign, ko] of groups) {
+    for (const w of words) {
+      if (skipGeneric && GENERIC_DIR.includes(w)) continue;
+      const found = ko ? text.includes(w) : Boolean(EN_TERMS.get(w)?.test(raw));
+      if (found && !hits.some(([h]) => h === w)) hits.push([w, sign]);
     }
   }
-  for (const w of NEG_KO) {
-    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
-    if (text.includes(w)) {
-      neg += 1;
-      matched.push(w);
-    }
-  }
-  for (const w of POS_EN) {
-    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
-    if (raw.includes(w)) {
-      pos += 1;
-      matched.push(w);
-    }
-  }
-  for (const w of NEG_EN) {
-    if (skipGeneric && GENERIC_DIR.includes(w)) continue;
-    if (raw.includes(w)) {
-      neg += 1;
-      matched.push(w);
-    }
-  }
+  // "흑자전환" also contains "흑자", "적자확대" contains "확대": count only the longest term.
+  hits = hits.filter(([w]) => !hits.some(([o]) => o !== w && o.includes(w)));
+  const pos = hits.filter(([, s]) => s > 0).length;
+  const neg = hits.filter(([, s]) => s < 0).length;
   const denom = pos + neg;
-  const score = denom ? clip(((pos - neg) / denom) * 100, -100, 100) : 0;
-  return { score, matched: [...new Set(matched)].slice(0, 6) };
+  const score = denom ? clip(((pos - neg) / (denom + SCORE_SHRINK)) * 100, -100, 100) : 0;
+  return { score, matched: hits.map(([w]) => w).slice(0, 6) };
 }
 
 export function isCallHeadline(text: string): boolean {
