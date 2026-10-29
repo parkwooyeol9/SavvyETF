@@ -28,6 +28,20 @@ DEFAULT_MINUTE_KST = 10
 DEFAULT_POLL_SECONDS = 60
 DEFAULT_CATCHUP_MINUTES = 40
 DEFAULT_DEADLINE_SECONDS = 25 * 60
+# A failed run used to retry every poll for the whole catch-up window.
+# The try key ends in "_slot", so it is mirrored to R2 and survives a restart.
+MAX_ATTEMPTS_PER_SLOT = 2
+
+
+def _attempts_used(slot: str) -> int:
+    raw = str(_load_state().get("last_etf_universe_px_try_slot") or "")
+    tried_slot, _, count = raw.rpartition("#")
+    if tried_slot != slot:
+        return 0
+    try:
+        return int(count)
+    except ValueError:
+        return 0
 
 
 def _schedule_time_kst() -> tuple[int, int]:
@@ -117,9 +131,16 @@ def start_etf_universe_px_scheduler() -> None:
                     print(f"Scheduled etf_universe_px skipped ({slot}): weekend")
                     last_slot = slot
                     update_scheduler_state(last_etf_universe_px_slot=slot)
-                elif slot and run_scheduled_etf_universe_px():
+                elif slot and _attempts_used(slot) >= MAX_ATTEMPTS_PER_SLOT:
+                    print(f"Scheduled etf_universe_px gave up ({slot}): {MAX_ATTEMPTS_PER_SLOT} attempts used")
                     last_slot = slot
                     update_scheduler_state(last_etf_universe_px_slot=slot)
+                elif slot:
+                    # Count the attempt before running: an out-of-memory restart never reaches the end.
+                    update_scheduler_state(last_etf_universe_px_try_slot=f"{slot}#{_attempts_used(slot) + 1}")
+                    if run_scheduled_etf_universe_px():
+                        last_slot = slot
+                        update_scheduler_state(last_etf_universe_px_slot=slot)
             except Exception as exc:
                 print(f"etf_universe_px scheduler loop error: {exc}")
             time.sleep(DEFAULT_POLL_SECONDS)
