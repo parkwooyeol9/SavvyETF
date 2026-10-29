@@ -4853,7 +4853,27 @@ button.community-post-title {
 }
 
 .etfu-asof {
-  font-size: 0.95rem;
+  display: grid;
+  gap: 0.1rem;
+  margin: 0.2rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.etfu-asof > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.etfu-asof dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.etfu-asof dd {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 650;
 }
 
 .etfu-cats {

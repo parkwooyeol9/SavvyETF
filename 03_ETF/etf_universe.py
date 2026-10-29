@@ -38,6 +38,13 @@ XLSX_DIR = REPO / "00_exports" / "etf_universe"
 JSON_DIR = REPO / "webapp" / "src" / "data" / "etfUniverse"
 
 VALID_FTYPE = {"Equity", "Bond", "Alternatives", "Commodity", "Mixed Assets", "Money Market", "Other"}
+# Refinitiv sometimes fails every fund field for a listing ("Unable to collect data…"), mostly small or new
+# ETFs (US 2026-10-28: 969 rows, sheet saved while the add-in was paused). Those rows are kept when the
+# Refinitiv or Datastream name says ETF/ETN/ETP or a crypto/metal trust; BDCs, SPACs and companies still drop.
+ETF_NAME_RE = re.compile(
+    r"\bET[FNP]s?\b|Exchange[- ]Traded|\b(Bitcoin|Ether(eum)?|Solana|XRP|Crypto|Dogecoin|Litecoin|Gold|Silver)\b.*\bTrust\b",
+    re.I,
+)
 
 # ─────────────────────────────── taxonomy ───────────────────────────────
 
@@ -400,14 +407,21 @@ def load_refinitiv(path: Path, sheet: str, lay: dict, home_region: str, extra: d
             dropped["OTC(.PK)"] += 1
             continue
         ftype = text(r[lay["ftype"]])
+        no_ftype = False
         if ftype not in VALID_FTYPE:
-            dropped["Refinitiv 펀드유형 없음(ETF 아님·미수집)"] += 1
-            continue
+            names = " / ".join(s for s in (text(r[lay["name"]]), text(r[lay["name2"]]) if "name2" in lay else None) if s)
+            if ftype is not None or not ETF_NAME_RE.search(names):
+                dropped["펀드유형 없음·이름도 ETF 아님(BDC·스팩·회사 등)"] += 1
+                continue
+            no_ftype = True
         aum = num(r[lay["aum"]])
         if not aum or aum <= 0:
             dropped["시가총액 없음"] += 1
             continue
         name = text(r[lay["name"]])
+        if no_ftype and name and not ETF_NAME_RE.search(name):
+            # Refinitiv returned the ETN issuer ("Jpmorgan Chase Financial Company LLC") → Datastream product name
+            name = None
         if not name or re.match(r"Japan Shell ETF|.*Securities Holdings", name):
             # Refinitiv placeholder ("Japan Shell ETF 057") or issuer-company name → Datastream product name
             name = text(r[lay.get("name2", lay["name"])]) or name or ric
@@ -425,7 +439,10 @@ def load_refinitiv(path: Path, sheet: str, lay: dict, home_region: str, extra: d
             adv = adv / lay["adv_div"]
         rec.update({
             "t": ticker or ric.split(".")[0],
-            "iss": issuer_of(name, company),
+            # Datastream short names ("STE.STR.SPDR S&P KENSHO…", "SMART ESG 30 … ETN") have no usable first word
+            "iss": (issuer_of(name.replace("STE.STR.", "SPDR "), company)
+                    if not (no_ftype and name.isupper()) or any(name.replace("STE.STR.", "SPDR ").lower().startswith(k.lower()) for k, _ in ISSUER_PREFIX)
+                    else None),
             "ccy": text(r[lay["ccy"]]) if "ccy" in lay else lay.get("ccy_const"),
             "ld": _date(r[lay["listed"]]) if "listed" in lay else None,
             "ter": num(r[lay["ter"]]),
@@ -441,6 +458,8 @@ def load_refinitiv(path: Path, sheet: str, lay: dict, home_region: str, extra: d
         })
         if "div" in lay:
             rec["dv"] = num(r[lay["div"]])
+        if no_ftype:
+            rec["nf"] = 1  # fund type / region / sector not collected — classified from the name only
         if extra:
             rec.update(extra)
         out.append(rec)
@@ -780,7 +799,7 @@ def build_workbook(key, recs, stamp, dropped, out_path):
     note = wb.create_sheet("기준·주석")
     note["A1"] = "기준 및 주석"
     note["A1"].font = TITLE_FONT
-    rows = notes_for(key, stamp, dropped)
+    rows = notes_for(key, stamp, dropped, sum(1 for r in recs if r.get("nf")))
     for i, (k, v) in enumerate(rows, 3):
         note.cell(i, 1, k).font = BOLD_FONT
         note.cell(i, 2, v).font = BODY_FONT
@@ -791,7 +810,7 @@ def build_workbook(key, recs, stamp, dropped, out_path):
     wb.save(out_path)
 
 
-def notes_for(key, stamp, dropped):
+def notes_for(key, stamp, dropped, n_no_ftype=0):
     m = MARKETS[key]
     sheets = "Update_260813" if key == "kr" else ", ".join(s for s, _ in m["sheets"])
     rows = [
@@ -810,6 +829,9 @@ def notes_for(key, stamp, dropped):
         rows.append(("미국 액티브 주의", "미국 액티브 ETF는 종목명에 'Active'를 쓰지 않는 경우가 많아(예: Dimensional·Avantis·JPMorgan 계열) 이 규칙으로는 액티브가 과소 집계됩니다."))
     if key == "eu":
         rows.append(("유럽 범위", "아일랜드·룩셈부르크 설정 UCITS ETF. 원본에 대표 상장 RIC 하나씩만 있어 거래소는 그 RIC 기준"))
+    if n_no_ftype:
+        rows.append(("유형 미수집 포함", f"Refinitiv가 펀드유형·지역·분류를 못 받은 {n_no_ftype:,}종은 이름에 ETF·ETN·ETP(또는 코인·금속 신탁)가 있으면 포함. "
+                     "자산군·지역은 종목명으로만 추정했고 표에 '분류 추정'으로 표시"))
     if dropped:
         rows.append(("제외", " · ".join(f"{k} {v:,}건" for k, v in dropped.items())))
     return rows
@@ -827,7 +849,7 @@ def round_rec(rec):
 
 
 JSON_KEYS = ["t", "n", "iss", "ex", "dom", "scope", "reg", "ac", "sec", "st", "lev", "act", "hd", "bm", "ccy", "ld", "ter",
-             "aum", "adv", "r1w", "r1m", "r3m", "r6m", "r1y", "vol", "shp", "gap", "te", "mdd", "dv"]
+             "aum", "adv", "r1w", "r1m", "r3m", "r6m", "r1y", "vol", "shp", "gap", "te", "mdd", "dv", "nf"]
 
 
 def write_json(key, recs, stamp, dropped):
@@ -839,7 +861,7 @@ def write_json(key, recs, stamp, dropped):
         "ok": True, "market": key, "label": m["label"], "as_of": stamp, "unit": m["unit"], "adv_unit": m["adv_unit"],
         "count": len(recs), "total_aum": round(sum(r["aum"] or 0 for r in recs), 1),
         "source": f"SavvyDB/ETF_DB/{m['file']}", "dropped": dropped,
-        "notes": [f"{k}: {v}" for k, v in notes_for(key, stamp, dropped)],
+        "notes": [f"{k}: {v}" for k, v in notes_for(key, stamp, dropped, sum(1 for r in recs if r.get("nf")))],
         "cols": cols, "rows": rows,
     }
     JSON_DIR.mkdir(parents=True, exist_ok=True)

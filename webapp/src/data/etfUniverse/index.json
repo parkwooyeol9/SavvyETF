@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-28T16:19:56",
+ "generated_at": "2026-10-29T09:17:32",
  "markets": [
   {
    "market": "kr",
@@ -21,10 +21,10 @@
    "label": "미국",
    "as_of": "2026-10-28 15:38 (파일 저장 시각)",
    "unit": "$M",
-   "count": 4335,
-   "total_aum": 16383309.9,
-   "passive_count": 4209,
-   "passive_aum": 16128458.9,
+   "count": 5054,
+   "total_aum": 16387988.5,
+   "passive_count": 4917,
+   "passive_aum": 16133058.1,
    "top": [
     "Vanguard 500 Index Fund",
     "iShares Core S&P 500 ETF",
@@ -36,10 +36,10 @@
    "label": "유럽",
    "as_of": "2026-10-28 15:38 (파일 저장 시각)",
    "unit": "$M",
-   "count": 1613,
-   "total_aum": 2344722.3,
-   "passive_count": 1598,
-   "passive_aum": 2335961.8,
+   "count": 1618,
+   "total_aum": 2344902.0,
+   "passive_count": 1603,
+   "passive_aum": 2336141.4,
    "top": [
     "iShares Core S&P 500 UCITS ETF USD (Acc)",
     "iShares Core MSCI World UCITS ETF USD (Acc)",
@@ -51,10 +51,10 @@
    "label": "일본",
    "as_of": "2026-10-28 15:38 (파일 저장 시각)",
    "unit": "$M",
-   "count": 421,
-   "total_aum": 877344.4,
-   "passive_count": 412,
-   "passive_aum": 877075.9,
+   "count": 430,
+   "total_aum": 877715.2,
+   "passive_count": 421,
+   "passive_aum": 877446.6,
    "top": [
     "Nomura NF TOPIX ETF",
     "Nomura NF Nikkei 225 ETF",

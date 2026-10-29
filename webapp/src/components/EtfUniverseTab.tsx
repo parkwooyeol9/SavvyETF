@@ -7,6 +7,7 @@ import {
   DIM_LABEL,
   ETF_UNIVERSE_MARKETS,
   MARKET_LABEL,
+  asOfDay,
   decodeRows,
   dimValue,
   fmtAum,
@@ -230,11 +231,23 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
                   <div className="etfdb-stat-v">{totalAum ? fmtPct((100 * passiveAum) / totalAum, 1, false) : "—"}</div>
                 </div>
                 <div>
-                  <div className="etfdb-stat-k">기준</div>
-                  <div className="etfdb-stat-v etfu-asof">{file.as_of}</div>
-                  {file.returns_as_of ? (
-                    <div className="meta-soft">수익률 {file.returns_as_of}</div>
-                  ) : null}
+                  <div className="etfdb-stat-k">기준일</div>
+                  <dl className="etfu-asof">
+                    <div title={`Refinitiv 스냅샷 · ${file.as_of}`}>
+                      <dt>순자산·분류</dt>
+                      <dd>{asOfDay(file.as_of)}</dd>
+                    </div>
+                    <div
+                      title={
+                        file.returns_as_of
+                          ? `${file.returns_source || "Yahoo 종가"} · 평일 20:10(KST)에 갱신`
+                          : "일별 종가 갱신 전이라 스냅샷 수익률을 보여 줍니다"
+                      }
+                    >
+                      <dt>수익률</dt>
+                      <dd>{file.returns_as_of ? `${file.returns_as_of} 종가` : `${asOfDay(file.as_of)} 스냅샷`}</dd>
+                    </div>
+                  </dl>
                 </div>
               </div>
 
@@ -350,6 +363,11 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
                               {r.lev && r.lev !== "일반" ? <span className="etfu-tag warn">{r.lev}</span> : null}
                               {r.act ? <span className="etfu-tag">액티브</span> : null}
                               {r.hd ? <span className="etfu-tag">H</span> : null}
+                              {r.nf ? (
+                                <span className="etfu-tag" title="Refinitiv 유형·지역 미수집 — 종목명으로 분류를 추정">
+                                  분류 추정
+                                </span>
+                              ) : null}
                             </td>
                             <td className="meta-soft">{r.iss || "—"}</td>
                             <td>{r.reg || "—"}</td>

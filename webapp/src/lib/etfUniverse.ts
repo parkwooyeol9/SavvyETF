@@ -53,6 +53,8 @@ export type EtfUniverseRow = {
   te?: number | null;
   mdd?: number | null;
   dv?: number | null;
+  /** 1 = Refinitiv fund type/region/sector not collected; asset class and region guessed from the name. */
+  nf?: number | null;
 };
 
 export type EtfUniverseFile = {
@@ -86,6 +88,12 @@ export type EtfUniverseIndexEntry = {
   passive_aum: number;
   top: string[];
 };
+
+/** "2026-10-28 15:38 (파일 저장 시각)" / "2026-10-28 15:21:34" → "2026-10-28". */
+export function asOfDay(value?: string | null): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(value || "");
+  return m ? m[1] : value || null;
+}
 
 export function decodeRows(file: EtfUniverseFile): EtfUniverseRow[] {
   return file.rows.map((r) => {
