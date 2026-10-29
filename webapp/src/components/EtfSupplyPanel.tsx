@@ -194,18 +194,24 @@ export default function EtfSupplyPanel() {
     try {
       const res = await fetch("/api/etf-supply");
       const json = (await res.json()) as EtfSupplyPayload;
-      setData(json);
+      // A failed refresh keeps the boards already on screen.
+      setData((prev) => (json.ok || !prev?.ok ? json : { ...prev, error: json.error }));
     } catch (exc) {
-      setData({
-        ok: false,
-        generated_at: new Date().toISOString(),
-        generated_at_display: "",
-        source: "etfcheck",
-        us_inflow: emptyInflow(),
-        inflow: emptyInflow(),
-        notes: [],
-        error: exc instanceof Error ? exc.message : "로드 실패",
-      });
+      const error = exc instanceof Error ? exc.message : "로드 실패";
+      setData((prev) =>
+        prev?.ok
+          ? { ...prev, error }
+          : {
+              ok: false,
+              generated_at: new Date().toISOString(),
+              generated_at_display: "",
+              source: "etfcheck",
+              us_inflow: emptyInflow(),
+              inflow: emptyInflow(),
+              notes: [],
+              error,
+            },
+      );
     } finally {
       setLoading(false);
     }
@@ -213,7 +219,8 @@ export default function EtfSupplyPanel() {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), 5 * 60_000);
+    // Inflow boards are daily; the server keeps a copy, so a slow poll is enough.
+    const id = window.setInterval(() => void load(), 30 * 60_000);
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -226,8 +233,8 @@ export default function EtfSupplyPanel() {
         <div>
           <h2>ETF 수급</h2>
           <p className="kr-note">
-            미국상장 ETF · 국내 ETF 자금유입 Top10
-            {data?.generated_at_display ? ` · ${data.generated_at_display}` : ""}
+            미국상장 ETF · 국내 ETF 기간 순유입 Top10 · ETF CHECK(일별 집계)
+            {data?.generated_at_display ? ` · 조회 ${data.generated_at_display}` : ""}
           </p>
         </div>
         <button type="button" className="chip" onClick={() => void load()} disabled={loading}>
@@ -235,8 +242,10 @@ export default function EtfSupplyPanel() {
         </button>
       </div>
 
-      {!data?.ok && data?.error ? (
-        <p className="empty">{data.error}</p>
+      {data?.error ? (
+        <p className="empty">
+          {data.ok ? `갱신 실패 — 직전 결과를 표시합니다 (${data.error})` : data.error}
+        </p>
       ) : null}
 
       <div className="etf-supply-grid">

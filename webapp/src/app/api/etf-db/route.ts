@@ -11,6 +11,7 @@ import {
 } from "@/lib/etfDb";
 import { fillHistoryGaps, loadEtfDbHistoryFromR2 } from "@/lib/etfDbSnapshots";
 import { r2Configured, r2GetObjectText } from "@/lib/r2";
+import { withR2Snapshot } from "@/lib/r2Snapshot";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,6 +20,18 @@ const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
 
 const ETF_DB_LATEST_KEY = "etf_db/latest.json";
+
+/**
+ * Rebuild the stored live payload every 3 minutes while KRX trades (weekdays 08:50–16:00 KST),
+ * hourly otherwise — flows only change with the 18:20 job, so off-hours visitors get the stored copy.
+ */
+function liveFreshMs(at = new Date()): number {
+  const kst = new Date(at.getTime() + 9 * 3_600_000);
+  const day = kst.getUTCDay();
+  const minutes = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const open = day >= 1 && day <= 5 && minutes >= 8 * 60 + 50 && minutes < 16 * 60;
+  return open ? 3 * 60_000 : 60 * 60_000;
+}
 
 type NaverListResponse = {
   resultCode?: string;
@@ -166,65 +179,72 @@ export async function GET(request: Request) {
       cacheKey,
       170_000,
       600_000,
-      async () => {
-        const [items, overlay, snapHist] = await Promise.all([
-          fetchNaverUniverse(),
-          fetchOverlay(),
-          loadEtfDbHistoryFromR2({ equityOnly }).catch((exc) => {
-            console.warn("etf-db snapshot history failed:", exc);
-            return null;
-          }),
-        ]);
-        const built = buildPayloadFromNaver(
-          items as Parameters<typeof buildPayloadFromNaver>[0],
-          {
-            flowByCode: overlay.flowByCode,
-            prevAsOf: overlay.prevAsOf,
-            flowHistory: snapHist?.flow || (equityOnly ? undefined : overlay.flowHistory),
-            aumHistory: snapHist?.aum || (equityOnly ? undefined : overlay.aumHistory),
-            equityOnly,
-          },
-        );
+      async () =>
+        (
+          await withR2Snapshot({
+            key: `etf_db_live/${equityOnly ? "eq" : "all"}.json`,
+            freshMs: liveFreshMs(),
+            build: async () => {
+              const [items, overlay, snapHist] = await Promise.all([
+                fetchNaverUniverse(),
+                fetchOverlay(),
+                loadEtfDbHistoryFromR2({ equityOnly }).catch((exc) => {
+                  console.warn("etf-db snapshot history failed:", exc);
+                  return null;
+                }),
+              ]);
+              const built = buildPayloadFromNaver(
+                items as Parameters<typeof buildPayloadFromNaver>[0],
+                {
+                  flowByCode: overlay.flowByCode,
+                  prevAsOf: overlay.prevAsOf,
+                  flowHistory: snapHist?.flow || (equityOnly ? undefined : overlay.flowHistory),
+                  aumHistory: snapHist?.aum || (equityOnly ? undefined : overlay.aumHistory),
+                  equityOnly,
+                },
+              );
 
-        built.rows = await enrichIndexClassification(built.rows, {
-          knownByCode: overlay.benchmarkByCode,
-          fetchMissing: true,
-        });
-        built.aggregates = {
-          ...built.aggregates,
-          index: aggregateRows(built.rows, "index"),
-        };
+              built.rows = await enrichIndexClassification(built.rows, {
+                knownByCode: overlay.benchmarkByCode,
+                fetchMissing: true,
+              });
+              built.aggregates = {
+                ...built.aggregates,
+                index: aggregateRows(built.rows, "index"),
+              };
 
-        if (historyDepth(built.aum_history) < 5) {
-          try {
-            const reconstructed = await reconstructAumHistories({
-              rows: built.rows,
-              aggregates: built.aggregates,
-              liveDay: built.as_of || built.generated_at.slice(0, 10),
-              equityOnly,
-            });
-            built.aum_history = {
-              type: fillHistoryGaps(built.aum_history.type, reconstructed.type),
-              country: fillHistoryGaps(
-                built.aum_history.country,
-                reconstructed.country,
-              ),
-              sector: fillHistoryGaps(
-                built.aum_history.sector,
-                reconstructed.sector,
-              ),
-              index: fillHistoryGaps(
-                built.aum_history.index,
-                reconstructed.index,
-              ),
-            };
-          } catch (histExc) {
-            console.warn("etf-db aum history reconstruct failed:", histExc);
-          }
-        }
+              if (historyDepth(built.aum_history) < 5) {
+                try {
+                  const reconstructed = await reconstructAumHistories({
+                    rows: built.rows,
+                    aggregates: built.aggregates,
+                    liveDay: built.as_of || built.generated_at.slice(0, 10),
+                    equityOnly,
+                  });
+                  built.aum_history = {
+                    type: fillHistoryGaps(built.aum_history.type, reconstructed.type),
+                    country: fillHistoryGaps(
+                      built.aum_history.country,
+                      reconstructed.country,
+                    ),
+                    sector: fillHistoryGaps(
+                      built.aum_history.sector,
+                      reconstructed.sector,
+                    ),
+                    index: fillHistoryGaps(
+                      built.aum_history.index,
+                      reconstructed.index,
+                    ),
+                  };
+                } catch (histExc) {
+                  console.warn("etf-db aum history reconstruct failed:", histExc);
+                }
+              }
 
-        return built;
-      },
+              return built;
+            },
+          })
+        ).data,
     );
 
     return NextResponse.json(payload, {
