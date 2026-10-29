@@ -12,6 +12,8 @@ Already collected, and not fetched again:
     not keep a history.
 
 1W / 1M / 3M / 1Y on this tab all come from Yahoo daily closes, one definition.
+The same Yahoo bars carry the session volume, kept next to each close so the
+ETF·DB screen can flag volume surges (last session and last 5 vs the 20 before).
 History is kept so each night only asks for the last few sessions,
 except the first time a symbol is seen (2y backfill, so the 252-session window exists).
 
@@ -58,9 +60,16 @@ MARKETS = ("kr", "us", "eu", "jp", "hk", "cn")
 # Trading-day windows. 252 sessions ≈ 1 year, matching the ACWI close job.
 WINDOWS = (("r1w", 5), ("r1m", 21), ("r3m", 63), ("r1y", 252))
 KEEP_BARS = 280
+# Columns after the return windows. Appended so readers that take the first five by position keep working.
+SIGNAL_KEYS = ("r1d", "vr1", "vr5")
+ROW_COLS = ["t", *[key for key, _ in WINDOWS], *SIGNAL_KEYS]
 WORKERS = 6
 FULL_RANGE = "2y"
 BUMP_RANGE = "5d"
+# Closes stored before volume was kept have none. One 3mo fetch fills the 25-session window.
+VOL_RANGE = "3mo"
+VOL_BASE = 20
+VOL_RECENT = 5
 
 EU_SUFFIX = {
     "Xetra": ".DE",
@@ -185,7 +194,7 @@ def load_listings() -> list[dict[str, Any]]:
 
 
 def fetch_bars(symbol: str, rng: str, session: requests.Session) -> list[list[Any]]:
-    """Daily closes as [YYYY-MM-DD, close]. Empty on a miss. One pause on HTTP 429."""
+    """Daily bars as [YYYY-MM-DD, close, volume|None]. Empty on a miss. One pause on HTTP 429."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(symbol, safe='')}"
     response = None
     for attempt in range(2):
@@ -207,62 +216,88 @@ def fetch_bars(symbol: str, rng: str, session: requests.Session) -> list[list[An
     if not result:
         return []
     stamps = result.get("timestamp") or []
-    closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    quote = ((result.get("indicators") or {}).get("quote") or [{}])[0]
+    closes = quote.get("close") or []
+    volumes = quote.get("volume") or []
     offset = int(((result.get("meta") or {}).get("gmtoffset")) or 0)
     out: list[list[Any]] = []
     for i, stamp in enumerate(stamps):
         close = closes[i] if i < len(closes) else None
         if close is None or not isinstance(close, (int, float)) or close <= 0:
             continue
+        volume = volumes[i] if i < len(volumes) else None
+        volume = float(volume) if isinstance(volume, (int, float)) and volume >= 0 else None
         day = datetime.fromtimestamp(int(stamp) + offset, timezone.utc).strftime("%Y-%m-%d")
-        out.append([day, round(float(close), 4)])
+        out.append([day, round(float(close), 4), volume])
     return out
 
 
+NAN = float("nan")
+
+
 class Bars:
-    """One symbol's daily closes: shared (interned) date strings plus a float array.
+    """One symbol's daily closes and volumes: shared (interned) date strings plus two float arrays.
 
     The close store holds ~9,300 symbols x 280 sessions. As [day, close] lists
     that is ~2.6M small lists (~450MB), more than the 512MB Render instance.
-    This form is ~16 bytes a session.
+    This form is ~24 bytes a session. A missing volume is NaN.
     """
 
-    __slots__ = ("days", "px")
+    __slots__ = ("days", "px", "vol")
 
-    def __init__(self, days: list[str], px: array) -> None:
+    def __init__(self, days: list[str], px: array, vol: array | None = None) -> None:
         self.days = days
         self.px = px
+        self.vol = vol if vol is not None else array("d", [NAN]) * len(px)
 
     @classmethod
     def from_pairs(cls, pairs: list[list[Any]]) -> Bars:
         days: list[str] = []
         px = array("d")
+        vol = array("d")
         for row in pairs:
             if not row or not row[0] or not isinstance(row[1], (int, float)):
                 continue
             days.append(sys.intern(str(row[0])))
             px.append(float(row[1]))
-        return cls(days, px)
+            v = row[2] if len(row) > 2 else None
+            vol.append(float(v) if isinstance(v, (int, float)) and v >= 0 else NAN)
+        return cls(days, px, vol)
 
     def __len__(self) -> int:
         return len(self.days)
 
     def __getitem__(self, index: slice) -> Bars:
-        return Bars(self.days[index], self.px[index])
+        return Bars(self.days[index], self.px[index], self.vol[index])
 
     def pairs(self) -> list[list[Any]]:
-        return [[day, close] for day, close in zip(self.days, self.px)]
+        return [
+            [day, close, None if v != v else round(v)]
+            for day, close, v in zip(self.days, self.px, self.vol)
+        ]
+
+    def volume_count(self, n: int) -> int:
+        """Sessions with a volume among the last n."""
+        return sum(1 for v in self.vol[-n:] if v == v)
 
 
-EMPTY_BARS = Bars([], array("d"))
+EMPTY_BARS = Bars([], array("d"), array("d"))
 
 
 def merge_bars(old: Bars | None, new: list[list[Any]]) -> Bars:
-    by = dict(zip(old.days, old.px)) if old else {}
+    """A new bar replaces the stored close. Its volume replaces the stored one only when present."""
+    by: dict[str, list[Any]] = {}
+    if old:
+        for day, close, v in zip(old.days, old.px, old.vol):
+            by[day] = [day, close, None if v != v else v]
     for row in new:
         if row and row[0]:
-            by[row[0]] = row[1]
-    return Bars.from_pairs([[day, close] for day, close in sorted(by.items())[-KEEP_BARS:]])
+            prev = by.get(row[0])
+            v = row[2] if len(row) > 2 else None
+            if v is None and prev is not None:
+                v = prev[2]
+            by[row[0]] = [row[0], row[1], v]
+    return Bars.from_pairs([by[day] for day in sorted(by)[-KEEP_BARS:]])
 
 
 def completed_bars(bars: Bars, market: str, exchange: str | None, now: datetime) -> Bars:
@@ -287,12 +322,39 @@ def window_returns(bars: Bars) -> dict[str, float | None]:
     return out
 
 
+def volume_signals(bars: Bars) -> dict[str, float | None]:
+    """1-session return, and volume of the last session / last 5 vs the 20 sessions before them.
+
+    The baseline needs 15 of its 20 sessions with a volume and a positive mean,
+    so thin listings that print 0 most days get no ratio.
+    """
+    out: dict[str, float | None] = {"r1d": None, "vr1": None, "vr5": None}
+    n = len(bars)
+    if n >= 2 and bars.px[-2]:
+        out["r1d"] = round((bars.px[-1] / bars.px[-2] - 1) * 100, 2)
+    if n < VOL_RECENT + VOL_BASE:
+        return out
+    base = [v for v in bars.vol[-(VOL_RECENT + VOL_BASE) : -VOL_RECENT] if v == v]
+    if len(base) < 15:
+        return out
+    mean = sum(base) / len(base)
+    if mean <= 0:
+        return out
+    last = bars.vol[-1]
+    if last == last:
+        out["vr1"] = round(last / mean, 2)
+    recent = [v for v in bars.vol[-VOL_RECENT:] if v == v]
+    if len(recent) >= 3:
+        out["vr5"] = round(sum(recent) / len(recent) / mean, 2)
+    return out
+
+
 def _local_closes_path() -> Path:
     return LOCAL_DIR / CLOSES_NAME
 
 
 _WS = re.compile(r"[ \t\n\r]*")
-_HEAD = re.compile(r'\s*\{\s*"v"\s*:\s*1\s*,\s*"bars"\s*:\s*\{')
+_HEAD = re.compile(r'\s*\{\s*"v"\s*:\s*[12]\s*,\s*"bars"\s*:\s*\{')
 _READ_CHARS = 1 << 20
 
 
@@ -355,12 +417,12 @@ def load_closes() -> dict[str, Bars]:
 
 
 def save_closes(bars: dict[str, Bars]) -> None:
-    """Same {"v":1,"bars":{sym:[[day,close],...]}} file, written one symbol at a time."""
+    """{"v":2,"bars":{sym:[[day,close,volume|null],...]}}, written one symbol at a time. v1 files (no volume) still load."""
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     path = _local_closes_path()
     tmp = path.with_suffix(".tmp")
     with gzip.open(tmp, "wt", encoding="utf-8") as fh:
-        fh.write('{"v":1,"bars":{')
+        fh.write('{"v":2,"bars":{')
         for i, (symbol, series) in enumerate(bars.items()):
             if i:
                 fh.write(",")
@@ -438,9 +500,14 @@ def build_payload(
 
     need_full = [yahoo for yahoo in by_yahoo if len(closes.get(yahoo) or EMPTY_BARS) < 252]
     full_set = set(need_full)
-    need_bump = [yahoo for yahoo in by_yahoo if yahoo not in full_set]
-    # Fresh 5d bars for names we already know, then backfill the rest until the deadline.
+    known = [yahoo for yahoo in by_yahoo if yahoo not in full_set]
+    # Closes kept before volume was stored: one 3mo fetch instead of 5d fills the volume window.
+    need_vol = [yahoo for yahoo in known if closes[yahoo].volume_count(VOL_RECENT + VOL_BASE) < 15]
+    vol_set = set(need_vol)
+    need_bump = [yahoo for yahoo in known if yahoo not in vol_set]
+    # Fresh 5d bars for names we already know, then volume, then backfill the rest until the deadline.
     _fetch_into(closes, need_bump, BUMP_RANGE, deadline)
+    _fetch_into(closes, need_vol, VOL_RANGE, deadline)
     _fetch_into(closes, need_full, FULL_RANGE, deadline)
     save_closes(closes)
 
@@ -456,14 +523,15 @@ def build_payload(
             bars = completed_bars(closes.get(row["yahoo"]) or EMPTY_BARS, market, row["exchange"], moment)
             rets = window_returns(bars)
             if any(rets[key] is not None for key, _ in WINDOWS):
-                table.append([row["ticker"], *[rets[key] for key, _ in WINDOWS]])
+                sig = volume_signals(bars)
+                table.append([row["ticker"], *[rets[key] for key, _ in WINDOWS], *[sig[key] for key in SIGNAL_KEYS]])
                 if len(bars):
                     dates.append(bars.days[-1])
         as_of = max(dates) if dates else None
         if as_of:
             used_dates.append(as_of)
         n_with += len(table)
-        markets[market] = {"as_of": as_of, "source": "Yahoo 종가", "n": len(table), "rows": table}
+        markets[market] = {"as_of": as_of, "source": "Yahoo 종가", "n": len(table), "cols": ROW_COLS, "rows": table}
     return {
         "ok": True,
         "as_of": max(used_dates) if used_dates else None,
@@ -472,19 +540,30 @@ def build_payload(
         "n_with_returns": n_with,
         "n_backfill": len(need_full),
         "n_bump": len(need_bump),
+        "n_vol_backfill": len(need_vol),
         "markets": markets,
     }
 
 
-def publish(payload: dict[str, Any]) -> bool:
-    from r2_data import put_json_daily
-
-    slim = {
+def _slim(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
         "ok": True,
         "as_of": payload.get("as_of"),
         "built_at": payload.get("built_at"),
         "markets": payload.get("markets") or {},
     }
+
+
+def save_local_latest(payload: dict[str, Any]) -> None:
+    """Same overlay next to the close store. The web dev server reads it when R2 is not configured."""
+    LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    (LOCAL_DIR / "latest.json").write_text(json.dumps(_slim(payload), ensure_ascii=False), encoding="utf-8")
+
+
+def publish(payload: dict[str, Any]) -> bool:
+    from r2_data import put_json_daily
+
+    slim = _slim(payload)
     return bool(put_json_daily(R2_LATEST, slim, day=payload.get("as_of")))
 
 
@@ -511,11 +590,21 @@ def _self_test() -> None:
     assert kept.days[-1] == "2026-10-27"
     closed = completed_bars(Bars.from_pairs([["2026-10-28", 10]]), "kr", "KRX", open_at)
     assert closed.days[-1] == "2026-10-28"
-    merged = merge_bars(Bars.from_pairs([["2026-10-27", 9]]), [["2026-10-28", 10], ["2026-10-27", 9.5]])
-    assert merged.pairs() == [["2026-10-27", 9.5], ["2026-10-28", 10.0]]
+    merged = merge_bars(Bars.from_pairs([["2026-10-27", 9, 100]]), [["2026-10-28", 10, 300], ["2026-10-27", 9.5, None]])
+    assert merged.pairs() == [["2026-10-27", 9.5, 100], ["2026-10-28", 10.0, 300]]
     raw = b'{"v":1,"bars":{"A":[["2026-10-27",9],["2026-10-28",10]],"B.KS":[]}}'
     parsed = _parse_closes(io.StringIO(raw.decode("utf-8")))
-    assert parsed["A"].pairs() == [["2026-10-27", 9.0], ["2026-10-28", 10.0]] and len(parsed["B.KS"]) == 0
+    assert parsed["A"].pairs() == [["2026-10-27", 9.0, None], ["2026-10-28", 10.0, None]] and len(parsed["B.KS"]) == 0
+    assert parsed["A"].volume_count(25) == 0
+    raw2 = '{"v":2,"bars":{"A":[["2026-10-27",9,1200],["2026-10-28",10,null]]}}'
+    assert _parse_closes(io.StringIO(raw2))["A"].pairs() == [["2026-10-27", 9.0, 1200], ["2026-10-28", 10.0, None]]
+    # 20 sessions at 100 shares, then 4 at 100 and a last session at 600.
+    vol_rows = [[f"2026-09-{i + 1:02d}", 10 + i * 0.1, 100] for i in range(24)] + [["2026-09-25", 12.5, 600]]
+    sig = volume_signals(Bars.from_pairs(vol_rows))
+    assert sig["vr1"] == 6.0 and sig["vr5"] == 2.0, sig
+    assert sig["r1d"] == round((12.5 / (10 + 23 * 0.1) - 1) * 100, 2)
+    thin = volume_signals(Bars.from_pairs([[f"2026-09-{i + 1:02d}", 10, 0] for i in range(25)]))
+    assert thin["vr1"] is None and thin["vr5"] is None
     print("etf_universe_px self-test ok")
 
 
@@ -533,9 +622,10 @@ def main() -> None:
     if args.limit:
         listings = listings[: args.limit]
     payload = build_payload(listings)
-    summary = {k: payload[k] for k in ("as_of", "n_listings", "n_with_returns", "n_backfill", "n_bump")}
+    summary = {k: payload[k] for k in ("as_of", "n_listings", "n_with_returns", "n_backfill", "n_bump", "n_vol_backfill")}
     summary["by_market"] = {k: v["n"] for k, v in payload["markets"].items()}
     print(json.dumps(summary, ensure_ascii=False))
+    save_local_latest(payload)
     if args.publish:
         print("published" if publish(payload) else "publish skipped (R2 미설정)")
 
