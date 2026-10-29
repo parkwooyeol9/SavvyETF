@@ -37,7 +37,7 @@ export type VolAssetSpec = {
   defaultRole?: "a" | "b";
 };
 
-/** Country singles from `countryEtf.ts` (major markets only). */
+/** US-listed country ETFs (major markets). */
 const COUNTRY_ETF_SPECS: VolAssetSpec[] = [
   { id: "ewy", label: "한국 (EWY)", short: "EWY", group: "국가 ETF", yahoo: "EWY", color: "#2563eb" },
   { id: "ewj", label: "일본 (EWJ)", short: "EWJ", group: "국가 ETF", yahoo: "EWJ", color: "#dc2626" },

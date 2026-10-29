@@ -2,8 +2,6 @@
  * Listing-venue ETF market structure for five regions:
  * United States, China (SSE+SZSE), Japan (TSE), Korea (KRX), Europe.
  *
- * Distinct from `countryEtf.ts`, which tracks US-listed country/broad ETF holdings.
- *
  * Korea is live (Naver listed ETFs + KRX cap + USD/KRW). Other regions start from
  * official year-end 2025 industry statistics, then nowcast equity AUM with local
  * equity indices and convert with live FX so figures stay comparable in USD.

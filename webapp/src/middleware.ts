@@ -6,12 +6,6 @@ import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { updateSession } from "@/lib/supabase/middleware";
 
 const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
-  "/api/simulate": { limit: 12, windowMs: 60_000 },
-  "/api/us-portfolio": { limit: 12, windowMs: 60_000 },
-  "/api/mp/analyze": { limit: 12, windowMs: 60_000 },
-  "/api/mp/news": { limit: 12, windowMs: 60_000 },
-  "/api/mp/etf/analyze": { limit: 12, windowMs: 60_000 },
-  "/api/mp/etf/news": { limit: 12, windowMs: 60_000 },
   "/api/corridor": { limit: 12, windowMs: 60_000 },
   "/api/why-etf": { limit: 20, windowMs: 60_000 },
   "/api/heatmap": { limit: 20, windowMs: 60_000 },
@@ -96,8 +90,6 @@ const HEAVY_PATHS: Record<string, { limit: number; windowMs: number }> = {
   "/api/series": { limit: 30, windowMs: 60_000 },
   "/api/index-monitor": { limit: 30, windowMs: 60_000 },
   "/api/acwi-analyzer": { limit: 30, windowMs: 60_000 },
-  "/api/mp/track": { limit: 30, windowMs: 60_000 },
-  "/api/mp/portfolio": { limit: 30, windowMs: 60_000 },
   "/api/tv/disconnect": { limit: 30, windowMs: 60_000 },
 };
 
