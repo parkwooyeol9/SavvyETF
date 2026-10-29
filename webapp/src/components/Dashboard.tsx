@@ -38,7 +38,7 @@ import {
   DerivativesTab,
   MarketGammaTab,
   QuantTab,
-  TradingIdeasTab,
+  AiPickTab,
   WeightOptimizeTab,
   NlpPulseTab,
   GraphTab,
@@ -557,7 +557,7 @@ function DashboardInner({
       ) : tab === "nlp" || tab === "nlphistory" ? (
         <NlpPulseTab />
       ) : tab === "ideas" ? (
-        <TradingIdeasTab />
+        <AiPickTab />
       ) : tab === "weightopt" ? (
         unlocked ? <WeightOptimizeTab /> : null
       ) : tab === "minutepred" ? (

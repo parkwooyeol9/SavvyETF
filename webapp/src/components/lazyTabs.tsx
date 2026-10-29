@@ -36,7 +36,7 @@ export const VolatilityMonitorTab = dynamic(() => import("@/components/Volatilit
 export const DerivativesTab = dynamic(() => import("@/components/DerivativesTab"), { loading });
 export const MarketGammaTab = dynamic(() => import("@/components/MarketGammaTab"), { loading });
 export const QuantTab = dynamic(() => import("@/components/QuantTab"), { loading });
-export const TradingIdeasTab = dynamic(() => import("@/components/TradingIdeasTab"), { loading });
+export const AiPickTab = dynamic(() => import("@/components/AiPickTab"), { loading });
 export const WeightOptimizeTab = dynamic(() => import("@/components/WeightOptimizeTab"), { loading });
 export const NlpPulseTab = dynamic(() => import("@/components/NlpPulseTab"), { loading });
 export const GraphTab = dynamic(() => import("@/components/GraphTab"), { loading });

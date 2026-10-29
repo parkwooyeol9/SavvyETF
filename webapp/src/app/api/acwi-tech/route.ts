@@ -15,8 +15,8 @@ import {
   type AcwiTechRow,
   type AcwiUniverseRow,
 } from "@/lib/acwiTech";
+import { loadAcwiStored, storedPoints, type StoredSeries } from "@/lib/acwiPxStore";
 import type { GsPoint } from "@/lib/gsQuant";
-import { r2GetObjectText } from "@/lib/r2";
 import {
   buildQuantSnapshot,
   lookupQuantSpec,
@@ -32,7 +32,6 @@ export const maxDuration = 60;
 
 const UA =
   "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)";
-const R2_KEY = "acwi_px/latest.json";
 const UNIVERSE = (universeFile.rows || []) as AcwiUniverseRow[];
 const FACTS_AS_OF = factsFile.as_of || null;
 const FACTS = factsFile.rows as Record<string, AcwiTechFacts>;
@@ -54,40 +53,6 @@ type YahooChart = {
     }>;
   };
 };
-
-type StoredSeries = Record<string, Array<[string, number]>>;
-
-type Stored = { as_of: string | null; series: StoredSeries };
-
-/** 저장본은 수 MB 라 표·티커 조회마다 R2 에서 다시 받지 않는다. 하루 한 번 갱신된다. */
-function loadStored(): Promise<Stored | null> {
-  return withServerCache("acwi-tech:stored", 10 * 60_000, 60 * 60_000, readStored);
-}
-
-async function readStored(): Promise<Stored | null> {
-  const text = await r2GetObjectText(R2_KEY);
-  if (!text) return null;
-  try {
-    const parsed = JSON.parse(text) as { as_of?: string | null; series?: StoredSeries };
-    if (!parsed.series || typeof parsed.series !== "object") return null;
-    return { as_of: parsed.as_of ?? null, series: parsed.series };
-  } catch {
-    return null;
-  }
-}
-
-function storedPoints(series: StoredSeries, yahoo: string): GsPoint[] | null {
-  const rows = series[yahoo];
-  if (!rows?.length) return null;
-  const points: GsPoint[] = [];
-  for (const row of rows) {
-    const date = row?.[0];
-    const value = row?.[1];
-    if (!date || !(value > 0)) continue;
-    points.push({ date, value });
-  }
-  return points.length ? points : null;
-}
 
 async function fetchYahoo(symbol: string, range: QuantRange): Promise<GsPoint[]> {
   const url =
@@ -153,7 +118,7 @@ async function seriesFor(
 
 async function buildBoard(country: string, sector: string, range: QuantRange): Promise<AcwiTechBoard> {
   const picked = pickAcwiMajors(UNIVERSE, country, sector);
-  const stored = await loadStored();
+  const stored = await loadAcwiStored();
   const spy = await seriesFor("SPY", range, stored?.series ?? null);
   const snaps = await mapPool(picked, 6, async (row) => {
     const prices = await seriesFor(row.yahoo, range, stored?.series ?? null);
@@ -191,7 +156,7 @@ async function buildLookup(raw: string, range: QuantRange): Promise<AcwiTechLook
   if (!ticker) return { ok: true, snapshot: null, facts: null, facts_as_of: FACTS_AS_OF, error: "티커 형식이 아닙니다." };
   const row = findAcwiRow(UNIVERSE, ticker) || findAcwiRow(UNIVERSE, raw);
   const yahoo = row?.yahoo || ticker;
-  const stored = await loadStored();
+  const stored = await loadAcwiStored();
   const [prices, spy] = await Promise.all([
     seriesFor(yahoo, range, stored?.series ?? null),
     seriesFor("SPY", range, stored?.series ?? null),

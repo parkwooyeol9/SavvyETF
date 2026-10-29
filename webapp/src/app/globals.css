@@ -13868,3 +13868,172 @@ p.aa-note { padding-left: 0; }
   margin: 18px 0 0;
   padding-left: 18px;
 }
+
+/* AI Pick */
+.aipick-sources {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.4rem;
+}
+.aipick-sources li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.aipick-sources li strong {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.aipick-sources li.missing strong {
+  color: var(--warn);
+}
+.aipick-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.aipick-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.aipick-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 0.6rem;
+}
+.aipick-col h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.aipick-col.buy h4 {
+  color: var(--accent-2);
+}
+.aipick-col.sell h4 {
+  color: #f87171;
+}
+.aipick-col h4 span {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.aipick-col ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.aipick-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 0.65rem 0.75rem;
+}
+.aipick-col.buy .aipick-card {
+  border-left: 3px solid var(--accent-2);
+}
+.aipick-col.sell .aipick-card {
+  border-left: 3px solid #f87171;
+}
+.aipick-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.aipick-card-top strong {
+  font-size: 0.95rem;
+}
+.aipick-score {
+  flex: none;
+  min-width: 2.4rem;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.aipick-score.buy {
+  background: rgba(61, 214, 140, 0.15);
+  color: var(--accent-2);
+}
+.aipick-score.sell {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+.aipick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.45rem 0 0.35rem;
+}
+.aipick-chip {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.aipick-chip.up {
+  color: var(--accent-2);
+  border-color: rgba(61, 214, 140, 0.35);
+}
+.aipick-chip.down {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.35);
+}
+.aipick-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.aipick-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding: 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.aipick-method summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.aipick-method h4 {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.85rem;
+}
+.aipick-method ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+@media (max-width: 760px) {
+  .aipick-cols {
+    grid-template-columns: 1fr;
+  }
+}
