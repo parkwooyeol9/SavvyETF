@@ -42,6 +42,7 @@ import {
   type MidtermElection,
   type MidtermStudyPayload,
   type ScenarioId,
+  type ScenarioResult,
 } from "@/lib/midtermStudy";
 import {
   groupingForScenario,
@@ -61,9 +62,9 @@ const MARKET_COLOR: Record<string, string> = {
   nasdaq: "#c084fc",
   dow: "#fbbf24",
   kospi: "#f472b6",
+  kosdaq: "#2dd4bf",
 };
 
-const KR_PATH_IDS = ["spx", ...KR_MARKET_SPECS.map((k) => k.id)];
 
 const OVERLAY_N_MAX = 6;
 
@@ -273,27 +274,6 @@ export default function MidtermStudyTab() {
       .filter((r) => r.ret != null)
       .sort((a, b) => (b.ret ?? 0) - (a.ret ?? 0));
   }, [sectorAssets, horizon]);
-
-  const krPathAssets = useMemo(
-    () =>
-      KR_PATH_IDS.map((id) => sc?.assets.find((a) => a.id === id)).filter(
-        (a): a is NonNullable<typeof a> => Boolean(a && a.n > 0),
-      ),
-    [sc],
-  );
-  const hasKospi = krPathAssets.some((a) => a.kind === "kr_market");
-
-  const krChartRows = useMemo(() => {
-    const byT = new Map<number, Record<string, number>>();
-    for (const asset of krPathAssets) {
-      for (const p of asset.path) {
-        const row = byT.get(p.t) || { t: p.t };
-        row[asset.id] = p.v;
-        byT.set(p.t, row);
-      }
-    }
-    return [...byT.values()].sort((a, b) => a.t - b.t);
-  }, [krPathAssets]);
 
   const krSectorAssets = useMemo(
     () => (sc?.assets || []).filter((a) => a.kind === "kr_sector" && a.n > 0),
@@ -654,94 +634,34 @@ export default function MidtermStudyTab() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">한국 영향 (코스피 · 코스피 업종)</h3>
+                <h3 className="panel-title">한국 영향 (코스피 · 코스닥 · 업종)</h3>
                 <p className="macro-subhead">
-                  같은 시나리오·같은 t=0으로 코스피와 S&amp;P 500을 겹쳤습니다. 미국 선거일(화) 한국 장
-                  마감은 개표 전이라 그날 종가가 100입니다. 코스피는 1990년부터라 1950–1986 선거는
-                  빠지고, n이 미국과 다를 수 있습니다.
+                  같은 시나리오·같은 t=0으로 한국 지수를 미국 지수와 겹쳤습니다. 미국 선거일(화) 한국 장
+                  마감은 개표 전이라 그날 종가가 100입니다. 코스피는 1990년(9회), 코스닥은 1996년(7회),
+                  업종지수는 2010년(4회)부터라 n이 미국과 다릅니다.
                 </p>
               </div>
             </div>
-            {hasKospi && krChartRows.length ? (
-              <div className="eventstudy-chart eventstudy-chart-lg">
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={krChartRows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                    <YAxis
-                      tick={{ fill: "#94a3b8", fontSize: 11 }}
-                      domain={["auto", "auto"]}
-                      tickFormatter={(v: number) => v.toFixed(0)}
-                    />
-                    <ReferenceLine y={100} stroke="#64748b" strokeDasharray="4 4" />
-                    <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
-                    <Tooltip
-                      contentStyle={tooltipStyle}
-                      labelFormatter={(v) => `거래일 ${v}`}
-                      formatter={(value: number, name: string) => [fmtRebased(value, 2), name]}
-                    />
-                    <Legend />
-                    {krPathAssets.map((a) => (
-                      <Line
-                        key={a.id}
-                        type="monotone"
-                        dataKey={a.id}
-                        name={`${a.label} (n=${a.n})`}
-                        stroke={MARKET_COLOR[a.id] || "#94a3b8"}
-                        dot={false}
-                        strokeWidth={2}
-                        connectNulls
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="empty">이 시나리오에는 코스피(1990~)가 덮는 선거가 없습니다.</p>
-            )}
-
-            {hasKospi ? (
-              <div className="eventstudy-table-wrap midterm-study-table-wrap">
-                <table className="eventstudy-table eventstudy-heat">
-                  <thead>
-                    <tr>
-                      <th>지수</th>
-                      <th>n</th>
-                      {HORIZON_META.map((h) => (
-                        <th key={h.id}>{h.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {krPathAssets.map((a) => (
-                      <tr key={a.id}>
-                        <td>
-                          <span className="eventstudy-asset-name">{a.label}</span>
-                          {KR_MARKET_SPECS.find((m) => m.id === a.id)?.note ? (
-                            <span className="eventstudy-asset-note">
-                              {KR_MARKET_SPECS.find((m) => m.id === a.id)?.note}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>{a.n}</td>
-                        {HORIZON_META.map((h) => {
-                          const cell = pickHorizon(a, h.days);
-                          return (
-                            <td key={h.id} className={retClass(cell?.return_pct)}>
-                              {fmtRebased(cell?.rebased)}
-                              <span className="eventstudy-asset-note">{fmtPct(cell?.return_pct)}</span>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
+            <h4 className="panel-title" style={{ marginTop: "0.4rem", fontSize: "0.95rem" }}>
+              코스피 <small className="meta-soft">vs S&amp;P 500</small>
+            </h4>
+            <KrIndexBlock
+              sc={sc}
+              ids={["kospi", "spx"]}
+              empty="이 시나리오에는 코스피(1990~)가 덮는 선거가 없습니다."
+            />
 
             <h4 className="panel-title" style={{ marginTop: "1.1rem", fontSize: "0.95rem" }}>
-              코스피 업종지수 (KRX)
+              코스닥 <small className="meta-soft">vs 나스닥</small>
+            </h4>
+            <KrIndexBlock
+              sc={sc}
+              ids={["kosdaq", "nasdaq"]}
+              empty="이 시나리오에는 코스닥(1996-07~)이 덮는 선거가 없습니다."
+            />
+
+            <h4 className="panel-title" style={{ marginTop: "1.1rem", fontSize: "0.95rem" }}>
+              코스피 업종지수 <small className="meta-soft">KRX · 2010~</small>
             </h4>
             {krSectorAssets.length ? (
               <>
@@ -758,7 +678,7 @@ export default function MidtermStudyTab() {
                   ))}
                 </div>
                 <div className="eventstudy-chart eventstudy-chart-lg">
-                  <ResponsiveContainer width="100%" height={Math.max(260, krSectorBars.length * 22)}>
+                  <ResponsiveContainer width="100%" height={Math.max(260, krSectorBars.length * 26)}>
                     <BarChart
                       data={krSectorBars}
                       layout="vertical"
@@ -773,7 +693,8 @@ export default function MidtermStudyTab() {
                       <YAxis
                         type="category"
                         dataKey="name"
-                        width={76}
+                        width={84}
+                        interval={0}
                         tick={{ fill: "#94a3b8", fontSize: 11 }}
                       />
                       <Tooltip
@@ -827,8 +748,7 @@ export default function MidtermStudyTab() {
               </>
             ) : (
               <p className="empty">
-                코스피 업종지수는 KRX 로그인이 필요해 아직 번들되지 않았습니다. 수집 스크립트를 한 번
-                돌리면 같은 방식으로 업종별 평균이 채워집니다.
+                이 시나리오에는 코스피 업종지수(2010~)가 덮는 선거가 없습니다.
               </p>
             )}
           </section>
@@ -838,7 +758,7 @@ export default function MidtermStudyTab() {
               <div>
                 <h3 className="panel-title">이 시나리오에 들어간 선거</h3>
                 <p className="macro-subhead">
-                  각 해의 S&amp;P 500 / 나스닥 / 코스피를 같은 100 기준으로 풀어 놓은 값입니다. 행을 누르면
+                  각 해의 S&amp;P 500 / 나스닥 / 코스피 / 코스닥을 같은 100 기준으로 풀어 놓은 값입니다. 행을 누르면
                   그 해가 속한 분할로 이동합니다.
                 </p>
               </div>
@@ -856,6 +776,8 @@ export default function MidtermStudyTab() {
                     <th>나스닥 +1y</th>
                     <th>코스피 +3m</th>
                     <th>코스피 +1y</th>
+                    <th>코스닥 +3m</th>
+                    <th>코스닥 +1y</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -867,6 +789,8 @@ export default function MidtermStudyTab() {
                     const nq12 = eventHorizon(ev, "nasdaq", 365);
                     const ks3 = eventHorizon(ev, "kospi", 90);
                     const ks12 = eventHorizon(ev, "kospi", 365);
+                    const kq3 = eventHorizon(ev, "kosdaq", 90);
+                    const kq12 = eventHorizon(ev, "kosdaq", 365);
                     return (
                       <tr
                         key={ev.date}
@@ -891,6 +815,8 @@ export default function MidtermStudyTab() {
                         <td className={retClass(nq12?.return_pct)}>{fmtPct(nq12?.return_pct)}</td>
                         <td className={retClass(ks3?.return_pct)}>{fmtPct(ks3?.return_pct)}</td>
                         <td className={retClass(ks12?.return_pct)}>{fmtPct(ks12?.return_pct)}</td>
+                        <td className={retClass(kq3?.return_pct)}>{fmtPct(kq3?.return_pct)}</td>
+                        <td className={retClass(kq12?.return_pct)}>{fmtPct(kq12?.return_pct)}</td>
                       </tr>
                     );
                   })}
@@ -1008,5 +934,97 @@ function RosterRow({
         </span>
       </td>
     </tr>
+  );
+}
+
+/** One Korean index against its US counterpart: rebased path chart plus horizon table. */
+function KrIndexBlock({ sc, ids, empty }: { sc: ScenarioResult; ids: string[]; empty: string }) {
+  const assets = ids
+    .map((id) => sc.assets.find((a) => a.id === id))
+    .filter((a): a is NonNullable<typeof a> => Boolean(a && a.n > 0));
+  const hasKr = assets.some((a) => a.kind === "kr_market");
+  const byT = new Map<number, Record<string, number>>();
+  for (const asset of assets) {
+    for (const p of asset.path) {
+      const row = byT.get(p.t) || { t: p.t };
+      row[asset.id] = p.v;
+      byT.set(p.t, row);
+    }
+  }
+  const rows = [...byT.values()].sort((a, b) => a.t - b.t);
+
+  if (!hasKr || !rows.length) return <p className="empty">{empty}</p>;
+  return (
+    <>
+      <div className="eventstudy-chart eventstudy-chart-lg">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="t" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+            <YAxis
+              tick={{ fill: "#94a3b8", fontSize: 11 }}
+              domain={["auto", "auto"]}
+              tickFormatter={(v: number) => v.toFixed(0)}
+            />
+            <ReferenceLine y={100} stroke="#64748b" strokeDasharray="4 4" />
+            <ReferenceLine x={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelFormatter={(v) => `거래일 ${v}`}
+              formatter={(value: number, name: string) => [fmtRebased(value, 2), name]}
+            />
+            <Legend />
+            {assets.map((a) => (
+              <Line
+                key={a.id}
+                type="monotone"
+                dataKey={a.id}
+                name={`${a.label} (n=${a.n})`}
+                stroke={MARKET_COLOR[a.id] || "#94a3b8"}
+                dot={false}
+                strokeWidth={2}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="eventstudy-table-wrap midterm-study-table-wrap">
+        <table className="eventstudy-table eventstudy-heat">
+          <thead>
+            <tr>
+              <th>지수</th>
+              <th>n</th>
+              {HORIZON_META.map((h) => (
+                <th key={h.id}>{h.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((a) => {
+              const note = KR_MARKET_SPECS.find((m) => m.id === a.id)?.note;
+              return (
+                <tr key={a.id}>
+                  <td>
+                    <span className="eventstudy-asset-name">{a.label}</span>
+                    {note ? <span className="eventstudy-asset-note">{note}</span> : null}
+                  </td>
+                  <td>{a.n}</td>
+                  {HORIZON_META.map((h) => {
+                    const cell = pickHorizon(a, h.days);
+                    return (
+                      <td key={h.id} className={retClass(cell?.return_pct)}>
+                        {fmtRebased(cell?.rebased)}
+                        <span className="eventstudy-asset-note">{fmtPct(cell?.return_pct)}</span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

@@ -268,7 +268,7 @@ async function buildBundle(): Promise<MidtermStudyBundle> {
     } catch (exc) {
       coverage.push(`${spec.label} 네이버 실패: ${exc instanceof Error ? exc.message : String(exc)}`);
     }
-    seriesMap[spec.id] = splice(live, krx[spec.krx!] || []);
+    seriesMap[spec.id] = splice(live, spec.krx ? krx[spec.krx] || [] : []);
     coverage.push(`${spec.label} ${seriesSpan(seriesMap[spec.id]!)}`);
   }
   let krSectors = 0;

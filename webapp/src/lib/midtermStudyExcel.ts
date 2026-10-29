@@ -42,6 +42,7 @@ const MARKET_COLOR: Record<string, string> = {
   nasdaq: "C084FC",
   dow: "FBBF24",
   kospi: "F472B6",
+  kosdaq: "2DD4BF",
 };
 const HORIZON_COLOR = ["60A5FA", "34D399", "FBBF24", "C084FC"];
 const COMPARE_COLOR = ["64748B", "60A5FA", "34D399", "FBBF24", "F87171", "C084FC"];
@@ -106,6 +107,7 @@ function chartSlots(n: number): Array<{ from: { col: number; row: number }; to: 
     { from: { col: 0, row: 40 }, to: { col: 23, row: 57 } },
     { from: { col: 0, row: 58 }, to: { col: 11, row: 75 } },
     { from: { col: 12, row: 58 }, to: { col: 23, row: 75 } },
+    { from: { col: 0, row: 76 }, to: { col: 11, row: 93 } },
   ];
   return slots.slice(0, n);
 }
@@ -130,7 +132,7 @@ function readmeSheet(payload: MidtermStudyPayload, opts: MidtermExcelOpts): Shee
     ["데이터 범위", (payload.coverage || []).join(" · ")],
     [],
     ["시장 지수 출처", "Yahoo Finance Chart API (^GSPC, ^IXIC, ^DJI)"],
-    ["한국 지수 출처", "코스피: 네이버 금융 일봉(1990~), 1990 이전은 KRX. 업종: KRX 정보데이터시스템 [11003] 개별지수 시세 추이(코스피 업종지수)"],
+    ["한국 지수 출처", "코스피: 네이버 금융 일봉(1990~). 코스닥: 네이버 금융 일봉(1996-07~). 업종: KRX Open API KOSPI 시리즈 일별시세정보(코스피 업종지수, 2010~)"],
     [
       "업종 출처",
       "Ken French 12 Industry Portfolios (value-weighted daily). GICS/섹터 ETF가 아님. https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html",
@@ -151,10 +153,10 @@ function readmeSheet(payload: MidtermStudyPayload, opts: MidtermExcelOpts): Shee
     ["Market_Paths", "전 시나리오 지수 평균 경로 (t, 리베이스)"],
     ["Sector_Paths", "전 시나리오 업종 평균 경로"],
     ["SPX_Overlays", "시나리오별 연도 S&P 500 경로"],
-    ["KR_Horizons", "전 시나리오 코스피·코스피 업종 평균 수익률"],
-    ["KR_Paths", "전 시나리오 코스피·업종 평균 경로"],
+    ["KR_Horizons", "전 시나리오 코스피·코스닥·코스피 업종 평균 수익률"],
+    ["KR_Paths", "전 시나리오 코스피·코스닥·업종 평균 경로"],
     ["Raw_US", "원자료: 선거별 −30일~+400일 일별 종가 (S&P·나스닥·다우 종가, French 업종은 누적수익지수)"],
-    ["Raw_KR", "원자료: 같은 창의 코스피·코스피 업종지수 일별 종가"],
+    ["Raw_KR", "원자료: 같은 창의 코스피·코스닥·코스피 업종지수 일별 종가"],
   ];
   return { name: "README", rows, widths: [22, 92], freezeRows: 1 };
 }
@@ -638,11 +640,15 @@ function buildChartData(payload: MidtermStudyPayload, opts: MidtermExcelOpts): {
   rows.push([]);
   rows.push([]);
 
-  // Korea: KOSPI vs S&P 500 path, then KOSPI sectors at +3m.
-  const krPathAssets = ["spx", ...KR_MARKET_SPECS.map((k) => k.id)]
-    .map((id) => sc?.assets.find((a) => a.id === id))
-    .filter((a): a is NonNullable<typeof a> => Boolean(a && a.n > 0 && a.path.length));
-  if (krPathAssets.some((a) => a.kind === "kr_market")) {
+  // Korea: KOSPI vs S&P 500 and KOSDAQ vs Nasdaq paths, then KOSPI sectors by horizon.
+  for (const pair of [
+    { ids: ["kospi", "spx"], title: "코스피 vs S&P 500" },
+    { ids: ["kosdaq", "nasdaq"], title: "코스닥 vs 나스닥" },
+  ]) {
+    const krPathAssets = pair.ids
+      .map((id) => sc?.assets.find((a) => a.id === id))
+      .filter((a): a is NonNullable<typeof a> => Boolean(a && a.n > 0 && a.path.length));
+    if (!krPathAssets.some((a) => a.kind === "kr_market")) continue;
     const krT = unionT(krPathAssets.map((a) => a.path));
     const krHeaderRow = rows.length + 1;
     rows.push(headerRow(["t", ...krPathAssets.map((a) => `${a.label} (n=${a.n})`)]));
@@ -659,7 +665,7 @@ function buildChartData(payload: MidtermStudyPayload, opts: MidtermExcelOpts): {
     }
     charts.push({
       type: "line",
-      title: `코스피 vs S&P 500 · ${meta.label} (t=0 → 100)`,
+      title: `${pair.title} · ${meta.label} (t=0 → 100)`,
       yTitle: "리베이스",
       catRef: sheetFormula(CHART_SHEET, a1Range(0, krHeaderRow + 1, 0, krHeaderRow + krT.length)),
       cats: { kind: "num", values: krT },
