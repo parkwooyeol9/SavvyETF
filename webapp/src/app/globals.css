@@ -3481,6 +3481,19 @@ a.geo-choke-hl:hover {
   font-size: clamp(0.62rem, 1.4vw, 0.95rem);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heatmap-chip-label {
+  align-self: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 0.1rem;
 }
 
 .tile-pct {

@@ -15,11 +15,13 @@ import {
 export type { HeatmapPeriod } from "@/lib/heatmapPeriods";
 export { HEATMAP_PERIODS, heatmapColorCap, isHeatmapPeriod } from "@/lib/heatmapPeriods";
 
-export type HeatmapUniverse = "etf" | "sp" | "nas";
+export type HeatmapUniverse = "etf" | "sp" | "nas" | "kretf" | "k200" | "kq100";
 
 export type HeatmapCell = {
   ticker: string;
   name: string;
+  /** Tile caption. Korean names use this so the tile is not a 6-digit code. */
+  label?: string;
   size: number;
   daily_return_pct: number;
 };
@@ -55,6 +57,10 @@ type UniverseMember = {
   size: number;
   /** Shared index / exposure key — only the largest AUM tile is kept per key. */
   benchmark?: string;
+  /** Shown on the tile instead of `ticker` when set. */
+  label?: string;
+  /** Price series symbol when `ticker` is a display code (005930 → 005930.KS). */
+  yahoo?: string;
 };
 
 const META: Record<
@@ -64,6 +70,9 @@ const META: Record<
   etf: { label: "US Equity ETF", size_label: "AUM", short: "ETF" },
   sp: { label: "S&P 500", size_label: "Market cap", short: "S&P 500" },
   nas: { label: "NASDAQ 100", size_label: "Market cap", short: "NASDAQ 100" },
+  kretf: { label: "한국 ETF", size_label: "순자산", short: "한국 ETF" },
+  k200: { label: "코스피200", size_label: "시가총액", short: "코스피200" },
+  kq100: { label: "코스닥100", size_label: "시가총액", short: "코스닥100" },
 };
 
 /**
@@ -185,14 +194,25 @@ const NAS_UNIVERSE: UniverseMember[] = [
   { ticker: "MU", name: "Micron", size: 140 },
 ];
 
-const UNIVERSES: Record<HeatmapUniverse, UniverseMember[]> = {
+const UNIVERSES: Record<"etf" | "sp" | "nas", UniverseMember[]> = {
   etf: ETF_UNIVERSE,
   sp: SP_UNIVERSE,
   nas: NAS_UNIVERSE,
 };
 
 export function isHeatmapUniverse(value: string): value is HeatmapUniverse {
-  return value === "etf" || value === "sp" || value === "nas";
+  return (
+    value === "etf" ||
+    value === "sp" ||
+    value === "nas" ||
+    value === "kretf" ||
+    value === "k200" ||
+    value === "kq100"
+  );
+}
+
+export function isKrHeatmapUniverse(value: HeatmapUniverse): value is "kretf" | "k200" | "kq100" {
+  return value === "kretf" || value === "k200" || value === "kq100";
 }
 
 function endDate(): string {
@@ -219,7 +239,7 @@ async function mapPool<T, R>(
 }
 
 async function returnForTicker(
-  ticker: string,
+  symbol: string,
   period: HeatmapPeriod,
 ): Promise<{
   pct: number;
@@ -232,12 +252,12 @@ async function returnForTicker(
     // Longer windows use split- and dividend-adjusted closes. 1D stays on the
     // raw close plus the same-day fill the treemap already shows.
     const { points: yahoo, sessionQuote } = await fetchYahooDailyChart(
-      ticker,
+      symbol,
       heatmapRangeStart(end, period),
       end,
       period !== "1D",
     );
-    const filled = await fillUsSessionCloseIfNeeded(ticker, yahoo, {
+    const filled = await fillUsSessionCloseIfNeeded(symbol, yahoo, {
       endDate: end,
       sessionQuote,
     });
@@ -266,11 +286,17 @@ export async function buildLocalHeatmap(
   universe: HeatmapUniverse,
   topN = 30,
   period: HeatmapPeriod = "1D",
+  preset?: UniverseMember[],
 ): Promise<HeatmapPayload> {
   const meta = META[universe];
   const periodMeta = heatmapPeriodMeta(period);
   const pool =
-    universe === "etf" ? dedupeByBenchmark(UNIVERSES[universe]) : UNIVERSES[universe];
+    preset ??
+    (universe === "etf"
+      ? dedupeByBenchmark(UNIVERSES.etf)
+      : universe === "sp" || universe === "nas"
+        ? UNIVERSES[universe]
+        : []);
   const members = pool
     .slice()
     .sort((a, b) => b.size - a.size)
@@ -279,7 +305,7 @@ export async function buildLocalHeatmap(
   // 1D stays fully parallel (the warmed path). Longer histories are fetched in
   // small batches so a 3Y view does not burst Yahoo.
   const load = (m: UniverseMember) =>
-    returnForTicker(m.ticker, period).then((ret) =>
+    returnForTicker(m.yahoo || m.ticker, period).then((ret) =>
       ret == null
         ? null
         : {
@@ -297,11 +323,12 @@ export async function buildLocalHeatmap(
 
   const cells = settled
     .filter((c): c is NonNullable<typeof c> => c != null)
-    .map(({ ticker, name, size, daily_return_pct }) => ({
+    .map(({ ticker, name, size, daily_return_pct, label }) => ({
       ticker,
       name,
       size,
       daily_return_pct,
+      ...(label ? { label } : {}),
     }));
   if (cells.length < 5) {
     return {

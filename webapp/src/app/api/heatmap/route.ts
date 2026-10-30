@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { fetchBotJson } from "@/lib/bot";
-import { buildLocalHeatmap, isHeatmapPeriod, isHeatmapUniverse } from "@/lib/heatmap";
+import { buildLocalHeatmap, isHeatmapPeriod, isHeatmapUniverse, isKrHeatmapUniverse } from "@/lib/heatmap";
+import { loadKrHeatmapMembers } from "@/lib/heatmapKr";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,15 +16,18 @@ export async function GET(request: Request) {
   const prefer = searchParams.get("prefer") || "local";
   const universe = isHeatmapUniverse(universeRaw) ? universeRaw : "etf";
   const period = isHeatmapPeriod(periodRaw) ? periodRaw : "1D";
-  const cacheKey = `heatmap:v3:${universe}:${topN}:${period}:${prefer}`;
+  const cacheKey = `heatmap:v4:${universe}:${topN}:${period}:${prefer}`;
 
   const payload = await withServerCache(
     cacheKey,
     1_080_000,
     2_700_000,
     async () => {
-      // The Render heatmap is a one-day map. Longer windows stay on the local series.
-      if (period !== "1D") return buildLocalHeatmap(universe, topN, period);
+      // The Render heatmap is the US one-day map. Korean universes and longer windows stay local.
+      if (period !== "1D" || isKrHeatmapUniverse(universe)) {
+        const preset = isKrHeatmapUniverse(universe) ? await loadKrHeatmapMembers(universe) : undefined;
+        return buildLocalHeatmap(universe, topN, period, preset);
+      }
       if (prefer !== "render") {
         const local = await buildLocalHeatmap(universe, topN, period);
         if (local.ok) return local;

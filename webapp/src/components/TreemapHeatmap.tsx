@@ -33,9 +33,11 @@ export default function TreemapHeatmap({ cells, period = "1D" }: Props) {
     <div className="treemap-shell">
       <div className="treemap" role="img" aria-label={`Market heatmap ${period}`}>
         {rects.map((r) => {
+          const cell = cells.find((c) => c.ticker === r.ticker);
+          const caption = cell?.label || r.ticker;
           const area = r.w * r.h;
           const showPct = area > 90;
-          const showName = area > 160;
+          const showName = area > 160 && !!cell && cell.name !== caption;
           const active = hover === r.ticker;
           return (
             <button
@@ -49,15 +51,15 @@ export default function TreemapHeatmap({ cells, period = "1D" }: Props) {
                 height: `${Math.max(r.h - 0.25, 0)}%`,
                 background: finvizColor(r.daily_return_pct, cap),
               }}
-              title={`${r.ticker} ${r.name} ${fmtPct(r.daily_return_pct)}`}
+              title={`${cell?.ticker || r.ticker} ${cell?.name || r.name} ${fmtPct(r.daily_return_pct)}`}
               onMouseEnter={() => setHover(r.ticker)}
               onMouseLeave={() => setHover(null)}
               onFocus={() => setHover(r.ticker)}
               onBlur={() => setHover(null)}
             >
-              <span className="tile-ticker">{r.ticker}</span>
+              <span className="tile-ticker">{caption}</span>
               {showPct ? <span className="tile-pct">{fmtPct(r.daily_return_pct)}</span> : null}
-              {showName ? <span className="tile-name">{r.name}</span> : null}
+              {showName ? <span className="tile-name">{cell?.name}</span> : null}
             </button>
           );
         })}

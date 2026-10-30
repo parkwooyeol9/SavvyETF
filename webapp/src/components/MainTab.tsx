@@ -26,11 +26,21 @@ type WhyPayload = {
   }>;
 };
 
-const UNIVERSES = [
+const US_UNIVERSES = [
   { id: "etf", label: "US ETF" },
   { id: "sp", label: "S&P 500" },
   { id: "nas", label: "Nasdaq 100" },
 ] as const;
+
+const KR_UNIVERSES = [
+  { id: "kretf", label: "한국 ETF" },
+  { id: "k200", label: "코스피200" },
+  { id: "kq100", label: "코스닥100" },
+] as const;
+
+type HeatmapUniverseId =
+  | (typeof US_UNIVERSES)[number]["id"]
+  | (typeof KR_UNIVERSES)[number]["id"];
 
 const TELEGRAM_CHANNELS = [
   {
@@ -105,7 +115,7 @@ function retClass(n: number): string {
 
 export default function MainTab() {
   const { unlocked } = useAdminSession();
-  const [universe, setUniverse] = useState<(typeof UNIVERSES)[number]["id"]>("etf");
+  const [universe, setUniverse] = useState<HeatmapUniverseId>("etf");
   const [period, setPeriod] = useState<HeatmapPeriod>("1D");
   const [heatmap, setHeatmap] = useState<HeatmapPayload | null>(null);
   const [why, setWhy] = useState<WhyPayload | null>(null);
@@ -171,7 +181,7 @@ export default function MainTab() {
       {unlocked ? (
         <TvOperatorPanel
           heatmapCells={heatmap?.cells || []}
-          universeLabel={`${UNIVERSES.find((u) => u.id === universe)?.label || ""} · ${period}`}
+          universeLabel={`${[...US_UNIVERSES, ...KR_UNIVERSES].find((u) => u.id === universe)?.label || ""} · ${period}`}
         />
       ) : null}
       <nav className="main-jumps" aria-label="바로가기">
@@ -209,11 +219,25 @@ export default function MainTab() {
           />
         </aside>
         <div className="feature-head heatmap-head">
-          <h2 className="feature-title">ETF 히트맵</h2>
+          <h2 className="feature-title">히트맵</h2>
         </div>
 
-        <div className="chip-row" role="tablist" aria-label="히트맵 유니버스">
-          {UNIVERSES.map((u) => (
+        <div className="chip-row" role="tablist" aria-label="미국 히트맵">
+          <span className="heatmap-chip-label">미국</span>
+          {US_UNIVERSES.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              className={`chip ${universe === u.id ? "active" : ""}`}
+              onClick={() => setUniverse(u.id)}
+            >
+              {u.label}
+            </button>
+          ))}
+        </div>
+        <div className="chip-row" role="tablist" aria-label="한국 히트맵">
+          <span className="heatmap-chip-label">한국</span>
+          {KR_UNIVERSES.map((u) => (
             <button
               key={u.id}
               type="button"
