@@ -1,10 +1,19 @@
 /** Curated market heatmaps from Yahoo daily bars, with post-close Finnhub/Stooq fill. */
 
+import {
+  heatmapPeriodMeta,
+  heatmapRangeStart,
+  periodReturnPct,
+  type HeatmapPeriod,
+} from "@/lib/heatmapPeriods";
 import { fetchYahooDailyChart } from "@/lib/simulate";
 import {
   fillUsSessionCloseIfNeeded,
   type CloseFillSource,
 } from "@/lib/usDailyCloseFallback";
+
+export type { HeatmapPeriod } from "@/lib/heatmapPeriods";
+export { HEATMAP_PERIODS, heatmapColorCap, isHeatmapPeriod } from "@/lib/heatmapPeriods";
 
 export type HeatmapUniverse = "etf" | "sp" | "nas";
 
@@ -25,6 +34,9 @@ export type HeatmapPayload = {
   top_n?: number;
   generated_at?: string;
   session_label?: string;
+  period?: HeatmapPeriod;
+  period_label?: string;
+  window_start?: string;
   as_of?: string;
   close_source?: CloseFillSource;
   stats?: {
@@ -187,35 +199,54 @@ function endDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function startDate(): string {
-  // Look back far enough to cover weekends/holidays.
-  return new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const idx = next;
+      next += 1;
+      out[idx] = await fn(items[idx]!);
+    }
+  }
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
 }
 
-async function dailyReturnForTicker(ticker: string): Promise<{
+async function returnForTicker(
+  ticker: string,
+  period: HeatmapPeriod,
+): Promise<{
   pct: number;
+  base: string;
   as_of: string | null;
   source: CloseFillSource;
 } | null> {
   try {
     const end = endDate();
+    // Longer windows use split- and dividend-adjusted closes. 1D stays on the
+    // raw close plus the same-day fill the treemap already shows.
     const { points: yahoo, sessionQuote } = await fetchYahooDailyChart(
       ticker,
-      startDate(),
+      heatmapRangeStart(end, period),
       end,
+      period !== "1D",
     );
     const filled = await fillUsSessionCloseIfNeeded(ticker, yahoo, {
       endDate: end,
       sessionQuote,
     });
-    const points = filled.points;
-    if (points.length < 2) return null;
-    const prev = points[points.length - 2]!.close;
-    const last = points[points.length - 1]!;
-    if (!prev) return null;
+    const ret = periodReturnPct(filled.points, period);
+    if (!ret) return null;
     return {
-      pct: ((last.close / prev - 1) * 100),
-      as_of: filled.as_of ?? last.date,
+      pct: ret.pct,
+      base: ret.base,
+      as_of: filled.as_of ?? ret.as_of,
       source: filled.source,
     };
   } catch {
@@ -234,8 +265,10 @@ function closeSourceLabel(source: CloseFillSource, filledCount: number): string 
 export async function buildLocalHeatmap(
   universe: HeatmapUniverse,
   topN = 30,
+  period: HeatmapPeriod = "1D",
 ): Promise<HeatmapPayload> {
   const meta = META[universe];
+  const periodMeta = heatmapPeriodMeta(period);
   const pool =
     universe === "etf" ? dedupeByBenchmark(UNIVERSES[universe]) : UNIVERSES[universe];
   const members = pool
@@ -243,14 +276,24 @@ export async function buildLocalHeatmap(
     .sort((a, b) => b.size - a.size)
     .slice(0, Math.max(5, Math.min(50, topN)));
 
-  const settled = await Promise.all(
-    members.map(async (m) => {
-      const ret = await dailyReturnForTicker(m.ticker);
-      return ret == null
+  // 1D stays fully parallel (the warmed path). Longer histories are fetched in
+  // small batches so a 3Y view does not burst Yahoo.
+  const load = (m: UniverseMember) =>
+    returnForTicker(m.ticker, period).then((ret) =>
+      ret == null
         ? null
-        : { ...m, daily_return_pct: round(ret.pct, 3), as_of: ret.as_of, source: ret.source };
-    }),
-  );
+        : {
+            ...m,
+            daily_return_pct: round(ret.pct, 3),
+            base: ret.base,
+            as_of: ret.as_of,
+            source: ret.source,
+          },
+    );
+  const settled =
+    period === "1D"
+      ? await Promise.all(members.map(load))
+      : await mapPool(members, 8, load);
 
   const cells = settled
     .filter((c): c is NonNullable<typeof c> => c != null)
@@ -266,6 +309,8 @@ export async function buildLocalHeatmap(
       universe,
       label: meta.label,
       size_label: meta.size_label,
+      period,
+      period_label: periodMeta.short,
       error: "Could not load enough price bars for the heatmap.",
       source: "vercel",
     };
@@ -279,11 +324,16 @@ export async function buildLocalHeatmap(
     filledRows[0]?.as_of ||
     settled.find((c) => c?.as_of)?.as_of ||
     null;
+  const windowStart = settled
+    .filter((c): c is NonNullable<typeof c> => c != null)
+    .slice()
+    .sort((a, b) => b.size - a.size)[0]?.base;
   const closeSource: CloseFillSource = filledRows.some((r) => r.source === "finnhub")
     ? "finnhub"
     : filledRows.some((r) => r.source === "stooq")
       ? "stooq"
       : filledRows[0]?.source || "yahoo";
+  const priceKind = period === "1D" ? closeSourceLabel(closeSource, filledRows.length) : "adj. close";
 
   const returns = cells.map((c) => c.daily_return_pct);
   const avg = returns.reduce((a, b) => a + b, 0) / returns.length;
@@ -298,9 +348,12 @@ export async function buildLocalHeatmap(
     size_label: meta.size_label,
     top_n: cells.length,
     generated_at: new Date().toISOString(),
+    period,
+    period_label: periodMeta.short,
+    window_start: windowStart,
     as_of: asOf || undefined,
     close_source: closeSource,
-    session_label: `${meta.short} · as_of ${asOf || "?"} ET · ${closeSourceLabel(closeSource, filledRows.length)} · tile size ≈ ${meta.size_label}`,
+    session_label: `${meta.short} · ${periodMeta.label} ${windowStart || "?"}→${asOf || "?"} · ${priceKind} · tile size ≈ ${meta.size_label}`,
     stats: {
       avg_return_pct: round(avg, 3),
       best: { ticker: best.ticker, daily_return_pct: best.daily_return_pct },

@@ -4,30 +4,34 @@ import { useMemo, useState } from "react";
 
 import {
   finvizColor,
+  heatmapColorCap,
   layoutTreemap,
   type HeatmapCell,
+  type HeatmapPeriod,
 } from "@/lib/heatmap";
 
 type Props = {
   cells: HeatmapCell[];
+  period?: HeatmapPeriod;
 };
 
 function fmtPct(n: number): string {
   const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}%`;
+  const digits = Math.abs(n) >= 100 ? 0 : 1;
+  return `${sign}${n.toFixed(digits)}%`;
 }
 
-export default function TreemapHeatmap({ cells }: Props) {
+export default function TreemapHeatmap({ cells, period = "1D" }: Props) {
   const [hover, setHover] = useState<string | null>(null);
   const rects = useMemo(() => layoutTreemap(cells), [cells]);
-  const cap = useMemo(() => {
-    const maxAbs = Math.max(...cells.map((c) => Math.abs(c.daily_return_pct)), 0.5);
-    return Math.min(6, Math.max(2, maxAbs * 1.05));
-  }, [cells]);
+  const cap = useMemo(
+    () => heatmapColorCap(period, cells.map((c) => c.daily_return_pct)),
+    [cells, period],
+  );
 
   return (
     <div className="treemap-shell">
-      <div className="treemap" role="img" aria-label="Market heatmap">
+      <div className="treemap" role="img" aria-label={`Market heatmap ${period}`}>
         {rects.map((r) => {
           const area = r.w * r.h;
           const showPct = area > 90;

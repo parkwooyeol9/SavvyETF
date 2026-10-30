@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { cdnCacheHeader, withServerCache } from "@/lib/apiCache";
 import { fetchBotJson } from "@/lib/bot";
-import { buildLocalHeatmap, isHeatmapUniverse } from "@/lib/heatmap";
+import { buildLocalHeatmap, isHeatmapPeriod, isHeatmapUniverse } from "@/lib/heatmap";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -10,18 +10,22 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const universeRaw = searchParams.get("universe") || "etf";
+  const periodRaw = searchParams.get("period") || "1D";
   const topN = Number(searchParams.get("top_n") || "30");
   const prefer = searchParams.get("prefer") || "local";
   const universe = isHeatmapUniverse(universeRaw) ? universeRaw : "etf";
-  const cacheKey = `heatmap:v2:${universe}:${topN}:${prefer}`;
+  const period = isHeatmapPeriod(periodRaw) ? periodRaw : "1D";
+  const cacheKey = `heatmap:v3:${universe}:${topN}:${period}:${prefer}`;
 
   const payload = await withServerCache(
     cacheKey,
     1_080_000,
     2_700_000,
     async () => {
+      // The Render heatmap is a one-day map. Longer windows stay on the local series.
+      if (period !== "1D") return buildLocalHeatmap(universe, topN, period);
       if (prefer !== "render") {
-        const local = await buildLocalHeatmap(universe, topN);
+        const local = await buildLocalHeatmap(universe, topN, period);
         if (local.ok) return local;
       }
 
@@ -42,7 +46,7 @@ export async function GET(request: Request) {
         // ignore upstream errors
       }
 
-      const local = await buildLocalHeatmap(universe, topN);
+      const local = await buildLocalHeatmap(universe, topN, period);
       return local;
     },
   );

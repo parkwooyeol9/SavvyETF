@@ -116,6 +116,7 @@ export async function fetchYahooDailyChart(
   symbol: string,
   startDate: string,
   endDate: string,
+  adjusted = false,
 ): Promise<YahooDailyFetch> {
   const start = new Date(`${startDate}T00:00:00Z`).getTime();
   const end = new Date(`${endDate}T23:59:59Z`).getTime();
@@ -137,13 +138,18 @@ export async function fetchYahooDailyChart(
       result?: Array<{
         timestamp?: number[];
         meta?: { regularMarketPrice?: number; regularMarketTime?: number };
-        indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+        indicators?: {
+          quote?: Array<{ close?: Array<number | null> }>;
+          adjclose?: Array<{ adjclose?: Array<number | null> }>;
+        };
       }>;
     };
   };
   const result = payload.chart?.result?.[0];
   const timestamps = result?.timestamp || [];
-  const closes = result?.indicators?.quote?.[0]?.close || [];
+  const rawCloses = result?.indicators?.quote?.[0]?.close || [];
+  const adjCloses = result?.indicators?.adjclose?.[0]?.adjclose;
+  const closes = adjusted && adjCloses?.length ? adjCloses : rawCloses;
   const out: PricePoint[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];

@@ -1,32 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAdminSession } from "@/components/AdminSession";
 import EquityChart from "@/components/EquityChart";
 import TreemapHeatmap from "@/components/TreemapHeatmap";
 import TvOperatorPanel from "@/components/TvOperatorPanel";
-import type { HeatmapCell } from "@/lib/heatmap";
+import { HEATMAP_PERIODS, type HeatmapPayload, type HeatmapPeriod } from "@/lib/heatmap";
 import type { SimulateResult } from "@/lib/simulate";
-
-type HeatmapPayload = {
-  ok: boolean;
-  error?: string;
-  source?: string;
-  universe?: string;
-  label?: string;
-  size_label?: string;
-  session_label?: string;
-  generated_at?: string;
-  stats?: {
-    avg_return_pct: number;
-    best: { ticker: string; daily_return_pct: number };
-    worst: { ticker: string; daily_return_pct: number };
-    up_count: number;
-    down_count: number;
-  };
-  cells?: HeatmapCell[];
-};
 
 type WhyPayload = {
   ok: boolean;
@@ -109,6 +90,13 @@ function fmtPct(n?: number | null): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+function fmtHeat(n?: number | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const sign = n > 0 ? "+" : "";
+  const digits = Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 20 ? 1 : 2;
+  return `${sign}${n.toFixed(digits)}%`;
+}
+
 function retClass(n: number): string {
   if (n > 0.05) return "up";
   if (n < -0.05) return "down";
@@ -118,30 +106,35 @@ function retClass(n: number): string {
 export default function MainTab() {
   const { unlocked } = useAdminSession();
   const [universe, setUniverse] = useState<(typeof UNIVERSES)[number]["id"]>("etf");
+  const [period, setPeriod] = useState<HeatmapPeriod>("1D");
   const [heatmap, setHeatmap] = useState<HeatmapPayload | null>(null);
   const [why, setWhy] = useState<WhyPayload | null>(null);
   const [heatLoading, setHeatLoading] = useState(true);
   const [whyLoading, setWhyLoading] = useState(true);
+  const heatReq = useRef(0);
 
-  const loadHeatmap = useCallback(async (u: string) => {
+  const loadHeatmap = useCallback(async (u: string, p: HeatmapPeriod) => {
+    const req = ++heatReq.current;
     setHeatLoading(true);
     try {
-      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30`);
+      const res = await fetch(`/api/heatmap?universe=${u}&top_n=30&period=${p}`);
       const data = (await res.json()) as HeatmapPayload;
+      if (req !== heatReq.current) return;
       setHeatmap(data);
     } catch (exc) {
+      if (req !== heatReq.current) return;
       setHeatmap({
         ok: false,
         error: exc instanceof Error ? exc.message : "Heatmap load failed",
       });
     } finally {
-      setHeatLoading(false);
+      if (req === heatReq.current) setHeatLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadHeatmap(universe);
-  }, [universe, loadHeatmap]);
+    void loadHeatmap(universe, period);
+  }, [universe, period, loadHeatmap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,7 +171,7 @@ export default function MainTab() {
       {unlocked ? (
         <TvOperatorPanel
           heatmapCells={heatmap?.cells || []}
-          universeLabel={UNIVERSES.find((u) => u.id === universe)?.label || ""}
+          universeLabel={`${UNIVERSES.find((u) => u.id === universe)?.label || ""} · ${period}`}
         />
       ) : null}
       <nav className="main-jumps" aria-label="바로가기">
@@ -233,11 +226,24 @@ export default function MainTab() {
           <button
             type="button"
             className="chip"
-            onClick={() => void loadHeatmap(universe)}
+            onClick={() => void loadHeatmap(universe, period)}
             disabled={heatLoading}
           >
             새로고침
           </button>
+        </div>
+
+        <div className="chip-row" role="tablist" aria-label="히트맵 기간">
+          {HEATMAP_PERIODS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`chip ${period === p.id ? "active" : ""}`}
+              onClick={() => setPeriod(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
         {heatLoading ? (
@@ -255,9 +261,9 @@ export default function MainTab() {
           <>
             <div className="stat-row">
               <div className="stat">
-                <span className="stat-label">평균</span>
+                <span className="stat-label">평균 · {heatmap.period_label || "1일"}</span>
                 <span className={`stat-value ${retClass(heatmap.stats?.avg_return_pct || 0)}`}>
-                  {fmtPct(heatmap.stats?.avg_return_pct)}
+                  {fmtHeat(heatmap.stats?.avg_return_pct)}
                 </span>
               </div>
               <div className="stat">
@@ -268,7 +274,7 @@ export default function MainTab() {
               </div>
             </div>
 
-            <TreemapHeatmap cells={heatmap.cells} />
+            <TreemapHeatmap cells={heatmap.cells} period={heatmap.period || "1D"} />
 
             <p className="meta-soft">
               {heatmap.session_label || heatmap.label}
@@ -287,7 +293,7 @@ export default function MainTab() {
                         {c.ticker}
                         <span className="mover-name"> {c.name}</span>
                       </span>
-                      <span className="up">{fmtPct(c.daily_return_pct)}</span>
+                      <span className="up">{fmtHeat(c.daily_return_pct)}</span>
                     </li>
                   ))}
                 </ul>
@@ -301,7 +307,7 @@ export default function MainTab() {
                         {c.ticker}
                         <span className="mover-name"> {c.name}</span>
                       </span>
-                      <span className="down">{fmtPct(c.daily_return_pct)}</span>
+                      <span className="down">{fmtHeat(c.daily_return_pct)}</span>
                     </li>
                   ))}
                 </ul>
