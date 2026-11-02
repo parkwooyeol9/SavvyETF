@@ -22,7 +22,7 @@ export const CACHE_TIER = {
   krxShort: { sMaxAge: 600, swr: 900 },
   /** Bundled snapshots that only change on deploy (ETF universe classification) */
   snapshot: { sMaxAge: 3_600, swr: 86_400 },
-  /** Daily close overlay (ETF universe returns) — refresh soon after the 20:10 job */
+  /** Daily close overlay (ETF universe returns) — refresh soon after the 16:10 (KR·JP·CN) / 07:40 (US·EU·HK) jobs */
   dailyClose: { sMaxAge: 600, swr: 3_600 },
 } as const;
 

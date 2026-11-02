@@ -6,7 +6,7 @@ import { loadEtfUniverse } from "@/lib/etfUniverseServer";
 /**
  * ETF universe snapshots bundled from SavvyDB (03_ETF/etf_universe.py).
  * `?market=kr|us|eu|jp|hk|cn` → that market's columnar file; no market → the per-market index.
- * Return columns are overlaid from R2 `etf_universe_px/latest.json` when the 20:10 job has run.
+ * Return columns are overlaid from R2 `etf_universe_px/latest.json` by the 16:10 (KR·JP·CN) and 07:40 (US·EU·HK) jobs.
  * Served through the API (not public/) so the same-site gate and bot block in middleware apply.
  */
 export const dynamic = "force-dynamic";

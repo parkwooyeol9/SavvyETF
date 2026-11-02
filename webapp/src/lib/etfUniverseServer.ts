@@ -7,7 +7,7 @@ import type { EtfUniverseFile, EtfUniverseMarket, EtfUniverseRow } from "@/lib/e
 
 /**
  * Server-only loader for the bundled ETF universe snapshots plus the R2 return overlay
- * (`etf_universe_px/latest.json`, 20:10 KST job). Shared by `/api/etf-universe` and `/api/ai-pick`.
+ * (`etf_universe_px/latest.json`, 16:10 KST KR·JP·CN / 07:40 KST US·EU·HK jobs). Shared by `/api/etf-universe` and `/api/ai-pick`.
  */
 
 const RETURN_KEYS = ["r1w", "r1m", "r3m", "r1y"] as const;
@@ -39,7 +39,7 @@ export type PxFile = {
   markets?: Partial<Record<EtfUniverseMarket, PxMarket>>;
 };
 
-/** 로컬 개발(R2 미설정): 20:10 작업을 직접 돌리면 남는 `data/etf_universe_px/latest.json`. 운영에서는 쓰지 않는다. */
+/** 로컬 개발(R2 미설정): 종가 작업을 직접 돌리면 남는 `data/etf_universe_px/latest.json`. 운영에서는 쓰지 않는다. */
 async function localOverlay(): Promise<PxFile | null> {
   if (process.env.NODE_ENV === "production") return null;
   try {

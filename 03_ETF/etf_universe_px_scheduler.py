@@ -1,11 +1,16 @@
-"""Daily ETF universe return refresh — 20:10 KST, weekdays.
+"""Daily ETF universe return refresh — one run per market group, each after its own close.
 
-18:20 Korea ETF DB (Naver) has finished, including its 45-minute catch-up.
-21:50 US pre-summary has not started. Asia and the US cash close are in;
-Europe's session is still open and that day's bar is ignored.
+asia (kr, jp, cn) — 16:10 KST, Mon–Fri.
+  Seoul and Tokyo closed at 15:30, Shanghai at 16:00 KST.
+  The run takes about 3 minutes, between 15:40 summary_kor and 16:20 etfcheck.
+west (us, eu, hk) — 07:40 KST, Tue–Sat (the KST morning after each session).
+  The US cash close is in and the 07:00 US summary has had its slot.
+  Hong Kong closes at 17:00 KST, inside the 17:15–18:20 Korea jobs, so it comes here.
+  One run per group: a run before a market's close only re-publishes the previous close.
 
+Each run rewrites only its group's markets in latest.json.
 The job itself is mostly Yahoo I/O. It takes the shared heavy-work lock
-so it does not run beside the Korea crawl or the evening summary.
+so it does not run beside the Korea crawl or the summaries.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ import path_setup  # noqa: F401
 import os
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -23,8 +29,6 @@ from scheduler_slots import due_slot_id
 from summary_scheduler import _load_state, update_scheduler_state
 
 KST = ZoneInfo("Asia/Seoul")
-DEFAULT_HOUR_KST = 20
-DEFAULT_MINUTE_KST = 10
 DEFAULT_POLL_SECONDS = 60
 DEFAULT_CATCHUP_MINUTES = 40
 DEFAULT_DEADLINE_SECONDS = 25 * 60
@@ -33,8 +37,28 @@ DEFAULT_DEADLINE_SECONDS = 25 * 60
 MAX_ATTEMPTS_PER_SLOT = 2
 
 
-def _attempts_used(slot: str) -> int:
-    raw = str(_load_state().get("last_etf_universe_px_try_slot") or "")
+@dataclass(frozen=True)
+class Group:
+    name: str
+    env: str
+    default_time: str
+    # KST weekdays (Mon=0) on which the slot runs.
+    weekdays: frozenset[int]
+    # State key infix. Asia keeps the original keys so health history carries on.
+    key: str
+
+    def state(self, field: str) -> str:
+        return f"last_etf_universe_px{self.key}_{field}"
+
+
+GROUPS = (
+    Group("asia", "ETF_UNIVERSE_PX_SCHEDULE_KST", "16:10", frozenset({0, 1, 2, 3, 4}), ""),
+    Group("west", "ETF_UNIVERSE_PX_WEST_SCHEDULE_KST", "07:40", frozenset({1, 2, 3, 4, 5}), "_west"),
+)
+
+
+def _attempts_used(group: Group, slot: str) -> int:
+    raw = str(_load_state().get(group.state("try_slot")) or "")
     tried_slot, _, count = raw.rpartition("#")
     if tried_slot != slot:
         return 0
@@ -44,8 +68,8 @@ def _attempts_used(slot: str) -> int:
         return 0
 
 
-def _schedule_time_kst() -> tuple[int, int]:
-    raw = os.environ.get("ETF_UNIVERSE_PX_SCHEDULE_KST", "20:10").strip()
+def _schedule_time_kst(group: Group) -> tuple[int, int]:
+    raw = os.environ.get(group.env, group.default_time).strip()
     try:
         hour_s, minute_s = raw.split(":", 1)
         hour = int(hour_s)
@@ -54,7 +78,8 @@ def _schedule_time_kst() -> tuple[int, int]:
             return hour, minute
     except ValueError:
         pass
-    return DEFAULT_HOUR_KST, DEFAULT_MINUTE_KST
+    hour_s, minute_s = group.default_time.split(":", 1)
+    return int(hour_s), int(minute_s)
 
 
 def _catchup_minutes() -> int:
@@ -73,51 +98,56 @@ def _enabled() -> bool:
     }
 
 
-def run_scheduled_etf_universe_px() -> bool:
-    from etf_universe_px import build_payload, publish
+def run_scheduled_etf_universe_px(group: Group = GROUPS[0]) -> bool:
+    from etf_universe_px import MARKET_GROUPS, build_payload, publish
     from heavy_work import begin_heavy_work_blocking, end_heavy_work, heavy_work_status
 
-    if not begin_heavy_work_blocking("scheduled-etf-universe-px", timeout=120):
-        print(f"Scheduled etf_universe_px skipped: heavy work still busy ({heavy_work_status()})")
-        update_scheduler_state(last_etf_universe_px_error=f"heavy work busy ({heavy_work_status()})")
+    label = f"scheduled-etf-universe-px-{group.name}"
+    if not begin_heavy_work_blocking(label, timeout=120):
+        print(f"Scheduled etf_universe_px {group.name} skipped: heavy work still busy ({heavy_work_status()})")
+        update_scheduler_state(**{group.state("error"): f"heavy work busy ({heavy_work_status()})"})
         return False
     try:
-        update_scheduler_state(last_etf_universe_px_attempt_at=datetime.now(KST).isoformat())
-        payload = build_payload(deadline=time.time() + DEFAULT_DEADLINE_SECONDS)
+        update_scheduler_state(**{group.state("attempt_at"): datetime.now(KST).isoformat()})
+        payload = build_payload(
+            markets=MARKET_GROUPS[group.name],
+            deadline=time.time() + DEFAULT_DEADLINE_SECONDS,
+        )
         uploaded = publish(payload)
         print(
-            "Scheduled etf_universe_px: "
+            f"Scheduled etf_universe_px {group.name}: "
             f"as_of={payload.get('as_of')} returns={payload.get('n_with_returns')} "
             f"backfill={payload.get('n_backfill')} bump={payload.get('n_bump')} "
             f"uploaded={uploaded}"
         )
-        update_scheduler_state(
-            last_etf_universe_px_ok_at=datetime.now(KST).isoformat(),
-            last_etf_universe_px_as_of=payload.get("as_of"),
-            last_etf_universe_px_error="" if uploaded or payload.get("n_with_returns") else "upload failed",
-        )
+        update_scheduler_state(**{
+            group.state("ok_at"): datetime.now(KST).isoformat(),
+            group.state("as_of"): payload.get("as_of"),
+            group.state("error"): "" if uploaded or payload.get("n_with_returns") else "upload failed",
+        })
         return bool(payload.get("n_with_returns"))
     except Exception as exc:
-        print(f"Scheduled etf_universe_px failed: {exc}")
-        update_scheduler_state(last_etf_universe_px_error=str(exc))
+        print(f"Scheduled etf_universe_px {group.name} failed: {exc}")
+        update_scheduler_state(**{group.state("error"): str(exc)})
         return False
     finally:
-        end_heavy_work("scheduled-etf-universe-px")
+        end_heavy_work(label)
 
 
 def start_etf_universe_px_scheduler() -> None:
     if not _enabled():
         print("etf_universe_px scheduler disabled.")
         return
-    hour, minute = _schedule_time_kst()
+    times = {group.name: _schedule_time_kst(group) for group in GROUPS}
     catchup = _catchup_minutes()
 
     def loop() -> None:
         state = _load_state()
-        last_slot = state.get("last_etf_universe_px_slot")
+        last_slots = {group.name: state.get(group.state("slot")) for group in GROUPS}
         print(
-            f"etf_universe_px scheduler active — weekdays {hour:02d}:{minute:02d} KST "
-            f"({catchup}m catch-up)"
+            "etf_universe_px scheduler active — "
+            + ", ".join(f"{name} {h:02d}:{m:02d} KST" for name, (h, m) in times.items())
+            + f" ({catchup}m catch-up)"
         )
         while True:
             try:
@@ -126,21 +156,29 @@ def start_etf_universe_px_scheduler() -> None:
                     continue
                 now = datetime.now(KST)
                 update_scheduler_state(etf_universe_px_scheduler_heartbeat=now.isoformat())
-                slot = due_slot_id(now, hour, minute, last_slot=last_slot, window_minutes=catchup)
-                if slot and now.weekday() >= 5:
-                    print(f"Scheduled etf_universe_px skipped ({slot}): weekend")
-                    last_slot = slot
-                    update_scheduler_state(last_etf_universe_px_slot=slot)
-                elif slot and _attempts_used(slot) >= MAX_ATTEMPTS_PER_SLOT:
-                    print(f"Scheduled etf_universe_px gave up ({slot}): {MAX_ATTEMPTS_PER_SLOT} attempts used")
-                    last_slot = slot
-                    update_scheduler_state(last_etf_universe_px_slot=slot)
-                elif slot:
-                    # Count the attempt before running: an out-of-memory restart never reaches the end.
-                    update_scheduler_state(last_etf_universe_px_try_slot=f"{slot}#{_attempts_used(slot) + 1}")
-                    if run_scheduled_etf_universe_px():
-                        last_slot = slot
-                        update_scheduler_state(last_etf_universe_px_slot=slot)
+                for group in GROUPS:
+                    hour, minute = times[group.name]
+                    slot = due_slot_id(
+                        now, hour, minute, last_slot=last_slots[group.name], window_minutes=catchup
+                    )
+                    if not slot:
+                        continue
+                    if now.weekday() not in group.weekdays:
+                        print(f"Scheduled etf_universe_px {group.name} skipped ({slot}): no new session")
+                    elif _attempts_used(group, slot) >= MAX_ATTEMPTS_PER_SLOT:
+                        print(
+                            f"Scheduled etf_universe_px {group.name} gave up ({slot}): "
+                            f"{MAX_ATTEMPTS_PER_SLOT} attempts used"
+                        )
+                    else:
+                        # Count the attempt before running: an out-of-memory restart never reaches the end.
+                        update_scheduler_state(**{
+                            group.state("try_slot"): f"{slot}#{_attempts_used(group, slot) + 1}"
+                        })
+                        if not run_scheduled_etf_universe_px(group):
+                            continue
+                    last_slots[group.name] = slot
+                    update_scheduler_state(**{group.state("slot"): slot})
             except Exception as exc:
                 print(f"etf_universe_px scheduler loop error: {exc}")
             time.sleep(DEFAULT_POLL_SECONDS)

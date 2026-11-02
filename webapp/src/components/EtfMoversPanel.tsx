@@ -14,7 +14,7 @@ import {
 
 /**
  * ETF·DB 첫 화면 — 상장 시장(권역) 안에서 크게 오르내렸거나 거래량이 붙은 ETF를 고른다.
- * 이미 받은 유니버스 파일(+ 20:10 종가·거래량 오버레이)만 쓰고, 탭을 열 때 외부 수집은 없다.
+ * 이미 받은 유니버스 파일(+ 일별 종가·거래량 오버레이)만 쓰고, 탭을 열 때 외부 수집은 없다.
  */
 
 type Period = "r1d" | "r1w" | "r1m" | "r3m";
@@ -266,7 +266,7 @@ export default function EtfMoversPanel({ market, file, rows }: Props) {
               <span className="meta-soft"> 일평균 거래대금 / 순자산 · 스냅샷</span>
             </h4>
             <p className="meta-soft etfmv-note">
-              일별 거래량은 평일 20:10 작업이 쌓기 시작했습니다. 25거래일이 모이기 전까지는 스냅샷 회전율을 보여 줍니다.
+              일별 거래량은 매일 종가 작업이 쌓기 시작했습니다. 25거래일이 모이기 전까지는 스냅샷 회전율을 보여 줍니다.
             </p>
             {turnover.length ? (
               <ol>

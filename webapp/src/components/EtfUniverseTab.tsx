@@ -180,7 +180,7 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
           <p className="kr-note">
             한국·미국·유럽(UCITS)·일본·홍콩·중국 상장 ETF 전수 · 권역 안에서 크게 오르내리거나 거래량이 붙은 ETF를
             먼저 보여 주고, 자산군 / 투자지역 / 업종 / 전략·테마 분류표는 두 번째 화면에 둡니다 · Refinitiv
-            스냅샷(SavvyDB) + 평일 20:10 종가·거래량
+            스냅샷(SavvyDB) + 일별 종가·거래량(한국·일본·중국 16:10 · 미국·유럽·홍콩 다음 날 07:40)
           </p>
         </div>
         {market === "kr" || market === "us" ? (
@@ -274,7 +274,9 @@ export default function EtfUniverseTab({ initialMarket = "kr" }: { initialMarket
                     <div
                       title={
                         file.returns_as_of
-                          ? `${file.returns_source || "Yahoo 종가"} · 평일 20:10(KST)에 갱신`
+                          ? `${file.returns_source || "Yahoo 종가"} · ${
+                              market === "us" || market === "eu" || market === "hk" ? "화–토 07:40" : "평일 16:10"
+                            }(KST)에 갱신`
                           : "일별 종가 갱신 전이라 스냅샷 수익률을 보여 줍니다"
                       }
                     >

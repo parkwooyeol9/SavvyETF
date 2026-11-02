@@ -17,10 +17,12 @@ ETF·DB screen can flag volume surges (last session and last 5 vs the 20 before)
 History is kept so each night only asks for the last few sessions,
 except the first time a symbol is seen (2y backfill, so the 252-session window exists).
 
-Runs at 20:10 KST, after the 18:20 Korea crawl and before the 21:50
-US pre-summary. Asia and the US cash session are closed by then.
-Europe is still open, so a bar dated today in Europe is left out of
-the return and the previous close is used.
+Two runs, one per market group, each the first time that group's session is closed:
+  - Korea, Japan and China at 16:10 KST, after Shanghai's 15:00 CST (16:00 KST) close.
+  - US, Europe and Hong Kong at 07:40 KST the next morning. Hong Kong closes at
+    17:00 KST, inside the 17:15–18:20 run of Korea jobs, so it waits for the morning.
+Each run rewrites only its own markets in latest.json and keeps the other group's.
+A bar dated today whose session is still open is left out and the previous close is used.
 """
 
 from __future__ import annotations
@@ -57,6 +59,7 @@ R2_CLOSES = "etf_universe_px/closes.json.gz"
 UA = "Mozilla/5.0 (compatible; SavvyETF/1.0; +https://github.com/parkwooyeol9/SavvyETF)"
 
 MARKETS = ("kr", "us", "eu", "jp", "hk", "cn")
+MARKET_GROUPS = {"asia": ("kr", "jp", "cn"), "west": ("us", "eu", "hk")}
 # Trading-day windows. 252 sessions ≈ 1 year, matching the ACWI close job.
 WINDOWS = (("r1w", 5), ("r1m", 21), ("r3m", 63), ("r1y", 252))
 KEEP_BARS = 280
@@ -153,9 +156,12 @@ def close_pending(market: str, exchange: str | None, now: datetime) -> bool:
     elif market == "kr":
         end = 15 * 60 + 30
     elif market == "jp":
+        # TSE has closed at 15:30 since 2024-11-05.
+        end = 15 * 60 + 30
+    elif market == "cn":
         end = 15 * 60
-    elif market in ("hk", "cn"):
-        end = 16 * 60
+    elif market == "hk":
+        end = 16 * 60 + 10
     elif market == "eu" and exchange == "LSE":
         end = 16 * 60 + 30
     elif market == "eu":
@@ -485,11 +491,12 @@ def _fetch_into(
 def build_payload(
     listings: list[dict[str, Any]] | None = None,
     *,
+    markets: tuple[str, ...] = MARKETS,
     deadline: float | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Refresh closes, then build the per-market return overlay."""
-    rows = listings if listings is not None else load_listings()
+    """Refresh closes for ``markets``, then build their return overlay. Other markets are left out."""
+    rows = [row for row in (listings if listings is not None else load_listings()) if row["market"] in markets]
     if not rows:
         raise RuntimeError(f"ETF universe listings are empty: {JSON_DIR}")
     moment = now or datetime.now(timezone.utc)
@@ -511,10 +518,10 @@ def build_payload(
     _fetch_into(closes, need_full, FULL_RANGE, deadline)
     save_closes(closes)
 
-    markets: dict[str, dict[str, Any]] = {}
+    built: dict[str, dict[str, Any]] = {}
     used_dates: list[str] = []
     n_with = 0
-    for market in MARKETS:
+    for market in markets:
         table: list[list[Any]] = []
         dates: list[str] = []
         for row in rows:
@@ -531,7 +538,7 @@ def build_payload(
         if as_of:
             used_dates.append(as_of)
         n_with += len(table)
-        markets[market] = {"as_of": as_of, "source": "Yahoo 종가", "n": len(table), "cols": ROW_COLS, "rows": table}
+        built[market] = {"as_of": as_of, "source": "Yahoo 종가", "n": len(table), "cols": ROW_COLS, "rows": table}
     return {
         "ok": True,
         "as_of": max(used_dates) if used_dates else None,
@@ -541,30 +548,43 @@ def build_payload(
         "n_backfill": len(need_full),
         "n_bump": len(need_bump),
         "n_vol_backfill": len(need_vol),
-        "markets": markets,
+        "markets": built,
     }
 
 
-def _slim(payload: dict[str, Any]) -> dict[str, Any]:
+def _slim(payload: dict[str, Any], previous: dict[str, Any] | None = None) -> dict[str, Any]:
+    """This run's markets over the previous file's, so one group's run keeps the other group's rows."""
+    markets = {
+        market: data
+        for market, data in ((previous or {}).get("markets") or {}).items()
+        if market in MARKETS and isinstance(data, dict)
+    }
+    markets.update(payload.get("markets") or {})
+    dates = [str(data.get("as_of")) for data in markets.values() if data.get("as_of")]
     return {
         "ok": True,
-        "as_of": payload.get("as_of"),
+        "as_of": max(dates) if dates else payload.get("as_of"),
         "built_at": payload.get("built_at"),
-        "markets": payload.get("markets") or {},
+        "markets": markets,
     }
 
 
 def save_local_latest(payload: dict[str, Any]) -> None:
     """Same overlay next to the close store. The web dev server reads it when R2 is not configured."""
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-    (LOCAL_DIR / "latest.json").write_text(json.dumps(_slim(payload), ensure_ascii=False), encoding="utf-8")
+    path = LOCAL_DIR / "latest.json"
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    except ValueError:
+        previous = None
+    path.write_text(json.dumps(_slim(payload, previous), ensure_ascii=False), encoding="utf-8")
 
 
 def publish(payload: dict[str, Any]) -> bool:
-    from r2_data import put_json_daily
+    from r2_data import get_json, put_json_daily
 
-    slim = _slim(payload)
-    return bool(put_json_daily(R2_LATEST, slim, day=payload.get("as_of")))
+    slim = _slim(payload, get_json(R2_LATEST))
+    return bool(put_json_daily(R2_LATEST, slim, day=slim.get("as_of")))
 
 
 def _self_test() -> None:
@@ -590,6 +610,10 @@ def _self_test() -> None:
     assert kept.days[-1] == "2026-10-27"
     closed = completed_bars(Bars.from_pairs([["2026-10-28", 10]]), "kr", "KRX", open_at)
     assert closed.days[-1] == "2026-10-28"
+    at_1610 = datetime(2026, 11, 3, 7, 10, tzinfo=timezone.utc)  # 16:10 KST
+    for market, ex in (("kr", "KRX"), ("jp", "도쿄"), ("cn", "상하이")):
+        assert not close_pending(market, ex, at_1610), market
+    assert close_pending("hk", "HKEX", at_1610)
     merged = merge_bars(Bars.from_pairs([["2026-10-27", 9, 100]]), [["2026-10-28", 10, 300], ["2026-10-27", 9.5, None]])
     assert merged.pairs() == [["2026-10-27", 9.5, 100], ["2026-10-28", 10.0, 300]]
     raw = b'{"v":1,"bars":{"A":[["2026-10-27",9],["2026-10-28",10]],"B.KS":[]}}'
@@ -603,6 +627,12 @@ def _self_test() -> None:
     sig = volume_signals(Bars.from_pairs(vol_rows))
     assert sig["vr1"] == 6.0 and sig["vr5"] == 2.0, sig
     assert sig["r1d"] == round((12.5 / (10 + 23 * 0.1) - 1) * 100, 2)
+    keep = _slim(
+        {"as_of": "2026-11-03", "markets": {"us": {"as_of": "2026-11-02", "rows": [["VOO", 1]]}}},
+        {"markets": {"kr": {"as_of": "2026-11-02", "rows": [["069500", 2]]}, "us": {"as_of": "2026-10-30", "rows": []}}},
+    )
+    assert set(keep["markets"]) == {"kr", "us"} and keep["markets"]["us"]["rows"] == [["VOO", 1]]
+    assert keep["as_of"] == "2026-11-02"
     thin = volume_signals(Bars.from_pairs([[f"2026-09-{i + 1:02d}", 10, 0] for i in range(25)]))
     assert thin["vr1"] is None and thin["vr5"] is None
     print("etf_universe_px self-test ok")
@@ -613,15 +643,16 @@ def main() -> None:
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--markets", nargs="*", default=list(MARKETS))
+    parser.add_argument("--markets", nargs="*", default=list(MARKETS), choices=MARKETS)
     args = parser.parse_args()
     if args.self_test:
         _self_test()
         return
-    listings = [row for row in load_listings() if row["market"] in set(args.markets)]
+    markets = tuple(m for m in MARKETS if m in args.markets)
+    listings = [row for row in load_listings() if row["market"] in markets]
     if args.limit:
         listings = listings[: args.limit]
-    payload = build_payload(listings)
+    payload = build_payload(listings, markets=markets)
     summary = {k: payload[k] for k in ("as_of", "n_listings", "n_with_returns", "n_backfill", "n_bump", "n_vol_backfill")}
     summary["by_market"] = {k: v["n"] for k, v in payload["markets"].items()}
     print(json.dumps(summary, ensure_ascii=False))

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Inputs refresh at most a few times a day (20:10 ETF returns, 06:30 ACWI closes, weekly Flow). */
+/** Inputs refresh at most a few times a day (16:10 / 07:40 ETF returns, 06:30 ACWI closes, weekly Flow). */
 export async function GET() {
   try {
     const payload = await withServerCache("ai-pick:v3", 10 * 60_000, 60 * 60_000, buildAiPick);

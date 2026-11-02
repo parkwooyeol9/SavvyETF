@@ -2499,6 +2499,10 @@ def start_web_server():
                         "last_etf_universe_px_as_of": state.get("last_etf_universe_px_as_of"),
                         "last_etf_universe_px_ok_at": state.get("last_etf_universe_px_ok_at"),
                         "last_etf_universe_px_error": state.get("last_etf_universe_px_error"),
+                        "last_etf_universe_px_west_slot": state.get("last_etf_universe_px_west_slot"),
+                        "last_etf_universe_px_west_as_of": state.get("last_etf_universe_px_west_as_of"),
+                        "last_etf_universe_px_west_ok_at": state.get("last_etf_universe_px_west_ok_at"),
+                        "last_etf_universe_px_west_error": state.get("last_etf_universe_px_west_error"),
                         "etf_universe_px_scheduler_heartbeat": state.get(
                             "etf_universe_px_scheduler_heartbeat"
                         ),
@@ -2540,7 +2544,10 @@ def start_web_server():
                         "ai_pulse_kst": os.environ.get("AI_PULSE_SCHEDULE_KST", "5:10"),
                         "acwi_px_kst": os.environ.get("ACWI_PX_SCHEDULE_KST", "6:30"),
                         "etf_universe_px_kst": os.environ.get(
-                            "ETF_UNIVERSE_PX_SCHEDULE_KST", "20:10"
+                            "ETF_UNIVERSE_PX_SCHEDULE_KST", "16:10"
+                        ),
+                        "etf_universe_px_west_kst": os.environ.get(
+                            "ETF_UNIVERSE_PX_WEST_SCHEDULE_KST", "07:40"
                         ),
                         "summary_kst": os.environ.get(
                             "SUMMARY_SCHEDULE_HOURS_KST", "7:00"
@@ -2593,7 +2600,7 @@ def start_web_server():
                             "(compact Telegram), summary_kor@15:40 "
                             "(compact Telegram), etfcheck@16:20, "
                             "summary_nxt@16:40 (web-only), "
-                            "esg events@09:00, esg accident@10:20, etfdb@18:20, "
+                            "esg events@09:00, esg accident@10:20, etfdb@18:20, etf_universe_px kr·jp·cn@16:10 / us·eu·hk@07:40, "
                             "kosdaq100@17:15, kosdaq_active@17:50. "
                             "Staggered ~30–40m so heavy work does not overlap. "
                             "OFF default: summary_pre, kor_intra, etf_sector@07:05, "

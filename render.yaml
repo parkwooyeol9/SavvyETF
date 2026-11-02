@@ -132,7 +132,9 @@ services:
       - key: ETF_UNIVERSE_PX_SCHEDULE_ENABLED
         value: "true"
       - key: ETF_UNIVERSE_PX_SCHEDULE_KST
-        value: "20:10"
+        value: "16:10"
+      - key: ETF_UNIVERSE_PX_WEST_SCHEDULE_KST
+        value: "07:40"
       - key: ETF_UNIVERSE_PX_CATCHUP_MINUTES
         value: "40"
       - key: ETFDB_SCHEDULE_KST
