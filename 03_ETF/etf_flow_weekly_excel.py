@@ -27,7 +27,6 @@ F_BOLD = Font(name=FONT, size=10, bold=True)
 F_TITLE = Font(name=FONT, size=12, bold=True, color=NAVY)
 F_HEAD = Font(name=FONT, size=10, bold=True, color="FFFFFF")
 F_NOTE = Font(name=FONT, size=9, color="7F7F7F")
-F_ORG = Font(name=FONT, size=14, bold=True)
 FILL_HEAD = PatternFill("solid", fgColor=NAVY)
 FILL_SUB = PatternFill("solid", fgColor=LIGHT)
 THIN = Side(style="thin", color="BFBFBF")
@@ -121,11 +120,9 @@ def write_workbook(payload: dict[str, Any], path: Path) -> Path:
     for k, v in widths.items():
         ws.column_dimensions[k].width = v
 
-    ws["A2"] = "미래에셋자산운용"
-    ws["A2"].font = F_ORG
-    ws["C2"] = (f"ETF Flow Weekly · 작성 {payload['generated_at_display']} · "
+    ws["A2"] = (f"ETF Flow Weekly · 작성 {payload['generated_at_display']} · "
                 f"미국 이번주 {w[0]['label']} (지난주 {w[1]['label']}) · 국내 {kr['week']['label']}")
-    ws["C2"].font = F_NOTE
+    ws["A2"].font = F_NOTE
 
     # ── 1. 자산군별 주간 순유입 ───────────────────────────────────────────────
     r = 4
@@ -174,7 +171,7 @@ def write_workbook(payload: dict[str, Any], path: Path) -> Path:
     # ── 3. 미국 상장 ETF 주간 유출입 Top 10 ────────────────────────────────────
     r = 39
     _title(ws, r, "3. 해외ETF 주간 유출입 Top 10 (미국 상장 ETF 기준)",
-           ["미국 상장 ETF", "유입 10개, 유출 10개", "국내 유사 ETF는 있는 경우.. TIGER면 좀 더 선호",
+           ["미국 상장 ETF", "유입 10개, 유출 10개", "국내 유사 ETF는 있는 경우",
             f"주간 = {w[0]['label']} · 4주 누적 = {w[-1]['label'].split('~')[0]}~{w[0]['label'].split('~')[1]}",
             "AUM대비 = 주간순유입 / 최근 AUM"])
     _header(ws, r + 1, 1, ["구분", "티커", "ETF", "자산군", "주간순유입($B)", "AUM대비", "4주 누적($B)",

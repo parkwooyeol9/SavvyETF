@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useAdminSession } from "@/components/AdminSession";
-import { adminAuthHeaders } from "@/lib/adminSession";
 import type { EtfFlowWeeklyPayload, FlowTopRow, KrInvestorRow } from "@/lib/etfFlowWeekly";
 
 const EXCEL_HREF = "/api/etf-flow-weekly/excel";
@@ -120,17 +118,13 @@ function IndivTable({ label, rows }: { label: string; rows: KrInvestorRow[] }) {
 }
 
 export default function EtfFlowWeeklyTab() {
-  const { secret } = useAdminSession();
   const [data, setData] = useState<EtfFlowWeeklyPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/etf-flow-weekly", {
-        cache: "no-store",
-        headers: adminAuthHeaders(secret),
-      });
+      const res = await fetch("/api/etf-flow-weekly", { cache: "no-store" });
       setData((await res.json()) as EtfFlowWeeklyPayload);
     } catch (exc) {
       setData(null);
@@ -138,7 +132,7 @@ export default function EtfFlowWeeklyTab() {
     } finally {
       setLoading(false);
     }
-  }, [secret]);
+  }, []);
 
   useEffect(() => {
     void load();

@@ -348,7 +348,6 @@ export const HIDDEN_NAV_TABS: readonly ShellTabId[] = ["cardnews", "themeetf", "
 export const ADMIN_ONLY_TABS: readonly ShellTabId[] = [
   "corridor",
   "datacatalog",
-  "etfflow",
   "heatpick",
   "moneyflow",
   "round",
