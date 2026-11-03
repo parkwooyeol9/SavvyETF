@@ -44,9 +44,22 @@ function unpackZip(input: Uint8Array): ZipFile[] {
   return files;
 }
 
+/** openpyxl 은 한글을 `&#48120;` 같은 10진 참조로 저장한다. */
+function xmlDecimal(text: string): string {
+  return Array.from(text)
+    .map((ch) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      return cp > 127 ? `&#${cp};` : ch;
+    })
+    .join("");
+}
+
 function stripXml(text: string): string {
   let next = text;
-  for (const [from, to] of LABEL_SWAPS) next = next.split(from).join(to);
+  for (const [from, to] of LABEL_SWAPS) {
+    next = next.split(from).join(to);
+    next = next.split(xmlDecimal(from)).join(xmlDecimal(to));
+  }
   return next;
 }
 
