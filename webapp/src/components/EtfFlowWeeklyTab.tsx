@@ -247,7 +247,7 @@ export default function EtfFlowWeeklyTab() {
           <SectionHead
             no={3}
             title="해외ETF 주간 유출입 Top 10 (미국 상장 ETF 기준)"
-            note="단위 $B · AUM대비 = 주간순유입/AUM · 국내 유사 ETF는 TIGER 우선"
+            note="단위 $B · AUM대비 = 주간순유입/AUM · 국내 유사 ETF는 있는 경우"
           />
           <div className="table-wrap">
             <table className="kr-table etfflow-table">
