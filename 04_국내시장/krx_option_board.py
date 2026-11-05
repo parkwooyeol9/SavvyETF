@@ -13,7 +13,7 @@
   drv/eqkop_bydd_trd    주식옵션(코스닥) 체인
 
 산출 (ETF Flow 탭과 같은 경로):
-  00_exports/krx_option_board/krx_option_board_YYMMDD.json · KRX 옵션보드_YYMMDD.xlsx
+  00_exports/krx_option_board/krx_option_board_YYMMDD.json · KRX 옵션모니터_YYMMDD.xlsx
   --publish : 웹 수신 API(/api/krx-option-board, WEB_INGEST_SECRET) 우선, 없으면 R2 직접
   R2  krx_option_board/latest.json · latest.xlsx
 
@@ -634,6 +634,23 @@ def build_payload(end: date | None = None) -> dict[str, Any]:
     stocks = stock_option_section(day, as_of)
     front = chain["front"] or {}
 
+    # 투자자별 수급 (정보데이터시스템, 로그인 필요) — KRX_COOKIE 가 있으면 최근분 갱신, 없으면 마지막 적재분
+    from krx_option_investor import investor_section, update_from_cookie
+
+    try:
+        update_from_cookie()
+    except Exception as exc:  # noqa: BLE001
+        print(f"investor cookie update skipped: {exc}")
+    investor = investor_section({h["date"]: h["k200"] for h in hist})
+    if investor is None:
+        # 원자료가 없는 환경(R2 미동기화 등) — 직전 게시본의 투자자 섹션을 그대로 유지
+        try:
+            from r2_data import get_json
+
+            investor = (get_json(R2_LATEST_JSON) or {}).get("investor")
+        except Exception:  # noqa: BLE001
+            investor = None
+
     summary = {
         "k200": last["k200"], "k200_chg": last["k200_chg"],
         "vkospi": vol["vkospi"], "vkospi_chg": vol["vkospi_chg"], "vkospi_pctile": vol["vkospi_pctile"],
@@ -644,12 +661,20 @@ def build_payload(end: date | None = None) -> dict[str, Any]:
         "call_wall": front.get("call_wall"), "put_wall": front.get("put_wall"), "max_pain": front.get("max_pain"),
         "gex_eok": chain["gex_total_eok"],
     }
+    if investor:
+        w5 = investor["windows"]["d5"]
+        summary.update({
+            "inv_as_of": investor["as_of"],
+            "frgn_fut_5d": w5["외국인"]["fut_qty"],
+            "frgn_dir_5d": w5["외국인"]["dir_eok"],
+            "indiv_dir_5d": w5["개인"]["dir_eok"],
+        })
     return {
         "ok": True,
         "as_of": last["date"],
         "generated_at": now.isoformat(timespec="seconds"),
         "generated_at_display": now.strftime("%Y-%m-%d %H:%M KST"),
-        "title": f"KRX 옵션보드_{as_of.strftime('%y%m%d')}",
+        "title": f"KRX 옵션모니터_{as_of.strftime('%y%m%d')}",
         "summary": summary,
         "vol": vol,
         "chain": chain,
@@ -658,9 +683,10 @@ def build_payload(end: date | None = None) -> dict[str, Any]:
         "strategy": strat,
         "etf": etf,
         "stocks": stocks,
+        "investor": investor,
         "sources": [
             "KRX Open API — 코스피 시리즈·파생상품지수·옵션·선물·ETF·유가증권·주식옵션 일별매매정보 (전 영업일 종가 기준, D+1 오전 게시)",
-            "투자자별(외국인·개인·기관) 수급은 KRX Open API 에 없어 포함하지 않음",
+            "투자자별(외국인·개인·기관) 수급은 Open API 에 없어 KRX 정보데이터시스템 [15007](로그인 필요)에서 따로 적재 — 기준일을 섹션에 표시",
         ],
         "method": [
             "RV20 = 코스피 200 일간 로그수익률 20일 표준편차 × √252. VRP = VKOSPI − RV20",
@@ -719,6 +745,10 @@ def publish_board(*, publish: bool = False, push: bool = False) -> dict[str, Any
         return result
 
     xlsx_bytes = xpath.read_bytes()
+    # 투자자 적재분은 봇(Render)이 읽을 수 있게 R2 에 따로 둔다 (웹 push 와 무관)
+    from krx_option_investor import sync_to_r2
+
+    result["investor_r2"] = sync_to_r2()
     secret = (os.environ.get("WEB_INGEST_SECRET") or "").strip()
     if secret:
         pushed = push_to_webapp(payload, xlsx_bytes, base_url=_webapp_base_url(), secret=secret)

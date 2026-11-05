@@ -13669,3 +13669,16 @@ p.aa-note { padding-left: 0; }
 .psim-dim { opacity: 0.5; }
 .psim-def { font-size: 0.8rem; color: var(--muted); }
 .psim-def summary { cursor: pointer; color: var(--text); }
+.optboard-reads {
+  margin: 4px 0 10px;
+  padding: 10px 14px 10px 28px;
+  border-left: 3px solid #cc9900;
+  background: rgba(204, 153, 0, 0.06);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.optboard-panel .gamma-chart .meta-soft,
+.optboard-panel .table-wrap .meta-soft {
+  margin: 6px 0 4px;
+}

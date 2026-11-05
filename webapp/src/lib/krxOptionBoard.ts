@@ -141,6 +141,40 @@ export type StockOptRow = {
   skew: number | null;
 };
 
+export type InvWindowRow = {
+  fut_qty: number;
+  fut_eok: number;
+  call_qty: number;
+  put_qty: number;
+  call_eok: number;
+  put_eok: number;
+  /** 콜 순매수대금 − 풋 순매수대금 (억원) */
+  dir_eok: number;
+};
+
+export type InvDetailRow = InvWindowRow & { name: string };
+
+export type InvestorSection = {
+  as_of: string;
+  first: string;
+  n_days: number;
+  investors: string[];
+  /** 키: date, k200, ret, fut_{투자자}, call_, put_, dir_, cum_fut_, cum_dir_ … */
+  series: Array<Record<string, number | string | null>>;
+  windows: Record<"d1" | "d5" | "d20", Record<string, InvWindowRow>>;
+  corr: Array<{
+    name: string;
+    fut_same: number | null;
+    fut_next: number | null;
+    dir_same: number | null;
+    dir_next: number | null;
+  }>;
+  detail: { as_of: string; windows: Record<"d1" | "d5" | "d20", InvDetailRow[]> } | null;
+  reads: string[];
+  source: string;
+  method: string[];
+};
+
 export type KrxOptionBoardPayload = {
   ok: boolean;
   as_of: string;
@@ -172,6 +206,8 @@ export type KrxOptionBoardPayload = {
     totals: Record<string, { aum_eok: number; flow_5d: number; flow_20d: number }>;
   };
   stocks: StockOptRow[];
+  /** 정보데이터시스템(로그인) 적재분 — 없을 수 있음 */
+  investor?: InvestorSection | null;
   sources: string[];
   method: string[];
   error?: string;
@@ -204,7 +240,7 @@ async function localExport(kind: "json" | "xlsx"): Promise<Buffer | null> {
   const dir = path.resolve(process.cwd(), "..", "00_exports", "krx_option_board");
   try {
     const names = (await fs.readdir(dir))
-      .filter((n) => (kind === "json" ? /^krx_option_board_\d{6}\.json$/ : /^KRX 옵션보드_\d{6}\.xlsx$/).test(n))
+      .filter((n) => (kind === "json" ? /^krx_option_board_\d{6}\.json$/ : /^KRX 옵션모니터_\d{6}\.xlsx$/).test(n))
       .sort();
     const last = names[names.length - 1];
     return last ? await fs.readFile(path.join(dir, last)) : null;
@@ -228,7 +264,7 @@ export async function loadKrxOptionBoardXlsx(): Promise<Uint8Array | null> {
   return obj?.body ?? null;
 }
 
-/** "KRX 옵션보드_261104.xlsx" — 한글 파일명은 RFC 5987 로 함께 내려준다. */
+/** "KRX 옵션모니터_261104.xlsx" — 한글 파일명은 RFC 5987 로 함께 내려준다. */
 export function krxOptionBoardFilename(payload: Pick<KrxOptionBoardPayload, "title">): string {
-  return `${payload.title || "KRX 옵션보드"}.xlsx`;
+  return `${payload.title || "KRX 옵션모니터"}.xlsx`;
 }

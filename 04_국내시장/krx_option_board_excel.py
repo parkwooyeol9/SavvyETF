@@ -239,9 +239,59 @@ def _etf_sheet(wb: Workbook, p: dict[str, Any]) -> None:
     _widths(ws, [30, 9, 11, 9, 12, 10, 11, 10, 10, 10])
 
 
+def _investor_sheets(wb: Workbook, p: dict[str, Any]) -> None:
+    inv = p.get("investor")
+    if not inv:
+        return
+    names = inv["investors"]
+    ws = wb.create_sheet("투자자별 수급")
+    ws.sheet_view.showGridLines = False
+    _widths(ws, [14, 13, 13, 13, 13, 13, 13, 13, 4, 40])
+    ws["A1"] = f"코스피200 옵션·선물 투자자별 순매수 · 기준일 {inv['as_of']} · {inv['source']}"
+    ws["A1"].font = F_BOLD
+    r = 3
+    for w, label in (("d1", "1일"), ("d5", "5일"), ("d20", "20일")):
+        _title(ws, r, f"{label} 누적", [])
+        rows = [[n, x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["call_eok"], x["put_eok"], x["dir_eok"]]
+                for n, x in ((n, inv["windows"][w][n]) for n in names)]
+        r = _table(ws, r + 1, 1, ["투자자", "선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "콜(억)", "풋(억)", "옵션 방향(억)"],
+                   rows, [None, FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1, FMT_1]) + 2
+    _title(ws, r, "지수 동행성 (일별 순매수 vs 코스피 200 등락률 상관)", [])
+    rows = [[c["name"], c["fut_same"], c["fut_next"], c["dir_same"], c["dir_next"]] for c in inv["corr"]]
+    r = _table(ws, r + 1, 1, ["투자자", "선물·당일", "선물·익일", "옵션방향·당일", "옵션방향·익일"], rows,
+               [None, FMT_2, FMT_2, FMT_2, FMT_2]) + 2
+    det = inv.get("detail")
+    if det:
+        for w, label in (("d5", "5일"), ("d20", "20일")):
+            _title(ws, r, f"기관 세부 · {label} (기간합계, 기준일 {det['as_of']})", [])
+            rows = [[x["name"], x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["call_eok"], x["put_eok"], x["dir_eok"]]
+                    for x in det["windows"][w]]
+            r = _table(ws, r + 1, 1, ["투자자", "선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "콜(억)", "풋(억)", "옵션 방향(억)"],
+                       rows, [None, FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1, FMT_1]) + 2
+    ws.cell(row=r, column=1, value="해석").font = F_BOLD
+    for i, t in enumerate([*inv["reads"], *inv["method"]]):
+        ws.cell(row=r + 1 + i, column=1, value=f"· {t}").font = F_NOTE
+
+    keys = ["date", "k200", "ret"]
+    headers = ["일자", "코스피 200", "등락률"]
+    fmts: list[str | None] = [None, FMT_2, FMT_PCT]
+    for n in names:
+        keys += [f"fut_{n}", f"call_{n}", f"put_{n}", f"dir_{n}", f"cum_fut_{n}", f"cum_dir_{n}"]
+        headers += [f"{n} 선물", f"{n} 콜", f"{n} 풋", f"{n} 옵션방향(억)", f"{n} 선물누적", f"{n} 방향누적(억)"]
+        fmts += [FMT_0, FMT_0, FMT_0, FMT_1, FMT_0, FMT_1]
+    fut_cols = [4 + 6 * i + 4 for i in range(len(names))]
+    dir_cols = [4 + 6 * i + 5 for i in range(len(names))]
+    _series_sheet(
+        wb, "투자자별 일별", "투자자별 일별 순매수 (선물·콜·풋 계약, 옵션 방향 대금) · 누적은 첫 적재일부터",
+        headers, keys, fmts, inv["series"],
+        [("선물 누적 순매수 (계약)", fut_cols, "#,##0"), ("옵션 방향 누적 (억원)", dir_cols, "#,##0")],
+    )
+
+
 def write_workbook(payload: dict[str, Any], path: Path) -> Path:
     wb = Workbook()
     _summary_sheet(wb, payload)
+    _investor_sheets(wb, payload)
     _chain_sheet(wb, payload)
     _series_sheet(
         wb, "변동성", "코스피 200 · VKOSPI · 실현변동성(RV20) · VRP",

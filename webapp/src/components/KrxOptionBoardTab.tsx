@@ -17,6 +17,7 @@ import {
   YAxis,
 } from "recharts";
 
+import KrxInvestorFlowSection from "@/components/KrxInvestorFlowSection";
 import type { KrxOptionBoardPayload, OptExpiry } from "@/lib/krxOptionBoard";
 
 const EXCEL_HREF = "/api/krx-option-board/excel";
@@ -208,8 +209,10 @@ export default function KrxOptionBoardTab() {
             />
           </div>
 
+          {data.investor ? <KrxInvestorFlowSection inv={data.investor} no={2} range={range} /> : null}
+
           <SectionHead
-            no={2}
+            no={3}
             title="변동성 프리미엄 — VKOSPI vs 실현변동성"
             note={`VRP = VKOSPI − RV20 · 6개월 VKOSPI 범위 ${fmt(data.vol.vkospi_min)}~${fmt(data.vol.vkospi_max)}`}
           />
@@ -248,7 +251,7 @@ export default function KrxOptionBoardTab() {
           {front ? (
             <>
               <SectionHead
-                no={3}
+                no={4}
                 title={`근월물 행사가별 미결제약정·GEX — ${front.code}`}
                 note={`만기 ${front.expiry} (D-${front.dte}) · 기초 ${fmt(front.spot)} (패리티 역산) · 하늘색 = 현물 근처`}
               />
@@ -288,7 +291,7 @@ export default function KrxOptionBoardTab() {
             </>
           ) : null}
 
-          <SectionHead no={4} title="만기별 구조 (월물·위클리)" note="ATM IV 기간구조 · 콜/풋 벽 = 미결제약정 최대 행사가" />
+          <SectionHead no={5} title="만기별 구조 (월물·위클리)" note="ATM IV 기간구조 · 콜/풋 벽 = 미결제약정 최대 행사가" />
           <div className="optboard-grid">
             <div className="table-wrap">
               <table className="kr-table etfflow-table">
@@ -337,7 +340,7 @@ export default function KrxOptionBoardTab() {
             </div>
           </div>
 
-          <SectionHead no={5} title="풋/콜 비율 · 선물 베이시스" note="코스피200 옵션 월물+위클리 정규장 · 선물 최근월 주간" />
+          <SectionHead no={6} title="풋/콜 비율 · 선물 베이시스" note="코스피200 옵션 월물+위클리 정규장 · 선물 최근월 주간" />
           <div className="optboard-grid">
             <div className="gamma-chart">
               <ResponsiveContainer width="100%" height={240}>
@@ -381,7 +384,7 @@ export default function KrxOptionBoardTab() {
           </div>
 
           <SectionHead
-            no={6}
+            no={7}
             title="옵션 전략지수 성과"
             note="초과 = 전략 − 코스피 200 · 양매도 초과 +면 실현 변동성이 내재보다 낮았다는 뜻"
           />
@@ -415,7 +418,7 @@ export default function KrxOptionBoardTab() {
           </div>
 
           <SectionHead
-            no={7}
+            no={8}
             title="레버리지·인버스 ETF 설정·환매 추정"
             note="단위 억원 · Δ상장좌수 × NAV · 개인 방향성 베팅의 대리 지표"
           />
@@ -495,7 +498,7 @@ export default function KrxOptionBoardTab() {
           </div>
 
           <SectionHead
-            no={8}
+            no={9}
             title="주식옵션 거래대금 상위 기초자산"
             note="P/C = 풋/콜 · ATM IV·스큐(±10%)는 근월물 · 비중 = 주식옵션 전체 거래대금 대비"
           />
