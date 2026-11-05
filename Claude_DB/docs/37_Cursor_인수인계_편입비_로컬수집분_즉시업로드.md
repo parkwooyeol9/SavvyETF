@@ -83,3 +83,32 @@
 ```
 fix(etf-weights): let issuer-official holdings replace etfcheck snapshots and add a one-shot R2 push for locally collected data
 ```
+
+---
+
+## ★ 추가 (2026-11-05 14:45) — VFLO 만 아직 사이트에 없다
+
+**확인한 상태** (savvyetf.com `?tab=etfweights`, 14:40)
+- XLK 11/03 · VYM 09/30 · DGRO 11/03 · HDV 11/03 은 공식 데이터로 올라와 있다 (`32c589d` Render 일괄 실행으로 반영)
+- **VFLO 는 목록에 없다.** 엑셀 버튼(`{티커} 엑셀`)은 배포돼 있다 — 이건 할 일 없음
+
+**왜 VFLO 만 빠졌나**
+- `32c589d` 의 Render 일괄 실행(`etf_weight_official.py` 인자 없음)은 서버에서 4종을 새로 받는다. VFLO 는 자동 수집 경로가 없어(Victory 403, etfcheck VFLO 값 불일치) `no automated official feed` 로 끝나는 게 정상이고, 서버에는 로컬 스냅샷도 없으니 `push()` 도 VFLO 를 건너뛴다
+- VFLO 원자료(공식 All Holdings CSV)는 **이 맥 `data/etf_weights/VFLO/` 에만** 있다 (`raw/2026-11-04.csv`, `snapshots/2026-11-04.json`, `latest.json` — 52종목). `data/` 는 gitignore 라 커밋·배포로 서버에 가지 않는다
+- Render one-off job 은 셸이 없어(`32c589d` 주석) 방법 B(CSV 를 서버로 복사 후 `--victory-csv`)는 사실상 불가
+
+**할 일 — 이 맥에서 VFLO 1종만 (방법 A)**
+1. 루트 `.env` 에 배포 봇과 같은 R2 값 4개 (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`) — 커밋 금지. 실행하는 파이썬에 `python-dotenv` 가 있어야 `.env` 를 읽는다(`.venv-sf` 에는 없음 → `pip install python-dotenv` 또는 키를 셸 환경변수로 export)
+2. 드라이런 → 실제 반영 (티커 인자로 VFLO 만):
+   ```bash
+   cd 03_ETF
+   python etf_weight_push_local.py VFLO --archive-etfcheck          # 드라이런: snapshots 1건(2026-11-04), latest replace, universe after = before + 1
+   python etf_weight_push_local.py VFLO --apply --archive-etfcheck  # 실제 쓰기
+   ```
+   - `--victory-csv` 대신 이 스크립트를 쓰는 이유: `universe.json` 병합(목록에 VFLO 추가)까지 한 번에 한다. `--victory-csv` 는 스냅샷·latest 만 올리고 목록 병합은 하지 않는다
+   - `R2 not configured` 가 나오면 1번(키·dotenv)이 안 된 것
+3. 10~15분 뒤 확인(캐시 API 120s+stale 600s, CDN 180+swr 600): 목록에 `VFLO — VictoryShares — 2026-11-04`, 선택 시 52종목, `VFLO 엑셀` 다운로드
+
+**이후 운영**
+- VFLO 는 자동 갱신되지 않는다. 우열님이 Victory 상품 페이지에서 All Holdings CSV 를 받아 주면 → `python etf_weight_official.py --victory-csv VFLO <경로>`(로컬 저장) → 위 2번 push 로 반영
+- 다음 날 08:20 스케줄이 VFLO 를 etfcheck 로 덮지 않는지 확인(스케줄러는 VFLO 를 건너뛰도록 되어 있음 — `etf_weight_monitor.py` 905행 부근)
