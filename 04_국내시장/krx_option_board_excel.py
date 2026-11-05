@@ -244,47 +244,64 @@ def _investor_sheets(wb: Workbook, p: dict[str, Any]) -> None:
     if not inv:
         return
     names = inv["investors"]
+    has_cash = bool(inv.get("has_cash"))
     ws = wb.create_sheet("투자자별 수급")
     ws.sheet_view.showGridLines = False
-    _widths(ws, [14, 13, 13, 13, 13, 13, 13, 13, 4, 40])
-    ws["A1"] = f"코스피200 옵션·선물 투자자별 순매수 · 기준일 {inv['as_of']} · {inv['source']}"
+    _widths(ws, [14, 13, 13, 13, 13, 13, 15, 13, 4, 40])
+    ws["A1"] = (f"코스피 현물·코스피200 선물·옵션 투자자별 순매수 · 기준일 {inv['as_of']} · "
+                f"만기일(월·목) 콜은 방향에서 빼고 따로 집계 · {inv['source']}")
     ws["A1"].font = F_BOLD
     r = 3
+    head = (["투자자"] + (["현물(억)"] if has_cash else [])
+            + ["선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "비만기일 옵션 방향(억)", "만기일 콜(억)"])
+    fm = [None] + ([FMT_0] if has_cash else []) + [FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1]
     for w, label in (("d1", "1일"), ("d5", "5일"), ("d20", "20일")):
         _title(ws, r, f"{label} 누적", [])
-        rows = [[n, x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["call_eok"], x["put_eok"], x["dir_eok"]]
-                for n, x in ((n, inv["windows"][w][n]) for n in names)]
-        r = _table(ws, r + 1, 1, ["투자자", "선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "콜(억)", "풋(억)", "옵션 방향(억)"],
-                   rows, [None, FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1, FMT_1]) + 2
+        rows = []
+        for n in names:
+            x = inv["windows"][w][n]
+            rows.append([n] + ([x.get("cash_eok")] if has_cash else [])
+                        + [x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["dir_eok"], x.get("roll_eok")])
+        r = _table(ws, r + 1, 1, head, rows, fm) + 2
     _title(ws, r, "지수 동행성 (일별 순매수 vs 코스피 200 등락률 상관)", [])
-    rows = [[c["name"], c["fut_same"], c["fut_next"], c["dir_same"], c["dir_next"]] for c in inv["corr"]]
-    r = _table(ws, r + 1, 1, ["투자자", "선물·당일", "선물·익일", "옵션방향·당일", "옵션방향·익일"], rows,
-               [None, FMT_2, FMT_2, FMT_2, FMT_2]) + 2
+    ch = (["현물·당일", "현물·익일"] if has_cash else []) + ["선물·당일", "선물·익일", "옵션방향·당일", "옵션방향·익일"]
+    rows = [[c["name"]] + ([c.get("cash_same"), c.get("cash_next")] if has_cash else [])
+            + [c["fut_same"], c["fut_next"], c["dir_same"], c["dir_next"]] for c in inv["corr"]]
+    r = _table(ws, r + 1, 1, ["투자자", *ch], rows, [None] + [FMT_2] * len(ch)) + 2
     det = inv.get("detail")
     if det:
         for w, label in (("d5", "5일"), ("d20", "20일")):
-            _title(ws, r, f"기관 세부 · {label} (기간합계, 기준일 {det['as_of']})", [])
-            rows = [[x["name"], x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["call_eok"], x["put_eok"], x["dir_eok"]]
+            _title(ws, r, f"기관 세부 · {label} (기간합계, 만기일 포함, 기준일 {det['as_of']})", [])
+            rows = [[x["name"], x["fut_qty"], x["fut_eok"], x["call_qty"], x["put_qty"], x["call_eok"], x["put_eok"]]
                     for x in det["windows"][w]]
-            r = _table(ws, r + 1, 1, ["투자자", "선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "콜(억)", "풋(억)", "옵션 방향(억)"],
-                       rows, [None, FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1, FMT_1]) + 2
+            r = _table(ws, r + 1, 1, ["투자자", "선물(계약)", "선물(억)", "콜(계약)", "풋(계약)", "콜(억)", "풋(억)"],
+                       rows, [None, FMT_0, FMT_1, FMT_0, FMT_0, FMT_1, FMT_1]) + 2
     ws.cell(row=r, column=1, value="해석").font = F_BOLD
     for i, t in enumerate([*inv["reads"], *inv["method"]]):
         ws.cell(row=r + 1 + i, column=1, value=f"· {t}").font = F_NOTE
 
-    keys = ["date", "k200", "ret"]
-    headers = ["일자", "코스피 200", "등락률"]
-    fmts: list[str | None] = [None, FMT_2, FMT_PCT]
+    keys = ["date", "k200", "ret", "exp"]
+    headers = ["일자", "코스피 200", "등락률", "만기일"]
+    fmts: list[str | None] = [None, FMT_2, FMT_PCT, None]
+    per = ([("cash", "현물(억)", FMT_1)] if has_cash else []) + [
+        ("fut", "선물", FMT_0), ("call", "콜", FMT_0), ("put", "풋", FMT_0),
+        ("dir", "옵션방향(억)", FMT_1), ("roll", "만기일콜(억)", FMT_1),
+        ("expo" if has_cash else "cum_fut", "현물+선물 노출(억)" if has_cash else "선물누적", FMT_0),
+        ("cum_dir", "방향누적(억)", FMT_1)]
     for n in names:
-        keys += [f"fut_{n}", f"call_{n}", f"put_{n}", f"dir_{n}", f"cum_fut_{n}", f"cum_dir_{n}"]
-        headers += [f"{n} 선물", f"{n} 콜", f"{n} 풋", f"{n} 옵션방향(억)", f"{n} 선물누적", f"{n} 방향누적(억)"]
-        fmts += [FMT_0, FMT_0, FMT_0, FMT_1, FMT_0, FMT_1]
-    fut_cols = [4 + 6 * i + 4 for i in range(len(names))]
-    dir_cols = [4 + 6 * i + 5 for i in range(len(names))]
+        for k, lab, f in per:
+            keys.append(f"{k}_{n}")
+            headers.append(f"{n} {lab}")
+            fmts.append(f)
+    width = len(per)
+    expo_cols = [5 + width * i + (width - 2) for i in range(len(names))]
+    dir_cols = [5 + width * i + (width - 1) for i in range(len(names))]
+    rows = [{**x, "exp": "만기" if x.get("exp") else ""} for x in inv["series"]]
     _series_sheet(
-        wb, "투자자별 일별", "투자자별 일별 순매수 (선물·콜·풋 계약, 옵션 방향 대금) · 누적은 첫 적재일부터",
-        headers, keys, fmts, inv["series"],
-        [("선물 누적 순매수 (계약)", fut_cols, "#,##0"), ("옵션 방향 누적 (억원)", dir_cols, "#,##0")],
+        wb, "투자자별 일별", "투자자별 일별 순매수 · 누적은 첫 적재일부터 · 옵션방향은 만기일 제외",
+        headers, keys, fmts, rows,
+        [("현물+선물 누적 노출 (억원)" if has_cash else "선물 누적 순매수 (계약)", expo_cols, "#,##0"),
+         ("비만기일 옵션 방향 누적 (억원)", dir_cols, "#,##0")],
     )
 
 

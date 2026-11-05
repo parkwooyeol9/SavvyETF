@@ -81,6 +81,7 @@ def _parse_browser_detail(path: Path) -> dict[str, Any]:
 
 R2_DAILY = "krx_option_board/investor/daily.json"
 R2_DETAIL = "krx_option_board/investor/detail.json"
+R2_CASH = "krx_option_board/investor/cash.json"
 
 
 def _r2_get(key: str) -> Any:
@@ -103,6 +104,9 @@ def sync_to_r2() -> bool:
         ok = bool(put_json(R2_DAILY, daily))
         if detail:
             ok = bool(put_json(R2_DETAIL, detail)) and ok
+        cash = load_cash()
+        if cash:
+            ok = bool(put_json(R2_CASH, cash)) and ok
         print(f"investor: R2 sync {'ok' if ok else 'failed'} ({len(daily)} days)")
         return ok
     except Exception as exc:  # noqa: BLE001
@@ -181,6 +185,21 @@ def update_from_cookie(days_back: int = 15) -> bool:
     if not new:
         return False
 
+    # 코스피 현물 [12008] (MDCSTAT02202, 주식만) — TRDVAL1 기관 · 2 기타법인 · 3 개인 · 4 외국인
+    cash_rows = _post(s, {"bld": "dbms/MDC/STAT/standard/MDCSTAT02202", "locale": "ko_KR", "inqTpCd": "2",
+                          "trdVolVal": "2", "askBid": "3", "mktId": "STK", "segTpCd": "ALL",
+                          "strtDd": daily["strtDd"], "endDd": daily["endDd"], "detailView": "1",
+                          "share": "1", "money": "1", "csvxls_isNo": "false"})
+    if cash_rows:
+        cash_path = INV_DIR / "investor_cash.json"
+        cash_all = json.loads(cash_path.read_text(encoding="utf-8")) if cash_path.exists() else {}
+        for r in cash_rows:
+            cash_all[r["TRD_DD"].replace("/", "-")] = [
+                round(_num(r.get(f"TRDVAL{i}")) / 1e8) for i in (1, 2, 3, 4)
+            ]
+        INV_DIR.mkdir(parents=True, exist_ok=True)
+        cash_path.write_text(json.dumps(dict(sorted(cash_all.items())), ensure_ascii=False), encoding="utf-8")
+
     INV_DIR.mkdir(parents=True, exist_ok=True)
     merged = json.loads(DAILY_JSON.read_text(encoding="utf-8")) if DAILY_JSON.exists() else {}
     merged.update({k: {sl: [round(x, 1) for x in v] for sl, v in rec.items()} for k, rec in new.items()})
@@ -248,24 +267,65 @@ def _detail_table(detail: dict[str, Any] | None) -> dict[str, Any] | None:
     return out
 
 
-def _read(name: str, w5: dict[str, float], w20: dict[str, float]) -> str:
-    fut5, fut20, dir5 = w5["fut_qty"], w20["fut_qty"], w5["dir_eok"]
-    fut_txt = (f"선물 5일 {'순매수' if fut5 > 0 else '순매도'} {abs(fut5):,.0f}계약"
-               f"(20일 {'+' if fut20 > 0 else ''}{fut20:,.0f})")
-    if abs(dir5) < 20:
-        opt_txt = "옵션 방향성은 중립"
-    elif dir5 > 0:
-        opt_txt = f"옵션은 콜 우위(콜−풋 순매수대금 +{dir5:,.0f}억) → 상방 베팅"
-    else:
-        opt_txt = f"옵션은 풋 우위(콜−풋 순매수대금 {dir5:,.0f}억) → 하방 대비"
-    return f"{name}: {fut_txt}, {opt_txt}"
+def load_cash() -> dict[str, list[float]]:
+    """코스피 현물 투자자별 순매수대금(억) {date: [기관, 기타법인, 개인, 외국인]}."""
+    data: dict[str, list[float]] = {}
+    remote = _r2_get(R2_CASH)
+    if isinstance(remote, dict):
+        data.update(remote)
+    cash_json = INV_DIR / "investor_cash.json"
+    for p in sorted(INV_DIR.glob("browser_cash_*.txt")):
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if not line or line.startswith("#"):
+                continue
+            d, vals = line.split("|", 1)
+            data[f"20{d[:2]}-{d[2:4]}-{d[4:6]}"] = [float(x) for x in vals.split(",")]
+    if cash_json.exists():
+        data.update(json.loads(cash_json.read_text(encoding="utf-8")))
+    return dict(sorted(data.items()))
+
+
+def expiry_days(dates: list[str]) -> set[str]:
+    """위클리(월·목)·월물(둘째 목) 만기일. 월·목이 휴장이면 다음 영업일로 민다(5/25 휴일 → 5/26)."""
+    trade = sorted(dates)
+    have = set(trade)
+    out = {d for d in trade if date.fromisoformat(d).weekday() in (0, 3)}
+    cur = date.fromisoformat(trade[0])
+    end = date.fromisoformat(trade[-1])
+    while cur <= end:
+        iso = cur.isoformat()
+        if cur.weekday() in (0, 3) and iso not in have:
+            nxt = next((d for d in trade if d > iso), None)
+            if nxt:
+                out.add(nxt)
+        cur += timedelta(days=1)
+    return out
+
+
+def _side(v: float, pos: str, neg: str, flat: str, th: float) -> str:
+    if abs(v) < th:
+        return flat
+    return pos if v > 0 else neg
+
+
+def _read(name: str, w5: dict[str, float], w20: dict[str, float], has_cash: bool) -> str:
+    parts = []
+    if has_cash:
+        parts.append(f"현물 5일 {w5['cash_eok']:+,.0f}억(20일 {w20['cash_eok']:+,.0f})")
+    parts.append(f"선물 5일 {w5['fut_qty']:+,.0f}계약(20일 {w20['fut_qty']:+,.0f})")
+    parts.append(_side(w5["dir_eok"], f"비만기일 옵션은 콜 우위 {w5['dir_eok']:+,.0f}억",
+                       f"비만기일 옵션은 풋 우위 {w5['dir_eok']:+,.0f}억", "비만기일 옵션은 중립", 20))
+    return f"{name}: " + ", ".join(parts)
 
 
 def investor_section(k200_by_date: dict[str, float]) -> dict[str, Any] | None:
     daily = load_daily()
     if not daily:
         return None
+    cash = load_cash()
+    has_cash = bool(cash)
     dates = sorted(daily)
+    exp = expiry_days(dates)
     closes = [k200_by_date.get(d) for d in dates]
     rets: list[float | None] = [None]
     for i in range(1, len(dates)):
@@ -273,24 +333,42 @@ def investor_section(k200_by_date: dict[str, float]) -> dict[str, Any] | None:
         rets.append(round((b / a - 1) * 100, 3) if a and b else None)
 
     series = []
-    cum = {f"{k}_{n}": 0.0 for k in ("fut", "dir") for n in INVESTORS}
+    keys = ("fut", "dir", "roll", "cash")
+    cum = {f"{k}_{n}": 0.0 for k in keys for n in INVESTORS}
+    last_k = None
     for i, d in enumerate(dates):
         rec = daily[d]
-        row: dict[str, Any] = {"date": d, "k200": closes[i], "ret": rets[i]}
+        is_exp = d in exp
+        last_k = closes[i] or last_k
+        row: dict[str, Any] = {"date": d, "k200": closes[i], "ret": rets[i], "exp": is_exp}
         for j, n in enumerate(INVESTORS):
             fut_q = rec["fq"][j]
-            dir_eok = rec["ca"][j] - rec["pa"][j]
+            raw_dir = rec["ca"][j] - rec["pa"][j]
+            dir_eok = 0.0 if is_exp else raw_dir          # 방향 판단은 비만기일만
+            roll = rec["ca"][j] if is_exp else 0.0          # 만기일 콜 대금(커버드콜 롤 상대 거래 포함)
+            cash_eok = (cash.get(d) or [None] * 4)[j]
             row[f"fut_{n}"] = round(fut_q)
             row[f"fut_eok_{n}"] = round(rec["fa"][j], 1)
             row[f"call_{n}"] = round(rec["cq"][j])
             row[f"put_{n}"] = round(rec["pq"][j])
             row[f"call_eok_{n}"] = round(rec["ca"][j], 1)
             row[f"put_eok_{n}"] = round(rec["pa"][j], 1)
-            row[f"dir_{n}"] = round(dir_eok, 1)
+            row[f"dir_raw_{n}"] = round(raw_dir, 1)
+            row[f"dir_{n}"] = None if is_exp else round(dir_eok, 1)
+            row[f"roll_{n}"] = round(roll, 1)
+            row[f"cash_{n}"] = None if cash_eok is None else round(cash_eok, 1)
             cum[f"fut_{n}"] += fut_q
             cum[f"dir_{n}"] += dir_eok
+            cum[f"roll_{n}"] += roll
+            cum[f"cash_{n}"] += cash_eok or 0.0
             row[f"cum_fut_{n}"] = round(cum[f"fut_{n}"])
             row[f"cum_dir_{n}"] = round(cum[f"dir_{n}"], 1)
+            row[f"cum_roll_{n}"] = round(cum[f"roll_{n}"], 1)
+            if has_cash:
+                row[f"cum_cash_{n}"] = round(cum[f"cash_{n}"], 1)
+                # 현물 누적 순매수 + 선물 누적 계약의 명목금액(억) — 델타 1 노출 합
+                fut_notional = cum[f"fut_{n}"] * (last_k or 0) * 250_000 / 1e8
+                row[f"expo_{n}"] = round(cum[f"cash_{n}"] + fut_notional, 1)
         series.append(row)
 
     def window(n: int) -> dict[str, dict[str, float]]:
@@ -298,13 +376,16 @@ def investor_section(k200_by_date: dict[str, float]) -> dict[str, Any] | None:
         out = {}
         for name in INVESTORS:
             out[name] = {
+                "cash_eok": round(sum(r[f"cash_{name}"] or 0 for r in rows), 1),
                 "fut_qty": sum(r[f"fut_{name}"] for r in rows),
                 "fut_eok": round(sum(r[f"fut_eok_{name}"] for r in rows), 1),
                 "call_qty": sum(r[f"call_{name}"] for r in rows),
                 "put_qty": sum(r[f"put_{name}"] for r in rows),
                 "call_eok": round(sum(r[f"call_eok_{name}"] for r in rows), 1),
                 "put_eok": round(sum(r[f"put_eok_{name}"] for r in rows), 1),
-                "dir_eok": round(sum(r[f"dir_{name}"] for r in rows), 1),
+                "dir_eok": round(sum(r[f"dir_{name}"] or 0 for r in rows), 1),
+                "roll_eok": round(sum(r[f"roll_{name}"] for r in rows), 1),
+                "exp_days": sum(1 for r in rows if r["exp"]),
             }
         return out
 
@@ -315,32 +396,64 @@ def investor_section(k200_by_date: dict[str, float]) -> dict[str, Any] | None:
     for name in INVESTORS:
         fut = [r[f"fut_{name}"] for r in series]
         dirv = [r[f"dir_{name}"] for r in series]
+        cashv = [r[f"cash_{name}"] for r in series]
         corr.append({
             "name": name,
+            "cash_same": _corr(cashv, ret_same) if has_cash else None,
+            "cash_next": _corr(cashv, ret_next) if has_cash else None,
             "fut_same": _corr(fut, ret_same), "fut_next": _corr(fut, ret_next),
             "dir_same": _corr(dirv, ret_same), "dir_next": _corr(dirv, ret_next),
         })
-    reads = [_read(n, windows["d5"][n], windows["d20"][n]) for n in ("외국인", "개인", "기관")]
-    best = max(corr, key=lambda c: abs(c["fut_same"] or 0))
-    if best["fut_same"] is not None:
-        reads.append(f"지수와 같은 날 가장 강하게 움직인 주체는 {best['name']} 선물(상관 {best['fut_same']:+.2f}). "
-                     "다음 날 수익률과의 상관은 대부분 0 근처라 예측력보다는 동행 지표로 읽는다")
+
+    # 해석 — 방향(현물·선물·비만기일 옵션)과 만기일 롤 상대 거래를 분리
+    w5, w20 = windows["d5"], windows["d20"]
+    reads = [_read(n, w5[n], w20[n], has_cash) for n in ("외국인", "기관", "개인")]
+    detail = load_detail()
+    roll_read = None
+    if detail:
+        rows = detail["rows"]
+
+        def wk(inv: str) -> float:
+            return sum((rows.get(f"d20_{p}_C") or {}).get(inv, [0, 0])[1] for p in ("WKI", "WKM"))
+        if wk("투신") < -100 and wk("외국인") > 100:
+            roll_read = (f"만기일 콜 수요: 20일간 위클리 콜을 투신 {wk('투신'):+,.0f}억 매도 ↔ 외국인 {wk('외국인'):+,.0f}억 매수. "
+                         "커버드콜 ETF(코스피200 위클리 커버드콜 순자산 약 11조)의 롤 매도를 외국계가 받는 구조로, "
+                         "방향 베팅이 아니라 변동성(감마) 매수다")
+    if roll_read is None:
+        roll_read = (f"만기일 콜 대금(20일): 외국인 {w20['외국인']['roll_eok']:+,.0f}억 · 기관 {w20['기관']['roll_eok']:+,.0f}억 — "
+                     "위클리 만기일 롤 거래라 방향 판단에서 뺐다")
+    reads.append(roll_read)
+    fp = w20["외국인"]["put_qty"]
+    reads.append(f"외국인 풋 20일 {fp:+,.0f}계약 · {w20['외국인']['put_eok']:+,.0f}억 — "
+                 + ("싼 외가격 풋을 계약 수로 많이 사는 하방 헤지" if fp > 0 and w20['외국인']['put_eok'] < fp * 0.01
+                    else "풋 포지션 변화"))
+    if has_cash:
+        e = series[-1].get("expo_외국인")
+        e20 = series[-21].get("expo_외국인") if len(series) > 21 else None
+        if e is not None and e20 is not None:
+            fut_n = series[-1]["cum_fut_외국인"] * (series[-1]["k200"] or 0) * 250_000 / 1e12
+            reads.append(f"외국인 현물+선물 누적 노출(적재 시작일 {dates[0]} 기준) {e / 1e4:+,.1f}조, 20일 변화 {(e - e20) / 1e4:+,.1f}조 "
+                         f"— 선물 롱({fut_n:+,.1f}조)은 현물 매도의 일부만 상쇄")
 
     return {
         "as_of": dates[-1],
         "first": dates[0],
         "n_days": len(dates),
+        "n_exp": len(exp),
+        "has_cash": has_cash,
+        "cash_as_of": max(cash) if cash else None,
         "investors": INVESTORS,
         "series": series,
         "windows": windows,
         "corr": corr,
-        "detail": _detail_table(load_detail()),
+        "detail": _detail_table(detail),
         "reads": reads,
-        "source": "KRX 정보데이터시스템 [15007] 파생상품 투자자별 거래실적 (정규장, 순매수). 로그인 필요 — Open API 미제공",
+        "source": "KRX 정보데이터시스템 [15007] 파생상품·[12008] 주식 투자자별 거래실적 (정규장, 순매수). 로그인 필요 — Open API 미제공",
         "method": [
             "옵션 = 코스피200 옵션(월물) + 위클리(목) + 위클리(월) 합산",
-            "옵션 방향 = 콜 순매수대금 − 풋 순매수대금(억원). +면 상방(콜 매수·풋 매도), −면 하방",
-            "계약 수는 위클리가 월물보다 훨씬 많아(프리미엄이 작음) 방향 판단은 대금 기준",
-            "상관 = 일별 순매수(선물 계약·옵션 방향 대금)와 코스피 200 같은 날/다음 날 등락률의 피어슨 상관",
+            "만기일 = 월·목(휴장이면 다음 영업일). 만기일 콜 대금은 커버드콜 ETF 롤·잔존 내가격 정리가 섞여 방향 판단에서 제외하고 따로 표시",
+            "비만기일 옵션 방향 = 콜 순매수대금 − 풋 순매수대금(억원), 만기일 제외. 계약 수는 위클리·외가격이 섞여 방향 판단에 쓰지 않음",
+            "현물 = 코스피 시장 투자자별 순매수대금(억원). 노출 = 현물 누적 + 선물 누적 계약 × 코스피 200 × 25만원",
+            "상관 = 일별 순매수와 코스피 200 같은 날/다음 날 등락률의 피어슨 상관",
         ],
     }

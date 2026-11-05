@@ -2,8 +2,41 @@
 
 - 작성: 2026-11-05 (Claude) · 받는 쪽: Cursor
 - 요청(우열님): 지수옵션 수급을 한눈에 보는 보드. KRX Open API 로 확보 가능한 데이터로 수집기를 만들고, 홈페이지 탭(기존 양식과 통일)과 엑셀 다운로드까지 붙여 달라
-- **1차분은 Cursor 가 `4dc80c4`(feat/krx-option-board)로 커밋했다. 그 뒤 추가된 투자자별 수급은 §8 — 2차 커밋 대상**
 - **Claude 는 로컬 수집·빌드·화면 검증만 했다. git add/commit/push, R2 업로드(`--publish`), Render·Vercel 환경변수 변경은 하지 않았다.**
+
+---
+
+## ★ 지금 할 일 (2026-11-05 14:30 기준 — 이 절만 보면 된다)
+
+**현재 상태 (git 으로 확인한 것)**
+- 브랜치 `feat/krx-option-board` 가 이미 있고 체크아웃돼 있다. 원격 `origin/feat/krx-option-board` = `origin/main` = `32c589d` (푸시·병합 완료)
+- 이미 커밋된 것: `4dc80c4`(탭 1차분) · `ea1e09a`(투자자별 수급 1차) — §2·§5-2·§8-3 의 `git checkout -b`·전체 `git add` 목록은 **다시 할 필요 없다**
+- 남은 것: 아래 **5개 파일의 미커밋 수정**(만기일 분리 지표 §8-1b, 현물 수급 추가) 하나뿐이다
+- 이 브랜치에 `etf-weights` 커밋 3개(2bcd0a2·d1dd5d7·32c589d)가 섞여 있다 — 이미 main 에 들어갔으니 되돌리지 말고, **다음 작업부터 작업별 브랜치**를 쓴다
+
+**1) 커밋·푸시 (5개 파일만)**
+```bash
+git add 04_국내시장/krx_option_investor.py 04_국내시장/krx_option_board_excel.py \
+        webapp/src/components/KrxInvestorFlowSection.tsx webapp/src/lib/krxOptionBoard.ts \
+        "Claude_DB/docs/34_Cursor_인수인계_KRX_옵션보드_탭.md"
+git status --short        # 위 5개 외 staged 가 없어야 함 (docs 08·11·12·21·29~31, research/** 는 무관 — 건드리지 않음)
+git commit -m "fix(krx-option-board): split weekly-expiry call rolls from option direction and add KOSPI cash flows by investor"
+git push origin feat/krx-option-board
+```
+- `00_exports/**`·`.env*` 는 커밋 금지 (gitignore 되어 있음)
+- main 반영은 지금까지와 같은 방식(이 브랜치 → main)
+
+**2) 첫 게시 — R2 키가 있는 곳에서만**
+- 로컬 `.env` 에는 `R2_*` 가 없고 `.venv-sf` 에는 python-dotenv 가 없다 → 로컬 `--publish` 는 투자자 원자료를 R2 에 못 올린다
+- 그래서 둘 중 하나:
+  - A. 로컬 `.env` 에 R2_* 추가 + `.venv-sf/bin/pip install python-dotenv` 후 `.venv-sf/bin/python 04_국내시장/krx_option_board.py --publish`
+  - B. `00_exports/krx_option_board/investor/browser_{daily,detail,cash}_*.txt` 3개를 Render 셸의 같은 경로로 복사한 뒤 Render 에서 `--publish`
+- 확인 로그: `investor: R2 sync ok (124 days)` + `web push {'ok': True ...}`
+- Render 에 `KRX_AUTH_KEY` 가 없으면 09:10 스케줄러가 꺼진다(§5-1)
+
+**3) 하지 말 것**
+- 투자자 데이터 로그인·쿠키 작업(§8-4)은 우열님 브라우저 로그인이 필요하다 — Cursor 가 우회 시도하지 않는다
+- Claude 가 같은 폴더에서 파일을 고치는 중이면 기다린다(이번 지연의 주원인: 커밋 직후 같은 파일이 다시 바뀜). 현재 Claude 쪽 수정은 끝났다
 
 ---
 
@@ -90,7 +123,7 @@ cd webapp && npx tsc --noEmit -p .                       # 통과
 - **Render(savvyetf-bot)**: `KRX_AUTH_KEY` 추가 (로컬 `.env` 값). 없으면 스케줄러가 스스로 꺼진다(`krx_option_board scheduler disabled` 로그)
 - Vercel: 새 변수 없음. 기존 `WEB_INGEST_SECRET`·R2 설정을 그대로 쓴다
 
-### 5-2. 커밋·배포
+### 5-2. 커밋·배포 — ✅ 완료(`4dc80c4`), 기록용. 지금 할 일은 맨 위 ★ 절
 ```bash
 git checkout -b feat/krx-option-board
 git add 04_국내시장/krx_option_board.py 04_국내시장/krx_option_board_excel.py 04_국내시장/krx_option_board_scheduler.py \
@@ -105,9 +138,8 @@ git push -u origin feat/krx-option-board
 ```
 - **커밋 금지**: `00_exports/**`(산출물·캐시) · `.env*`(예시 파일 제외)
 - 작업 트리의 다른 미커밋 변경(docs 08 수정, docs 11·12·21·29~31, `research/**`)은 이번 작업과 무관 — 건드리지 않음
-- 현재 브랜치가 `data/acwi-v4-2026-11` 이니 **main 에서 새 브랜치**를 따는 것을 권장(ACWI 커밋과 섞이지 않게)
 
-### 5-3. 첫 게시
+### 5-3. 첫 게시 — ★ 절 2) 로 대체
 배포가 끝난 뒤 로컬에서 한 번 올린다(캐시가 이미 있어 1분 안쪽).
 ```bash
 .venv-sf/bin/python 04_국내시장/krx_option_board.py --publish   # WEB_INGEST_SECRET 있으면 /api/krx-option-board POST, 없으면 R2 직접
@@ -141,27 +173,37 @@ git push -u origin feat/krx-option-board
   - 일별추이 `MDCSTAT13102` (inqTpCd=2): 열 **A07 기관 합계 · A08 기타법인 · A09 개인 · A12 외국인 합계** (합 = 0 으로 검산)
   - 기간합계 `MDCSTAT13101` (inqTpCd=1): 금융투자·투신·연기금 등·보험·은행·기타금융 세부
   - 상품 `isuCd`: `KR___OPK2I`(옵션 월물) · `KR___OPWKI`(위클리 목) · `KR___OPWKM`(위클리 월) · `KR___FUK2I`(선물), `isuOpt` C/P/ALL, `prtType` AMT/QTY, `prtCheck=SUN`, `aggBasTpCd=0`(정규)
+- 현물: 정보데이터시스템 [12008] 주식 투자자별 거래실적 일별추이 `MDCSTAT02202` (inqTpCd=2, trdVolVal=2, askBid=3, **mktId=STK**, etf/etn/elw 빼고 = 주식만) — 열 **TRDVAL1 기관 · 2 기타법인 · 3 개인 · 4 외국인**
 - 2026-11-05 우열님 로그인 세션에서 받은 원자료(**2026-05-04 ~ 11-04, 124영업일**):
+  - `00_exports/krx_option_board/investor/browser_cash_260504_261104.txt` — 코스피 현물 투자자별 순매수대금(억)
   - `00_exports/krx_option_board/investor/browser_daily_260504_261104.txt` — 일별 콜/풋/선물 × 대금·계약 × 4개 투자자
   - `00_exports/krx_option_board/investor/browser_detail_261104.txt` — 1·5·20일 기간합계(기관 세부)
   - `00_exports/` 는 gitignore → **커밋되지 않는다. R2 로 올려야 Render 가 읽는다(§8-3)**
 
+### 8-1b. 지표 수정 (우열님 지적 반영, 같은 날 오후)
+- 처음 넣은 '옵션 방향 = 콜 대금 − 풋 대금'이 **"외국인이 콜을 산다"는 잘못된 해석**을 만들었다
+  - 외국인 콜 순매수대금 6개월 +21,732억 중 **월·목(위클리 만기일) +22,142억, 그 외 −410억**. 만기일마다 기관(20일 세부상 투신)이 같은 금액을 판다 → 코스피200 위클리 커버드콜 ETF(순자산 약 11.5조)의 롤 매도를 외국계가 받는 구조로 판단. 만기일 외국인 콜 계약당 프리미엄 ≈ 32~36pt = VKOSPI 55% 7일물 ATM 이론가(≈33pt)
+- 그래서 `expiry_days()`(월·목, 휴장이면 다음 영업일 — 124일 중 52일)로 나눠
+  - **비만기일 옵션 방향**(`dir_*`, 만기일은 null)만 방향 판단에 쓰고
+  - **만기일 콜**(`roll_*`)은 따로 표·막대 차트로 보여 준다
+- 현물 열 `cash_*`, 현물+선물 누적 노출 `expo_*`(= 현물 누적 + 선물 누적 계약 × 코스피200 × 25만원), 현물 상관 `cash_same/next` 추가
+- 해석 문구에서 "상방 베팅" 표현 제거. 수정 후 외국인 20일: 현물 −212,370억 · 선물 +6,689계약 · **비만기일 옵션 −667억(풋 우위)** · 만기일 콜 +2,317억
+
 ### 8-2. 바뀐·새 파일
 | 파일 | 내용 |
 |---|---|
-| `04_국내시장/krx_option_investor.py` (새) | 원자료 로드(로컬 txt/json + R2), `update_from_cookie()`(KRX_COOKIE 있으면 최근 15영업일 갱신), `sync_to_r2()`, 분석 `investor_section()` |
+| `04_국내시장/krx_option_investor.py` (새) | 원자료 로드(로컬 txt/json + R2: `investor/{daily,detail,cash}.json`), `expiry_days()`, `load_cash()`, `update_from_cookie()`(KRX_COOKIE 있으면 최근 15영업일 파생·현물 갱신), `sync_to_r2()`, 분석 `investor_section()` |
 | `04_국내시장/krx_option_board.py` | payload `investor` 추가, summary 에 `inv_as_of·frgn_fut_5d·frgn_dir_5d·indiv_dir_5d`, `--publish` 때 `sync_to_r2()`, 원자료 없으면 직전 게시본 투자자 섹션 유지, 엑셀 제목 `KRX 옵션모니터_YYMMDD`, 미결제 500 미만 만기 제외 |
 | `04_국내시장/krx_option_board_excel.py` | 시트 2개 추가 — `투자자별 수급`(1·5·20일 표, 지수 동행성, 기관 세부, 해석), `투자자별 일별`(일별·누적 + 꺾은선 2개) |
-| `webapp/src/components/KrxInvestorFlowSection.tsx` (새) | 탭 섹션 2 — 해석 4줄, 1/5/20일 칩 표(가운데 0 막대 = ETF Flow 양식), 선물 누적·옵션 방향 누적(코스피200 오른쪽 축, 기간 시작일 0 기준), 기관 세부, 상관표 |
+| `webapp/src/components/KrxInvestorFlowSection.tsx` (새) | 탭 섹션 2 — 해석, 1/5/20일 칩 표(현물·선물·콜/풋 계약·비만기일 옵션 방향·만기일 콜), 현물+선물 누적 노출·비만기일 옵션 방향 누적(코스피200 오른쪽 축, 기간 시작일 0 기준), 만기일 콜 막대(외국인 vs 기관), 상관표, 기관 세부 |
 | `webapp/src/components/KrxOptionBoardTab.tsx` | 섹션 2 삽입, 이후 섹션 번호 3~9 |
 | `webapp/src/lib/krxOptionBoard.ts` | `InvestorSection` 타입, 엑셀 파일명 `KRX 옵션모니터_` |
 | `webapp/src/app/globals.css` | `.optboard-reads` 등 3규칙 (파일 끝) |
 
 분석 정의(탭·엑셀 하단에 같은 문구):
-- 옵션 = 월물 + 위클리(목) + 위클리(월). **옵션 방향 = 콜 순매수대금 − 풋 순매수대금(억)** — 위클리는 계약 수가 커서 계약 기준은 왜곡, 대금 기준으로 판단
-- 지수 동행성 = 일별 순매수와 코스피 200 당일/익일 등락률 상관(124일). 11/04 기준 선물·당일: 기관 +0.33 · 기타법인 +0.45 · 개인 +0.26 · 외국인 −0.42, 익일은 모두 |0.1| 이하
+- 정의는 §8-1b. 지수 동행성(124일, 당일): 현물 — 외국인 +0.54 · 기관 +0.52 · 개인 −0.68 / 선물 — 외국인 −0.42 · 기타법인 +0.45. 익일 상관은 모두 |0.1| 이하(비만기일 옵션의 기타법인 +0.23 하나만 예외)
 
-### 8-3. 커밋·게시
+### 8-3. 커밋·게시 — ✅ 1차 완료(`ea1e09a`), 기록용. 남은 커밋·게시는 맨 위 ★ 절
 ```bash
 git checkout feat/krx-option-board
 git add 04_국내시장/krx_option_investor.py 04_국내시장/krx_option_board.py 04_국내시장/krx_option_board_excel.py \
@@ -174,8 +216,8 @@ git push
 ```
 - 게시: **R2 자격(R2_*)이 있는 환경**에서 `--publish` 를 돌려야 투자자 원자료가 `krx_option_board/investor/{daily,detail}.json` 으로 올라간다. 로컬 `.env` 에는 R2_* 가 없고 `.venv-sf` 에 python-dotenv 도 없다(로그 `[suppressed] r2_briefs._ensure_dotenv`)
   - 방법 A: 로컬에 R2_* 를 넣고 `.venv-sf/bin/pip install python-dotenv` 후 `--publish`
-  - 방법 B: `00_exports/krx_option_board/investor/*.txt` 2개를 Render 셸로 복사해 같은 경로에 두고 `--publish`
-- 기대 로그: `investor: R2 sync ok (124 days)` + `web push {'ok': True ...}`
+  - 방법 B: `00_exports/krx_option_board/investor/*.txt` 3개를 Render 셸로 복사해 같은 경로에 두고 `--publish`
+- 기대 로그: `investor: R2 sync ok (124 days)` (daily·detail·cash 3개 키) + `web push {'ok': True ...}`
 - R2 동기화가 안 된 상태로 Render 스케줄러가 돌면, 직전 게시본의 투자자 섹션을 그대로 유지한다(사라지지 않음, 기준일 고정)
 
 ### 8-4. 이후 갱신 (로그인 세션 필요)
@@ -186,6 +228,7 @@ git push
 
 ### 8-5. 추가 QA
 - [ ] 섹션 2 머리: `기준일 2026-11-04 · 적재 2026-05-04~ (124영업일)`
-- [ ] 5일 누적 표: 외국인 선물 +5,490 · 옵션 방향 +474.6, 기관 −4,503 · −501.5, 개인 −954 · +52.2
+- [ ] 5일 누적 표: 외국인 현물 −52,949억 · 선물 +5,490 · 비만기일 옵션 −275.1 · 만기일 콜 +700.8 / 기관 +26,061억 · −4,503 · +205.4 / 개인 +8,745억 · −954 · +87.3
+- [ ] 만기일 콜 막대 차트에서 외국인(금색)과 기관(보라)이 거의 대칭
 - [ ] 1/5/20일 칩 전환, 3개월/6개월 칩에 누적선이 0 에서 다시 시작
 - [ ] 엑셀 시트 9개: 정리 · 투자자별 수급 · 투자자별 일별 · 근월물 체인 · 변동성 · PC 비율 · 선물 · 레버리지·인버스 ETF · ETF 일별 설정

@@ -142,13 +142,18 @@ export type StockOptRow = {
 };
 
 export type InvWindowRow = {
+  /** 코스피 현물 순매수대금(억) — 현물 미적재면 0 */
+  cash_eok?: number;
+  /** 만기일(월·목) 콜 순매수대금(억) — 커버드콜 롤 상대 거래 */
+  roll_eok?: number;
+  exp_days?: number;
   fut_qty: number;
   fut_eok: number;
   call_qty: number;
   put_qty: number;
   call_eok: number;
   put_eok: number;
-  /** 콜 순매수대금 − 풋 순매수대금 (억원) */
+  /** 콜 순매수대금 − 풋 순매수대금 (억원). 투자자 창(windows)은 만기일 제외, 기관 세부(detail)는 전체 */
   dir_eok: number;
 };
 
@@ -158,12 +163,17 @@ export type InvestorSection = {
   as_of: string;
   first: string;
   n_days: number;
+  n_exp?: number;
+  has_cash?: boolean;
+  cash_as_of?: string | null;
   investors: string[];
   /** 키: date, k200, ret, fut_{투자자}, call_, put_, dir_, cum_fut_, cum_dir_ … */
   series: Array<Record<string, number | string | null>>;
   windows: Record<"d1" | "d5" | "d20", Record<string, InvWindowRow>>;
   corr: Array<{
     name: string;
+    cash_same?: number | null;
+    cash_next?: number | null;
     fut_same: number | null;
     fut_next: number | null;
     dir_same: number | null;
