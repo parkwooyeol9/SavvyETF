@@ -13,6 +13,9 @@ import {
   YAxis,
 } from "recharts";
 
+import ExcelButton from "@/components/ExcelButton";
+import { downloadEtfWeightsExcel } from "@/lib/etfWeightsExcel";
+
 type Holding = {
   ticker?: string;
   name?: string;
@@ -39,7 +42,9 @@ type UniverseEntry = {
   ticker: string;
   name?: string;
   issuer?: string;
+  group?: string;
   as_of?: string | null;
+  as_of_basis?: string | null;
   aum_usd?: number | null;
 };
 
@@ -56,6 +61,9 @@ type Payload = {
   generated_at_display?: string;
   source_note?: string;
   source_url?: string;
+  as_of_basis?: string | null;
+  disclosure?: string | null;
+  coverage?: string | null;
   holdings?: Holding[];
   economic?: Economic[];
   history?: History;
@@ -249,12 +257,14 @@ export default function EtfWeightMonitorTab() {
   }, [selectedDate, ticker, data, loadDay]);
 
   const groupedUniverse = useMemo(() => {
-    const rh = universe.filter((u) => u.issuer === "Roundhill");
-    const ish = universe.filter((u) => u.issuer === "iShares");
-    const other = universe.filter(
+    const pri = universe.filter((u) => u.group === "priority");
+    const rest = universe.filter((u) => u.group !== "priority");
+    const rh = rest.filter((u) => u.issuer === "Roundhill");
+    const ish = rest.filter((u) => u.issuer === "iShares");
+    const other = rest.filter(
       (u) => u.issuer !== "Roundhill" && u.issuer !== "iShares",
     );
-    return { rh, ish, other };
+    return { pri, rh, ish, other };
   }, [universe]);
 
   const chartRows = useMemo(() => {
@@ -330,12 +340,28 @@ export default function EtfWeightMonitorTab() {
         <div>
           <h2 className="panel-title">ETF 편입비 모니터</h2>
           <p className="panel-sub">
-            Roundhill 전 상품(Filepoint) · iShares AUM Top15 — 일자별 스냅샷 시계열
+            우선 관리(운용사 공식 파일) · Roundhill 전 상품(Filepoint) · iShares AUM Top15 —
+            일자별 스냅샷 시계열
           </p>
         </div>
-        <button type="button" className="ghost-btn" onClick={() => void load(ticker)}>
-          새로고침
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {data?.ok && (view?.holdings?.length || data.holdings?.length) ? (
+            <ExcelButton
+              label={`${data.ticker || ticker} 엑셀`}
+              onClick={() =>
+                downloadEtfWeightsExcel({
+                  latest: data,
+                  view: view?.ok ? view : data,
+                  prev: prevSnap?.ok ? prevSnap : null,
+                  activeDate,
+                })
+              }
+            />
+          ) : null}
+          <button type="button" className="ghost-btn" onClick={() => void load(ticker)}>
+            새로고침
+          </button>
+        </div>
       </div>
 
       <div
@@ -354,6 +380,16 @@ export default function EtfWeightMonitorTab() {
             onChange={(e) => setTicker(e.target.value)}
             style={{ minWidth: 220, marginLeft: 6 }}
           >
+            {groupedUniverse.pri.length ? (
+              <optgroup label={`우선 관리 (${groupedUniverse.pri.length})`}>
+                {groupedUniverse.pri.map((u) => (
+                  <option key={u.ticker} value={u.ticker}>
+                    {u.ticker} — {u.issuer} — {u.as_of || "—"}
+                    {u.as_of_basis === "etfcheck_price_date" ? " (참고)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
             {groupedUniverse.rh.length ? (
               <optgroup label={`Roundhill (${groupedUniverse.rh.length})`}>
                 {groupedUniverse.rh.map((u) => (
@@ -381,7 +417,8 @@ export default function EtfWeightMonitorTab() {
           </select>
         </label>
         <span className="meta-line">
-          유니버스 {universe.length}종 · Roundhill {groupedUniverse.rh.length} ·
+          유니버스 {universe.length}종 · 우선 {groupedUniverse.pri.length} · Roundhill{" "}
+          {groupedUniverse.rh.length} ·
           iShares {groupedUniverse.ish.length}
         </span>
       </div>
@@ -393,6 +430,14 @@ export default function EtfWeightMonitorTab() {
         <>
           <p className="meta-line" style={{ marginBottom: 12 }}>
             {data.name} · {data.issuer} · latest holdings as of {data.as_of || "—"}
+            {data.as_of_basis === "issuer_file"
+              ? data.disclosure === "monthly"
+                ? " (운용사 공식 · 월말 공시)"
+                : " (운용사 공식)"
+              : data.as_of_basis === "etfcheck_price_date"
+                ? " (etfcheck 가격일 — 실제 보유 기준일 아님)"
+                : ""}
+            {data.coverage === "top10" ? " · Top 10만 (전체 목록 아님)" : ""}
             {data.csv_date ? ` (CSV Date ${data.csv_date})` : ""}
             {data.file_day ? ` · file ${data.file_day}` : ""} · AUM{" "}
             {fmtAum(data.aum_usd)} · 스냅샷 {data.history?.snapshot_count ?? 0}일

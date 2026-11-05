@@ -365,6 +365,7 @@ def build_snapshot(
     file_key: str | None = None,
     csv_date: str | None = None,
     aum_usd: float | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     ticker = ticker.upper()
     if ticker == "DRAM":
@@ -391,6 +392,7 @@ def build_snapshot(
         "holdings": holdings,
         "economic": economic,
         "top10": holdings[:10],
+        **(extra or {}),
     }
 
 
@@ -696,7 +698,13 @@ def resolve_ishares_top_n(n: int = DEFAULT_ISHARES_TOP_N) -> list[dict[str, Any]
     return ranked[: max(1, n)]
 
 
-def _ishares_snapshot_from_etfcheck(ticker: str, aum_usd: float | None = None) -> dict[str, Any]:
+def _ishares_snapshot_from_etfcheck(
+    ticker: str,
+    aum_usd: float | None = None,
+    *,
+    issuer: str = "iShares",
+    source_note: str | None = None,
+) -> dict[str, Any]:
     from etfcheck_client import (
         EtfCheckClient,
         fetch_global_etf_item_info,
@@ -728,7 +736,7 @@ def _ishares_snapshot_from_etfcheck(ticker: str, aum_usd: float | None = None) -
         or datetime.now(ET).date().isoformat()
     )
     name = (
-        str(info.get("FUNDNAME") or row.get("FUNDNAME") or f"iShares {ticker}").strip()
+        str(info.get("FUNDNAME") or row.get("FUNDNAME") or f"{issuer} {ticker}").strip()
     )
     aum = aum_usd
     if aum is None:
@@ -758,18 +766,33 @@ def _ishares_snapshot_from_etfcheck(ticker: str, aum_usd: float | None = None) -
     return build_snapshot(
         ticker=ticker,
         name=name,
-        issuer="iShares",
+        issuer=issuer,
         source="etfcheck_global_pdf_detail",
         source_url="https://www.etfcheck.co.kr",
-        source_note=(
-            "iShares official AJAX is often blocked from cloud egress; daily snapshot "
-            "uses etfcheck holdings and is archived to R2 so weight history accumulates "
-            "on our side (unlike the live etfcheck page alone)."
+        source_note=source_note
+        or (
+            "etfcheck(Morningstar) 편입 데이터. 주의: 기준일은 가격일(TRADEDATE)이며 "
+            "실제 포트폴리오 기준일은 제공되지 않아 운용사 공식 파일보다 늦을 수 있음."
         ),
         as_of=as_of,
         holdings=holdings,
         aum_usd=aum,
+        extra={"holdings_as_of": None, "as_of_basis": "etfcheck_price_date"},
     )
+
+
+def _ishares_snapshot_best(
+    ticker: str, aum_usd: float | None = None
+) -> tuple[dict[str, Any], str | None]:
+    """Official iShares CSV when the product path is known, else etfcheck."""
+    from etf_weight_official import ishares_product_path, ishares_official_snapshot
+
+    if ishares_product_path(ticker):
+        try:
+            return ishares_official_snapshot(ticker, aum_usd=aum_usd)
+        except Exception as exc:
+            print(f"ishares official CSV failed {ticker}, falling back to etfcheck: {exc}")
+    return _ishares_snapshot_from_etfcheck(ticker, aum_usd=aum_usd), None
 
 
 def collect_ishares_top_n(n: int = DEFAULT_ISHARES_TOP_N) -> dict[str, Any]:
@@ -780,9 +803,9 @@ def collect_ishares_top_n(n: int = DEFAULT_ISHARES_TOP_N) -> dict[str, Any]:
         ticker = meta["ticker"]
         try:
             sync_snapshots_from_r2(ticker)
-            snap = _ishares_snapshot_from_etfcheck(ticker, aum_usd=meta.get("aum_usd"))
-            save_snapshot(snap)
-            publish_to_r2(snap)
+            snap, raw = _ishares_snapshot_best(ticker, aum_usd=meta.get("aum_usd"))
+            save_snapshot(snap, csv_text=raw)
+            publish_to_r2(snap, csv_text=raw)
             saved.append(
                 {
                     "ticker": ticker,
@@ -814,8 +837,11 @@ def collect_all(
     backfill_roundhill_days: int = 0,
     ishares_top_n: int = DEFAULT_ISHARES_TOP_N,
 ) -> dict[str, Any]:
+    from etf_weight_official import collect_priority
+
     rh = collect_roundhill_all(backfill_days=backfill_roundhill_days)
     ishares = collect_ishares_top_n(ishares_top_n)
+    priority = collect_priority()
 
     # Rebuild universe index from latest snapshots
     entries: list[dict[str, Any]] = []
@@ -849,13 +875,37 @@ def collect_all(
                 "holdings": (latest or {}).get("count") or row.get("count"),
             }
         )
-    # de-dupe by ticker (prefer richer entry)
+    from etf_weight_official import PRIORITY_TICKERS
+
+    # Keep every priority ticker listed while it has any snapshot — VFLO is
+    # imported manually, so the scheduled run deliberately skips it.
+    saved_meta = {r["ticker"]: r for r in priority.get("saved") or []}
+    for t in PRIORITY_TICKERS:
+        sync_snapshots_from_r2(t)
+        latest = load_latest(t) or {}
+        if t not in saved_meta and not latest:
+            continue
+        row = saved_meta.get(t, {"ticker": t})
+        entries.append(
+            {
+                "ticker": t,
+                "name": latest.get("name") or t,
+                "issuer": latest.get("issuer") or row.get("issuer"),
+                "group": "priority",
+                "as_of": latest.get("as_of") or row.get("as_of"),
+                "as_of_basis": latest.get("as_of_basis"),
+                "aum_usd": latest.get("aum_usd"),
+                "holdings": latest.get("count"),
+            }
+        )
+    # de-dupe by ticker (later = priority wins)
     by_t = {e["ticker"]: e for e in entries}
     save_universe(sorted(by_t.values(), key=lambda e: (e.get("issuer") or "", e["ticker"])))
     return {
         "ok": bool(rh.get("ok") or ishares.get("ok")),
         "roundhill": rh,
         "ishares": ishares,
+        "priority": priority,
         "universe_count": len(by_t),
     }
 
@@ -946,6 +996,10 @@ def weight_monitor_payload(ticker: str = "DRAM") -> dict[str, Any]:
         "source": latest.get("source"),
         "source_url": latest.get("source_url"),
         "source_note": latest.get("source_note"),
+        "holdings_as_of": latest.get("holdings_as_of"),
+        "as_of_basis": latest.get("as_of_basis"),
+        "disclosure": latest.get("disclosure"),
+        "coverage": latest.get("coverage"),
         "holdings": latest.get("holdings") or [],
         "economic": latest.get("economic") or [],
         "top10": latest.get("top10") or [],
@@ -953,7 +1007,8 @@ def weight_monitor_payload(ticker: str = "DRAM") -> dict[str, Any]:
         "universe": load_universe(),
         "notes": [
             "Roundhill: Filepoint 일간 CSV 1개로 전 상품 적재.",
-            "iShares: Yahoo AUM 상위 15개 — etfcheck 편입 스냅샷을 우리 R2에 일자별 축적.",
+            "iShares: Yahoo AUM 상위 15개 — 공식 latest-holdings.csv 우선, 없으면 etfcheck.",
+            "우선 관리(DGRO·HDV·VFLO·VYM·XLK): 운용사 공식 파일 기준일로 적재.",
             "DRAM은 현물+TRS 경제노출 합산, 그 외는 Top holdings 시계열.",
         ],
     }
@@ -976,9 +1031,14 @@ def collect_ticker(ticker: str = "DRAM", *, backfill_days: int = 0) -> dict[str,
             "history": build_history_payload(ticker),
         }
     try:
-        snap = _ishares_snapshot_from_etfcheck(ticker)
-        save_snapshot(snap)
-        r2 = publish_to_r2(snap)
+        from etf_weight_official import OFFICIAL_SOURCES, official_snapshot
+
+        if ticker in OFFICIAL_SOURCES:
+            snap, raw = official_snapshot(ticker)
+        else:
+            snap, raw = _ishares_snapshot_best(ticker)
+        save_snapshot(snap, csv_text=raw)
+        r2 = publish_to_r2(snap, csv_text=raw)
         return {
             "ok": True,
             "snapshot": snap,
