@@ -37,6 +37,7 @@ from etf_us_new_scheduler import start_etf_us_new_scheduler
 from etfcheck_scheduler import start_etfcheck_scheduler
 from etf_kor15_scheduler import start_etf_kor15_scheduler
 from etf_flow_weekly_scheduler import start_etf_flow_weekly_scheduler
+from krx_option_board_scheduler import start_krx_option_board_scheduler
 from etf_db_scheduler import start_etf_db_scheduler
 from credit_monitor_scheduler import start_credit_monitor_scheduler
 from challenge_trading_scheduler import start_challenge_trading_scheduler
@@ -2518,6 +2519,13 @@ def start_web_server():
                         "etf_flow_weekly_scheduler_heartbeat": state.get(
                             "etf_flow_weekly_scheduler_heartbeat"
                         ),
+                        "last_krx_option_board_slot": state.get("last_krx_option_board_slot"),
+                        "last_krx_option_board_as_of": state.get("last_krx_option_board_as_of"),
+                        "last_krx_option_board_ok_at": state.get("last_krx_option_board_ok_at"),
+                        "last_krx_option_board_error": state.get("last_krx_option_board_error"),
+                        "krx_option_board_scheduler_heartbeat": state.get(
+                            "krx_option_board_scheduler_heartbeat"
+                        ),
                         "last_esg_accident_error": state.get("last_esg_accident_error"),
                         "last_esg_overview_error": state.get("last_esg_overview_error"),
                         "last_summary_attempt_at": state.get("last_summary_attempt_at"),
@@ -3797,6 +3805,7 @@ def start_all_schedulers(token: str) -> None:
     start_etf_kor15_scheduler(token=token, broadcast_fn=broadcast_messages_legacy)
     start_etf_db_scheduler()
     start_etf_flow_weekly_scheduler()
+    start_krx_option_board_scheduler()
     start_challenge_trading_scheduler()
     start_credit_monitor_scheduler()
     start_etf_weight_monitor_scheduler()

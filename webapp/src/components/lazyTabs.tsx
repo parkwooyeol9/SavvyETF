@@ -34,6 +34,7 @@ export const CryptoAssetsTab = dynamic(() => import("@/components/CryptoAssetsTa
 export const VolatilityMonitorTab = dynamic(() => import("@/components/VolatilityMonitorTab"), { loading });
 export const DerivativesTab = dynamic(() => import("@/components/DerivativesTab"), { loading });
 export const MarketGammaTab = dynamic(() => import("@/components/MarketGammaTab"), { loading });
+export const KrxOptionBoardTab = dynamic(() => import("@/components/KrxOptionBoardTab"), { loading });
 export const QuantTab = dynamic(() => import("@/components/QuantTab"), { loading });
 export const AiPickTab = dynamic(() => import("@/components/AiPickTab"), { loading });
 export const WeightOptimizeTab = dynamic(() => import("@/components/WeightOptimizeTab"), { loading });

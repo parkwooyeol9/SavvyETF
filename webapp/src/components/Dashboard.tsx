@@ -36,6 +36,7 @@ import {
   VolatilityMonitorTab,
   DerivativesTab,
   MarketGammaTab,
+  KrxOptionBoardTab,
   QuantTab,
   AiPickTab,
   WeightOptimizeTab,
@@ -371,6 +372,7 @@ function DashboardInner({
       tab === "volmonitor" ||
       tab === "derivatives" ||
       tab === "gamma" ||
+      tab === "optboard" ||
       tab === "quant" ||
       tab === "ideas" ||
       tab === "weightopt" ||
@@ -638,6 +640,8 @@ function DashboardInner({
         <DerivativesTab />
       ) : tab === "gamma" ? (
         <MarketGammaTab />
+      ) : tab === "optboard" ? (
+        <KrxOptionBoardTab />
       ) : tab === "quant" ? (
         <QuantTab />
       ) : tab === "gurus" ? (

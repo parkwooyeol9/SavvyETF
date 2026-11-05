@@ -99,6 +99,12 @@ services:
         value: "3:40"
       - key: ETF_FLOW_WEEKLY_CATCHUP_MINUTES
         value: "45"
+      - key: KRX_AUTH_KEY
+        sync: false
+      - key: KRX_OPTION_BOARD_SCHEDULE_ENABLED
+        value: "true"
+      - key: KRX_OPTION_BOARD_SCHEDULE_KST
+        value: "9:10"
       - key: ETF_KOR15_SCHEDULE_ENABLED
         value: "false"
       - key: ETF_WEIGHT_SCHEDULE_ENABLED

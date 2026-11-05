@@ -38,6 +38,7 @@ export type ShellTabId =
   | "cardnews"
   | "research"
   | "gamma"
+  | "optboard"
   | "quant"
   | "ideas"
   | "weightopt"
@@ -125,6 +126,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "derivatives",
   "derivedu",
   "gamma",
+  "optboard",
   "round",
   "heatpick",
   "cardnews",
@@ -221,6 +223,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   volmonitor: "변동성 모니터",
   derivatives: "파생 모니터",
   gamma: "감마",
+  optboard: "옵션 모니터",
   quant: "기술적분석",
   ideas: "AI Pick",
   weightopt: "비중 최적화",
@@ -316,7 +319,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "derivs",
         label: "파생상품",
-        tabs: ["leverage", "volmonitor", "derivatives", "gamma"],
+        tabs: ["optboard", "leverage", "volmonitor", "derivatives", "gamma"],
       },
       {
         id: "esg",
@@ -514,6 +517,16 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   if (v === "aipulse" || v === "ai-pulse" || v === "ai_pulse" || v === "aieconomy" || v === "ai시황") return "aipulse";
   if (v === "etfdb" || v === "etf-db" || v === "db") return "etfdb";
   if (v === "etfdbus" || v === "etf-db-us" || v === "etfdb-us") return "etfdbus";
+  if (
+    v === "optboard" ||
+    v === "option-board" ||
+    v === "option-monitor" ||
+    v === "options" ||
+    v === "옵션" ||
+    v === "옵션모니터"
+  ) {
+    return "optboard";
+  }
   if (v === "etfflow" || v === "etf-flow" || v === "flow" || v === "etf_flow") return "etfflow";
   if (v === "rebal" || v === "rebalancing" || v === "리밸런싱") return "rebalance";
   if (v === "acwi-analyzer" || v === "acwi_analyzer" || v === "acwianalyzer") return "acwi";
