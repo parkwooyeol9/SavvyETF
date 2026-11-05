@@ -523,4 +523,16 @@ if __name__ == "__main__":
     else:
         picks = tuple(a.upper() for a in args) or PRIORITY_TICKERS
         out = collect_priority(picks)
+        # Render one-off jobs do not run a shell, so collection and the R2
+        # universe merge have to happen in this one process. Local runs without
+        # R2 keys still only collect.
+        try:
+            from r2_briefs import r2_configured
+
+            if r2_configured():
+                from etf_weight_push_local import push
+
+                out["push"] = push(picks, apply=True, archive_etfcheck=True)
+        except Exception as exc:
+            out["push_error"] = str(exc)
     print(json.dumps(out, ensure_ascii=False, indent=2))
