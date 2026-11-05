@@ -404,6 +404,33 @@ def _is_newer_as_of(candidate: str | None, current: str | None) -> bool:
     return candidate >= current
 
 
+def _basis_rank(snap: dict[str, Any] | None) -> int:
+    """issuer_file (운용사 공식) > unknown/legacy > etfcheck_price_date."""
+    basis = (snap or {}).get("as_of_basis")
+    if basis == "issuer_file":
+        return 2
+    if basis == "etfcheck_price_date":
+        return 0
+    # Legacy snapshots predate as_of_basis; etfcheck ones are identifiable by source.
+    return 0 if (snap or {}).get("source") == "etfcheck_global_pdf_detail" else 1
+
+
+def should_replace_latest(candidate: dict[str, Any], current: dict[str, Any] | None) -> bool:
+    """Pick the snapshot the 'latest' pointer should show.
+
+    An issuer-official file always beats etfcheck even when etfcheck carries a later
+    date — etfcheck's date is a price date, so its holdings can be weeks older
+    (VYM official month-end 09-30 vs etfcheck 'as of' 11-04). Within the same
+    basis, the later (or same-day re-collected) as_of wins.
+    """
+    if not current:
+        return bool(candidate.get("as_of"))
+    rc, rr = _basis_rank(candidate), _basis_rank(current)
+    if rc != rr:
+        return rc > rr
+    return _is_newer_as_of(candidate.get("as_of"), current.get("as_of"))
+
+
 def list_snapshot_days(ticker: str) -> list[str]:
     snap_dir = _ticker_dir(ticker) / "snapshots"
     if not snap_dir.is_dir():
@@ -441,7 +468,7 @@ def save_snapshot(snapshot: dict[str, Any], *, csv_text: str | None = None) -> P
 
     # Never let an older backfill overwrite the pointer to the newest day.
     existing = load_latest(ticker)
-    if _is_newer_as_of(snapshot.get("as_of"), (existing or {}).get("as_of")):
+    if should_replace_latest(snapshot, existing):
         _latest_path(ticker).write_text(
             json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
         )
@@ -467,7 +494,7 @@ def publish_to_r2(snapshot: dict[str, Any], *, csv_text: str | None = None) -> d
         put_json(f"etf_weights/{ticker}/snapshots/{day}.json", snapshot)
 
         remote_latest = get_json(f"etf_weights/{ticker}/latest.json")
-        if _is_newer_as_of(snapshot.get("as_of"), (remote_latest or {}).get("as_of")):
+        if should_replace_latest(snapshot, remote_latest):
             put_json(f"etf_weights/{ticker}/latest.json", snapshot)
             result["latest_updated"] = True
         else:
