@@ -124,7 +124,7 @@ export async function middleware(request: NextRequest) {
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.vercel-storage.com https://*.onrender.com https://*.r2.dev https://*.cloudflarestorage.com https://*.googleusercontent.com https://*.supabase.co https://upload.wikimedia.org https://*.wikimedia.org https://*.wikipedia.org",
       "font-src 'self' data:",
       "connect-src 'self' https://*.onrender.com https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://*.r2.cloudflarestorage.com https://*.cloudflarestorage.com",
-      "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co https://savvybookclub.vercel.app",
+      "frame-src 'self' blob: https://accounts.google.com https://*.supabase.co https://savvybookclub.vercel.app https://savvyecon.vercel.app",
       "base-uri 'self'",
       "form-action 'self' https://accounts.google.com https://*.supabase.co",
     ].join("; "),

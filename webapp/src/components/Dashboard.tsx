@@ -10,6 +10,7 @@ import {
   EsgRegTab,
   GreenMineralsTab,
   BookClubTab,
+  EconResearchTab,
   EducationTab,
   ResearchTab,
   CardNewsTab,
@@ -179,7 +180,15 @@ function DashboardInner({
   const activeGroup = NAV_GROUPS.find((g) => g.id === groupId) || NAV_GROUPS[0];
   const visibleGroupTabs = visibleShellTabs(activeGroup.tabs, unlocked);
   const visibleNested = visibleNestedGroups(activeGroup.nested, unlocked);
-  // 교육: 월가 구루를 카드뉴스보다 앞에 둔다. 자료실은 오른쪽 끝.
+  // 교육: 월가 구루가 맨 앞, 경제연구소가 맨 오른쪽 끝.
+  const leadGroupTabs =
+    activeGroup.id === "learn"
+      ? visibleGroupTabs.filter((id) => id !== "econresearch")
+      : visibleGroupTabs;
+  const tailGroupTabs =
+    activeGroup.id === "learn"
+      ? visibleGroupTabs.filter((id) => id === "econresearch")
+      : [];
   const leadNested =
     activeGroup.id === "learn"
       ? visibleNested.filter((item) => item.id === "fundmgr")
@@ -407,6 +416,7 @@ function DashboardInner({
       tab === "themeetf" ||
       tab === "bookclub" ||
       tab === "bookclubboard" ||
+      tab === "econresearch" ||
       tab === "vault"
     ) {
       return error
@@ -501,7 +511,7 @@ function DashboardInner({
               {nested.label}
             </button>
           ))}
-          {visibleGroupTabs.map((id) => (
+          {leadGroupTabs.map((id) => (
             <button
               key={id}
               type="button"
@@ -519,6 +529,16 @@ function DashboardInner({
               onClick={() => selectNested(nested.id)}
             >
               {nested.label}
+            </button>
+          ))}
+          {tailGroupTabs.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`tab-btn sub ${!activeNested && subNavTab(tab) === id ? "active" : ""}`}
+              onClick={() => setTab(id)}
+            >
+              {SHELL_TAB_LABELS[id]}
             </button>
           ))}
         </nav>
@@ -546,6 +566,8 @@ function DashboardInner({
         <MainTab />
       ) : tab === "bookclub" ? (
         <BookClubTab />
+      ) : tab === "econresearch" ? (
+        <EconResearchTab />
       ) : tab === "usportfolio" || tab === "simulate" ? (
         <MpTab etf={tab === "simulate"} onEtfChange={(etf) => setTab(etf ? "simulate" : "usportfolio")} />
       ) : tab === "signals" ? (

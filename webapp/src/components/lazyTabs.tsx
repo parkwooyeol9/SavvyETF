@@ -8,6 +8,7 @@ export const InfraTab = dynamic(() => import("@/components/InfraTab"), { loading
 export const EsgRegTab = dynamic(() => import("@/components/EsgRegTab"), { loading });
 export const GreenMineralsTab = dynamic(() => import("@/components/GreenMineralsTab"), { loading });
 export const BookClubTab = dynamic(() => import("@/components/BookClubTab"), { loading });
+export const EconResearchTab = dynamic(() => import("@/components/EconResearchTab"), { loading });
 export const EducationTab = dynamic(() => import("@/components/EducationTab"), { loading });
 export const ResearchTab = dynamic(() => import("@/components/ResearchTab"), { loading });
 export const CardNewsTab = dynamic(() => import("@/components/CardNewsTab"), { loading });

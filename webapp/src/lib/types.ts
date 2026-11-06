@@ -60,6 +60,7 @@ export type ShellTabId =
   | "themeetf"
   | "bookclub"
   | "bookclubboard"
+  | "econresearch"
   | "vault"
   | "insider"
   | TabId;
@@ -177,6 +178,7 @@ export const SHELL_TAB_IDS: ShellTabId[] = [
   "themeetf",
   "bookclub",
   "bookclubboard",
+  "econresearch",
   "vault",
   "insider",
 ];
@@ -249,6 +251,7 @@ export const SHELL_TAB_LABELS: Record<ShellTabId, string> = {
   aietf: "AI ETF",
   bookclub: "북클럽",
   bookclubboard: "Contact",
+  econresearch: "경제연구소",
   vault: "자료실",
   // TabId labels last so kr/us/etf/esg stay authoritative for brief tabs.
   ...TAB_LABELS,
@@ -331,7 +334,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "learn",
     label: "교육",
-    tabs: ["cardnews", "bookclub", "heatpick", "education", "research"],
+    tabs: ["cardnews", "bookclub", "heatpick", "education", "research", "econresearch"],
     nested: [
       {
         id: "fundmgr",
@@ -406,7 +409,8 @@ export function navPlacement(tab: ShellTabId): {
     tab === "round" ||
     tab === "heatpick" ||
     tab === "cardnews" ||
-    tab === "research"
+    tab === "research" ||
+    tab === "econresearch"
   ) {
     return { groupId: "learn", nestedId: null };
   }
@@ -510,6 +514,7 @@ export function parseShellTab(raw: string | null | undefined): ShellTabId | null
   ) {
     return "research";
   }
+  if (v === "econ" || v === "savvyecon" || v === "경제연구소") return "econresearch";
   if (v === "aiport" || v === "stockboard") return "ideas";
   if (isShellTabId(v)) return canonicalShellTab(v);
   if (v === "holdings" || v === "etfhold" || v === "편입비") return "etfholdings";
